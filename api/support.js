@@ -243,6 +243,23 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       // ici : la plateforme promet « 3 filleuls ABONNÉS », et un filleul qui vient
       // de s'inscrire n'a rien souscrit. L'évaluation se fait donc au moment où il
       // souscrit réellement, dans le webhook Stripe.
+      // Le parrain doit exister. L'identifiant vient du navigateur : sans ce
+      // contrôle, n'importe quelle chaîne au format uuid était rattachée.
+      const lecture = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerUUID}&select=id`, { headers: lecture });
+      const parrainRows = await pr.json().catch(() => []);
+      if (!pr.ok || !Array.isArray(parrainRows) || parrainRows.length === 0) {
+        return res.status(404).json({ error: "Parrain introuvable." });
+      }
+
+      // Déjà rattaché à CE parrain : c'est la base qui l'a fait à la création du
+      // compte (handle_new_user, 24/09/2026). Rien à refaire, ce n'est pas une erreur.
+      const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&select=referred_by`, { headers: lecture });
+      const filleulRows = await fr.json().catch(() => []);
+      if (Array.isArray(filleulRows) && filleulRows[0]?.referred_by === referrerUUID) {
+        return res.status(200).json({ ok: true, deja: true });
+      }
+
       const patchFilleul = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&referred_by=is.null`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
         body: JSON.stringify({ referred_by: referrerUUID }),

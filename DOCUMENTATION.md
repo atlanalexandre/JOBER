@@ -1378,6 +1378,21 @@ rattrapent depuis le backoffice, onglet Comptes : « Valider les clients en atte
 prévenir » (action `valider_clients_en_attente`, qui envoie un e-mail annonçant l'ouverture
 prochaine de la plateforme).
 
+**La base enregistre le profil complet à la création du compte** (24/09/2026, migration
+`2026-09-24_inscription_profil_a_la_creation.sql`). `handle_new_user` lit dans
+`raw_user_meta_data` ce que le formulaire y dépose déjà — adresse, code postal, ville, nom de
+société, SIRET (`siret` du prestataire, `kbis` du client), consentement aux communications —
+et le parrain (`parrain`), qu'il ne retient que s'il désigne un compte existant autre que soi ;
+il recalcule alors `referral_count` du parrain. C'est ce qui rend l'inscription possible quand
+la confirmation d'adresse e-mail est active : `signUp` ne rend alors aucune session, et
+l'écran affiche « Vérifiez votre boîte mail ». Le navigateur appelle encore `track_referral` quand il a une session,
+comme filet tant que la migration n'est pas passée partout : l'action vérifie désormais que le
+parrain existe (elle rattachait n'importe quel uuid), et répond « déjà rattaché » sans erreur
+quand la base l'a fait. **Piège constaté sur la recette avant mise en production** : un consentement
+absent de `user_metadata` donnait `NULL`, refusé par la colonne `NOT NULL`, et faisait échouer
+l'inscription entière — d'où le `COALESCE(…, false)`. Toute erreur dans ce déclencheur bloque
+TOUTES les inscriptions (« Database error saving new user »).
+
 **Le navigateur complète le profil, il ne le crée pas** (`completerProfil`, auth.jsx). La ligne
 naît dans la base (`handle_new_user`) ; le navigateur n'y ajoute que des colonnes qu'il a le
 droit de modifier, et vérifie qu'une ligne a été écrite. Jusqu'au 23/09/2026, il faisait un
@@ -1397,6 +1412,17 @@ plateforme, y compris ceux qui n'en ont aucun besoin (minimisation, RGPD art. 5.
 quatre lectures (liste du backoffice, approbation, suppression, contrôle anti-recréation à
 l'inscription) lisent `profiles.rib` en priorité et retombent sur l'ancien emplacement tant
 que l'étape 2 de la migration `2026-07-30_rgpd_iban_hors_du_jeton` n'a pas été passée.
+
+**Depuis le 24/09/2026, l'IBAN ne se saisit plus à l'inscription**, ni pour le prestataire
+ni pour le client. Il se renseigne depuis l'espace de l'utilisateur, une fois connecté :
+Paramètres du prestataire (`PrestaProfileEditScreen`), profil du client. La raison : avec la
+confirmation d'adresse e-mail, le navigateur n'a pas de session au moment de l'inscription et
+ne peut rien écrire. Ces deux écrans écrivaient eux-mêmes l'IBAN dans `user_metadata`
+**seulement** — donc dans chaque jeton, et jamais dans `profiles.rib` où le lisent le
+back-office et les virements. Ils écrivent désormais `profiles.rib` (clé MOD-97 vérifiée,
+résultat vérifié), et retirent l'IBAN du jeton (`rib: null`). La liste de tâches du
+prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Vérifié en
+production le 24/09/2026 (lecture seule) : aucun IBAN n'était resté dans un jeton seul.
 
 **`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
 une copie, mais elle n'est **jamais** opposable : à l'inscription, le prestataire choisit son
@@ -3417,6 +3443,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `10` | versement 48 h après la fin, bloqué par un litige, contestation refusée après 48 h |
 | `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
 | `12` | ce que la base refuse à la création d'une prestation (`missions_creation_guard`) : sept fraudes, et les deux créations légitimes |
+| `13` | inscription sans session (confirmation d'e-mail) : écran « vérifiez votre boîte mail », profil complet en base, parrainage ; IBAN saisi dans les Paramètres, rangé dans `profiles.rib` |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
@@ -3428,6 +3455,13 @@ l'application (insertion avec le jeton du client, paiement Stripe de test, affec
 rejouer le tunnel d'écran, déjà couvert par `06`. **`paiementStripe()`** lit le paiement chez
 Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 
-**La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
-un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à
-connaître — le texte ci-dessus sur `signUp()` évoque le cas où elle serait active.
+**La confirmation d'adresse e-mail** (`mailer_autoconfirm`) était désactivée en production :
+on pouvait s'inscrire avec l'adresse de quelqu'un d'autre. Décidé le 24/09/2026 : l'activer.
+L'application y est prête (voir « La base enregistre le profil complet à la création du
+compte »), à condition d'avoir d'abord : appliqué la migration
+`2026-09-24_inscription_profil_a_la_creation.sql`, branché un **SMTP** (Resend) dans Supabase
+— le service intégré n'envoie que quelques messages par heure, et qu'aux membres de
+l'organisation — et ajouté l'adresse de production aux redirections autorisées. **La recette
+la garde désactivée** : ses comptes d'essai (`@recette.alane.test`) n'ont pas de boîte mail.
+Le cas « sans session » y est reproduit par `e2e/13`, qui retire la session de la réponse
+d'inscription exactement comme le fait Supabase quand la confirmation est active.

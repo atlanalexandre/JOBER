@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
-import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
@@ -1474,8 +1474,14 @@ export function PrestaProfileEditScreen({ onBack }) {
       // et un data URI y faisait dépasser la limite d'en-tête HTTP (toute requête en 520).
       // Repli sur m.photo_url pour les comptes pas encore migrés.
       if (session?.user?.id) {
-        supabase.from("profiles").select("avatar_url").eq("id", session.user.id).single()
-          .then(({ data }) => setPhotoUrl(data?.avatar_url || m.photo_url || null));
+        // L'IBAN vit dans profiles.rib — c'est là que le back-office et les
+        // virements le lisent. user_metadata n'est qu'un repli pour les comptes
+        // qui l'y avaient enregistré avant le 24/09/2026.
+        supabase.from("profiles").select("avatar_url,rib").eq("id", session.user.id).single()
+          .then(({ data }) => {
+            setPhotoUrl(data?.avatar_url || m.photo_url || null);
+            if (data?.rib) setIban(data.rib);
+          });
       }
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
       if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
@@ -1555,12 +1561,34 @@ export function PrestaProfileEditScreen({ onBack }) {
         return;
       }
 
+      // L'IBAN s'enregistre dans profiles.rib, jamais dans user_metadata.
+      //
+      // Cet écran l'écrivait dans user_metadata SEULEMENT : une coordonnée
+      // bancaire voyageait dans chaque jeton (CLAUDE.md §1.1), et profiles.rib,
+      // que lisent le back-office et les virements, restait vide. Depuis le
+      // 24/09/2026 l'IBAN ne se saisit plus à l'inscription mais ici, une fois
+      // l'adresse e-mail confirmée : ce chemin doit donc être juste.
+      const ibanPropre = (iban || "").replace(/\s/g, "").toUpperCase();
+      if (ibanPropre && checkIban(ibanPropre) !== true) {
+        setSaving(false);
+        setSaveError("IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas).");
+        return;
+      }
+      const uidRib = refreshData.session.user.id;
+      const { data: ribRows, error: ribErr } = await supabase.from("profiles")
+        .update({ rib: ibanPropre || null }).eq("id", uidRib).select("id");
+      if (ribErr || !ribRows?.length) {
+        throw new Error("Votre IBAN n'a pas pu être enregistré. Réessayez." + (ribErr?.message ? ` (${ribErr.message})` : ""));
+      }
+
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
         dispo_immediat: dispoImmediat,
         tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
-        telephone, rib: iban,
+        // `rib: null` retire du jeton l'IBAN qu'y avaient laissé les anciennes
+        // versions de cet écran — il vient d'être enregistré dans profiles.
+        telephone, rib: null,
         photo_public_auth: photoAuth,
         cv: meta?.cv || {},
       };
@@ -1947,7 +1975,9 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       done:nbDocs >= requis, action:"doc_upload" },
     { id:"rib",     label:"IBAN renseigné",
       aide:"Sans IBAN, aucun versement ne peut partir",
-      done:!!(profil.rib || meta.rib), action:"settings" },
+      // profiles.rib seul : c'est là que les virements le lisent. Un IBAN resté
+      // dans user_metadata était compté « renseigné » sans jamais servir.
+      done:!!profil.rib, action:"settings" },
     { id:"mandats", label:"Mandats de facturation et d'encaissement acceptés",
       aide:"Onglet Revenus — sans eux, pas de facture à votre nom",
       done:!!(profil.mandat_facturation_at && profil.mandat_encaissement_at), action:"p_dashboard" },

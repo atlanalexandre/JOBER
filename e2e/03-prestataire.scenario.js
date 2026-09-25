@@ -26,15 +26,15 @@ test.describe("inscription prestataire", () => {
     expect(c.meta, "user_metadata < 2 Ko (CLAUDE.md §1.1)").toBeLessThan(2048);
   });
 
-  // DOCUMENTATION.md §6 : « L'IBAN vit dans profiles.rib, jamais dans user_metadata ».
-  test("l'IBAN est rangé dans le profil, pas dans le jeton de connexion", async ({ page }) => {
+  // L'IBAN ne se saisit plus à l'inscription (24/09/2026) : il n'est ni dans le
+  // jeton, ni dans le profil, et se renseigne ensuite — voir e2e/13.
+  test("l'inscription ne dépose aucun IBAN, et surtout pas dans le jeton", async ({ page }) => {
     const email = emailTest("presta-iban");
     await remplirInscriptionPrestataire(page, { email });
     await page.getByRole("button", { name: /Créer mon compte/ }).click();
     await expect(page).not.toHaveURL(/\/auth\/signin/, { timeout: 30_000 });
     const c = await compte(email);
     expect(c.rib_dans_jeton, "IBAN dans user_metadata = dans chaque jeton (RGPD)").toBe(false);
-    expect(c.rib_en_base, "IBAN enregistré dans profiles.rib").toBe(true);
   });
 
   test("un prestataire en attente est refusé à la connexion avec un message clair", async ({ page, browser }) => {
@@ -66,13 +66,6 @@ test.describe("inscription prestataire — refus attendus", () => {
     await expect(page.getByText("au moins 16 ans")).toBeVisible();
   });
 
-  // Un IBAN au bon format mais à la clé fausse (dernier chiffre modifié) : le
-  // virement au prestataire échouerait. Jusqu'au 23/09/2026, seul le format était contrôlé.
-  test("un IBAN à la clé de contrôle fausse est refusé", async ({ page }) => {
-    // Le parcours s'arrête à l'étape 5 : l'attente de l'étape 6 échoue, c'est voulu.
-    await remplirInscriptionPrestataire(page, { email: emailTest("iban-faux"), iban: "FR7630006000011234567890188" })
-      .catch(() => { /* bloqué à l'étape 5, vérifié ci-dessous */ });
-    await expect(page.getByText(/IBAN incorrect/).first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("ÉTAPE 5/7", { exact: false })).toBeVisible();
-  });
+  // La clé de contrôle de l'IBAN se vérifie désormais là où il se saisit, dans les
+  // Paramètres de l'espace prestataire : voir e2e/13.
 });

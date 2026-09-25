@@ -77,7 +77,7 @@ export async function connexion(page, { espace = "client", email, motDePasse = M
 }
 
 /** Inscription prestataire complète (7 étapes), par l'écran. S'arrête avant « Créer mon compte ». */
-export async function remplirInscriptionPrestataire(page, { email, motDePasse = MOT_DE_PASSE, prenom = "Sam", iban = "FR7630006000011234567890189" } = {}) {
+export async function remplirInscriptionPrestataire(page, { email, motDePasse = MOT_DE_PASSE, prenom = "Sam" } = {}) {
   await ouvrir(page, "/auth/signin/provider");
   await fermerBandeauCookies(page);
   await page.getByText("Inscription", { exact: true }).first().click();
@@ -112,9 +112,8 @@ export async function remplirInscriptionPrestataire(page, { email, motDePasse = 
   }
   await continuer(page);
 
-  // 5 — statut et paiement
+  // 5 — statut (l'IBAN ne se saisit plus ici : espace prestataire, après activation)
   await expect(page.getByText("ÉTAPE 5/7", { exact: false })).toBeVisible();
-  await page.getByPlaceholder("FR76 3000 4028 0000 0000 0000 000").fill(iban);
   await page.getByText("Je m'engage à disposer d'une assurance RC", { exact: false }).click();
   await continuer(page);
 

@@ -10,7 +10,7 @@ import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-c
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement } from "../constants/editeur.js";
-import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -311,6 +311,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [cpVolume, setCpVolume]       = useState("");
   const [cpFrequence, setCpFrequence] = useState("");
   const [cpIban, setCpIban]           = useState("");
+  const [cpRibEnregistre, setCpRibEnregistre] = useState("");
   const [cpSaving, setCpSaving]       = useState(false);
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [addingCard, setAddingCard]   = useState(false);
@@ -341,10 +342,13 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         setCpVolume(m.volume_horaire||"");
         setCpFrequence(m.frequence_besoins||"");
         setCpIban(m.rib||"");
+        setCpRibEnregistre(m.rib||"");
         if (m.stripe_pm_id) setSavedCard({ pmId: m.stripe_pm_id, customerId: m.stripe_customer_id, brand: m.card_brand||"card", last4: m.card_last4||"••••" });
       }
-      supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
-        .then(({ data:p })=>{ if(p){ setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); setEditPrenom(p.prenom||""); setEditNom(p.nom||""); } });
+      // L'IBAN vit dans profiles.rib ; user_metadata n'est qu'un repli pour les
+      // comptes qui l'y avaient enregistré avant le 24/09/2026.
+      supabase.from("profiles").select("prenom,nom,rib").eq("id",user.id).single()
+        .then(({ data:p })=>{ if(p){ setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); setEditPrenom(p.prenom||""); setEditNom(p.nom||""); if(p.rib){ setCpIban(p.rib); setCpRibEnregistre(p.rib); } } });
       setEditTelephone(m.telephone||"");
     });
   },[]);
@@ -434,13 +438,34 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     setSavedCard(null);
   };
 
+  // L'IBAN s'enregistre dans profiles.rib, jamais dans user_metadata : ce
+  // dernier voyage dans chaque jeton (CLAUDE.md §1.1). Cet écran l'y écrivait,
+  // et ignorait en outre tout échec d'enregistrement (règle 1.2).
   const handleSaveClientProfile = async () => {
+    const ibanPropre = (cpIban || "").replace(/\s/g, "").toUpperCase();
+    if (ibanPropre && checkIban(ibanPropre) !== true) {
+      showToast("IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas).", "error");
+      return;
+    }
     setCpSaving(true);
-    await supabase.auth.updateUser({ data: {
+    const { data:ud } = await supabase.auth.getUser();
+    const uid = ud?.user?.id;
+    const { data:lignes, error:errProfil } = uid
+      ? await supabase.from("profiles").update({ rib: ibanPropre || null, adresse: cpAdresse || null, code_postal: cpCodePostal || null, ville: cpVille || null }).eq("id", uid).select("id")
+      : { data:null, error:new Error("session expirée") };
+    const { error:errMeta } = await supabase.auth.updateUser({ data: {
       adresse: cpAdresse, code_postal: cpCodePostal, ville: cpVille,
       volume_horaire: cpVolume, frequence_besoins: cpFrequence,
-      rib: cpIban,
+      // Retire du jeton l'IBAN qu'y avaient laissé les versions précédentes.
+      rib: null,
     }});
+    if (errProfil || !lignes?.length || errMeta) {
+      console.error("[profil client] enregistrement incomplet :", errProfil?.message || errMeta?.message || "aucune ligne écrite");
+      setCpSaving(false);
+      showToast("Votre profil n'a pas pu être enregistré. Réessayez.", "error");
+      return;
+    }
+    setCpRibEnregistre(ibanPropre);
     setCpSaving(false); setCpSaved(true);
     setTimeout(()=>{ setCpSaved(false); setEditingProfile(false); }, 1200);
   };
@@ -546,8 +571,8 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
                 {clientMeta?.frequence_besoins && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🔄</span><span style={{ color:C.textSub, fontSize:13, textTransform:"capitalize" }}>{clientMeta.frequence_besoins}</span></div>}
                 {clientMeta?.volume_horaire && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>⏱️</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.volume_horaire} / semaine</span></div>}
                 {clientMeta?.secteurs_besoins?.length > 0 && <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:4 }}>{clientMeta.secteurs_besoins.map(sid=>{ const s=SECTORS.find(x=>x.id===sid); return s?<span key={sid} style={{ background:`${s.color}20`, border:`1px solid ${s.color}44`, borderRadius:6, padding:"2px 8px", color:s.color, fontSize:11, fontWeight:600 }}>{s.icon} {s.label}</span>:null; })}</div>}
-                {clientMeta?.rib && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🏦</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.rib.slice(0,8)}••••••••••••••</span></div>}
-                {!clientMeta?.adresse && !clientMeta?.frequence_besoins && !clientMeta?.rib && <div style={{ color:C.textSub, fontSize:12 }}>Aucune information de profil renseignée.</div>}
+                {cpRibEnregistre && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🏦</span><span style={{ color:C.textSub, fontSize:13 }}>{cpRibEnregistre.slice(0,8)}••••••••••••••</span></div>}
+                {!clientMeta?.adresse && !clientMeta?.frequence_besoins && !cpRibEnregistre && <div style={{ color:C.textSub, fontSize:12 }}>Aucune information de profil renseignée.</div>}
               </div>
             ) : (
               <div>
