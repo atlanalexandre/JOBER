@@ -147,7 +147,7 @@ export async function bo(action, champs = {}) {
  * son résultat est vérifié : si l'une échoue, c'est un défaut à signaler, pas un
  * détail de préparation.
  */
-export async function prestataireOperationnel({ metier = "Femme/Valet de chambre", secteur = "hotellerie", tarif = 13 } = {}) {
+export async function prestataireOperationnel({ metier = "Femme/Valet de chambre", secteur = "hotellerie", tarif = 13, nationalite = null } = {}) {
   // Hôtellerie : c'est le seul secteur ouvert aux clients tant qu'un secteur n'a pas
   // 20 prestataires (réglages `forced_open_sectors` et `sector_min_prestataires`).
   const metiers = [{ sector: secteur, metier, niveau: "Confirmé", experienceAns: 3, tarifNet: tarif, certifs: "" }];
@@ -164,6 +164,7 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
       dispon_jours: jours, dispon_jours_creneaux: creneaux, dispo_immediat: true,
       statut_pro: "auto-entrepreneur", siret: null,
       plan_souhaite: "free", plan_abonnement: "free",
+      ...(nationalite ? { nationalite } : {}),
     },
   });
   // L'écran complète le profil juste après le signUp (completerProfil).
