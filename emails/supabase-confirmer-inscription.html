@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!--
+  Modèle Supabase « Confirm signup » (Authentication → Emails → Templates).
+  Ce fichier n'est PAS lu par l'application : Supabase garde sa propre copie.
+  Il sert de référence, pour pouvoir la recoller à l'identique après une
+  modification. Objet à mettre dans Supabase :
+      Confirmez votre adresse e-mail — ALANE
+
+  Même habillage que les e-mails envoyés par /api (api/_email.js, emailHtml) :
+  bandeau bleu nuit, logo ALANE en texte coloré. Une image serait bloquée par
+  défaut par Gmail et Outlook, un texte coloré s'affiche toujours.
+
+  {{ .ConfirmationURL }} est remplacé par Supabase au moment de l'envoi.
+-->
+<html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Confirmez votre adresse e-mail — ALANE</title></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f4f7;padding:32px 12px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;border-radius:14px;overflow:hidden;max-width:560px;width:100%;">
+        <tr>
+          <td style="background:#050E20;padding:30px 36px;text-align:center;">
+            <span style="font-size:30px;font-weight:800;letter-spacing:3px;">
+              <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
+            </span>
+            <div style="color:#9aa3b8;font-size:12px;letter-spacing:1px;margin-top:6px;">Le bon pro, au bon moment.</div>
+          </td>
+        </tr>
+        <tr><td style="height:4px;background:#7C6FE0;background-image:linear-gradient(90deg,#7C6FE0,#F0B429);font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr>
+          <td style="padding:40px 36px 12px;color:#1a1a2e;font-size:15px;line-height:1.7;">
+            <h1 style="margin:0 0 16px;font-size:22px;color:#050E20;">Bienvenue sur ALANE 👋</h1>
+            <p style="margin:0 0 14px;">Merci pour votre inscription.</p>
+            <p style="margin:0 0 28px;">Il ne reste qu'une étape : confirmez votre adresse e-mail pour activer votre compte.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" align="center" style="margin:0 auto 28px;">
+              <tr><td style="border-radius:10px;background:#7C6FE0;">
+                <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:15px 34px;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">Confirmer mon adresse</a>
+              </td></tr>
+            </table>
+            <p style="margin:0 0 10px;font-size:13px;color:#555;">Astuce : ouvrez ce lien sur l'appareil où vous vous êtes inscrit, vous serez connecté directement.</p>
+            <p style="margin:0 0 6px;font-size:13px;color:#555;">Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :</p>
+            <p style="margin:0 0 24px;font-size:12px;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#7C6FE0;">{{ .ConfirmationURL }}</a></p>
+            <p style="margin:0 0 8px;font-size:13px;color:#888;">Vous n'êtes pas à l'origine de cette inscription ? Ignorez simplement cet e-mail : aucun compte ne sera activé.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a> · <a href="mailto:support@alane.fr" style="color:#7C6FE0;text-decoration:none;">support@alane.fr</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>

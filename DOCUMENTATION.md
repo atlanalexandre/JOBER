@@ -3456,6 +3456,12 @@ l'application (insertion avec le jeton du client, paiement Stripe de test, affec
 rejouer le tunnel d'écran, déjà couvert par `06`. **`paiementStripe()`** lit le paiement chez
 Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 
+**Le modèle de l'e-mail de confirmation** vit dans Supabase (Authentication → Emails →
+Templates → *Confirm signup*), pas dans le code. Sa référence est
+`emails/supabase-confirmer-inscription.html`, au même habillage que les e-mails de `/api`
+(`emailHtml` de `api/_email.js`) : le recoller depuis ce fichier après toute modification, et
+modifier ce fichier d'abord.
+
 **La confirmation d'adresse e-mail** (`mailer_autoconfirm`) était désactivée en production :
 on pouvait s'inscrire avec l'adresse de quelqu'un d'autre. Décidé le 24/09/2026 : l'activer.
 L'application y est prête (voir « La base enregistre le profil complet à la création du
