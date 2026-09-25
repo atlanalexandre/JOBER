@@ -121,6 +121,11 @@ export default async function handler(req, res) {
   // l'échec passait donc inaperçu : `bo_logs.details` n'existait pas, et
   // aucune action du backoffice qui en transportait un n'a jamais été
   // journalisée. Les plus sensibles sont précisément celles-là.
+  // TOUJOURS l'attendre (`await journaliser(…)`). Quatorze appels sur quinze ne
+  // l'attendaient pas : la fonction serverless répond, puis s'arrête, et
+  // l'écriture en cours peut être coupée. Une validation de document sur deux
+  // manquait ainsi au journal (e2e/14, 25/09/2026). La fonction ne lève jamais :
+  // l'attendre ne peut pas faire échouer l'action journalisée.
   const journaliser = async (act, champs = {}) => {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
@@ -269,7 +274,7 @@ export default async function handler(req, res) {
       // ferme. Ni l'un ni l'autre ne laissait de trace. Le contrôle du SIRET
       // effectué juste au-dessus n'était journalisé que dans la console Vercel,
       // effacée au bout de quelques jours : sa conclusion est consignée ici.
-      journaliser(action, {
+      await journaliser(action, {
         target_id: profileId,
         target_email: userEmail || null,
         details: action === "approve"
@@ -1253,7 +1258,7 @@ export default async function handler(req, res) {
         await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Proposition de résolution 📩", body: corps}, SUPABASE_URL, headers).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
       }
 
-      journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre, montant: montantPropose } });
+      await journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre, montant: montantPropose } });
       return res.status(200).json({ success: true, echeance: new Date(echeance).toISOString() });
     }
 
@@ -1309,7 +1314,7 @@ export default async function handler(req, res) {
         await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 
-      journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
+      await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
       return res.status(200).json({ success: true, statut: out.statut });
     }
 
@@ -1331,7 +1336,7 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur suppression ticket" });
-      journaliser("delete_ticket", { target_id: String(req.body.ticketId ?? req.body.id ?? "") || null });
+      await journaliser("delete_ticket", { target_id: String(req.body.ticketId ?? req.body.id ?? "") || null });
       return res.status(200).json({ success: true });
     }
 
@@ -1377,7 +1382,7 @@ export default async function handler(req, res) {
           }).then(() => { sent++; }).catch(e => console.error("[bo-action/send_global_comm] échec ignoré :", e?.message))
         ));
       }
-      journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
+      await journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
       return res.status(200).json({ success: true, sent });
     }
 
@@ -1687,7 +1692,7 @@ export default async function handler(req, res) {
       // elle donne seulement l'impression qu'un état est suivi. L'information
       // existe déjà, exacte, dans `documents.verified` et `documents.verified_at`.
       // Qui a validé cette pièce, et quand : la question sera posée en contrôle.
-      journaliser("verify_doc", { target_id: profileId, details: { doc_id: String(req.body.docId) } });
+      await journaliser("verify_doc", { target_id: profileId, details: { doc_id: String(req.body.docId) } });
       return res.status(200).json({ success: true });
     }
 
@@ -1745,7 +1750,7 @@ export default async function handler(req, res) {
           body:    `Votre document « ${label} » n'a pas pu être validé. Motif : ${motif}. Merci de déposer un nouveau document depuis votre espace.`,
         }, SUPABASE_URL, headers).catch(e => console.error("[reject_doc] notification échouée :", e.message));
 
-      journaliser("reject_doc", { target_id: profileId, reason: motif, details: { doc_id: String(req.body.docId), type: doc.type } });
+      await journaliser("reject_doc", { target_id: profileId, reason: motif, details: { doc_id: String(req.body.docId), type: doc.type } });
       return res.status(200).json({ success: true, type: doc.type });
     }
 
@@ -2079,7 +2084,7 @@ export default async function handler(req, res) {
             body: `Le versement de votre prestation du ${m.date || ""} a été programmé : ${partPrestataire.toFixed(2).replace(".", ",")} €. Il part à l'expiration du délai de réclamation.`}, SUPABASE_URL, headers).catch(e => console.error("[programmer_versement] notification non envoyée :", e.message));
       }
 
-      journaliser("programmer_versement", { target_id: mission_id, details: { montant: partPrestataire, echeance } });
+      await journaliser("programmer_versement", { target_id: mission_id, details: { montant: partPrestataire, echeance } });
       return res.status(200).json({ success: true, montant: partPrestataire, echeance });
     }
 
@@ -2852,7 +2857,7 @@ export default async function handler(req, res) {
       }));
 
       const accepte = resultats.some(r => r.statut === 201 || r.statut === 200);
-      journaliser("test_push", { target_id: profileId, details: { appareils: resultats.length, accepte } });
+      await journaliser("test_push", { target_id: profileId, details: { appareils: resultats.length, accepte } });
 
       return res.status(200).json({
         cles, appareils: resultats,
@@ -2882,7 +2887,7 @@ export default async function handler(req, res) {
         }
       }
 
-      journaliser("reveal_iban", { target_id: profileId, details: { trouve: !!rib } });
+      await journaliser("reveal_iban", { target_id: profileId, details: { trouve: !!rib } });
       if (!rib) return res.status(404).json({ error: "Aucun IBAN enregistré pour ce compte" });
       return res.status(200).json({ rib: String(rib).replace(/\s/g, "").toUpperCase() });
     }
@@ -2938,7 +2943,7 @@ export default async function handler(req, res) {
         { headers }
       );
       const missions = await r.json();
-      journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
+      await journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
       return res.status(200).json(Array.isArray(missions) ? missions : []);
     }
 
@@ -2957,7 +2962,7 @@ export default async function handler(req, res) {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
-      journaliser("reset_visits", {});
+      await journaliser("reset_visits", {});
       return res.status(200).json({ success: true });
     }
 
@@ -3131,7 +3136,7 @@ export default async function handler(req, res) {
       // Les frais de service, les taux de cashback et les seuils de vigilance
       // vivent dans platform_settings. Un changement non tracé est un changement
       // qu'on ne saura pas expliquer.
-      journaliser("save_settings", { details: { key, value } });
+      await journaliser("save_settings", { details: { key, value } });
       return res.status(200).json({ ok: true });
     }
 
@@ -3173,7 +3178,7 @@ export default async function handler(req, res) {
         const err = await r.text();
         return res.status(500).json({ error: `Erreur insertion: ${err}` });
       }
-      journaliser("seed_docs", { target_id: profileId, details: { inseres: inserts.length } });
+      await journaliser("seed_docs", { target_id: profileId, details: { inseres: inserts.length } });
       return res.status(200).json({ ok: true, inserted: inserts.length });
     }
 
