@@ -1092,6 +1092,12 @@ serveur l'écrit désormais, et **un dépôt remet la pièce en attente** — `v
 été vu par personne, il n'hérite ni de la validation ni de la date de validité du précédent.
 Jusque-là, un remplacement qui aurait abouti gardait l'une et l'autre.
 
+**Le refus d'une pièce laissait le fichier dans le bucket** (même jour, même scénario) :
+`reject_doc` appelait la suppression d'un objet unique avec un en-tête `Content-Type: application/json`
+et sans corps, que le stockage refuse — et la réponse n'était pas lue. La ligne disparaissait, le
+fichier restait. Il est désormais supprimé par liste (`prefixes`), comme la purge de conservation,
+et un échec annule le refus au lieu de le taire.
+
 **Reste ouvert** : le fichier lui-même peut toujours être écrasé depuis le navigateur, dans le
 bucket, sans passer par le serveur (règle `docs_update_own_folder` de `storage.objects`) — la
 ligne resterait alors « vérifiée » sur un fichier que personne n'a vu. Et le titre de séjour
