@@ -146,3 +146,23 @@ test("un refus sans motif n'est pas envoyé", async ({ page }) => {
   await page.waitForTimeout(2_000);
   expect((await doc(p.id, "kbis"))?.verified, "la pièce est toujours là, en attente").toBe(false);
 });
+
+test("un fichier validé, écrasé directement dans le bucket, repasse en attente", async () => {
+  // Sans passer par l'application : le stockage seul, avec le jeton du prestataire.
+  const p = await prestataireAvecPieces(["rc_pro"]);
+  const [{ id }] = await sql(`select id from documents where prestataire_id = '${p.id}' and type = 'rc_pro'`);
+  const v = await bo("verify_doc", { profileId: p.id, docId: id, expiresAt: "2027-06-30" });
+  expect(v.statut, v.texte.slice(0, 200)).toBe(200);
+  expect((await doc(p.id, "rc_pro")).verified).toBe(true);
+
+  const c = await request.newContext({ proxy });
+  const r = await c.post(`${SUPABASE}/storage/v1/object/Documents/${p.id}/rc_pro`, {
+    headers: { Authorization: `Bearer ${p.jeton}`, apikey: await anon(), "x-upsert": "true", "Content-Type": "application/pdf" },
+    data: Buffer.from("%PDF-1.4\n% autre fichier\n"),
+  });
+  await c.dispose();
+  expect(r.ok(), `remplacement du fichier : ${r.status()}`).toBeTruthy();
+  const apres = await doc(p.id, "rc_pro");
+  expect(apres.verified, "un fichier que personne n'a vu n'est pas vérifié").toBe(false);
+  expect(apres.expires_at).toBeNull();
+});
