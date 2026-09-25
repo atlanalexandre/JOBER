@@ -736,7 +736,14 @@ l'accès aux propositions est suspendu 30 jours après (`missions_enabled = fals
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
 terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
-`autre`. **Un seul document par prestataire et par type** (contrainte unique).
+`autre`, `titre_sejour`. **Un seul document par prestataire et par type** (contrainte unique).
+
+**`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
+25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`) : le titre de séjour, réclamé aux
+ressortissants hors UE depuis le 11/09, ne pouvait pas être déposé. Et l'ouverture de l'accès
+aux prestations (`enable_missions`) ne l'exigeait pas — l'exigence ne vivait que dans l'écran.
+Elle exige désormais, pour un prestataire dont `user_metadata.nationalite` contient « hors »,
+un titre de séjour **déposé et vérifié**, comme la carte professionnelle d'un métier réglementé.
 
 **`candidatures`** — les prestataires qui postulent à une mission ouverte.
 
