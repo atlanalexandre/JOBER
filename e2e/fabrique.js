@@ -229,7 +229,7 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
  *
  * `dansJours` et `heure` fixent le début de la prestation, en heure de Paris.
  */
-export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13, urgent = false, declaration = null }) {
+export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13, urgent = false, declaration = null, recurrence = null }) {
   const id = crypto.randomUUID();
   // `debutMs` (instant précis) l'emporte sur `dansJours` + `heure` : utile pour
   // une prestation qui commence dans quelques heures.
@@ -248,6 +248,7 @@ export async function reservationPayee({ prestataire, client: c, dansJours = 5, 
       date, hours: heures, heure_debut: heure, tarif_horaire: tarif, montant_total: montant,
       description: "Scénario de recette", adresse: "10 rue de Rivoli", ville: "Paris",
       status: "pending_acceptance",
+      ...(recurrence ? { recurrence } : {}),
     },
   }), "création de la prestation");
   expect(ins.ok(), `création de la prestation : ${ins.status()} ${(await ins.text()).slice(0, 200)}`).toBeTruthy();

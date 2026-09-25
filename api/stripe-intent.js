@@ -597,6 +597,26 @@ export default async function handler(req, res) {
       params.setup_future_usage = "off_session";
     }
 
+    // Série hebdomadaire : chaque semaine suivante est prélevée sur la carte de
+    // la première (api/_recurrence.js). La carte doit donc être rattachée au
+    // client, quoi qu'ait envoyé le navigateur ; le client y a consenti
+    // expressément au tunnel. Lu en base, à part : une colonne manquante ne doit
+    // jamais bloquer un encaissement.
+    try {
+      const rr = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=recurrence`, { headers: hdrsPI });
+      const rec = rr.ok ? (await rr.json().catch(() => []))[0]?.recurrence : null;
+      if (rec) {
+        if (!validatedCustomerId) {
+          console.error(`[stripe-intent] série ${intentMissionId} sans client Stripe — la carte ne peut pas être enregistrée.`);
+          return res.status(400).json({ error: "La réservation chaque semaine demande d'enregistrer votre carte, ce qui est impossible pour le moment. Réservez une seule prestation, ou réessayez." });
+        }
+        if (!req.body?.payment_method_id) params.setup_future_usage = "off_session";
+        params["metadata[serie]"] = rec;
+      }
+    } catch (e) {
+      console.error(`[stripe-intent] récurrence de ${intentMissionId} illisible :`, e.message);
+    }
+
     const r = await fetch("https://api.stripe.com/v1/payment_intents", {
       method: "POST",
       // La clé d'idempotence protège du double-clic : deux envois identiques

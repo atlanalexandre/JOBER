@@ -152,7 +152,7 @@ export const confirmer = (page) => page.getByRole("button", { name: "Confirmer",
  * Réservation d'un prestataire d'hôtellerie par un client connecté, jusqu'à l'écran
  * de paiement. Renvoie la date réservée (AAAA-MM-JJ).
  */
-export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09:00", description = "Scénario de recette" } = {}) {
+export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09:00", description = "Scénario de recette", chaqueSemaine = false } = {}) {
   await page.goto("/providers");
   await page.getByText("Passer le tutoriel").click({ timeout: 3_000 }).catch(() => { /* tutoriel déjà passé */ });
   await page.getByText("Voir tous les prestataires").first().click();
@@ -162,6 +162,7 @@ export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09
   await page.locator('input[type="date"]').fill(date);
   await page.locator('input[type="time"]').fill(heure);
   await page.locator("textarea").fill(description);
+  if (chaqueSemaine) await page.getByText("Répéter chaque semaine").click();
   await page.getByRole("button", { name: /Continuer/ }).click();
   // Contrat : seule la petite case est cliquable, pas la phrase (défaut d'accessibilité relevé).
   await page.getByText("J'ai lu et j'accepte les termes de ce contrat").locator("xpath=preceding-sibling::div[1]").click();

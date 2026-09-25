@@ -1073,6 +1073,7 @@ export default function App() {
   const [notifOpenMissionId,setNotifOpenMissionId]=useState(null);
   const [chatClientId,setChatClientId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
+  const [paymentRecurrence,setPaymentRecurrence]=useState(null);
   const [paymentHours,setPaymentHours]=useState(8);
   const [paymentDate,setPaymentDate]=useState("");
   const [paymentDescription,setPaymentDescription]=useState("");
@@ -1847,6 +1848,7 @@ export default function App() {
         setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||"");
         setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||"");
         setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||"");
+        setPaymentRecurrence(data?.recurrence || null);
         // La prestation doit exister AVANT le paiement : /api/stripe-intent refuse
         // toute demande sans mission_id et recalcule le montant depuis la base,
         // pour ne jamais faire confiance au montant envoyé par le navigateur.
@@ -1878,6 +1880,10 @@ export default function App() {
             description: data?.description || null,
             adresse: data?.adresse || null,
             ville: data?.ville || null,
+            // Série hebdomadaire : seule la récurrence est choisie ici. La carte,
+            // le prix et le prestataire des semaines suivantes sont décidés par le
+            // serveur (api/_recurrence.js).
+            recurrence: data?.recurrence || null,
             // "pending_acceptance" et non "open" : les missions "open" alimentent la
             // place de marché de tous les prestataires (list_open), une réservation
             // abandonnée avant paiement s'y afficherait donc.
@@ -1925,7 +1931,7 @@ export default function App() {
           setBookingError(e?.message || "Impossible de préparer le paiement — réessayez.");
         }
       }} onBack={()=>setScreen(bookingSource)} />}
-      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} missionId={selectedMissionId||null} onSuccess={async(intentId)=>{
+      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} missionId={selectedMissionId||null} recurrence={paymentRecurrence} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
         try {
