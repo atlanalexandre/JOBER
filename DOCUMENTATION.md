@@ -1253,6 +1253,15 @@ sans aucun vrai document. Le serveur la refuse désormais quand `VERCEL_ENV` vau
 adresse `*.vercel.app` ou en local. Vérifié le même jour : aucune pièce de démonstration
 n'existait en production.
 
+
+**Une saisie vide n'est pas une annulation** (corrigé le 25/09/2026). La fenêtre de saisie du
+back-office (`showPrompt`, `PromptModal` de `ui.jsx`) rendait `null` — « annulé » — dès que le
+champ était vide. Deux gestes étaient ainsi impossibles, sans message : valider une attestation
+URSSAF ou RC Pro sans date de validité (la fenêtre dit pourtant « laissez vide si le document
+n'en porte pas »), et annuler une prestation sans motif (« Motif d'annulation (optionnel) »).
+« Envoyer » rend désormais la saisie, même vide ; seuls « Annuler », Échap et un clic hors de la
+fenêtre annulent. Chaque appelant traite la saisie vide (motif obligatoire, etc.) — relu un par un.
+
 ### Carte
 
 Leaflet est chargé dynamiquement par `loadLeaflet()` (`client-screens.jsx`). Il tente d'abord
