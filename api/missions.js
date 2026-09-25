@@ -1,4 +1,4 @@
-import { resendBody, sendEmail } from "./_email.js";
+import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
@@ -1532,7 +1532,7 @@ export default async function handler(req, res) {
           type: "mission",
           title: "Prestation validée ✅",
           body: cashbackEarned > 0 && rpcRes.ok
-            ? `Votre prestation a été validée. Cashback : +${cashbackEarned.toFixed(2)} € (solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €)`
+            ? `Votre prestation a été validée. Cashback : +${euros(cashbackEarned)} (solde : ${euros(atomicBalance)})`
             : "Votre prestation a été validée avec succès.",
         }, SUPABASE_URL, headers).catch(() => {});
 
@@ -1559,7 +1559,7 @@ export default async function handler(req, res) {
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
-            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
+            body: `+${euros(cashbackEarned)} crédités sur votre wallet. Solde : ${euros(atomicBalance)}`,
           }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -1631,7 +1631,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation validée ✅",
-            body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est en cours de traitement.`,
+            body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${euros(partPrestataire)} est en cours de traitement.`,
           }, SUPABASE_URL, headers).catch(() => {});
 
         // La clôture était le SEUL moment important dépourvu de notification
@@ -1640,7 +1640,7 @@ export default async function handler(req, res) {
         // prestataire attend le plus — celle qui lui dit qu'il va être payé.
         sendPushToUser(mission.prestataire_id, {
           title: "Prestation validée ✅",
-          body: `Paiement de ${partPrestataire.toFixed(2)} € programmé.`,
+          body: `Paiement de ${euros(partPrestataire)} programmé.`,
           url: "/",
         }, SUPABASE_URL, headers).catch(() => {});
 
@@ -1664,7 +1664,7 @@ export default async function handler(req, res) {
                     <h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée ✅</h2>
                     <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
-                    <p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${euros(partPrestataire)}</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <!-- Information fiscale et sociale délivrée À CHAQUE TRANSACTION,
                          comme l'impose l'article 242 bis, I du CGI. Une clause acceptée
                          une fois à l'inscription ne remplit pas cette obligation : le
@@ -2111,7 +2111,7 @@ export default async function handler(req, res) {
           `Client : ${nomClient} (${emailClient || caller.id})`,
           `Prestation : ${mission_id}`,
           `Prestataire : ${mission.prestataire_id || "inconnu"}`,
-          `Montant : ${mission.montant_total || 0} €`,
+          `Montant : ${euros(mission.montant_total)}`,
           "",
           `Motif : ${message || "(non précisé)"}`,
           "",
@@ -3444,7 +3444,7 @@ export default async function handler(req, res) {
               <p>Le remboursement automatique a échoué pour la prestation <strong>${esc(mission.metier || mission.sector || "—")}</strong>.</p>
               <table style="width:100%;border-collapse:collapse;font-size:14px">
                 <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${esc(mission.stripe_payment_intent || "")}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Montant à rembourser</td><td style="font-weight:700">${((refundAmount)/100).toFixed(2)} €</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Montant à rembourser</td><td style="font-weight:700">${euros(((refundAmount)/100))}</td></tr>
                 <tr><td style="padding:6px 0;color:#666">Erreur</td><td style="color:#c0392b">${esc(stripeRefundError)}</td></tr>
                 <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail || caller.id)}</td></tr>
               </table>
