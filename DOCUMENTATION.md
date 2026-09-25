@@ -3555,6 +3555,11 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `13` | inscription sans session (confirmation d'e-mail) : écran « vérifiez votre boîte mail », profil complet en base, parrainage ; IBAN saisi dans les Paramètres, rangé dans `profiles.rib` |
 | `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente |
 | `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
+| `16` | à l'écran : prix urgent = tarif du prestataire + `urgency_surcharge`, identique sur l'écran d'urgence, la réservation et en base, 20 min pour répondre ; suivi « Prestation confirmée » puis « En route vers vous » à la première position ; abonnement annuel au centime (« soit 287,90 € facturés une fois par an ») |
+
+**Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
+l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
+`sansTutoriel()` de `e2e/16` les déclare vus et les ferme s'ils apparaissent (`addLocatorHandler`).
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
