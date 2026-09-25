@@ -3058,7 +3058,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return () => { vivant = false; };
   }, [adresse, ville, p?.ville, p?.zone_km]);
 
-  const totalParJour = (tarifHoraire * hours).toFixed(0);
+  const totalParJour = tarifHoraire * hours;
   const totalHT = tarifHoraire * hours * nbJours;
   // La formule vit dans api/_montant.js, appelée aussi par le contrôle serveur.
   // Une grille recopiée des deux côtés finit toujours par diverger, et c'est
@@ -3364,7 +3364,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
+                <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{formatMontant(totalParJour)} HT{missionType==="range"?"/jour":""}</div>
                 <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {formatMontant(fraisMission)} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
@@ -3581,7 +3581,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <div style={{ fontSize:10, color:C.textMuted }}>Palier {tier.icon} {tier.label} · {tauxCashback(tier)} du total</div>
                     </div>
                   </div>
-                  <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>+{earned.toFixed(2)} €</span>
+                  <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>+{formatMontant(earned)}</span>
                 </div>
               );
             })()}
@@ -3771,7 +3771,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"16px", marginBottom:20, display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${C.success}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💰</div>
                   <div style={{ flex:1, textAlign:"left" }}>
-                    <div style={{ fontWeight:700, color:C.success, fontSize:14, marginBottom:2 }}>+{earned.toFixed(2)} € de cashback gagné !</div>
+                    <div style={{ fontWeight:700, color:C.success, fontSize:14, marginBottom:2 }}>+{formatMontant(earned)} de cashback gagné !</div>
                     <div style={{ color:C.textSub, fontSize:12 }}>Crédit dans 24h · Palier {tier.icon} {tier.label} ({tauxCashback(tier)})</div>
                   </div>
                 </div>
@@ -4223,8 +4223,8 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
   const [paid,setPaid]=useState(false);
 
   const bothValidated = clientValidated && prestaValidated;
-  const totalClientPrice = (p.rateNum * hoursActual).toFixed(0);
-  const totalNetPresta   = (p.tarifNet * hoursActual).toFixed(0);
+  const totalClientPrice = p.rateNum * hoursActual;
+  const totalNetPresta   = p.tarifNet * hoursActual;
 
   const persistValidation = async (side, rating, comment) => {
     if (!missionId) return;
@@ -4276,7 +4276,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1e8449)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
       <div style={{ fontSize:80, marginBottom:20 }}>💶</div>
       <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
-      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{totalNetPresta} €</strong> ont été virés sur le compte de {p.name}.</p>
+      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{formatMontant(totalNetPresta)}</strong> ont été virés sur le compte de {p.name}.</p>
       <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
         {["✅ Prestation validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
@@ -4302,7 +4302,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
           </div>
           <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
-            💳 Montant client : <strong>{totalClientPrice} €</strong>
+            💳 Montant client : <strong>{formatMontant(totalClientPrice)}</strong>
           </div>
         </div>
 
@@ -4370,7 +4370,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <div>
               <div style={{ fontSize:32, marginBottom:8 }}>🚀</div>
               <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>Les deux parties ont validé !</div>
-              <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {totalNetPresta} € en cours vers {p.name}…</div>
+              <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {formatMontant(totalNetPresta)} en cours vers {p.name}…</div>
             </div>
           ) : (
             <div>
@@ -5269,7 +5269,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:11, color:C.textSub }}>Estimation {hours}h</div>
-                  <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{totalTeam.toFixed(0)} €</div>
+                  <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{formatMontant(totalTeam)}</div>
                 </div>
               </div>
               <Btn full onClick={()=>setStep("configure")} style={{ padding:"13px", fontSize:14 }}>
@@ -5315,18 +5315,18 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
             {basket.map(p => (
               <div key={p.id} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{p.name} ({hours}h)</span>
-                <span style={{ fontWeight:700, color:C.text, fontSize:13 }}>{(p.rateNum*hours).toFixed(0)} €</span>
+                <span style={{ fontWeight:700, color:C.text, fontSize:13 }}>{formatMontant(p.rateNum*hours)}</span>
               </div>
             ))}
             <div style={{ display:"flex", justifyContent:"space-between", paddingTop:10 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:15 }}>Total équipe</span>
-              <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{totalTeam.toFixed(0)} €</span>
+              <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{formatMontant(totalTeam)}</span>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:C.textSub }}>🔒 Sécurisé via Stripe jusqu'à validation de chaque prestataire</div>
           </div>
 
           <Btn full onClick={()=>setStep("payment")} disabled={!date||!timeStart} style={{ fontSize:15, padding:"16px" }}>
-            💳 Procéder au paiement {totalTeam.toFixed(0)} €
+            💳 Procéder au paiement {formatMontant(totalTeam)}
           </Btn>
         </>}
       </div>
@@ -5418,7 +5418,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                     <div style={{ fontSize:18, marginBottom:4 }}>{plan.icon}</div>
                     <div style={{ fontWeight:700, color:plan.color, fontSize:12 }}>{plan.label}</div>
                     <div style={{ color:C.text, fontSize:13, fontWeight:800, marginTop:2 }}>
-                      {plan.price===0 ? "Gratuit" : `${plan.price}€`}
+                      {plan.price===0 ? "Gratuit" : formatMontant(plan.price)}
                     </div>
                     {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
                     <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
@@ -5632,7 +5632,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const missionDate = date || today;
   const missionHours = hours || 8;
   const totalAmount = (typeof amount === 'object' ? amount?.amount : amount) || 124;
-  const prestaNet = (p.tarifNet * missionHours).toFixed(2);
+  const prestaNet = formatMontant(p.tarifNet * missionHours);
 
   useEffect(()=>{
     if(!bothSigned) return;
@@ -5695,7 +5695,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est encaissé dès la réservation et conservé jusqu'à la fermeture du délai de réclamation de 48 heures ouvert au Client, qui court à compter de la fin effective de la prestation. Le virement au Prestataire est émis à l'expiration de ce délai, sous réserve qu'aucune réclamation ni retenue au titre de l'article 7.4 des CGPS ne soit en cours. La validation de la prestation la clôture ; elle ne libère pas les fonds.\n\nEn cas de réclamation, ALANE formule sous 72 heures ouvrées une proposition de résolution amiable. Cette proposition n'a aucun caractère contraignant : elle ne tranche pas le litige et ne constitue ni un arbitrage ni une médiation au sens juridique. Les parties restent libres de l'accepter, de la refuser, et de saisir le médiateur ou la juridiction compétente.`
+      content:`Taux horaire net prestataire : ${formatMontant(p.tarifNet || 14)}/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet}\nMontant total facturé au Client : ${formatMontant(totalAmount)} (incluant les frais de service)\n\nLe paiement est encaissé dès la réservation et conservé jusqu'à la fermeture du délai de réclamation de 48 heures ouvert au Client, qui court à compter de la fin effective de la prestation. Le virement au Prestataire est émis à l'expiration de ce délai, sous réserve qu'aucune réclamation ni retenue au titre de l'article 7.4 des CGPS ne soit en cours. La validation de la prestation la clôture ; elle ne libère pas les fonds.\n\nEn cas de réclamation, ALANE formule sous 72 heures ouvrées une proposition de résolution amiable. Cette proposition n'a aucun caractère contraignant : elle ne tranche pas le litige et ne constitue ni un arbitrage ni une médiation au sens juridique. Les parties restent libres de l'accepter, de la refuser, et de saisir le médiateur ou la juridiction compétente.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
@@ -5778,8 +5778,8 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
                   ["Durée", `${missionHours} heures`],
-                  ["Montant client total", `${totalAmount} €`],
-                  ["Montant net prestataire", `${prestaNet} €`],
+                  ["Montant client total", formatMontant(totalAmount)],
+                  ["Montant net prestataire", prestaNet],
                 ].map(([l,v])=>(
                   <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}` }}>
                     <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
@@ -5848,7 +5848,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   On n'affirme plus que ce qui est vrai : les pièces sont vérifiées à
                   l'inscription, et l'attestation RC Pro est désormais suivie jusqu'à son
                   échéance (l'accès est suspendu 30 jours après expiration, CGPS art. 19.1). */}
-              {[["Statut","Auto-entrepreneur immatriculé"],["Justificatifs","SIRET, URSSAF et RC Pro vérifiés par ALANE"],["Assurance RC Pro","Attestation suivie jusqu'à son échéance"],["SIRET","Porté sur la facture du prestataire"],["Taux horaire net",`${p.tarifNet?p.tarifNet.toFixed(2):"14,00"} €/h`]].map(([l,v])=>(
+              {[["Statut","Auto-entrepreneur immatriculé"],["Justificatifs","SIRET, URSSAF et RC Pro vérifiés par ALANE"],["Assurance RC Pro","Attestation suivie jusqu'à son échéance"],["SIRET","Porté sur la facture du prestataire"],["Taux horaire net",`${formatMontant(p.tarifNet||14)}/h`]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{v}</span>
@@ -5867,7 +5867,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe et versés au prestataire 48 h après la fin de la prestation.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{formatMontant(totalAmount)}</strong> sont sécurisés via Stripe et versés au prestataire 48 h après la fin de la prestation.
               </div>
             </div>
           </div>
@@ -5962,7 +5962,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
             {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe. La part revenant à {p.name} (<strong>{prestaNet} €</strong>) lui sera versée 48 heures après la fin de la prestation, délai pendant lequel vous pouvez signaler un problème.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{formatMontant(totalAmount)}</strong> sont actuellement sécurisés via Stripe. La part revenant à {p.name} (<strong>{prestaNet}</strong>) lui sera versée 48 heures après la fin de la prestation, délai pendant lequel vous pouvez signaler un problème.
             </div>
           </div>
         )}
@@ -6146,7 +6146,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
             {[
               ["Taux horaire net",`${formatMontant(m.tarifNet)}/h`],
               ["Nombre d’heures",`${billedHours}h`],
-              ["Montant net total",`${brut.toFixed(2)} €`],
+              ["Montant net total",formatMontant(brut)],
               ["Statut","✅ Virement effectué"],
             ].map(([l,v],i)=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:i<3?`1px solid ${C.success}22`:"none" }}>
@@ -6169,8 +6169,8 @@ export function PayslipScreen({ provider, prestation, onBack }) {
             <div style={{ height:"100%", width:`${caReel!==null?Math.min(Math.round((caReel/caPlafond)*100),100):0}%`, background:`linear-gradient(90deg,${C.success},${C.accentGold})`, borderRadius:4, transition:"width 1s" }} />
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub }}>
-            <span>CA réalisé : <strong style={{ color:C.success }}>{caReel!==null?caReel.toLocaleString("fr-FR")+"€":"—"}</strong></span>
-            <span>Restant : <strong style={{ color:C.text }}>{caReel!==null?(caPlafond-caReel).toLocaleString("fr-FR")+"€":"—"}</strong></span>
+            <span>CA réalisé : <strong style={{ color:C.success }}>{caReel!==null?formatMontant(caReel):"—"}</strong></span>
+            <span>Restant : <strong style={{ color:C.text }}>{caReel!==null?formatMontant(caPlafond-caReel):"—"}</strong></span>
           </div>
         </div>
 
@@ -7146,7 +7146,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName}</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}{selected.tarif_horaire > 0 ? ` · ${selected.tarif_horaire} €/h` : ""}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}{selected.tarif_horaire > 0 ? ` · ${formatMontant(selected.tarif_horaire)}/h` : ""}</div>
                   {prestaDetails.avgRating > 0 && (
                     <div style={{ color:C.accentGold, fontSize:12, fontWeight:700, marginTop:3 }}>
                       {"⭐".repeat(Math.round(prestaDetails.avgRating))} {prestaDetails.avgRating}/5
@@ -8373,7 +8373,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         {/* Stats rapides */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
-            { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
+            { label:"Solde wallet",  value:formatMontant(w.balance),        color:C.success, icon:"💰" },
             { label:"Ce mois",       value:`${w.missionsThisMonth} prestation${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
@@ -8438,11 +8438,11 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
-              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {h.amount} €</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {formatMontant(h.amount)}</div>
             </div>
             <div style={{ textAlign:"right", flexShrink:0 }}>
               <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
-                +{h.cashback.toFixed(2)} €
+                +{formatMontant(h.cashback)}
               </div>
               <Badge color={h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted} small>
                 {h.status}
@@ -9392,7 +9392,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                 <div style={{ width:42, height:42, borderRadius:12, background:plan.color+"20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{plan.icon}</div>
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{plan.label}</div>
-                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":price+" €"}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
+                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":formatMontant(price)}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
                 </div>
               </div>
               {plan.features.map((f,i)=>(
@@ -9414,7 +9414,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                           décimales, et la virgule française. */}
                       {(() => {
                         const benefice = (Math.round((96 - price) * 100) / 100).toFixed(2).replace(".", ",");
-                        const socle = `1 prestation ≈ 96 € net · Abonnement = ${price} € · Bénéfice net dès prestation 1 : +${benefice} €`;
+                        const socle = `1 prestation ≈ 96 € net · Abonnement = ${formatMontant(price)} · Bénéfice net dès prestation 1 : +${benefice} €`;
                         return plan.id === "premium" ? socle : `${socle} · Position #1 + Accompagnement dédié`;
                       })()}
                     </span>

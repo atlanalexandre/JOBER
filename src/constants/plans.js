@@ -67,7 +67,13 @@ export const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";
 // 9,75 €/h/h », parce que `formatE` porte déjà le « /h » et qu'on le rajoutait.
 // Deux unités fausses sur le même encart, à l'écran que voit tout prestataire
 // qui s'inscrit.
-export const formatMontant = (v) => v.toFixed(2).replace(".", ",") + " €";
+// Tout montant affiché passe par ici : « 20,20 € », jamais « 20.2 € ». Accepte
+// un nombre ou un texte numérique (colonnes numeric lues de la base) ; ce qui
+// n'est pas un nombre s'affiche « — » plutôt que « NaN € ».
+export const formatMontant = (v) => {
+  const n = Number(v);
+  return Number.isFinite(v === null || v === "" ? NaN : n) ? n.toFixed(2).replace(".", ",") + " €" : "—";
+};
 
 export const CASHBACK_TIERS = [
   { id:"standard", min:0,  max:2,  rate:0.005,  label:"Standard", icon:"🥉", color:"#8B8FA8" },

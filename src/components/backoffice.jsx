@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
+import { formatMontant } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
@@ -921,7 +922,7 @@ function BOComptes() {
                     {p.role === "prestataire" && <>
                       <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
                       <InfoRow icon="💼" label="Métier" value={p.metier} />
-                      <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
+                      <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${formatMontant(p.tarif_net)}/h` : null} />
                       <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp || p.code_postal, p.ville].filter(Boolean).join(", ") || null} />
                       <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
                       <InfoRow icon="🎯" label="Rayon" value={p.zone_km ? `${p.zone_km} km` : null} />
@@ -972,7 +973,7 @@ function BOComptes() {
                   {p.role === "client" && (
                     <div style={{ marginTop:10, background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:10, padding:"10px 12px" }}>
                       <div style={{ color:C.success, fontWeight:700, fontSize:12, marginBottom:8 }}>💰 Cashback client</div>
-                      <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Solde actuel : <strong style={{ color:C.success }}>{(p.cashback_balance||0).toFixed(2)} €</strong></div>
+                      <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Solde actuel : <strong style={{ color:C.success }}>{formatMontant(p.cashback_balance||0)}</strong></div>
                       <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
                         <input type="text" inputMode="decimal" placeholder="Montant (ex: 5 ou -2)" value={cashbackAdj[p.id]?.delta||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],delta:e.target.value}}))
                         } style={{ width:120, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
@@ -2794,7 +2795,7 @@ export function BOExportPDF({ d }) {
       `Taux completion : ${d.missions?.tauxCompletion || 0}%`,
       "",
       "── FINANCE ──",
-      `CA Total (prestations terminées) : ${d.finance?.caTotal || 0} €`,
+      `CA Total (prestations terminées) : ${formatMontant(d.finance?.caTotal || 0)}`,
       "",
       "── TICKETS SUPPORT ──",
       `Ouverts : ${d.tickets?.open || 0}`,
@@ -3698,7 +3699,7 @@ export function BOMissions() {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
+        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${formatMontant(data.montantTotal)}${data.cashback > 0 ? ` · cashback +${formatMontant(data.cashback)}` : ""}` }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
@@ -4085,7 +4086,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"14px 0" }}>
             <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`${d.users.pending} en attente`} color={C.violet} />
             <KPICard icon="✅" label="Prestations terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
-            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Prestations complétées" color={C.accentGold} />
+            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1).replace(".", ",")}k` : formatMontant(d.finance.caTotal)} sub="Prestations complétées" color={C.accentGold} />
             <KPICard icon="📦" label="Prestations actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
           </div>
 
@@ -4298,12 +4299,12 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <StripeStatsCard />
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
-            <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
+            <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{formatMontant(d.finance.caTotal)}</div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Prestations complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Prestations terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Prestations actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
+            {[{l:"CA total",v:formatMontant(d.finance.caTotal),c:C.accentGold,i:"💰"},{l:"Panier moyen",v:formatMontant(d.finance.caMoyen||0),c:C.violet,i:"📊"},{l:"Prestations terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Prestations actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -4324,7 +4325,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>💶 CA par mois</div>
                   <div style={{ fontSize:12, fontWeight:700, color: delta>=0 ? C.success : C.danger }}>
-                    {delta>=0?"+":""}{delta.toLocaleString()} € vs mois préc.
+                    {delta>=0?"+":""}{delta.toLocaleString("fr-FR")} € vs mois préc.
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:64, marginBottom:8 }}>

@@ -1,5 +1,5 @@
 import { notifier } from "./_push.js";
-import { resendBody } from "./_email.js";
+import { resendBody, euros } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
 export const config = { api: { bodyParser: false } };
 
@@ -743,7 +743,7 @@ export default async function handler(req, res) {
               subject: `Rejet bancaire — ${amount} — prestation ${missionLitige.id}`,
               message: `Contestation Stripe reçue (motif : ${reason}).\n`
                 + `Prestation : ${missionLitige.metier || missionLitige.sector || "?"} du ${missionLitige.date || "?"}, `
-                + `statut ${missionLitige.status}, montant ${missionLitige.montant_total ?? "?"} €.\n`
+                + `statut ${missionLitige.status}, montant ${missionLitige.montant_total != null ? euros(missionLitige.montant_total) : "?"}.\n`
                 + `Prestataire : ${missionLitige.prestataire_id || "aucun"}.\n`
                 + `Répondre depuis le tableau de bord Stripe dans les délais impartis.`,
               user_id: missionLitige.client_id,

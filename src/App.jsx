@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
 import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
-import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.js";
+import { isLaunchPhase, getCashbackTier, tauxCashback, formatMontant } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
 import { SECTORS, METIERS } from "./constants/data.js";
 import { effacerPremiereVisite } from "./constants/premiere-visite.js";
@@ -1712,7 +1712,7 @@ export default function App() {
             </div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {bookingDraftBanner.prestataireName
-                ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${bookingDraftBanner.montant} €` : ""}`
+                ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${formatMontant(bookingDraftBanner.montant)}` : ""}`
                 : "Reprenez là où vous en étiez"}
             </div>
           </div>
@@ -2095,7 +2095,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {tauxCashback(getCashbackTier(clientCashback?.commandes_mois||0))} sur chaque prestation
+                  <strong style={{ color:C.success }}>{formatMontant(clientCashback?.cashback_balance || 0)}</strong> · {tauxCashback(getCashbackTier(clientCashback?.commandes_mois||0))} sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>

@@ -27,3 +27,23 @@ describe("un montant français relu comme un nombre", () => {
     }
   });
 });
+
+// « 20.2 € » s'affichait partout où un montant lu de la base (colonne numeric,
+// donc parfois un texte) était écrit tel quel. Tout montant affiché passe par
+// formatMontant, qui doit donc accepter ce que la base renvoie.
+describe("formatMontant écrit un montant à la française", () => {
+  it("deux décimales et la virgule", () => {
+    expect(formatMontant(20.2)).toBe("20,20 €");
+    expect(formatMontant(11.5)).toBe("11,50 €");
+    expect(formatMontant(29.99)).toBe("29,99 €");
+  });
+  it("accepte un montant lu en texte depuis la base", () => {
+    expect(formatMontant("20.2")).toBe("20,20 €");
+    expect(formatMontant(0)).toBe("0,00 €");
+  });
+  it("ce qui n'est pas un montant ne s'affiche pas « NaN € »", () => {
+    expect(formatMontant(null)).toBe("—");
+    expect(formatMontant(undefined)).toBe("—");
+    expect(formatMontant("abc")).toBe("—");
+  });
+});

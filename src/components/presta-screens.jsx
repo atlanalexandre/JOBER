@@ -1229,7 +1229,7 @@ export function PrestaProfilTab({ onNavigate }) {
           {meta.tarif_net && (
             <div style={{ background:`${color}15`, borderRadius:10, padding:"10px 12px", marginBottom:meta.langues?.length?10:0, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ color:C.textSub, fontSize:12 }}>Tarif net</span>
-              <span style={{ color:color, fontWeight:800, fontSize:15 }}>{Number(meta.tarif_net).toFixed(2)} €/h</span>
+              <span style={{ color:color, fontWeight:800, fontSize:15 }}>{formatMontant(meta.tarif_net)}/h</span>
             </div>
           )}
           {meta.langues?.length > 0 && (
@@ -1373,8 +1373,8 @@ function TarifSimulateur({ secteur, metier, tarifNet, color }) {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.textMuted }}>
             <span>0 €</span>
-            <span style={{ color: C.success, fontWeight: 700 }}>{tarifInfo.min} – {tarifInfo.max} €/h</span>
-            <span>{barMax} €</span>
+            <span style={{ color: C.success, fontWeight: 700 }}>{formatMontant(tarifInfo.min).replace(" €", "")} – {formatMontant(tarifInfo.max)}/h</span>
+            <span>{formatMontant(barMax)}</span>
           </div>
           <div style={{ marginTop: 8, fontSize: 11, color: tarifNet < tarifInfo.min ? "#F25E5E" : tarifNet > tarifInfo.max ? C.accentGold : C.success, fontWeight: 700 }}>
             {tarifNet < tarifInfo.min ? "⚠️ En dessous du marché" : tarifNet > tarifInfo.max ? "📈 Au-dessus du marché" : "✅ Dans la fourchette marché"}
@@ -1421,16 +1421,16 @@ function TarifSimulateur({ secteur, metier, tarifNet, color }) {
             <div style={{ background: "#0D1B3E", borderRadius: 10, padding: "12px 14px", border: `1px solid ${color || C.violet}33` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: 12, color: C.textSub }}>Revenu net</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{netSouhaite.toFixed(2)} €/h</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{formatMontant(netSouhaite)}/h</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: C.textSub }}>Charges URSSAF ({(taux * 100).toFixed(1)} %)</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#F25E5E" }}>+{charges.toFixed(2)} €/h</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#F25E5E" }}>+{formatMontant(charges)}/h</span>
               </div>
               <div style={{ height: 1, background: C.border, marginBottom: 8 }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Tarif à facturer</span>
-                <span style={{ fontSize: 17, fontWeight: 800, color: color || C.violet }}>{tarifFact.toFixed(2)} €/h</span>
+                <span style={{ fontSize: 17, fontWeight: 800, color: color || C.violet }}>{formatMontant(tarifFact)}/h</span>
               </div>
             </div>
 
@@ -1692,7 +1692,7 @@ export function PrestaProfileEditScreen({ onBack }) {
         {/* Tarif */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
-            Tarif horaire net : <span style={{ color, fontWeight:800, fontSize:15 }}>{Number(tarifNet).toFixed(2)} €/h</span>
+            Tarif horaire net : <span style={{ color, fontWeight:800, fontSize:15 }}>{formatMontant(tarifNet)}/h</span>
           </label>
           <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
           <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{sliderMin} €</span><span>{sliderMax} €</span></div>
@@ -2499,7 +2499,7 @@ Prestation :
 Métier : ${contractAcceptMission.metier || contractAcceptMission.sector || ""}
 Date : ${contractAcceptMission.date || ""}
 Durée : ${contractAcceptMission.hours || ""} heure(s)
-Tarif horaire : ${contractAcceptMission.tarif_horaire || ""} €/h
+Tarif horaire : ${formatMontant(contractAcceptMission.tarif_horaire)}/h
 
 En signant ce contrat, je m'engage à réaliser la prestation dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
 
@@ -2526,8 +2526,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 ["Prestation",   validatedSummary.metier || validatedSummary.sector || "—"],
                 ["Date",      validatedSummary.date || (validatedSummary.date_debut ? `${validatedSummary.date_debut} → ${validatedSummary.date_fin||""}` : "—")],
                 ["Durée",     validatedSummary.actual_hours != null ? `${validatedSummary.actual_hours}h (réelles)` : validatedSummary.hours ? `${validatedSummary.hours}h` : "—"],
-                ["Tarif",     validatedSummary.tarif_horaire ? `${validatedSummary.tarif_horaire} €/h` : "—"],
-                ["Montant",   validatedSummary.tarif_horaire && (validatedSummary.actual_hours ?? validatedSummary.hours) ? `${((validatedSummary.actual_hours ?? validatedSummary.hours) * validatedSummary.tarif_horaire).toFixed(2)} € HT` : "—"],
+                ["Tarif",     validatedSummary.tarif_horaire ? `${formatMontant(validatedSummary.tarif_horaire)}/h` : "—"],
+                ["Montant",   validatedSummary.tarif_horaire && (validatedSummary.actual_hours ?? validatedSummary.hours) ? `${formatMontant((validatedSummary.actual_hours ?? validatedSummary.hours) * validatedSummary.tarif_horaire)} HT` : "—"],
                 ["Ville",     validatedSummary.ville || "—"],
               ].map(([l, v]) => (
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
@@ -2555,7 +2555,7 @@ Prestation :
 Métier : ${contractMission.metier || contractMission.sector || ""}
 Date : ${contractMission.date || ""}
 Durée : ${contractMission.hours || ""} heure(s)
-Tarif horaire : ${contractMission.tarif_horaire || ""} €/h
+Tarif horaire : ${formatMontant(contractMission.tarif_horaire)}/h
 
 En signant cette attestation, je certifie avoir réalisé la prestation conformément aux termes convenus et autorise le déblocage du paiement.
 
@@ -3491,7 +3491,7 @@ export function PrestaClientsTab() {
               <div style={{ fontWeight:700, color:isBlocked?C.accent:C.text, fontSize:14 }}>{c.name||"Client"}</div>
               <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
                 {c.missionCount} prestation{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
-                {c.total>0 && ` · ${c.total.toFixed(0)} €`}
+                {c.total>0 && ` · ${formatMontant(c.total)}`}
               </div>
               {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière prestation : {c.lastDate}</div>}
             </div>

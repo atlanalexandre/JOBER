@@ -1,6 +1,6 @@
 import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
-import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
+import { esc, hashPii, emailHtml, sendEmail, euros } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
@@ -1180,7 +1180,7 @@ export default async function handler(req, res) {
         // On ne peut pas rendre plus que ce que le client a payé : Stripe le
         // refuserait, et le refus arriverait APRÈS la clôture du litige.
         if (plafond > 0 && montantPropose > plafond + 0.001) {
-          return res.status(400).json({ error: `Montant supérieur à ce que le client a réglé (${plafond.toFixed(2)} €).` });
+          return res.status(400).json({ error: `Montant supérieur à ce que le client a réglé (${euros(plafond)}).` });
         }
       }
 
@@ -1876,7 +1876,7 @@ export default async function handler(req, res) {
         for (const p of (Array.isArray(rows) ? rows : [])) {
           await notifier({ user_id: p.id, type: "system",
               title: "Votre portefeuille va être remboursé",
-              body: `Le portefeuille ALANE est fermé. Votre solde de ${Number(p.prepaid_balance).toFixed(2)} € `
+              body: `Le portefeuille ALANE est fermé. Votre solde de ${euros(Number(p.prepaid_balance))} `
                   + `vous est intégralement remboursé sur votre moyen de paiement d'origine : `
                   + `utilisez le bouton « Me rembourser » depuis votre portefeuille. `
                   + `Vous pouvez aussi l'utiliser pour régler une prestation d'ici là.`}, SUPABASE_URL, headers).catch(e => console.error(`[soldes_a_rembourser] notification échouée pour ${p.id} :`, e.message));
@@ -2102,12 +2102,12 @@ export default async function handler(req, res) {
       // condition de l'article, pas une politesse : la retenue et sa
       // notification partent ensemble.
       const libelle = esc(mission.metier || mission.sector || "Prestation");
-      const montant = Number(mission.payout_amount || 0).toFixed(2);
+      const montant = euros(mission.payout_amount);
       const finLe = jusqua.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
       if (mission.prestataire_id) {
         await notifier({ user_id: mission.prestataire_id, type: "system",
             title: "Versement suspendu",
-            body: `Le versement de ${montant} € pour « ${libelle} » du ${mission.date || "?"} est suspendu au motif suivant : `
+            body: `Le versement de ${montant} pour « ${libelle} » du ${mission.date || "?"} est suspendu au motif suivant : `
                 + `${MOTIFS[motif]}. La retenue prend fin au plus tard le ${finLe}. `
                 + `Vous pouvez la contester à direction@alane.fr : elle est examinée de façon contradictoire et levée si le motif n'est pas établi.`}, SUPABASE_URL, headers).catch(e => console.error("[retenir_versement] notification non créée :", e.message));
 
@@ -2120,7 +2120,7 @@ export default async function handler(req, res) {
               subject: `Versement suspendu — prestation du ${mission.date || ""}`,
               html: emailHtml(
                 `<p>Bonjour,</p>`
-                + `<p>Le versement de <strong>${montant} €</strong> correspondant à votre prestation `
+                + `<p>Le versement de <strong>${montant}</strong> correspondant à votre prestation `
                 + `« ${libelle} » du ${esc(String(mission.date || "?"))} est <strong>suspendu</strong>.</p>`
                 + `<p><strong>Motif :</strong> ${MOTIFS[motif]}.</p>`
                 + `<p>Conformément à l'article 7.4 des CGPS, cette retenue est limitée aux sommes en rapport avec `
@@ -2203,7 +2203,7 @@ export default async function handler(req, res) {
       const exigibleLe = new Date(creance.exigible_at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
       await notifier({ user_id: prestataire_id, type: "system",
           title: "Somme due à ALANE",
-          body: `Une somme de ${m.toFixed(2)} € est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
+          body: `Une somme de ${euros(m)} est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
               + `Elle sera récupérée sur vos versements à venir, dans la limite de la moitié de chacun d'eux. `
               + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`}, SUPABASE_URL, headers).catch(() => {});
 
@@ -2213,10 +2213,10 @@ export default async function handler(req, res) {
         if (uData?.email) {
           await sendEmail({
             to: uData.email,
-            subject: `Somme due — ${m.toFixed(2)} €`,
+            subject: `Somme due — ${euros(m)}`,
             html: emailHtml(
               `<p>Bonjour,</p>`
-              + `<p>Une somme de <strong>${m.toFixed(2)} €</strong> est due à ALANE au titre de l'article 8B.3 des CGPS.</p>`
+              + `<p>Une somme de <strong>${euros(m)}</strong> est due à ALANE au titre de l'article 8B.3 des CGPS.</p>`
               + `<p><strong>Motif :</strong> ${esc(String(motif).trim())}</p>`
               + `<p><strong>Comment elle sera récupérée :</strong> par compensation sur vos rémunérations à venir, `
               + `<strong>dans la limite de la moitié de chaque versement</strong>, jusqu'à extinction. `
@@ -2233,7 +2233,7 @@ export default async function handler(req, res) {
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "creer_creance", target_id: prestataire_id, reason: `${m.toFixed(2)} € — ${String(motif).trim()}` }) }).catch(() => {});
+        body: JSON.stringify({ action: "creer_creance", target_id: prestataire_id, reason: `${euros(m)} — ${String(motif).trim()}` }) }).catch(() => {});
       return res.status(200).json({ success: true, creance });
     }
 
@@ -2350,10 +2350,10 @@ export default async function handler(req, res) {
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
-        await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(()=>{});
+        await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(()=>{});
       }
       // Notification client
-      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`}, SUPABASE_URL, headers).catch(()=>{});
+      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(()=>{});
       // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
       if (m.prestataire_id) {
         const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
@@ -2467,7 +2467,7 @@ export default async function handler(req, res) {
       const { profileId, delta, reason } = body;
       if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
       await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(()=>{});
-      await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${Math.abs(Number(delta)).toFixed(2)} €` : `Cashback ajusté ${Number(delta).toFixed(2)} €`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(()=>{});
+      await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(()=>{});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(()=>{});
       return res.status(200).json({ ok: true });
     }
