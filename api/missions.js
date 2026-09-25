@@ -595,7 +595,7 @@ async function handleEmailAction(req, res) {
       headers: { ...hdrs, "Prefer": "return=minimal" },
       // Idem : l'expiration et son remboursement relèvent du cron.
       body: JSON.stringify({ prestataire_id: null }),
-    }).catch(() => {});
+    }).catch(e => console.error("[missions] échec ignoré :", e?.message));
     return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé. La prestation est de nouveau disponible pour d'autres prestataires.", "#F5A623", "⏱"));
   }
 
@@ -634,8 +634,8 @@ async function handleEmailAction(req, res) {
 
   if (mission.client_id) {
     const isAccepted = action === "accept";
-    await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, ref_id: missionId }, SUPABASE_URL, hdrs).catch(() => {});
-    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(() => {});
+    await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, ref_id: missionId }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
+    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
   }
 
   return res.status(200).send(emailActionHtml(
@@ -885,7 +885,7 @@ export default async function handler(req, res) {
             // (cron-reset-monthly), seul endroit où la logique d'argent est tenue.
             // La laisser ici renvoyait la prestation en « open » sans rembourser.
             body: JSON.stringify({ prestataire_id: null }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
           m.status = "open";
           m.prestataire_id = null;
         }));
@@ -984,15 +984,15 @@ export default async function handler(req, res) {
                   method: "POST",
                   headers: { ...headers, "Prefer": "return=minimal" },
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
-                }).catch(() => {});
+                }).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
                 if (cashbackEarned > 0) {
-                  notifier({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement. Cashback crédité.`}, SUPABASE_URL, headers).catch(() => {});
+                  notifier({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement. Cashback crédité.`}, SUPABASE_URL, headers).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
                 }
               } catch (e2) { console.error(`auto-validate cashback ${m.id}:`, e2.message); }
             }
             // Notifier le prestataire
             if (m.prestataire_id) {
-              notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`}, SUPABASE_URL, headers).catch(() => {});
+              notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`}, SUPABASE_URL, headers).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
             }
           } catch (e) { console.error(`auto-validate mission ${m.id}:`, e.message); }
         }));
@@ -1276,7 +1276,7 @@ export default async function handler(req, res) {
           await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
             method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
             body: JSON.stringify({ stripe_payment_intent: null }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
           missionCheck.stripe_payment_intent = null;
         } catch (piErr) {
           // Erreur réseau → bloquer — ne pas assigner la mission sans vérifier le paiement
@@ -1378,7 +1378,7 @@ export default async function handler(req, res) {
             title: "Proposition acceptée ✅",
             body: "Votre proposition a été acceptée ! Préparez-vous pour la prestation.",
           }, SUPABASE_URL, headers);
-        sendPushToUser(verified_prestataire_id, { title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée ! Préparez-vous pour la prestation.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        sendPushToUser(verified_prestataire_id, { title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée ! Préparez-vous pour la prestation.", url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
       }
 
       // Email de confirmation au client (awaité pour éviter la coupure Vercel avant envoi)
@@ -1534,7 +1534,7 @@ export default async function handler(req, res) {
           body: cashbackEarned > 0 && rpcRes.ok
             ? `Votre prestation a été validée. Cashback : +${euros(cashbackEarned)} (solde : ${euros(atomicBalance)})`
             : "Votre prestation a été validée avec succès.",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
 
       // Le prestataire est informé de l'ajustement de durée, avec les chiffres et
       // une voie de contestation. Sans cela, il découvrirait un montant réduit sans
@@ -1550,7 +1550,7 @@ export default async function handler(req, res) {
               + `${ajustementRetard.apres} h ont été facturées au lieu de ${ajustementRetard.avant} h, `
               + `soit le temps effectivement réalisé. Si ce décalage ne vous est pas imputable, `
               + `écrivez à direction@alane.fr : la prestation sera réexaminée.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
       }
 
       // Notification cashback dédiée uniquement si RPC a réussi
@@ -1560,7 +1560,7 @@ export default async function handler(req, res) {
             type: "cashback",
             title: "Cashback crédité 💰",
             body: `+${euros(cashbackEarned)} crédités sur votre wallet. Solde : ${euros(atomicBalance)}`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
       }
 
       // Création automatique de la prochaine occurrence si mission récurrente
@@ -1614,12 +1614,12 @@ export default async function handler(req, res) {
               type: "mission",
               title: "🔄 Prestation récurrente planifiée",
               body: `Votre prochaine prestation ${mission.metier || mission.sector || ""} (${recurrenceLabel}) a été programmée pour le ${nextDateStr}.`,
-            }, SUPABASE_URL, headers).catch(() => {});
+            }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
           sendPushToUser(client_id, {
             title: "🔄 Prestation récurrente planifiée",
             body: `Prochaine prestation le ${nextDateStr}.`,
             url: "/",
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
         } catch (recErr) {
           console.error("[complete] recurrence creation error:", recErr.message);
         }
@@ -1632,7 +1632,7 @@ export default async function handler(req, res) {
             type: "mission",
             title: "Prestation validée ✅",
             body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${euros(partPrestataire)} est en cours de traitement.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
 
         // La clôture était le SEUL moment important dépourvu de notification
         // push : l'e-mail partait, la cloche de l'application se remplissait,
@@ -1642,7 +1642,7 @@ export default async function handler(req, res) {
           title: "Prestation validée ✅",
           body: `Paiement de ${euros(partPrestataire)} programmé.`,
           url: "/",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
 
         const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -1677,7 +1677,7 @@ export default async function handler(req, res) {
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
-              }).catch(() => {});
+              }).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
             }
           } catch (e) { console.error("[missions] email de fin de prestation non envoyé :", e.message); }
         }
@@ -1768,7 +1768,7 @@ export default async function handler(req, res) {
                   type: "system",
                   title: "⛔ Quota mensuel épuisé",
                   body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
-                }, SUPABASE_URL, headers).catch(() => {});
+                }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
             }
           }
         } catch (e) {
@@ -1954,7 +1954,7 @@ export default async function handler(req, res) {
             ref_id: mission_id,
             title: "Accord trouvé ✅",
             body: `Vous avez tous les deux accepté la proposition portant sur « ${libelle} ». Elle sera exécutée dans les prochaines heures.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/accepter_resolution] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ success: true, accord: accordComplet });
@@ -2069,7 +2069,7 @@ export default async function handler(req, res) {
             ref_id: mission_id,
             title: "Prestation contestée ⚠️",
             body: "Le client a signalé un problème sur votre prestation. ALANE examine le dossier sous 72h.",
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/dispute] échec ignoré :", e?.message));
       }
 
       // Le client recevait cette confirmation par l'action jumelle supprimée le
@@ -2082,7 +2082,7 @@ export default async function handler(req, res) {
           title: "Litige enregistré ✅",
           body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 72h ouvrées. "
               + "Les fonds restent bloqués tant que le litige n'est pas dénoué.",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/dispute] échec ignoré :", e?.message));
 
       // Alerte à l'administrateur. Elle n'existait que dans l'action jumelle
       // `raise_dispute`, supprimée : sans elle, un litige n'était signalé que
@@ -2170,7 +2170,7 @@ export default async function handler(req, res) {
           type: "mission",
           title: "Prestation à valider ✅",
           body: `Le prestataire a confirmé la fin de prestation "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/validate_presta] échec ignoré :", e?.message));
 
       // Notification de confirmation au prestataire
       await notifier({
@@ -2178,7 +2178,7 @@ export default async function handler(req, res) {
           type: "mission",
           title: "Prestation confirmée 👍",
           body: `Votre fin de prestation "${mission.metier || mission.sector || ""}" a bien été enregistrée. En attente de validation client pour déclencher votre paiement.`,
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/validate_presta] échec ignoré :", e?.message));
 
       // Send email to client (awaited — Vercel kills fire-and-forget before it completes)
       try {
@@ -2230,7 +2230,7 @@ export default async function handler(req, res) {
                 </div>
               </div>`,
             }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/validate_presta] échec ignoré :", e?.message));
         }
       } catch (e) { console.error("[missions] email de confirmation non envoyé :", e.message); }
 
@@ -2668,7 +2668,7 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
-      }).catch(() => {});
+      }).catch(e => console.error("[missions/close] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2802,7 +2802,7 @@ export default async function handler(req, res) {
                       <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                     </div>`,
                   }),
-                }).catch(() => {});
+                }).catch(e => console.error("[missions/broadcast] échec ignoré :", e?.message));
               }
 
               // SMS Brevo (si numéro dispo et clé configurée)
@@ -2829,7 +2829,7 @@ export default async function handler(req, res) {
                 await Promise.all(subs.map(async s => {
                   const status = await sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" });
                   if (status === 410) {
-                    await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${p.id}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, { method: "DELETE", headers }).catch(() => {});
+                    await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${p.id}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, { method: "DELETE", headers }).catch(e => console.error("[missions/broadcast] échec ignoré :", e?.message));
                   }
                 }));
               }
@@ -2844,7 +2844,7 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ broadcast_sent_at: new Date().toISOString() }),
-      }).catch(() => {});
+      }).catch(e => console.error("[missions/broadcast] échec ignoré :", e?.message));
 
       return res.status(200).json({ success: true, notified });
     }
@@ -3113,7 +3113,7 @@ export default async function handler(req, res) {
             }
             if (withinWindow) {
               const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
-              sendPushToUser(mission.client_id, notif, SUPABASE_URL, headers).catch(() => {});
+              sendPushToUser(mission.client_id, notif, SUPABASE_URL, headers).catch(e => console.error("[missions/update_position] échec ignoré :", e?.message));
             }
           }
         } catch (e) { console.error("[update_position] push error:", e.message); }
@@ -3388,7 +3388,7 @@ export default async function handler(req, res) {
               subject: `[ACTION REQUISE] Annulation incomplète — prestation ${mission_id.slice(0,8)}`,
               html: `<p>Le remboursement Stripe <strong>${stripeRefundId}</strong> a réussi mais la prestation n'a pas pu être marquée "cancelled" en DB (erreur ${cancelPatchRes.status}).<br>Vérifier et corriger manuellement dans Supabase.</p>`,
             }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
           return res.status(500).json({ error: "Erreur lors de la mise à jour de la prestation — votre remboursement a bien été déclenché. Contactez le support si ce message persiste." });
         }
         return res.status(500).json({ error: "Erreur lors de l'annulation — réessayez ou contactez le support." });
@@ -3399,7 +3399,7 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
-      }).catch(() => {});
+      }).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
 
       // Email au client — confirmation de remboursement
       if (RESEND_API_KEY && clientEmail) {
@@ -3427,7 +3427,7 @@ export default async function handler(req, res) {
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
       }
 
       // Email admin uniquement si le remboursement Stripe a échoué
@@ -3451,7 +3451,7 @@ export default async function handler(req, res) {
               <p style="margin-top:16px"><a href="https://dashboard.stripe.com/payments/${esc(mission.stripe_payment_intent || "")}" style="color:#7C6FE0">Traiter manuellement dans Stripe →</a></p>
             </div>`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
       }
 
       // Notifier le prestataire (in-app + SMS si assignée et potentiellement en route)
@@ -3462,7 +3462,7 @@ export default async function handler(req, res) {
             type: "mission",
             title: "Prestation annulée ❌",
             body: `La prestation "${missionLabel}" a été annulée par le client.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
 
         // SMS d'alerte immédiat si le prestataire était assigné (peut être en déplacement)
         if (mission.status === "assigned") {
@@ -3480,7 +3480,7 @@ export default async function handler(req, res) {
                   recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
                   content: `ANNULATION : La prestation "${missionLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
                 }),
-              }).catch(() => {});
+              }).catch(e => console.error("[missions/cancel_client] échec ignoré :", e?.message));
             }
           } catch (e) { console.error("[missions] SMS d'annulation non envoyé au prestataire :", e.message); }
         }
@@ -3817,7 +3817,7 @@ export default async function handler(req, res) {
               <p style="color:#888;font-size:12px;margin-top:24px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/cancel_in_progress] échec ignoré :", e?.message));
       }
 
       // SMS au prestataire via Brevo
@@ -3831,7 +3831,7 @@ export default async function handler(req, res) {
             recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
             content: `Prestation "${missionLabel}" : ${resumeIssue} ${reglementIssue}`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/cancel_in_progress] échec ignoré :", e?.message));
       }
 
       // Notification in-app au prestataire
@@ -3841,7 +3841,7 @@ export default async function handler(req, res) {
             type: "mission",
             title: annulerReste ? "Prestation interrompue — paiement prorata 💶" : "Journée écourtée par le client ⏱️",
             body: `Prestation "${missionLabel}" : ${resumeIssue} ${reglementIssue}`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/cancel_in_progress] échec ignoré :", e?.message));
       }
 
       // Ticket admin pour traiter le remboursement partiel
@@ -3860,7 +3860,7 @@ export default async function handler(req, res) {
             user_id: caller.id,
             status: "open",
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/cancel_in_progress] échec ignoré :", e?.message));
 
         // Email admin
         const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
@@ -3901,7 +3901,7 @@ export default async function handler(req, res) {
                 <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/cancel_in_progress] échec ignoré :", e?.message));
         }
       }
 
@@ -4001,8 +4001,8 @@ export default async function handler(req, res) {
           notifTitle = `${nomPresta || "Prestataire"} est arrivé(e) 📍`;
           notifBody = `${qui} est arrivé(e) pour « ${label} ». Ouvrez la prestation pour vérifier qu'il s'agit bien de la personne que vous avez réservée.`;
         }
-        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(() => {});
-        sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(e => console.error("[missions/checkin_mission] échec ignoré :", e?.message));
+        sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/checkin_mission] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
@@ -4347,7 +4347,7 @@ export default async function handler(req, res) {
               : `La prestation « ${label} » prend fin à l'heure convenue : ${actualHours} h seront facturées au lieu de ${plannedHours} h, `
                 + `soit le temps effectivement réalisé après un démarrage décalé de ${delayMins} min. `
                 + `Si ce décalage ne vous est pas imputable, écrivez à direction@alane.fr : la prestation sera réexaminée.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_delay] échec ignoré :", e?.message));
       }
       return res.status(200).json({ ok: true, actual_hours: actualHours });
     }
@@ -4701,7 +4701,7 @@ export default async function handler(req, res) {
                 user_id: m.client_id, type: "mission",
                 title: "Prestataire non disponible ⏱️",
                 body: `Le prestataire n'a pas répondu à temps pour la prestation "${m.metier || m.titre || ""}". Elle est de nouveau disponible.`,
-              }, SUPABASE_URL, headers).catch(() => {});
+              }, SUPABASE_URL, headers).catch(e => console.error("[missions/my_missions] échec ignoré :", e?.message));
           }
         }));
       }
@@ -4837,7 +4837,7 @@ export default async function handler(req, res) {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({ prestataire_id: null }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
         return res.status(410).json({ error: "Le délai d'acceptation est dépassé. Le client va être remboursé et pourra vous solliciter à nouveau." });
       }
 
@@ -4944,7 +4944,7 @@ export default async function handler(req, res) {
                 <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
-          }).catch(() => {});
+          }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
         }
 
         const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
@@ -4962,7 +4962,7 @@ export default async function handler(req, res) {
                   ? `ALANE - ${resolvedPrestaName} a accepté votre prestation ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
                   : `ALANE - ${resolvedPrestaName} a refusé votre prestation ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
-            }).catch(() => {});
+            }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
           }
         }
 
@@ -4971,12 +4971,12 @@ export default async function handler(req, res) {
         const pushBody  = isAccepted
           ? `${resolvedPrestaName} a accepté votre demande de mission.`
           : `${resolvedPrestaName} a refusé. Connectez-vous pour choisir un autre prestataire.`;
-        sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
       }
 
       // Reminder notification to prestataire when they accept
       if (response === "accept") {
-        await notifier({ user_id: caller.id, type: "mission", title: "Rappel : signalez votre arrivée 📍", body: `N'oubliez pas de cliquer « Je suis sur place » dans l'app dès que vous arrivez pour la prestation ${mission.titre || mission.metier || ""}.`}, SUPABASE_URL, headers).catch(() => {});
+        await notifier({ user_id: caller.id, type: "mission", title: "Rappel : signalez votre arrivée 📍", body: `N'oubliez pas de cliquer « Je suis sur place » dans l'app dès que vous arrivez pour la prestation ${mission.titre || mission.metier || ""}.`}, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ success: true });
@@ -5030,7 +5030,7 @@ export default async function handler(req, res) {
               <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[missions/notify_client] échec ignoré :", e?.message));
       } else {
         console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!clientEmail);
       }
@@ -5173,7 +5173,7 @@ export default async function handler(req, res) {
         title: "🔔 Nouvelle prestation pour vous",
         body: `${mission_label || "Prestation"}${date ? " · " + date : ""}${ville ? " · " + ville : ""}${hours ? " (" + hours + "h)" : ""}`,
         url: "/",
-      }, SUPABASE_URL, headers).catch(() => {});
+      }, SUPABASE_URL, headers).catch(e => console.error("[missions/notify_prestataire] échec ignoré :", e?.message));
 
       return res.status(200).json({ success: true });
     }
@@ -5236,7 +5236,7 @@ export default async function handler(req, res) {
             title: "⏱ Demande d'heures supplémentaires",
             body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez depuis l'application.`,
             ref_id: mission_id,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/request_extra_hours] échec ignoré :", e?.message));
 
         // Email au prestataire
         try {
@@ -5270,7 +5270,7 @@ export default async function handler(req, res) {
           title: "⏱ Demande d'heures supplémentaires",
           body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez dans l'app.`,
           url: "/",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/request_extra_hours] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ ok: true });
@@ -5353,7 +5353,7 @@ export default async function handler(req, res) {
                 + "La durée sera prolongée dès le règlement — rien n'est modifié avant."
               : "Le prestataire n'a pas pu accepter la prolongation.",
             ref_id: mission_id,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_extra_hours] échec ignoré :", e?.message));
 
         // Web push au client
         sendPushToUser(mission.client_id, {
@@ -5362,7 +5362,7 @@ export default async function handler(req, res) {
             ? `Le prestataire a accepté la prolongation de ${extraH}h.`
             : "Le prestataire n'a pas pu accepter la prolongation.",
           url: "/",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_extra_hours] échec ignoré :", e?.message));
       }
 
       // `newHours` n'est plus renvoyé : la durée ne change qu'au paiement, et
@@ -5481,7 +5481,7 @@ export default async function handler(req, res) {
             user_id: mPresta, type: "mission", title: "💶 Prolongation réglée",
             body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`, ref_id: mission_id,
           }, SUPABASE_URL, headers).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
-        sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/confirmer_heures_supp] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ ok: true, hours: nouvellesHeures, montant_total: nouveauTotal });
@@ -5620,24 +5620,24 @@ export default async function handler(req, res) {
           user_id: remplacant_id, type: "mission", ref_id: mission_id,
           title: "🤝 On vous propose de remplacer un confrère",
           body: `Un prestataire vous propose de reprendre « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""}. Vous êtes libre d'accepter ou non ; le client doit également donner son accord.`,
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/proposer_remplacant] échec ignoré :", e?.message));
       sendPushToUser(remplacant_id, {
         title: "🤝 Remplacement proposé",
         body: `« ${libelle} »${quand ? " le " + quand : ""} — à vous de décider.`,
         url: "/",
-      }, SUPABASE_URL, headers).catch(() => {});
+      }, SUPABASE_URL, headers).catch(e => console.error("[missions/proposer_remplacant] échec ignoré :", e?.message));
 
       // Le client : son accord est requis, la prestation ne bouge pas sans lui.
       await notifier({
           user_id: mission.client_id, type: "mission", ref_id: mission_id,
           title: "🔄 Votre prestataire propose un remplaçant",
           body: `Pour « ${libelle} »${quand ? " le " + quand : ""}, votre prestataire propose qu'un confrère qualifié le remplace${motif ? ` (${String(motif).slice(0, 120)})` : ""}. Rien ne change tant que vous n'avez pas donné votre accord.`,
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/proposer_remplacant] échec ignoré :", e?.message));
       sendPushToUser(mission.client_id, {
         title: "🔄 Remplaçant proposé",
         body: `« ${libelle} »${quand ? " le " + quand : ""} — votre accord est nécessaire.`,
         url: "/",
-      }, SUPABASE_URL, headers).catch(() => {});
+      }, SUPABASE_URL, headers).catch(e => console.error("[missions/proposer_remplacant] échec ignoré :", e?.message));
 
       return res.status(200).json({ ok: true, remplacement_id: ligne?.id || null });
     }
@@ -5680,12 +5680,12 @@ export default async function handler(req, res) {
             user_id: dem.sortant_id, type: "mission", ref_id: dem.mission_id,
             title: "❌ Remplacement refusé",
             body: `${role === "client" ? "Le client" : "Le confrère que vous aviez proposé"} a refusé le remplacement pour « ${libelle} »${quand ? " le " + quand : ""}. Vous restez titulaire de cette prestation.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/repondre_remplacement] échec ignoré :", e?.message));
         sendPushToUser(dem.sortant_id, {
           title: "❌ Remplacement refusé",
           body: "Vous restez titulaire de la prestation.",
           url: "/",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/repondre_remplacement] échec ignoré :", e?.message));
         return res.status(200).json({ ok: true, statut: "refuse" });
       }
 
@@ -5752,8 +5752,8 @@ export default async function handler(req, res) {
         [dem.sortant_id, "✅ Vous avez été remplacé",        `« ${libelle} »${quand ? " le " + quand : ""} a été reprise par le confrère que vous aviez proposé. Vous restez responsable de la bonne exécution devant le client (CGPS art. 9).`],
       ];
       for (const [uid, title, body] of messages) {
-        await notifier({ user_id: uid, type: "mission", ref_id: dem.mission_id, title, body }, SUPABASE_URL, headers).catch(() => {});
-        sendPushToUser(uid, { title, body, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        await notifier({ user_id: uid, type: "mission", ref_id: dem.mission_id, title, body }, SUPABASE_URL, headers).catch(e => console.error("[missions/repondre_remplacement] échec ignoré :", e?.message));
+        sendPushToUser(uid, { title, body, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/repondre_remplacement] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ ok: true, statut: "accepte" });
@@ -5844,7 +5844,7 @@ export default async function handler(req, res) {
             user_id: uid, type: "mission", ref_id: dem.mission_id,
             title: "↩️ Demande de remplacement retirée",
             body: "Le prestataire initial a retiré sa demande : il assurera finalement la prestation lui-même.",
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/annuler_remplacement] échec ignoré :", e?.message));
       }
       return res.status(200).json({ ok: true, statut: "annule" });
     }
@@ -6032,7 +6032,7 @@ export default async function handler(req, res) {
             title: urgent ? "🔄 Prestation urgente à reprendre" : "🔄 Prestation à reprendre",
             body: corps,
             url: "/",
-          }, SUPABASE_URL, headers).catch(() => {})));
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message))));
 
           // Prestataires réellement en mesure de prendre la prestation : même
           // métier, et disponibles ce jour-là. Ce filtre commande les deux canaux
@@ -6120,7 +6120,7 @@ export default async function handler(req, res) {
                     recipient: String(metaMap[c.id].user_metadata.telephone).replace(/[^0-9+]/g, ""),
                     content: texte,
                   }),
-                }).catch(() => {})));
+                }).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message))));
               }
               console.log(`[presta_cancel] SMS remplaçant : ${avecTel.length} envoyé(s) sur ${eligibles.length} éligible(s), ${cibles.length} notifié(s)`);
             }
@@ -6135,7 +6135,7 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
-      }).catch(() => {});
+      }).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
 
       if (mission.client_id) {
         await notifier({
@@ -6143,14 +6143,14 @@ export default async function handler(req, res) {
             type: "mission",
             title: "❌ Prestataire indisponible",
             body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
-          }, SUPABASE_URL, headers).catch(() => {});
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
 
         // Web push au client
         sendPushToUser(mission.client_id, {
           title: "❌ Prestataire indisponible",
           body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
           url: "/",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ success: true });
@@ -6227,8 +6227,8 @@ export default async function handler(req, res) {
         const labelR = m.titre || m.metier || "votre prestation";
         const corpsR = `Le prestataire a démarré « ${labelR} » avec ${patchStart.arrival_delay_minutes} min de retard. `
           + `Sans votre accord, la prestation prendra fin à l'heure initialement prévue.`;
-        await notifier({ user_id: m.client_id, type: "mission", title: "⏰ Démarrage en retard", body: corpsR}, SUPABASE_URL, headers).catch(() => {});
-        sendPushToUser(m.client_id, { title: "⏰ Démarrage en retard", body: corpsR, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: "⏰ Démarrage en retard", body: corpsR}, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] échec ignoré :", e?.message));
+        sendPushToUser(m.client_id, { title: "⏰ Démarrage en retard", body: corpsR, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] échec ignoré :", e?.message));
       }
 
       // Notify client
@@ -6238,8 +6238,8 @@ export default async function handler(req, res) {
         const notifBody = auto_start
           ? `La prestation « ${label} » a démarré automatiquement (10 min après l'arrivée du prestataire). Le timer est lancé.`
           : `La prestation « ${label} » a démarré. Le timer est lancé.`;
-        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(() => {});
-        sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] échec ignoré :", e?.message));
+        sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ started_at: startedAt });
@@ -6292,17 +6292,17 @@ export default async function handler(req, res) {
       const notifs = [];
       if (!m.validation_prestataire && m.prestataire_id) {
         notifs.push(notifier({ user_id: m.prestataire_id, type:"mission", title:"⏱ Prestation terminée — confirmez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Confirmez pour recevoir votre paiement.`}, SUPABASE_URL, headers));
-        sendPushToUser(m.prestataire_id, { title:"⏱ Prestation terminée — confirmez !", body:`« ${label} » du ${m.date} — confirmez pour être payé(e).`, url:"/" }, SUPABASE_URL, headers).catch(() => {});
+        sendPushToUser(m.prestataire_id, { title:"⏱ Prestation terminée — confirmez !", body:`« ${label} » du ${m.date} — confirmez pour être payé(e).`, url:"/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/notify_end] échec ignoré :", e?.message));
       }
       if (!m.validation_client && m.client_id) {
         notifs.push(notifier({ user_id: m.client_id, type:"mission", title:"✅ Prestation terminée — validez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Validez pour créditer votre cashback.`}, SUPABASE_URL, headers));
-        sendPushToUser(m.client_id, { title:"✅ Prestation terminée — validez !", body:`« ${label} » du ${m.date} — validez pour votre cashback.`, url:"/" }, SUPABASE_URL, headers).catch(() => {});
+        sendPushToUser(m.client_id, { title:"✅ Prestation terminée — validez !", body:`« ${label} » du ${m.date} — validez pour votre cashback.`, url:"/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/notify_end] échec ignoré :", e?.message));
       }
-      await Promise.all(notifs.map(p => p.catch(() => {})));
+      await Promise.all(notifs.map(p => p.catch(e => console.error("[missions/notify_end] échec ignoré :", e?.message))));
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" },
         body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
-      }).catch(() => {});
+      }).catch(e => console.error("[missions/notify_end] échec ignoré :", e?.message));
 
       return res.status(200).json({ notified: notifs.length });
     }

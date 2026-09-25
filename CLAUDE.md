@@ -287,7 +287,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 Deux niveaux, volontairement séparés.
 
 **`npm run coherence`** — déterministe, gratuit, bloquant en CI. Il vérifie dix règles de
-ce fichier, toutes nées de pannes réelles : `catch` vides dans `/api`, variables
+ce fichier, toutes nées de pannes réelles : `catch` vides dans `/api` (y compris `.catch(() => {})`), variables
 d'environnement non nettoyées, clé service role hors `/api`, appel Supabase dans
 `onAuthStateChange`, casse du bucket `Documents`, conversion de fuseau sur `heure_debut`,
 champ de diagnostic dans une réponse HTTP, script tiers dans le CSP, écran de rôle non

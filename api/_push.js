@@ -108,7 +108,7 @@ export async function sendPushToUser(userId, notification, supabaseUrl, serviceH
         await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, {
           method: "DELETE",
           headers: serviceHeaders,
-        }).catch(() => {});
+        }).catch(e => console.error("[_push] échec ignoré :", e?.message));
       }
     }));
   } catch(e) {
