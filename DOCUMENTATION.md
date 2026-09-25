@@ -788,9 +788,9 @@ tunnel de réservation et bloquerait des réservations légitimes.
 > juge désormais sur le rôle du **jeton** (`auth.role()` : `authenticated` ou `anon` sont
 > contrôlés, `service_role` et l'éditeur SQL passent) et pose le déclencheur. **Appliquée en
 > recette le 24/09/2026** — scénario `e2e/12` : sept fraudes refusées, les deux créations de
-> l'application acceptées, scénarios 06 à 09 verts. **En production : à appliquer** (le jeton
-> de production de Claude est en lecture seule). Tant que ce n'est pas fait,
-> `npm run recette comparer` signale l'écart.
+> l'application acceptées, scénarios 06 à 09 verts. **Appliquée en production le 25/09/2026**
+> par Alexandre (éditeur SQL), vérifiée le même jour en lecture seule : deux déclencheurs sur
+> `missions`, exemption par `auth.role()`.
 >
 > Le verrou des modifications, `prevent_missions_field_tampering`, n'a pas ce défaut : il
 > exempte sur `auth.uid() IS NULL`, ce qui ne dépend pas du propriétaire de la fonction.
@@ -3459,8 +3459,9 @@ Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 **La confirmation d'adresse e-mail** (`mailer_autoconfirm`) était désactivée en production :
 on pouvait s'inscrire avec l'adresse de quelqu'un d'autre. Décidé le 24/09/2026 : l'activer.
 L'application y est prête (voir « La base enregistre le profil complet à la création du
-compte »), à condition d'avoir d'abord : appliqué la migration
-`2026-09-24_inscription_profil_a_la_creation.sql`, branché un **SMTP** (Resend) dans Supabase
+compte »). La migration `2026-09-24_inscription_profil_a_la_creation.sql` est **appliquée en
+production depuis le 25/09/2026** (vérifié en lecture seule). Reste, avant d'activer la
+confirmation : brancher un **SMTP** (Resend) dans Supabase
 — le service intégré n'envoie que quelques messages par heure, et qu'aux membres de
 l'organisation — et ajouté l'adresse de production aux redirections autorisées. **La recette
 la garde désactivée** : ses comptes d'essai (`@recette.alane.test`) n'ont pas de boîte mail.
