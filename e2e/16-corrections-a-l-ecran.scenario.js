@@ -38,6 +38,16 @@ test("urgence : le prix part du tarif du prestataire, le même de l'écran à la
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   await fermerBandeauCookies(page);
   await page.getByText("Hôtellerie").first().click();
+
+  // La liste des métiers, en urgence : le prix part des tarifs réels des prestataires.
+  // Elle annonçait le tarif par défaut du métier + surcoût (17,50 €) quand la
+  // réservation facturait 18,00 €.
+  await page.getByText("Mode Urgence").click();
+  await expect(page.getByText(`+${formatMontant(surcout)} HT/h`).first()).toBeVisible();
+  const ligne = page.getByText("Femme/Valet de chambre", { exact: true }).first().locator("xpath=..");
+  const prixListe = await ligne.getByText(/€ HT\/h/).first().innerText();
+  await page.getByText("Mode Urgence").click(); // on la désactive : l'écran du métier a son propre interrupteur
+
   await page.getByText("Femme/Valet de chambre").first().click();
   await expect(page.getByText("← Tous les métiers")).toBeVisible();
   await page.getByText("Mode Urgence").click();
@@ -51,6 +61,9 @@ test("urgence : le prix part du tarif du prestataire, le même de l'écran à la
   const nom = (await page.getByText(/Votre demande part à .+ en /).innerText()).match(/part à (.+?) en /)[1];
   console.log(`[16] urgence : ${standard} + ${surcout} = ${total} (${nom})`);
   expect(total, "tarif du prestataire + surcoût réglé dans le back-office").toBeCloseTo(standard + surcout, 2);
+  console.log(`[16] liste des métiers en urgence : « ${prixListe} »`);
+  if (prixListe.startsWith("dès")) expect(euros(prixListe), "le prix « dès » est le plus bas des prestataires").toBeLessThanOrEqual(total + 0.001);
+  else expect(euros(prixListe), "la liste annonce le prix facturé").toBeCloseTo(total, 2);
   await page.screenshot({ path: "e2e-resultats/captures/16-urgence.png", fullPage: true });
 
   // La réservation affiche le même tarif.
