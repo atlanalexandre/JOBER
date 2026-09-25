@@ -1835,7 +1835,11 @@ export default function App() {
             date: data?.date || null,
             hours: data?.hours || 8,
             heure_debut: data?.startTime || null,
-            tarif_horaire: selectedProvider?.rateNum || null,
+            // Le tarif RÉELLEMENT facturé, celui qui a servi au total. En urgence il
+            // est majoré : enregistrer le tarif de base du prestataire rendait le
+            // montant incohérent aux yeux du serveur (frais apparents trop élevés),
+            // et TOUTE réservation urgente était refusée au paiement (25/09/2026).
+            tarif_horaire: Number(data?.tarifHoraire) || selectedProvider?.rateNum || null,
             montant_total: data?.amount || null,
             description: data?.description || null,
             adresse: data?.adresse || null,
