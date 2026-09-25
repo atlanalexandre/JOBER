@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 import { supabase, getRawSession } from "../lib/supabase.js";
+import { enregistrerDocument } from "../lib/documents.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
@@ -8816,18 +8817,14 @@ export function DocUploadScreen({ onBack }) {
         const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
         const mine = pending.filter(e=>e.uid===u.id && !existingTypes.has(e.type));
         if (mine.length) {
-          const pAt = await getValidAccessToken();
-          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
-          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          // La ligne est écrite par le serveur (src/lib/documents.js) : l'upsert
+          // du navigateur était refusé par la base.
           const now = new Date().toISOString();
           const done = [];
-          await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
-              method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
-              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
-            }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
-          ));
+          for (const e of mine) {
+            try { await enregistrerDocument(e.type); done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); }
+            catch (err) { console.error(`[documents] réessai de ${e.type} sans succès :`, err.message); }
+          }
           if (done.length) localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
         }
       } catch {}
@@ -8866,28 +8863,23 @@ export function DocUploadScreen({ onBack }) {
 
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
           body: file,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
-          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-        }),
-      ]);
+        });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (dbRes.ok) {
-        try {
-          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
-        } catch {}
-      }
+      // Le fichier est arrivé : la ligne en base est écrite par le serveur. Elle
+      // l'était ici, en parallèle, par un upsert que la base refusait — et
+      // l'écran affichait « Envoyé » quand même, sans regarder la réponse.
+      await enregistrerDocument(docId);
+      try {
+        const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+        localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+      } catch { /* localStorage indisponible (Safari privé) : rien à nettoyer */ }
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
@@ -9003,18 +8995,14 @@ export function ClientProDocScreen({ onBack }) {
         const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
         const mine = pending.filter(e=>e.uid===u.id && !existingTypes.has(e.type));
         if (mine.length) {
-          const pAt = await getValidAccessToken();
-          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
-          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          // La ligne est écrite par le serveur (src/lib/documents.js) : l'upsert
+          // du navigateur était refusé par la base.
           const now = new Date().toISOString();
           const done = [];
-          await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
-              method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
-              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
-            }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
-          ));
+          for (const e of mine) {
+            try { await enregistrerDocument(e.type); done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); }
+            catch (err) { console.error(`[documents] réessai de ${e.type} sans succès :`, err.message); }
+          }
           if (done.length) localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
         }
       } catch {}
@@ -9050,28 +9038,23 @@ export function ClientProDocScreen({ onBack }) {
 
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
           body: file,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
-          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-        }),
-      ]);
+        });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (dbRes.ok) {
-        try {
-          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
-        } catch {}
-      }
+      // Le fichier est arrivé : la ligne en base est écrite par le serveur. Elle
+      // l'était ici, en parallèle, par un upsert que la base refusait — et
+      // l'écran affichait « Envoyé » quand même, sans regarder la réponse.
+      await enregistrerDocument(docId);
+      try {
+        const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+        localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+      } catch { /* localStorage indisponible (Safari privé) : rien à nettoyer */ }
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
