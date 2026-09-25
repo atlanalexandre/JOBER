@@ -3230,6 +3230,11 @@ Deux principes :
 | `needs_replacement` | Remplaçant recherché |
 | `completed`, `closed` | Terminée |
 | `cancelled` | Annulée |
+
+**L'écran de suivi n'affiche « En route » que sur une position reçue** (25/09/2026). Il
+l'affichait dès l'acceptation, même pour une prestation dans trois jours. Avant le premier
+partage de position — que le serveur n'accepte que dans la fenêtre de la prestation, et qui
+déclenche aussi la notification « en route » — l'écran dit « Prestation confirmée ».
 | `disputed` | Litige en cours |
 | `refused`, `rejected` | Refusée |
 

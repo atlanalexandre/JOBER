@@ -3922,7 +3922,13 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     return () => { supabase.removeChannel(channel); };
   }, [resolvedMissionId]);
 
-  const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
+  // « En route » s'affichait dès l'acceptation, même pour une prestation dans
+  // trois jours. Le seul signe réel d'un départ est la position que partage le
+  // prestataire — et le serveur ne la rend que dans la fenêtre de la prestation.
+  // Tant qu'elle n'arrive pas, la prestation est seulement confirmée.
+  const enRoute = step === 0 && !!gpsPosition;
+  const statusLabels = [enRoute ? "En route vers vous" : "Prestation confirmée","Arrivé sur place","Prestation en cours","Prestation terminée"];
+  const etapeFrise = timelineStatus === "enroute" && step === 0 && !enRoute ? "signed" : timelineStatus;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -3960,7 +3966,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
               </div>
             )}
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
-              {providerName || p?.name || "Prestataire"} {step===0 && eta!=null && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
+              {providerName || p?.name || "Prestataire"} {enRoute && eta!=null && eta>0 ? `· ~${eta} min` : enRoute ? "· En route" : step===0 ? "· Confirmée" : "· Sur place"}
             </div>
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
@@ -3980,7 +3986,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         {/* Timeline */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la prestation</div>
-          <MissionTimeline status={timelineStatus} />
+          <MissionTimeline status={etapeFrise} />
         </div>
 
         {/* Bouton voir le contrat */}
