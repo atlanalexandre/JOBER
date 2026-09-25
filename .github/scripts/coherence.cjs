@@ -90,6 +90,12 @@ for (const f of fichiers("api")) {
       violation("1.2 — catch vide", f, n,
         "Journaliser l'erreur avec son contexte, ou la remonter à l'utilisateur.");
     }
+    // Même défaut, écrit en promesse : 170 `.catch(() => {})` dans /api le
+    // 25/09/2026, que le motif ci-dessus ne voyait pas.
+    if (/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(texte)) {
+      violation("1.2 — .catch(() => {}) vide", f, n,
+        "Journaliser l'erreur avec son contexte : .catch(e => console.error(\"[contexte] …\", e.message)).");
+    }
   });
 }
 

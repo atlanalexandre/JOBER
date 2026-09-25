@@ -323,7 +323,7 @@ export default async function handler(req, res) {
                 method: "PATCH",
                 headers: { ...headers, "Prefer": "return=minimal" },
                 body: JSON.stringify(restoredPatch),
-              }).catch(() => {});
+              }).catch(e => console.error("[bo-action/approve] échec ignoré :", e?.message));
               console.warn(`[approve] Blacklist match — profileId=${profileId} email=${userEmail} missions_restored=${bl.missions_completed_month || 0} plan_deleted=${bl.plan_abonnement || "free"}`);
             }
           } catch(blErr) {
@@ -405,7 +405,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action, target_id: profileId, target_email: userEmail || null }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/approve] échec ignoré :", e?.message));
 
       return res.status(200).json({ success: true });
     }
@@ -549,7 +549,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action, target_id: profileId, details: { enabled } }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/enable_missions] échec ignoré :", e?.message));
 
       // ── Le compte de virement se prépare ICI ────────────────────────
       //
@@ -648,7 +648,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
 
       // Anti-abus : sauvegarder les identifiants dans la blacklist pour bloquer la recréation de compte
       // Récupérer téléphone, IBAN, SIRET depuis user_metadata + consommation de missions depuis profiles
@@ -678,7 +678,7 @@ export default async function handler(req, res) {
             missions_completed_month: savedProfile.missions_completed_month || 0,
             plan_abonnement:          savedProfile.plan_abonnement || "free",
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
       }
 
       // Versements encore dus au compte supprimé.
@@ -746,7 +746,7 @@ export default async function handler(req, res) {
                   type: "system",
                   title: "Prestation annulée — remboursement en cours",
                   body: `La prestation "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
-                }, SUPABASE_URL, headers).catch(() => {});
+                }, SUPABASE_URL, headers).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
             }
           }
         } catch (e) {
@@ -856,7 +856,7 @@ export default async function handler(req, res) {
           ),
         });
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null }) }).catch(e => console.error("[bo-action/suspend] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -921,10 +921,10 @@ export default async function handler(req, res) {
       await notifier({ user_id: profileId, type: "system",
           title: "Résiliation de votre compte",
           body: `Votre compte sera résilié le ${effetLe}. Motif : ${motif}. `
-              + `Vous pouvez contester à support@alane.fr — la décision est réexaminée de façon contradictoire.`}, SUPABASE_URL, headers).catch(() => {});
+              + `Vous pouvez contester à support@alane.fr — la décision est réexaminée de façon contradictoire.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/programmer_resiliation] échec ignoré :", e?.message));
 
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "programmer_resiliation", target_id: profileId, target_email: uData?.email || null, reason: motif }) }).catch(() => {});
+        body: JSON.stringify({ action: "programmer_resiliation", target_id: profileId, target_email: uData?.email || null, reason: motif }) }).catch(e => console.error("[bo-action/programmer_resiliation] échec ignoré :", e?.message));
       return res.status(200).json({ success: true, effet: effet.toISOString() });
     }
 
@@ -940,9 +940,9 @@ export default async function handler(req, res) {
       }
       await notifier({ user_id: profileId, type: "system",
           title: "Résiliation annulée ✅",
-          body: "Après examen, la résiliation de votre compte est annulée. Votre accès reste inchangé."}, SUPABASE_URL, headers).catch(() => {});
+          body: "Après examen, la résiliation de votre compte est annulée. Votre accès reste inchangé."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/annuler_resiliation] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "annuler_resiliation", target_id: profileId }) }).catch(() => {});
+        body: JSON.stringify({ action: "annuler_resiliation", target_id: profileId }) }).catch(e => console.error("[bo-action/annuler_resiliation] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -960,7 +960,7 @@ export default async function handler(req, res) {
       if (userEmail) {
         await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été réactivé", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été réactivé. Vous pouvez à nouveau vous connecter normalement.</p>`) });
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"unsuspend", target_id:profileId, target_email:userEmail||null }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"unsuspend", target_id:profileId, target_email:userEmail||null }) }).catch(e => console.error("[bo-action/unsuspend] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -975,22 +975,22 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "reset_trial", target_id: profileId }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/reset_trial] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
     if (action === "set_subscription") {
       const { plan, end_date } = body;
       if (!profileId || !plan) return res.status(400).json({ error: "profileId + plan requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ plan_abonnement:plan, subscription_end_date:end_date||null }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ plan_abonnement:plan, subscription_end_date:end_date||null }) }).catch(e => console.error("[bo-action/set_subscription] échec ignoré :", e?.message));
       const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const existingUser = getR.ok ? await getR.json() : {};
       const existingMeta = existingUser.user_metadata || {};
-      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata:{ ...existingMeta, plan_abonnement:plan, subscription_end_date:end_date||null } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata:{ ...existingMeta, plan_abonnement:plan, subscription_end_date:end_date||null } }) }).catch(e => console.error("[bo-action/set_subscription] échec ignoré :", e?.message));
       const planLabels = { free:"Gratuit", premium:"Premium", elite:"Elite" };
       const planLabel = planLabels[plan] || plan;
-      await notifier({ user_id:profileId, type:"system", title:`Abonnement mis à jour → ${planLabel}`, body:end_date?`Votre abonnement ${planLabel} est actif jusqu'au ${new Date(end_date).toLocaleDateString("fr-FR")}.`:`Votre abonnement a été mis à jour vers ${planLabel}.`}, SUPABASE_URL, headers).catch(()=>{});
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"set_subscription", target_id:profileId, details:{ plan, end_date } }) }).catch(()=>{});
+      await notifier({ user_id:profileId, type:"system", title:`Abonnement mis à jour → ${planLabel}`, body:end_date?`Votre abonnement ${planLabel} est actif jusqu'au ${new Date(end_date).toLocaleDateString("fr-FR")}.`:`Votre abonnement a été mis à jour vers ${planLabel}.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/set_subscription] échec ignoré :", e?.message));
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"set_subscription", target_id:profileId, details:{ plan, end_date } }) }).catch(e => console.error("[bo-action/set_subscription] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -1348,7 +1348,7 @@ export default async function handler(req, res) {
             to: email,
             subject: "📢 Communication de l'équipe ALANE",
             html: emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
-          }).then(() => { sent++; }).catch(() => {})
+          }).then(() => { sent++; }).catch(e => console.error("[bo-action/send_global_comm] échec ignoré :", e?.message))
         ));
       }
       journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
@@ -1432,7 +1432,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "send_user_email", target_id: profileId, target_email: userEmail }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/send_user_email] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2139,7 +2139,7 @@ export default async function handler(req, res) {
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "retenir_versement", target_id: mission_id, reason: motif }) }).catch(() => {});
+        body: JSON.stringify({ action: "retenir_versement", target_id: mission_id, reason: motif }) }).catch(e => console.error("[bo-action/retenir_versement] échec ignoré :", e?.message));
       return res.status(200).json({ success: true, payout_hold_until: jusqua.toISOString() });
     }
 
@@ -2159,10 +2159,10 @@ export default async function handler(req, res) {
       if (rows[0].prestataire_id) {
         await notifier({ user_id: rows[0].prestataire_id, type: "system",
             title: "Retenue levée ✅",
-            body: "La retenue sur votre versement a été levée. Le virement est de nouveau programmé et partira au prochain traitement."}, SUPABASE_URL, headers).catch(() => {});
+            body: "La retenue sur votre versement a été levée. Le virement est de nouveau programmé et partira au prochain traitement."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/lever_retenue] échec ignoré :", e?.message));
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "lever_retenue", target_id: mission_id }) }).catch(() => {});
+        body: JSON.stringify({ action: "lever_retenue", target_id: mission_id }) }).catch(e => console.error("[bo-action/lever_retenue] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2205,7 +2205,7 @@ export default async function handler(req, res) {
           title: "Somme due à ALANE",
           body: `Une somme de ${euros(m)} est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
               + `Elle sera récupérée sur vos versements à venir, dans la limite de la moitié de chacun d'eux. `
-              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`}, SUPABASE_URL, headers).catch(() => {});
+              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/creer_creance] échec ignoré :", e?.message));
 
       try {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
@@ -2233,7 +2233,7 @@ export default async function handler(req, res) {
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "creer_creance", target_id: prestataire_id, reason: `${euros(m)} — ${String(motif).trim()}` }) }).catch(() => {});
+        body: JSON.stringify({ action: "creer_creance", target_id: prestataire_id, reason: `${euros(m)} — ${String(motif).trim()}` }) }).catch(e => console.error("[bo-action/creer_creance] échec ignoré :", e?.message));
       return res.status(200).json({ success: true, creance });
     }
 
@@ -2262,9 +2262,9 @@ export default async function handler(req, res) {
       };
       await notifier({ user_id: c.prestataire_id, type: "system",
           title: decision === "abandonnee" ? "Somme due abandonnée ✅" : "Somme due — mise à jour",
-          body: messages[decision]}, SUPABASE_URL, headers).catch(() => {});
+          body: messages[decision]}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/statuer_creance] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "statuer_creance", target_id: creance_id, reason: decision }) }).catch(() => {});
+        body: JSON.stringify({ action: "statuer_creance", target_id: creance_id, reason: decision }) }).catch(e => console.error("[bo-action/statuer_creance] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2350,10 +2350,10 @@ export default async function handler(req, res) {
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
-        await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(()=>{});
+        await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       }
       // Notification client
-      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(()=>{});
+      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
       if (m.prestataire_id) {
         const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
@@ -2363,9 +2363,9 @@ export default async function handler(req, res) {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({ missions_completed_month: currentMC + 1 }),
-        }).catch(() => {});
+        }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
     }
 
@@ -2390,9 +2390,9 @@ export default async function handler(req, res) {
       }
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"closed" }) });
       if (m.client_id) {
-        await notifier({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés."}, SUPABASE_URL, headers).catch(()=>{});
+        await notifier({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/manual_refund] échec ignoré :", e?.message));
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"manual_refund", target_id:mission_id, details:{ reason } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"manual_refund", target_id:mission_id, details:{ reason } }) }).catch(e => console.error("[bo-action/manual_refund] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2416,12 +2416,12 @@ export default async function handler(req, res) {
       // les téléphones sont prévenus : une prestation annulée par ALANE est
       // exactement ce qu'on ne découvre pas en ouvrant l'application par hasard.
       if (notifs.length) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs) }).catch(()=>{});
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs) }).catch(e => console.error("[bo-action/cancel_mission] échec ignoré :", e?.message));
         await Promise.all(notifs.map(n =>
-          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(() => {})
+          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[bo-action/cancel_mission] échec ignoré :", e?.message))
         ));
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"cancel_mission", target_id:mission_id, details:{ reason, refund } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"cancel_mission", target_id:mission_id, details:{ reason, refund } }) }).catch(e => console.error("[bo-action/cancel_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
@@ -2440,9 +2440,9 @@ export default async function handler(req, res) {
       if (!newUser) return res.status(404).json({ error: "Prestataire introuvable avec cet email" });
       const old_presta = m.prestataire_id;
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }) });
-      if (old_presta && old_presta !== newUser.id) await notifier({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire."}, SUPABASE_URL, headers).catch(()=>{});
-      await notifier({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE."}, SUPABASE_URL, headers).catch(()=>{});
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"reassign_mission", target_id:mission_id, details:{ old_presta, new_presta:newUser.id, reason } }) }).catch(()=>{});
+      if (old_presta && old_presta !== newUser.id) await notifier({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));
+      await notifier({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"reassign_mission", target_id:mission_id, details:{ old_presta, new_presta:newUser.id, reason } }) }).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success: true, new_presta_name:`${newUser.user_metadata?.prenom||""} ${newUser.user_metadata?.nom||""}`.trim()||new_presta_email });
     }
 
@@ -2459,16 +2459,16 @@ export default async function handler(req, res) {
       if (!Object.keys(updates).length) return res.status(400).json({ error: "Aucun champ à modifier" });
       const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(updates) });
       if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour" });
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(e => console.error("[bo-action/update_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success: true });
     }
 
     if (action === "adjust_cashback") {
       const { profileId, delta, reason } = body;
       if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(()=>{});
-      await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(()=>{});
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
+      await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       return res.status(200).json({ ok: true });
     }
 
@@ -2481,7 +2481,7 @@ export default async function handler(req, res) {
       if (!Array.isArray(profs) || profs.length === 0) return res.status(200).json({ ok:true, sent:0 });
       const notifs = profs.map(p => ({ user_id:p.id, type:"system", title, body:notifBody, read:false }));
       for (let i = 0; i < notifs.length; i += 100) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs.slice(i, i+100)) }).catch(()=>{});
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs.slice(i, i+100)) }).catch(e => console.error("[bo-action/broadcast_notification] échec ignoré :", e?.message));
       }
       // Communication globale : la notification part aussi sur les téléphones.
       //
@@ -2491,11 +2491,11 @@ export default async function handler(req, res) {
       // découvrir dans les désabonnements.
       for (let i = 0; i < notifs.length; i += 100) {
         await Promise.all(notifs.slice(i, i + 100).map(n =>
-          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(() => {})
+          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[bo-action/broadcast_notification] échec ignoré :", e?.message))
         ));
       }
       console.log(`[broadcast] ${notifs.length} notifications et autant de push envoyées (cible : ${target || "tous"}).`);
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"broadcast_notification", details:{ title, target, count:notifs.length } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"broadcast_notification", details:{ title, target, count:notifs.length } }) }).catch(e => console.error("[bo-action/broadcast_notification] échec ignoré :", e?.message));
       return res.status(200).json({ ok:true, sent:notifs.length });
     }
 
@@ -2891,7 +2891,7 @@ export default async function handler(req, res) {
       if (!ratingId) return res.status(400).json({ error: "ratingId requis" });
       if (!isUuidId(ratingId)) return res.status(400).json({ error: "ratingId invalide" });
       await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${ratingId}`, { method:"DELETE", headers:{...headers,"Prefer":"return=minimal"} });
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(e => console.error("[bo-action/delete_rating] échec ignoré :", e?.message));
       return res.status(200).json({ ok:true });
     }
 
@@ -2911,7 +2911,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "export_csv", details: details || null }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/bo_log_export] échec ignoré :", e?.message));
       return res.status(200).json({ ok: true });
     }
 
@@ -2976,7 +2976,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "update_profile", target_id: profileId }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-action/update_profile] échec ignoré :", e?.message));
 
       return res.status(200).json({ success: true });
     }
@@ -3007,7 +3007,7 @@ export default async function handler(req, res) {
           console.error("[repair_plan] PUT user_metadata failed:", uPutRes.status, uPutErr);
         }
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"repair_plan", target_id:profileId, details:{ plan } }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"repair_plan", target_id:profileId, details:{ plan } }) }).catch(e => console.error("[bo-action/repair_plan] échec ignoré :", e?.message));
       return res.status(200).json({ success: true, plan });
     }
 

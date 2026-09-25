@@ -122,7 +122,7 @@ function sendSms(apiKey, to, content) {
     method: "POST",
     headers: { "api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({ sender: "ALANE", recipient: phone, content }),
-  }).catch(() => {});
+  }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
 }
 
 export default async function handler(req, res) {
@@ -231,14 +231,14 @@ export default async function handler(req, res) {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
             body: JSON.stringify({ status: "refused", prestataire_id: null, broadcast_sent_at: null }),
-          }).catch(() => {});
+          }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           if (z.client_id) {
             await notifier({
                 user_id: z.client_id,
                 type: "mission",
                 title: "Prestataire non disponible",
                 body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}".${rembZ ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
-              }, SUPABASE_URL, headers).catch(() => {});
+              }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           }
         }));
         console.log(`[cron] expired ${zombies.length} pending_acceptance zombie(s)`);
@@ -348,7 +348,7 @@ export default async function handler(req, res) {
           title: "Personne n'a encore accepté votre prestation ⏳",
           body: `${cause} Elle commence à ${heure}. Si personne ne l'accepte d'ici là, `
               + "elle sera annulée automatiquement et intégralement remboursée, frais de service compris.",
-        }, SUPABASE_URL, headers).catch(() => {});
+        }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
       }
       if (aPrevenir.length) console.log(`[cron] ${aPrevenir.length} client(s) prévenu(s) avant échéance`);
 
@@ -382,13 +382,13 @@ export default async function handler(req, res) {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
             body: JSON.stringify({ status: rembourse ? "cancelled" : "closed" }),
-          }).catch(() => {});
+          }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           // Rejeter toutes candidatures en attente
           await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
             body: JSON.stringify({ status: "rejected" }),
-          }).catch(() => {});
+          }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           if (m.client_id) {
             await notifier({
                 user_id: m.client_id,
@@ -403,7 +403,7 @@ export default async function handler(req, res) {
                     ? `${cause} L'intégralité de votre paiement vous est remboursée, frais de service compris — comptez 5 à 10 jours ouvrés selon votre banque.`
                     : `${cause} Elle a été clôturée automatiquement.`;
                 })(),
-              }, SUPABASE_URL, headers).catch(() => {});
+              }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           }
         }));
         // Le journal annonçait la clôture de toutes les prestations examinées, y
@@ -459,7 +459,7 @@ export default async function handler(req, res) {
               if (r.prestataire_id) {
                 await notifier({ user_id: r.prestataire_id, type: "system",
                     title: "Retenue levée ✅",
-                    body: "Le délai de retenue est écoulé sans réclamation confirmée : votre versement est de nouveau programmé."}, SUPABASE_URL, headers).catch(() => {});
+                    body: "Le délai de retenue est écoulé sans réclamation confirmée : votre versement est de nouveau programmé."}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
               }
             }
           } else if (levees.status !== 400) {
@@ -659,7 +659,7 @@ export default async function handler(req, res) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
                   body: JSON.stringify({ payout_status: "failed" }),
-                }).catch(() => {});
+                }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
                 console.error(m.payout_amount == null
                   ? `[versements] montant absent — prestation ${m.id} : payout_amount non renseigné à la clôture, virement à faire à la main`
                   : `[versements] montant trop faible (${cents} c) — prestation ${m.id}`);
@@ -698,7 +698,7 @@ export default async function handler(req, res) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
                   body: JSON.stringify({ payout_status: "failed" }),
-                }).catch(() => {});
+                }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
                 console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status);
               }
             } catch (e) {
@@ -707,7 +707,7 @@ export default async function handler(req, res) {
               await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
                 body: JSON.stringify({ payout_status: "pending" }),
-              }).catch(() => {});
+              }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
               console.error(`[versements] échec sur ${m.id} :`, e.message);
             }
           }
@@ -1738,14 +1738,14 @@ ${(() => {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
               body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `⏰ Rappel prestation demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(clientName, "client") }),
-            }).catch(()=>{})
+            }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message))
           );
           if (prestaEmail) sends.push(
             fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
               body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel prestation demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
-            }).catch(()=>{})
+            }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message))
           );
           if (smsEnabled) {
             // Deux messages distincts : « Bonne prestation ! » n'a pas de sens pour
@@ -1813,7 +1813,7 @@ ${(() => {
                 const detail = await r.text().catch(() => "");
                 console.error(`[relance] notification refusée (${r.status}) : ${detail.slice(0, 200)}`);
               }
-              await sendPushToUser(userId, { title, body: corps, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+              await sendPushToUser(userId, { title, body: corps, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
               return 1;
             };
 
@@ -1893,10 +1893,10 @@ ${(() => {
             const vSends = [];
             // Relance prestataire seulement s'il n'a pas encore confirmé
             if (!m.validation_prestataire && prestaEmail)
-              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[prestaEmail], subject:`📋 Confirmez la fin de votre prestation du ${m.date} — ALANE`, html: prestaHtml }) }).catch(()=>{}));
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[prestaEmail], subject:`📋 Confirmez la fin de votre prestation du ${m.date} — ALANE`, html: prestaHtml }) }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)));
             // Relance client seulement si prestataire a confirmé mais client n'a pas encore validé
             if (m.validation_prestataire && !m.validation_client && clientEmail)
-              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre prestation du ${m.date} — ALANE`, html: clientHtml }) }).catch(()=>{}));
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre prestation du ${m.date} — ALANE`, html: clientHtml }) }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)));
             if (smsEnabled) {
               const smsPresta  = smsTexte(`ALANE - Confirmez la fin de votre prestation ${m.metier||"Prestation"} du ${m.date} pour recevoir votre paiement. alane.fr`);
               const smsCashback = smsTexte(`ALANE - Votre prestataire a confirme la prestation du ${m.date}. Validez-la pour obtenir votre cashback. alane.fr`);
@@ -2011,9 +2011,9 @@ ${(() => {
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
                 }).catch(e => console.error("cron cashback update error:", e)),
                 // Notification client
-                notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${euros(cashbackEarned)}` : ""}`}, SUPABASE_URL, headers).catch(()=>{}),
+                notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${euros(cashbackEarned)}` : ""}`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Notification prestataire
-                m.prestataire_id && notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(()=>{}),
+                m.prestataire_id && notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Email prestataire — réutilise userMap déjà chargé
                 (async () => {
                   if (!m.prestataire_id || !RESEND_API_KEY) return;
@@ -2024,7 +2024,7 @@ ${(() => {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
                     body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${euros(partPrestataire)}</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><div style="margin-top:18px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.06)"><div style="font-weight:700;font-size:12px;margin-bottom:5px">${esc(INFORMATION_FISCALE.titre)}</div><div style="font-size:11px;line-height:1.7;color:rgba(255,255,255,0.75)">${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}</div></div><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
-                  }).catch(()=>{});
+                  }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
                 })(),
                 // Email client — confirmation auto-validation
                 (async () => {
@@ -2036,7 +2036,7 @@ ${(() => {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
                     body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${euros(cashbackEarned)}</strong> a été crédité sur votre wallet.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
-                  }).catch(()=>{});
+                  }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
                 })(),
               ]);
               autoValidated++;
@@ -2087,21 +2087,21 @@ ${(() => {
               const sends2 = [];
               // In-app notification prestataire
               if (m.prestataire_id)
-                sends2.push(notifier({ user_id: m.prestataire_id, type: "mission", title: "Confirmez la fin de votre prestation ✅", body: `Votre prestation "${mLabel}" est terminée. Confirmez depuis votre espace pour déclencher votre paiement.`}, SUPABASE_URL, headers).catch(() => {}));
+                sends2.push(notifier({ user_id: m.prestataire_id, type: "mission", title: "Confirmez la fin de votre prestation ✅", body: `Votre prestation "${mLabel}" est terminée. Confirmez depuis votre espace pour déclencher votre paiement.`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)));
               if (RESEND_API_KEY && prestaEmail2)
-                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Prestation terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Prestation terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre prestation <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Prestation terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Prestation terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre prestation <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)));
               if (smsEnabled && m.prestataire_id) {
                 const prestaPhone2 = userMap[m.prestataire_id]?.meta?.telephone;
                 if (prestaPhone2) sends2.push(sendSms(BREVO_API_KEY, prestaPhone2, `✅ ALANE - Votre prestation ${mLabel} est terminée. Confirmez depuis l'app pour recevoir votre paiement. — alane.fr`));
               }
               if (RESEND_API_KEY && clientEmail2)
-                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Prestation terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Prestation terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La prestation <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: resendBody({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Prestation terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Prestation terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La prestation <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)));
               await Promise.all(sends2);
               endNotifSent += sends2.length;
               await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" },
                 body: JSON.stringify({ end_notif_sent: true }),
-              }).catch(()=>{});
+              }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
             } catch(e) { console.error(`end-notif mission ${m.id}:`, e); }
           }
 
@@ -2118,7 +2118,7 @@ ${(() => {
                     type: "mission",
                     title: "Pointage manquant ⚠️",
                     body: `L'horaire de votre prestation « ${mLabel2} » est dépassé et vous n'avez pas signalé votre arrivée. Ouvrez l'application pour la démarrer, sinon elle ne pourra pas être validée ni payée.`,
-                  }, SUPABASE_URL, headers).catch(() => {});
+                  }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
               }
               if (smsEnabled && m.prestataire_id) {
                 const tel = userMap[m.prestataire_id]?.meta?.telephone;
@@ -2155,13 +2155,13 @@ ${(() => {
           // est donc close. La laisser ouverte avec son paiement remboursé
           // permettrait à un prestataire de l'accepter sans contrepartie.
           body: JSON.stringify({ status: "refused", prestataire_id: null }),
-        }).catch(() => {});
+        }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
         if (zm.client_id) {
           await notifier({
               user_id: zm.client_id, type: "mission",
               title: "Prestataire non disponible ⏱️",
               body: `Le prestataire n'a pas répondu à temps pour la prestation "${zm.titre || zm.metier || ""}".${rembOk ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
-            }, SUPABASE_URL, headers).catch(() => {});
+            }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
         }
       }));
       console.log(`cron: expired ${zombies.length} pending_acceptance missions`);
