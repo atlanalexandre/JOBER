@@ -75,6 +75,13 @@ export const formatMontant = (v) => {
   return Number.isFinite(v === null || v === "" ? NaN : n) ? n.toFixed(2).replace(".", ",") + " €" : "—";
 };
 
+// L'abonnement annuel vaut le prix mensuel moins 20 %, sur douze mois — règle
+// confirmée le 25/09/2026. Premium : 29,99 € × 12 × 0,8 = 287,90 € par an, soit
+// 23,99 € par mois. L'écran affichait Math.round(29,99 × 0,8) = « 24 € »/mois,
+// sans dire que l'abonnement se paie à l'année.
+export const REMISE_ANNUELLE = 0.2;
+export const prixAnnuel = (mensuel) => Math.round(Number(mensuel) * 12 * (1 - REMISE_ANNUELLE) * 100) / 100;
+
 export const CASHBACK_TIERS = [
   { id:"standard", min:0,  max:2,  rate:0.005,  label:"Standard", icon:"🥉", color:"#8B8FA8" },
   { id:"silver",   min:3,  max:5,  rate:0.0075, label:"Silver",   icon:"🥈", color:"#C0C0C0" },

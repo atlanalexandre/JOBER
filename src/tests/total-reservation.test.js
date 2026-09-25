@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatMontant, calcCashback } from "../constants/plans.js";
+import { formatMontant, calcCashback, prixAnnuel } from "../constants/plans.js";
 
 // Le total de la réservation était calculé, puis immédiatement transformé en
 // texte français, puis relu comme un nombre. JavaScript ne lit pas la virgule
@@ -45,5 +45,19 @@ describe("formatMontant écrit un montant à la française", () => {
     expect(formatMontant(null)).toBe("—");
     expect(formatMontant(undefined)).toBe("—");
     expect(formatMontant("abc")).toBe("—");
+  });
+});
+
+// Règle confirmée le 25/09/2026 : annuel = mensuel × 12, moins 20 %.
+// L'écran affichait Math.round(29,99 × 0,8) = « 24 € »/mois.
+describe("prixAnnuel", () => {
+  it("Premium et Elite, au centime", () => {
+    expect(prixAnnuel(29.99)).toBe(287.9);
+    expect(prixAnnuel(79.99)).toBe(767.9);
+    expect(formatMontant(Math.round(prixAnnuel(29.99) / 12 * 100) / 100)).toBe("23,99 €");
+    expect(formatMontant(Math.round(prixAnnuel(79.99) / 12 * 100) / 100)).toBe("63,99 €");
+  });
+  it("accepte un prix saisi en texte", () => {
+    expect(prixAnnuel("29.99")).toBe(287.9);
   });
 });
