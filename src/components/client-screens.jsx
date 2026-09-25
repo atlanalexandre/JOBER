@@ -1954,7 +1954,10 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const basePrice = selectedJob
     ? (() => { const t = METIERS_TARIFS[s.id]?.[selectedJob]; return t ? prixClient(t.default, s.id) : 12; })()
     : 0;
-  const urgentPrice = basePrice + surcharge;
+  // En urgence, c'est le premier prestataire de la liste qui est réservé : le
+  // prix affiché part de SON tarif, comme celui que calcule l'écran de réservation.
+  const tarifStandardUrgence = filteredProviders[0]?.rateNum || basePrice;
+  const urgentPrice = tarifStandardUrgence + surcharge;
 
   // Bouton urgence réutilisable
   const UrgentToggle = ({ showBeforeJob=false }) => (
@@ -2158,8 +2161,8 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 {urgentMode && <Badge color={C.accent} small>🚨 Urgence</Badge>}
               </div>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{urgentPrice.toFixed(2).replace(".",",")} € HT/h</div>
-                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{basePrice.toFixed(2).replace(".",",")} € HT/h</div>}
+                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{(urgentMode ? urgentPrice : basePrice).toFixed(2).replace(".",",")} € HT/h</div>
+                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h</div>}
               </div>
             </div>
             {urgentMode && (
@@ -2182,7 +2185,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:20, textAlign:"left" }}>
                 <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:6 }}>💶 Détail du tarif urgence</div>
                 {[
-                  ["Tarif standard", `${basePrice.toFixed(2).replace(".",",")} € HT/h`],
+                  ["Tarif standard", `${tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h`],
                   ["Surcoût urgence", `+${surcharge},00 € HT/h`],
                   ["Tarif urgence total", `${urgentPrice.toFixed(2).replace(".",",")} € HT/h`],
                 ].map(([l,v],i)=>(
@@ -2194,7 +2197,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontSize:11, color:C.textSub, marginTop:6 }}>Le surcoût sera affiché et confirmé avant le paiement.</div>
               </div>
 
-              <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, urgentPrice, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
+              <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
                 🚀 Envoyer la prestation maintenant
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
@@ -2891,7 +2894,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [localUrgent, setLocalUrgent] = useState(false);
   if (!p) return null;
   const isUrgent = p.urgentMode || localUrgent || false;
-  const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
@@ -3001,6 +3003,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
        && ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim()));
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
+  // Surcoût urgence réglé dans le back-office (2 € HT/h par défaut).
+  const [surcoutUrgence, setSurcoutUrgence] = useState(2);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -3013,11 +3017,16 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
       .then(({ data }) => { if (data?.value) setFraisSettings(data.value); });
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseBooking(Boolean(data.value)); });
+    supabase.from("platform_settings").select("value").eq("key","urgency_surcharge").single()
+      .then(({ data }) => { if (data?.value != null && Number.isFinite(Number(data.value))) setSurcoutUrgence(Number(data.value)); });
   }, []);
 
 
   const baseRate = p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers');
-  const tarifHoraire = isUrgent ? (urgentPrice || (baseRate + 2)) : baseRate;
+  // Le tarif urgent part du tarif DE CE PRESTATAIRE. Il partait du tarif par
+  // défaut du métier, transmis par l'écran d'urgence : un prestataire à 18 €/h
+  // dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif.
+  const tarifHoraire = isUrgent ? baseRate + surcoutUrgence : baseRate;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -3369,7 +3378,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </div>
             {isUrgent && (
               <div style={{ marginTop:10, background:`${C.accentGold}15`, borderRadius:8, padding:"8px 10px", fontSize:11, color:C.text }}>
-                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif standard + 2,00 € surcoût urgence)
+                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif du prestataire + {formatMontant(surcoutUrgence)} de surcoût urgence)
               </div>
             )}
           </div>

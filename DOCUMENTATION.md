@@ -2105,6 +2105,12 @@ d'un indicateur `same_day` envoyé par le navigateur, sans jamais connaître l'u
 (`texteDelaiReponse()` de `api/_temps.js`, heure de Paris) ; les boutons Accepter / Refuser de
 l'e-mail expirent à la même échéance. `same_day` n'est plus lu.
 
+**Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
+(`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
+l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du métier** : un
+prestataire à 18 €/h dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif. Le
+serveur ne l'aurait pas vu — le verrou de création ne pose qu'une borne basse.
+
 ### Un secteur fermé ne montre plus rien
 
 **Corrigé le 16/08/2026.** Le contrôle du secteur existait sur le paiement, pas sur la
