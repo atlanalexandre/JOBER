@@ -1520,7 +1520,9 @@ export default async function handler(req, res) {
         if (photoUrl) {
           photoEntry = { id: "photo_virtual", prestataire_id: profileId, type: "photo", storage_path: null, verified: false, created_at: null, signedUrl: photoUrl, isVirtual: true };
         }
-      } catch (e) { void e; }
+      } catch (e) {
+        console.error(`[list_docs] photo de ${profileId} illisible :`, e.message);
+      }
 
       // Générer des URLs signées (1h) pour chaque doc — bucket "Documents" (majuscule)
       const withUrls = await Promise.all(docsArray.map(async (doc) => {
@@ -1532,7 +1534,11 @@ export default async function handler(req, res) {
           });
           const sj = await sr.json();
           return { ...doc, signedUrl: sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null };
-        } catch (e) { void e; return { ...doc, signedUrl: null }; }
+        } catch (e) {
+          // Sans lien, le document s'affiche sans aperçu : on le dit, on ne le cache pas.
+          console.error(`[list_docs] lien signé de ${doc.storage_path} impossible :`, e.message);
+          return { ...doc, signedUrl: null };
+        }
       }));
 
       // ── Ce qu'il faut pour vérifier VRAIMENT, et non regarder le PDF ──

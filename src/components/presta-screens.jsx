@@ -9,9 +9,12 @@ import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
 
-const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
-const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
-const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
+// Mêmes formats que ceux qu'accepte le bucket `Documents` (allowed_mime_types :
+// PDF, JPEG, PNG, HEIC/HEIF). Le WebP était proposé ici et refusé par le
+// stockage : le prestataire recevait une erreur d'envoi sans comprendre pourquoi.
+const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/heic","image/heif"]);
+const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","heic","heif"]);
+const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.heic,.heif";
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
 // Ce que le prestataire perçoit réellement : tarif × heures × jours.
