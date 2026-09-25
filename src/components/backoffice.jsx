@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
-import { formatMontant } from "../constants/plans.js";
+import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
@@ -3018,7 +3018,7 @@ export function BOSettingsTab() {
   const [saving, setSaving]   = useState({});
   const [saved, setSaved]     = useState({});
   const [localPl,  setLocalPl]  = useState({ free:2, premium:10, elite:999 });
-  const [localSp,  setLocalSp]  = useState({ premium:{ monthly:29, yearly:290 }, elite:{ monthly:79, yearly:790 } });
+  const [localSp,  setLocalSp]  = useState({ premium:{ monthly:29.99, yearly:287.9 }, elite:{ monthly:79.99, yearly:767.9 } });
   // Comparaison entre le prix AFFICHÉ (ce réglage) et le prix PRÉLEVÉ (Stripe).
   const [prixVerif, setPrixVerif] = useState(null);
   const verifierPrix = async () => {
@@ -3129,6 +3129,14 @@ export function BOSettingsTab() {
                       style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
                     <span style={{ color:C.textSub, fontSize:12 }}>€</span>
                   </div>
+                  {/* Règle : annuel = mensuel × 12 − 20 %. Rappelée ici parce que le
+                      montant saisi est affiché tel quel aux prestataires, et doit
+                      être celui du tarif annuel créé dans Stripe. */}
+                  {period === "yearly" && Number(String(localSp[plan]?.monthly ?? "").replace(",", ".")) > 0 && (
+                    <div style={{ color:C.textMuted, fontSize:10, marginTop:3 }}>
+                      −20 % : {formatMontant(prixAnnuel(String(localSp[plan].monthly).replace(",", ".")))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -549,6 +549,15 @@ prélèvement récurrent, la réclamation n'arrive qu'au premier relevé bancair
 « Comparer avec les tarifs Stripe » dans les réglages du back-office, et un passage automatique
 dans le balayage quotidien, qui alerte par courriel.
 
+**L'abonnement annuel vaut le prix mensuel × 12, moins 20 %** (règle confirmée le 25/09/2026) :
+Premium 287,90 €/an (soit 23,99 €/mois), Elite 767,90 €/an (63,99 €/mois) pour 29,99 € et
+79,99 € par mois. `prixAnnuel()` de `src/constants/plans.js` porte la règle. L'écran affiche
+le prix annuel **réglé dans le back-office** (`subscription_prices.<formule>.yearly`, celui que ce
+contrôle compare à Stripe), ramené au mois et suivi de « facturés une fois par an » ; à défaut
+de réglage, la règle. Il affichait `Math.round(mensuel × 0,8)` — « 24 € » —, arrondi à l'euro et
+sans dire que le prélèvement est annuel. Le back-office rappelle sous chaque champ annuel le
+montant qu'impose la règle.
+
 **Il ne corrige rien, et c'est délibéré** : baisser le prélèvement léserait l'entreprise,
 relever l'affichage léserait le prestataire. C'est un arbitrage, pas une réparation — un test
 interdit d'ailleurs toute écriture depuis ce module.

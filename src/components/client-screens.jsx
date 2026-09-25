@@ -4,7 +4,7 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
-import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
+import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER, prixAnnuel, REMISE_ANNUELLE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
@@ -9231,6 +9231,12 @@ export function AbonnementPrestaScreen({ onBack }) {
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
     const limit = planLimits?.[p.id];
     const monthlyPrice = subPrices?.[p.id]?.monthly;
+    // Le prix annuel est celui réglé dans le back-office — c'est lui que le
+    // contrôle compare au tarif Stripe réellement prélevé. À défaut, la règle
+    // du prix mensuel moins 20 %.
+    const prixMensuel = monthlyPrice != null ? Number(monthlyPrice) : p.price;
+    const reglageAnnuel = Number(subPrices?.[p.id]?.yearly);
+    const yearlyPrice = p.price === 0 ? 0 : (reglageAnnuel > 0 ? reglageAnnuel : prixAnnuel(prixMensuel));
     const features = [...p.features];
     if (limit != null) {
       if (p.id === "elite") {
@@ -9244,6 +9250,7 @@ export function AbonnementPrestaScreen({ onBack }) {
       ...p,
       ...(limit != null ? { prestations: limit } : {}),
       ...(monthlyPrice != null ? { price: monthlyPrice } : {}),
+      yearlyPrice,
       features,
     };
   });
@@ -9382,7 +9389,7 @@ export function AbonnementPrestaScreen({ onBack }) {
         )}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
           <div style={{ display:"flex", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:4 }}>
-            {[{id:"monthly",label:"Mensuel"},{id:"yearly",label:"Annuel -20%"}].map(b=>(
+            {[{id:"monthly",label:"Mensuel"},{id:"yearly",label:`Annuel −${Math.round(REMISE_ANNUELLE*100)} %`}].map(b=>(
               <button key={b.id} onClick={()=>setBilling(b.id)} style={{ padding:"9px 18px", border:"none", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:billing===b.id?700:500, background:billing===b.id?C.violet:"transparent", color:billing===b.id?C.white:C.textSub }}>
                 {b.label}
               </button>
@@ -9390,7 +9397,9 @@ export function AbonnementPrestaScreen({ onBack }) {
           </div>
         </div>
         {effectivePlans.map(plan=>{
-          const price=billing==="yearly"?Math.round(plan.price*0.8):plan.price;
+          // En annuel : l'équivalent mensuel, au centime, et le montant réellement
+          // prélevé chaque année, affiché juste en dessous.
+          const price=billing==="yearly"?Math.round(plan.yearlyPrice/12*100)/100:plan.price;
           const active=current===plan.id;
           return (
             <div key={plan.id} style={{ background:active?plan.color+"15":"#0D1B3E", border:`2px solid ${active?plan.color:C.border}`, borderRadius:r+4, padding:"16px", marginBottom:12, position:"relative" }}>
@@ -9400,6 +9409,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{plan.label}</div>
                   <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":formatMontant(price)}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
+                  {price>0&&billing==="yearly"&&<div style={{ fontSize:11, color:C.textSub }}>soit {formatMontant(plan.yearlyPrice)} facturés une fois par an</div>}
                 </div>
               </div>
               {plan.features.map((f,i)=>(
