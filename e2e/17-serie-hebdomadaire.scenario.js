@@ -74,7 +74,7 @@ test("semaine validée par le client : la suivante est créée, débitée seule,
   const [presta] = await sql(`select body from notifications where user_id = '${p.id}' and ref_id = '${s.id}' and title = 'Nouvelle demande de prestation'`);
   expect(presta?.body, "le prestataire est prévenu").toContain("Vous avez 4 heures");
   const [cl] = await sql(`select body from notifications where user_id = '${c.id}' and ref_id = '${s.id}'`);
-  expect(cl?.body, "le client sait ce qui a été débité").toContain("110,98 €");
+  expect(cl?.body, "le client sait ce qui a été débité").toMatch(/110,98\s€ débités/);
 
   // Le versement de la semaine validée suit la règle commune : 48 h après sa fin.
   const [e] = await sql(`select payout_status, payout_due_at from missions where id = '${m.id}'`);
