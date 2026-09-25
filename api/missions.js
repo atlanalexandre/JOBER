@@ -1,7 +1,7 @@
 import { resendBody, sendEmail } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
@@ -5067,21 +5067,27 @@ export default async function handler(req, res) {
       const sHours = esc(String(hours || "?"));
       const sTarif = tarif_horaire ? esc(Number(tarif_horaire).toFixed(2).replace(".",",")) : "";
       // Verify caller has a mission with this prestataire
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`, { headers });
+      // La plus récente d'abord : c'est celle que le client vient d'affecter.
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id,acceptance_deadline&order=created_at.desc&limit=1`, { headers });
       const mCheck = await mCheckRes.json().catch(() => []);
       if (!Array.isArray(mCheck) || mCheck.length === 0) return res.status(403).json({ error: "Non autorisé" });
       const missionId = mCheck[0].id;
+      // Le délai annoncé est celui que le serveur a fixé à l'affectation
+      // (20 min, 1 h ou 4 h — voir delaiReponseMinutes). L'e-mail annonçait
+      // « 24 h » et la notification déduisait 1 h ou 4 h d'un indicateur envoyé
+      // par le navigateur, sans jamais connaître le cas urgent.
+      const echeanceMs = mCheck[0].acceptance_deadline ? new Date(mCheck[0].acceptance_deadline).getTime() : null;
+      const delai = texteDelaiReponse(echeanceMs);
 
       // Notification in-app (S-06) : insérée ici en service role, après la
       // vérification ci-dessus que l'appelant est bien le client de cette mission.
       // Le front l'insérait lui-même, ce qui obligeait à laisser la policy
       // notifs_insert ouverte à tout compte connecté.
-      const delaiTexte = payload.same_day ? "1 heure" : "4 heures";
       await notifier({
           user_id: prestataire_id,
           type:    "prestation",
           title:   "Nouvelle demande de prestation",
-          body:    `Un client vous propose une prestation. Vous avez ${delaiTexte} pour accepter ou refuser.`,
+          body:    `Un client vous propose une prestation. ${delai.phrase}`,
         }, SUPABASE_URL, headers).catch(e => console.error("[notify_prestataire] insertion notification échouée :", e.message));
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
@@ -5095,13 +5101,14 @@ export default async function handler(req, res) {
       if (!RESEND_KEY) console.error("[notify_prestataire] RESEND_API_KEY absente — email au prestataire NON envoyé.");
       if (!prestaEmail) console.error("[notify_prestataire] aucune adresse email pour ce prestataire — email NON envoyé.");
       if (RESEND_KEY && prestaEmail) {
-        // Generate one-click action tokens (valid 24h)
+        // Liens de réponse en un clic, valables jusqu'à l'échéance de réponse :
+        // au-delà, la demande est expirée et le serveur refuserait de toute façon.
         const EMAIL_SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
         let acceptUrl = `${appUrl()}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
         let refuseUrl = `${appUrl()}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
         if (EMAIL_SECRET && missionId) {
           const { createHmac } = await import("crypto");
-          const exp = Math.floor(Date.now() / 1000) + 86400;
+          const exp = Math.floor((echeanceMs || Date.now() + 86400000) / 1000);
           const makeToken = (act) => createHmac("sha256", EMAIL_SECRET).update(`${act}.${missionId}.${prestataire_id}.${exp}`).digest("base64url");
           acceptUrl += `&exp=${exp}&sig=${encodeURIComponent(makeToken("accept"))}`;
           refuseUrl += `&exp=${exp}&sig=${encodeURIComponent(makeToken("refuse"))}`;
@@ -5117,7 +5124,7 @@ export default async function handler(req, res) {
             // Version texte : sans elle, l'email part en HTML seul, ce qui pèse
             // lourd dans le classement en spam. Les liens d'acceptation et de
             // refus y sont repris en clair pour rester utilisables.
-            text: `Nouvelle demande de prestation sur ALANE\n\n${sLabel} — ${sVille}\n${sDate}${sHdeb ? " à " + sHdeb : ""}\n${sHours} h${sTarif ? " · " + sTarif + " EUR/h" : ""}\n${sAdresse ? sAdresse + "\n" : ""}\nAccepter : ${acceptUrl}\nRefuser : ${refuseUrl}\n\nCes liens sont valables 24 h.\nL'équipe ALANE`,
+            text: `Nouvelle demande de prestation sur ALANE\n\n${sLabel} — ${sVille}\n${sDate}${sHdeb ? " à " + sHdeb : ""}\n${sHours} h${sTarif ? " · " + sTarif + " EUR/h" : ""}\n${sAdresse ? sAdresse + "\n" : ""}\n${delai.phrase}\n\nAccepter : ${acceptUrl}\nRefuser : ${refuseUrl}\n\nL'équipe ALANE`,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
               <h2 style="color:#A29BFE;margin:0 0 12px">Nouvelle demande de prestation 🔔</h2>
               <p>Bonjour ${esc(prestaName)},</p>
@@ -5133,11 +5140,11 @@ export default async function handler(req, res) {
                 <td style="padding-right:8px"><a href="${acceptUrl}" style="display:block;text-align:center;background:#10D98F;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">✅ Accepter</a></td>
                 <td style="padding-left:8px"><a href="${refuseUrl}" style="display:block;text-align:center;background:#F25E5E;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">❌ Refuser</a></td>
               </tr></table>
-              <p style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.45)">Ces boutons sont valables 24h. Passé ce délai, connectez-vous à l'application.</p>
+              <p style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.7)">${delai.phrase} Passé ce délai, la demande expire.</p>
               <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
-        }).catch(() => {});
+        }).catch(e => console.error("[notify_prestataire] e-mail de nouvelle demande non envoyé :", e.message));
       } else {
         console.log("[notify_prestataire] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!prestaEmail);
       }

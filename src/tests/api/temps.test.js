@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -351,5 +351,31 @@ describe("dateDuJourFr", () => {
   it("suit le changement d'heure", () => {
     expect(dateDuJourFr(Date.parse("2026-01-06T23:30:00Z"))).toBe("2026-01-07");
     expect(dateDuJourFr(Date.parse("2026-01-06T22:30:00Z"))).toBe("2026-01-06");
+  });
+});
+
+describe("texteDelaiReponse", () => {
+  // Envoyé juste après l'affectation : il reste (presque) tout le délai fixé
+  // par delaiReponseMinutes — 20 min, 1 h ou 4 h. Jamais « 24 h ».
+  const maintenant = Date.UTC(2026, 8, 25, 12, 15, 0); // 14 h 15 à Paris
+  it("urgent : 20 minutes, heure de Paris", () => {
+    expect(texteDelaiReponse(maintenant + 20 * 60000, maintenant).phrase)
+      .toBe("Vous avez 20 minutes pour accepter ou refuser, soit jusqu'à 14 h 35.");
+  });
+  it("même jour : 1 heure", () => {
+    expect(texteDelaiReponse(maintenant + 60 * 60000 - 4000, maintenant).phrase)
+      .toBe("Vous avez 1 heure pour accepter ou refuser, soit jusqu'à 15 h 14.");
+  });
+  it("standard : 4 heures", () => {
+    expect(texteDelaiReponse(maintenant + 240 * 60000, maintenant).phrase)
+      .toBe("Vous avez 4 heures pour accepter ou refuser, soit jusqu'à 18 h 15.");
+  });
+  it("heure d'hiver", () => {
+    const hiver = Date.UTC(2026, 0, 6, 13, 0, 0); // 14 h à Paris
+    expect(texteDelaiReponse(hiver + 90 * 60000, hiver).phrase)
+      .toBe("Vous avez 1 h 30 pour accepter ou refuser, soit jusqu'à 15 h 30.");
+  });
+  it("échéance inconnue : aucune durée inventée", () => {
+    expect(texteDelaiReponse(null).phrase).not.toMatch(/\d/);
   });
 });
