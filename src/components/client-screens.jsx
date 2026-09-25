@@ -1956,7 +1956,11 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     : 0;
   // En urgence, c'est le premier prestataire de la liste qui est réservé : le
   // prix affiché part de SON tarif, comme celui que calcule l'écran de réservation.
-  const tarifStandardUrgence = filteredProviders[0]?.rateNum || basePrice;
+  // En urgence, la demande part à UN prestataire : le premier disponible de la
+  // liste (et à défaut le premier tout court). Il était pris sans regarder sa
+  // disponibilité, alors que l'écran parlait des prestataires disponibles.
+  const prestaUrgence = filteredProviders.find(p => p.available) || filteredProviders[0];
+  const tarifStandardUrgence = prestaUrgence?.rateNum || basePrice;
   const urgentPrice = tarifStandardUrgence + surcharge;
 
   // Bouton urgence réutilisable
@@ -2176,9 +2180,12 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {urgentMode ? (
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"28px 20px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)", border:`2px solid ${C.accent}33` }}>
               <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
-              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Prestation envoyée à tous les prestataires</h3>
+              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Réservation urgente</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
-                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la prestation.</strong>
+                {/* L'écran annonçait une diffusion à tous les prestataires, « le premier
+                    qui accepte assure la prestation ». Ce n'est pas ce qui se passe : la
+                    demande part à un seul prestataire, qui a 20 minutes pour répondre. */}
+                Votre demande part à <strong style={{ color:C.text }}>{prestaUrgence?.name || "un prestataire disponible"}</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong>, qui a <strong style={{ color:C.accent }}>20 minutes pour accepter</strong>. Sans réponse, elle est proposée à un autre prestataire ou intégralement remboursée.
               </p>
 
               {/* Détail surcoût */}
@@ -2197,8 +2204,8 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontSize:11, color:C.textSub, marginTop:6 }}>Le surcoût sera affiché et confirmé avant le paiement.</div>
               </div>
 
-              <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
-                🚀 Envoyer la prestation maintenant
+              <Btn full disabled={!prestaUrgence} onClick={()=>onNavigate("booking", { ...prestaUrgence, urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
+                {prestaUrgence ? "🚀 Envoyer la prestation maintenant" : "Aucun prestataire pour ce métier"}
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Annuler — choisir un prestataire manuellement
@@ -3783,7 +3790,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </h3>
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
-                ? <>Votre prestation a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
+                ? <>Votre demande a été envoyée à {p.name || "votre prestataire"}, qui a 20 minutes pour l'accepter. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
                 : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera versé au prestataire 48 h après la fin de la prestation.</>
               }
             </p>

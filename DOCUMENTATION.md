@@ -1061,7 +1061,7 @@ toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener
 
 | Écriture | Action serveur | Pourquoi |
 |---|---|---|
-| Notification | `notify_prestataire` | Un compte pouvait notifier n'importe qui, avec un texte libre |
+| Notification | `prevenirNouvelleDemande()`, appelée à l'affectation | Un compte pouvait notifier n'importe qui, avec un texte libre. Depuis le 25/09/2026, plus aucune notification de nouvelle demande ne part du navigateur : `notify_prestataire` ne fait plus rien (gardée pour les onglets d'une version antérieure) |
 | Clôture de mission + cashback | `complete` | Le client écrivait son propre solde ; taux de `plans.js` au lieu de la base, et lecture-écriture non atomique |
 | Refus après délai expiré | `acceptance_timeout` | Le serveur revérifie que `acceptance_deadline` est réellement dépassée |
 | Identifiant du paiement et délai de réponse du prestataire | `assign_after_payment`, `affecter_tiers` | Le paiement est relu chez Stripe ; le délai est calculé par le serveur. Le navigateur les fournissait jusqu'au 24/09/2026 (voir §6) |
@@ -1853,6 +1853,10 @@ personne, sa commande tient. À court de candidats, la prestation bascule en `op
 diffusion : c'est alors le prestataire qui se propose, ce qui rend son autonomie visible et
 horodatée.
 
+Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
+il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
+25/09/2026, la cascade l'affectait sans aucune notification.
+
 **Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
 conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
 pas le pénal, qui reste personnel), et fondement contractuel des mécanismes de détection avec
@@ -2101,15 +2105,28 @@ délai, et le serveur ignore toute valeur reçue.
 **Ce délai est aussi celui qu'on annonce au prestataire.** L'e-mail « Nouvelle demande de
 prestation » disait « valable 24 h », et la notification déduisait « 1 heure » ou « 4 heures »
 d'un indicateur `same_day` envoyé par le navigateur, sans jamais connaître l'urgence. Depuis le
-25/09/2026, `notify_prestataire` relit `acceptance_deadline` et en tire la phrase
-(`texteDelaiReponse()` de `api/_temps.js`, heure de Paris) ; les boutons Accepter / Refuser de
-l'e-mail expirent à la même échéance. `same_day` n'est plus lu.
+25/09/2026, la phrase est tirée d'`acceptance_deadline` (`texteDelaiReponse()` de
+`api/_temps.js`, heure de Paris) ; les boutons Accepter / Refuser de l'e-mail expirent à la même
+échéance.
+
+**Le prestataire est prévenu par le serveur, à l'affectation** — `prevenirNouvelleDemande()` de
+`api/missions.js`, appelée par `assign_after_payment`, `affecter_tiers` et la cascade. Elle relit
+tout dans la base : notification (dans l'application et push), e-mail avec réponse en un clic,
+SMS. C'était le navigateur qui déclenchait l'envoi, avec ses propres données : le tarif affiché
+était le tarif de base même en urgence, et sur une prestation chez un tiers — où c'est la
+plateforme qui choisit — on tentait de prévenir le prestataire de l'écran au lieu du vrai.
 
 **Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
 (`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
 l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du métier** : un
 prestataire à 18 €/h dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif. Le
 serveur ne l'aurait pas vu — le verrou de création ne pose qu'une borne basse.
+
+**Une réservation urgente part à un seul prestataire** : le premier *disponible* de la liste.
+L'écran annonçait une diffusion — « tous les prestataires disponibles reçoivent votre demande,
+le premier qui accepte assure la prestation » — qui n'existe pas ; il prenait en outre le premier
+de la liste sans regarder sa disponibilité. Corrigé le 25/09/2026 : l'écran nomme le prestataire
+sollicité et son délai de 20 minutes.
 
 ### Un secteur fermé ne montre plus rien
 
