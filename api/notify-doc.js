@@ -16,6 +16,57 @@ const DOC_LABELS = {
   autre:    "Autre document",
 };
 
+// Types acceptés — ceux de la contrainte CHECK de `documents.type`. Un type hors
+// de cette liste serait refusé par la base : on le refuse ici, avec un message.
+const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre"];
+
+// ── Enregistrer le document en base ─────────────────────────────────────────
+//
+// Le navigateur l'écrivait lui-même par un `upsert` (« insérer, ou mettre à jour
+// si la pièce existe déjà »). Or un upsert réclame le droit de MODIFIER toutes
+// les colonnes envoyées, `prestataire_id` compris — droit retiré au navigateur le
+// 17/08/2026 (migration `colonnes_non_modifiables`), à juste titre : c'est ce qui
+// l'empêchait de se déclarer lui-même « vérifié ». Chaque dépôt était donc
+// refusé par la base (« permission denied for table documents ») : le fichier
+// arrivait dans le bucket, la ligne jamais, et le back-office ne voyait rien.
+// Constaté en recette le 25/09/2026 (scénario e2e/14).
+//
+// Le serveur l'écrit désormais, après avoir vérifié que le fichier est bien
+// dans le dossier de l'appelant. Et un dépôt REMET la pièce en attente : un
+// document remplacé n'a été vu par personne, il ne peut pas hériter de la
+// validation — ni de la date de validité — du précédent.
+async function enregistrerDocument(callerId, docType, SUPABASE_URL, hdrs) {
+  const chemin = `${callerId}/${docType}`;
+  const lr = await fetch(`${SUPABASE_URL}/storage/v1/object/list/Documents`, {
+    method: "POST",
+    headers: { ...hdrs, "Content-Type": "application/json" },
+    body: JSON.stringify({ prefix: callerId, search: docType, limit: 100 }),
+  });
+  const objets = await lr.json().catch(() => null);
+  if (!lr.ok || !Array.isArray(objets)) {
+    console.error(`[notify-doc] bucket illisible pour ${chemin} : ${lr.status}`);
+    return { ok: false, code: 502, error: "Le document n'a pas pu être vérifié. Réessayez." };
+  }
+  if (!objets.some(o => o.name === docType)) {
+    return { ok: false, code: 404, error: "Fichier introuvable : l'envoi n'a pas abouti. Réessayez." };
+  }
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
+    method: "POST",
+    headers: { ...hdrs, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({
+      prestataire_id: callerId, type: docType, storage_path: chemin,
+      verified: false, verified_at: null, expires_at: null, relance_expiration_at: null,
+      created_at: new Date().toISOString(),
+    }),
+  });
+  const lignes = await r.json().catch(() => null);
+  if (!r.ok || !Array.isArray(lignes) || lignes.length === 0) {
+    console.error(`[notify-doc] document ${chemin} NON enregistré : ${r.status} ${JSON.stringify(lignes || {}).slice(0, 300)}`);
+    return { ok: false, code: 500, error: "Le document est arrivé mais n'a pas pu être enregistré. Réessayez." };
+  }
+  return { ok: true };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -25,16 +76,35 @@ export default async function handler(req, res) {
   const RESEND_FROM       = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
   const ADMIN_EMAIL       = process.env.ADMIN_EMAIL;
 
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).end();
-  if (!RESEND_API_KEY || !ADMIN_EMAIL) return res.status(200).json({ ok: true }); // pas configuré — ignorer silencieusement
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
 
   const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-  if (!caller) return res.status(401).json({ error: "Non authentifié" });
+  if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
 
   const { docType, isRenewal } = req.body || {};
   if (!docType || typeof docType !== "string") return res.status(400).json({ error: "docType requis" });
+  if (!TYPES_ENREGISTRABLES.includes(docType)) {
+    console.error(`[notify-doc] type de document non enregistrable : ${docType} (compte ${caller.id})`);
+    return res.status(400).json({ error: "Ce type de document ne peut pas encore être enregistré. Contactez le support." });
+  }
 
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
+
+  let enr;
+  try {
+    enr = await enregistrerDocument(caller.id, docType, SUPABASE_URL, hdrs);
+  } catch (e) {
+    console.error(`[notify-doc] enregistrement de ${caller.id}/${docType} interrompu :`, e.message);
+    enr = { ok: false, code: 502, error: "Le document n'a pas pu être enregistré. Réessayez." };
+  }
+  if (!enr.ok) return res.status(enr.code).json({ error: enr.error });
+
+  // Le document est enregistré : c'est tout ce qui compte pour le prestataire.
+  // L'e-mail à l'administration n'est qu'un signal ; son absence est journalisée.
+  if (!RESEND_API_KEY || !ADMIN_EMAIL) {
+    console.error("[notify-doc] RESEND_API_KEY ou ADMIN_EMAIL absente — administration NON prévenue par e-mail.");
+    return res.status(200).json({ ok: true, enregistre: true });
+  }
 
   // Récupérer le nom du prestataire
   let prenom = "", nom = "", email = caller.email || "";
@@ -76,9 +146,10 @@ export default async function handler(req, res) {
         </div>`,
       }),
     });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, enregistre: true });
   } catch (e) {
-    console.error("[notify-doc] Resend error:", e.message);
-    return res.status(500).json({ error: "Erreur envoi email" });
+    // Le document EST enregistré : on ne le fait pas croire perdu au prestataire.
+    console.error("[notify-doc] e-mail à l'administration non envoyé :", e.message);
+    return res.status(200).json({ ok: true, enregistre: true });
   }
 }

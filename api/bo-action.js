@@ -1680,10 +1680,21 @@ export default async function handler(req, res) {
       const doc = Array.isArray(docData) && docData[0];
       if (!doc) return res.status(403).json({ error: "Document non trouvé pour ce profil" });
 
+      // Le fichier refusé est supprimé du bucket. L'appel partait sur l'URL d'un
+      // objet unique, sans corps mais avec « Content-Type: application/json » :
+      // le stockage le refuse, et la réponse n'était pas lue. La ligne disparaissait,
+      // le fichier restait — une pièce d'identité refusée, conservée sans que
+      // personne le sache (constaté en recette le 25/09/2026, e2e/14). Même forme
+      // que la purge de conservation : suppression par liste, résultat vérifié.
       if (doc.storage_path) {
-        await fetch(`${SUPABASE_URL}/storage/v1/object/Documents/${doc.storage_path}`, {
+        const delFichier = await fetch(`${SUPABASE_URL}/storage/v1/object/Documents`, {
           method: "DELETE", headers,
-        }).catch(e => console.error("[reject_doc] suppression du fichier échouée :", e.message));
+          body: JSON.stringify({ prefixes: [doc.storage_path] }),
+        }).catch(e => { console.error("[reject_doc] suppression du fichier interrompue :", e.message); return null; });
+        if (!delFichier || !delFichier.ok) {
+          console.error(`[reject_doc] fichier ${doc.storage_path} NON supprimé (${delFichier?.status}) — refus annulé.`);
+          return res.status(502).json({ error: "Le fichier n'a pas pu être supprimé : refus non enregistré. Réessayez." });
+        }
       }
 
       const delRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
