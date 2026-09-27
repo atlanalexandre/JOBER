@@ -71,3 +71,20 @@ describe("Conversion montant → centimes Stripe", () => {
     expect(isNaN(toCents("0"))).toBe(false);
   });
 });
+
+// ── Ce que le webhook écrit après un paiement réussi (26/09/2026) ──
+import { patchApresPaiement } from "../../../api/stripe-webhook.js";
+
+describe("patchApresPaiement", () => {
+  it("prestataire désigné et toujours actif : attribuée à lui", () => {
+    expect(patchApresPaiement("pi_1", "p1", "p1")).toEqual({ stripe_payment_intent: "pi_1", status: "assigned", prestataire_id: "p1" });
+  });
+  it("prestataire désigné mais écarté : à remplacer, jamais attribuée", () => {
+    expect(patchApresPaiement("pi_1", "p1", null)).toEqual({ stripe_payment_intent: "pi_1", status: "needs_replacement", prestataire_id: null });
+  });
+  it("aucun prestataire dans le paiement : le webhook ne touche à rien", () => {
+    // Il passait la prestation « assigned » sans prestataire.
+    expect(patchApresPaiement("pi_1", "", null)).toBeNull();
+    expect(patchApresPaiement("pi_1", undefined, undefined)).toBeNull();
+  });
+});

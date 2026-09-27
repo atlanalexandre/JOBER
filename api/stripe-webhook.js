@@ -12,6 +12,21 @@ async function getRawBody(req) {
   });
 }
 
+/**
+ * Ce que le webhook écrit sur la prestation après un paiement réussi, ou null s'il
+ * ne doit rien écrire.
+ *
+ * Le webhook n'affecte que ce que le paiement désigne lui-même : un prestataire
+ * (candidature acceptée). Sans prestataire désigné, il ne touche à rien — sans quoi
+ * la prestation passait « attribuée » à personne (constaté à la relecture le
+ * 26/09/2026 ; dormant, l'événement n'étant pas abonné chez Stripe).
+ */
+export function patchApresPaiement(intentId, prestataireId, prestataireRetenu) {
+  if (prestataireRetenu) return { stripe_payment_intent: intentId, status: "assigned", prestataire_id: prestataireRetenu };
+  if (prestataireId) return { stripe_payment_intent: intentId, status: "needs_replacement", prestataire_id: null };
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -238,11 +253,17 @@ export default async function handler(req, res) {
         }
       }
 
-      const patch = prestataireRetenu
-        ? { stripe_payment_intent: intent.id, status: "assigned", prestataire_id: prestataireRetenu }
-        : prestataireId
-          ? { stripe_payment_intent: intent.id, status: "needs_replacement", prestataire_id: null }
-          : { stripe_payment_intent: intent.id, status: "assigned" };
+      const patch = patchApresPaiement(intent.id, prestataireId, prestataireRetenu);
+      if (!patch) {
+        // Réservation ordinaire : le prestataire n'est pas dans le paiement (il est
+        // rattaché par `assign_after_payment` ou `affecter_tiers`, qui relisent le
+        // paiement chez Stripe). Ce chemin la passait en « assigned » SANS
+        // prestataire, et l'affectation de l'application, arrivée ensuite, était
+        // refusée (« déjà traitée ») : payée, attribuée à personne, et personne
+        // prévenu. On laisse l'application faire.
+        console.log(`[stripe-webhook] ${intent.id} : prestation ${missionId} sans prestataire dans le paiement — affectation laissée à l'application.`);
+        return res.status(200).json({ received: true });
+      }
 
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
