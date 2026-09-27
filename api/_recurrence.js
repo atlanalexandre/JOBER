@@ -61,7 +61,7 @@ const dateFr = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("fr-FR",
 export async function programmerOccurrenceSuivante(missionId, supabaseUrl, headers) {
   const lr = await fetch(
     `${supabaseUrl}/rest/v1/missions?id=eq.${missionId}`
-    + "&select=id,client_id,prestataire_id,sector,metier,titre,date,hours,heure_debut,adresse,ville,description,tarif_horaire,recurrence,stripe_payment_intent,status&limit=1",
+    + "&select=id,client_id,prestataire_id,sector,metier,titre,date,hours,heure_debut,adresse,ville,description,tarif_horaire,recurrence,stripe_payment_intent,status,retractation_renonciation_at,retractation_version&limit=1",
     { headers }
   );
   const lignes = await lr.json().catch(() => null);
@@ -106,6 +106,16 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
       tarif_horaire: m.tarif_horaire, montant_total: montant,
       recurrence: m.recurrence, parent_mission_id: m.id,
       status: "pending_acceptance",
+      // Renonciation au délai de rétractation (art. L221-25 du Code de la
+      // consommation) : recueillie à la réservation de la série, sa case et l'accord
+      // de série cochés ensemble. L'accord de série la demande EXPRESSÉMENT pour
+      // chaque prestation suivante ; elle est donc reportée, avec la date et la
+      // version du texte réellement acceptés — jamais présumée si la première
+      // semaine n'en portait pas.
+      ...(m.retractation_renonciation_at ? {
+        retractation_renonciation_at: m.retractation_renonciation_at,
+        retractation_version: m.retractation_version || null,
+      } : {}),
     }),
   });
   const cree = await ir.json().catch(() => null);

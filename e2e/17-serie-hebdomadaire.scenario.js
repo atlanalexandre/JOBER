@@ -19,7 +19,8 @@ const H = 3600e3;
 const jourParis = (ms) => new Date(ms).toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
 const plusSept = (jour) => { const d = new Date(`${jour}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 7); return d.toISOString().slice(0, 10); };
 const suivante = async (id) => (await sql(`select id, date::text, status, prestataire_id, montant_total, tarif_horaire, hours,
-  stripe_payment_intent, recurrence, extract(epoch from (acceptance_deadline - now()))/60 as minutes
+  stripe_payment_intent, recurrence, retractation_renonciation_at::text renonciation, retractation_version,
+  extract(epoch from (acceptance_deadline - now()))/60 as minutes
   from missions where parent_mission_id = '${id}'`));
 
 /** La semaine en cours s'est déroulée hier : acceptée, démarrée, fin confirmée par le prestataire. */
@@ -66,6 +67,11 @@ test("semaine validée par le client : la suivante est créée, débitée seule,
   expect(Number(s.montant_total), "même prix : 8 h × 13 € + frais").toBeCloseTo(110.98, 2);
   expect(s.recurrence).toBe("weekly");
   expect(Number(s.minutes), "délai de réponse ordinaire (4 h)").toBeGreaterThan(235);
+  // La renonciation à la rétractation, demandée pour chaque semaine par l'accord de série.
+  const [parent] = await sql(`select retractation_renonciation_at::text r, retractation_version v from missions where id = '${m.id}'`);
+  expect(parent.r, "la première semaine porte la renonciation").toBeTruthy();
+  expect(s.renonciation, "reportée sur la semaine suivante").toBe(parent.r);
+  expect(s.retractation_version).toBe(parent.v);
 
   const st = await paiementStripe(s.stripe_payment_intent);
   expect(st.statut, "débitée sur la carte enregistrée").toBe("succeeded");

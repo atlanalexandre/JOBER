@@ -2559,10 +2559,12 @@ ouverts » : pas de bouton « postuler ») — et le client lisait « programmé
 demande diffusée n'a ni prestataire ni paiement. Constaté en recette le 25/09/2026, éprouvé
 par `e2e/17`.
 
-**Reste à trancher** : la renonciation au délai de rétractation (CGPS) est recueillie à la
-réservation de la première semaine ; les semaines suivantes n'en portent pas
-(`retractation_renonciation_at` vide). Juridiquement, l'accord de série vaut-il renonciation
-pour chacune ? Décision à prendre avec un conseil.
+**Rétractation** (décidé le 27/09/2026) : l'accord de série, coché en même temps que la
+renonciation au délai de rétractation de la première semaine, demande **expressément** que
+chaque prestation suivante commence elle aussi avant la fin de ce délai. La renonciation
+(`retractation_renonciation_at`, `retractation_version`) est donc reportée sur chaque semaine,
+avec la date et la version du texte réellement acceptés — jamais présumée si la première n'en
+portait pas. À faire relire par un conseil au moment de l'immatriculation.
 
 ### Prestations récurrentes : un paiement calculé sur un seul jour
 

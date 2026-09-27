@@ -940,6 +940,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                 <span style={{ fontSize:12, color:C.textSub, lineHeight:1.55 }}>
                   <strong style={{ color:C.text }}>Chaque semaine</strong> : j'autorise ALANE à débiter cette carte du prix
                   de chaque prestation suivante, une fois la précédente validée — au même tarif, pour la même durée.
+                  Pour chacune, je demande aussi expressément qu'elle commence avant la fin de mon délai de
+                  rétractation, dans les conditions ci-dessus.
                   Ma carte est conservée par Stripe, jamais par ALANE. J'arrête la série quand je veux, depuis mes prestations.
                 </span>
               </label>
