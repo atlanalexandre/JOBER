@@ -757,7 +757,17 @@ un titre de séjour **déposé et vérifié**, comme la carte professionnelle d'
 `get_candidatures`, `fermerDiffusion`) : la RLS ne donne la lecture qu'au prestataire auteur, et
 aucune écriture au navigateur. Voir §6 « Ne pas choisir le prestataire ».
 
-**`notifications`**, **`messages`**, **`support_tickets`**, **`ratings`**,
+**`messages`** — la messagerie client ↔ prestataire. Chaque message porte ses **deux
+participants en colonnes** (`client_id`, `prestataire_id`), son auteur (`sender_id`, `sender_tag`
+= `client` | `prestataire`) et `lu_at` (posé quand le destinataire ouvre la conversation).
+`conversation_key` (`prov{P}-user{C}`) reste écrite, pour l'historique, mais plus rien ne la lit
+pour décider d'un droit. **Écrite uniquement par `/api`** (`envoyer_message`, qui exige une
+prestation en commun ; `marquer_messages_lus`, par le destinataire seul). Le navigateur n'a que
+la lecture, limitée aux participants. Publiée pour le temps réel. Pas de clé étrangère vers les
+comptes, volontairement : un message survit à la suppression de son auteur (CGPS 17.1, pièce
+conservée). Voir §5 « Messagerie : des participants explicites ».
+
+**`notifications`**, **`support_tickets`**, **`ratings`**,
 **`tracking_positions`** (géolocalisation en cours de prestation), **`favorites`**,
 **`push_subscriptions`**.
 
@@ -2524,7 +2534,7 @@ l'éditeur SQL Supabase :
 | 2 | Policies ouvertes à `public` ou `anon` | Chaque ligne justifiable ; une écriture, presque jamais |
 | 3 | Policies **sans condition** (`USING (true)`) | 0 ligne, sauf justification écrite au §5 |
 | 4 | Écritures autorisées sur les tables sensibles | L'argent et les statuts passent par `/api` |
-| 5 | Les règles de `messages` | À lire en entier — le modèle de participants n'existe pas |
+| 5 | Les règles de `messages` | Une seule policy, `SELECT`, sur `client_id` / `prestataire_id` — aucune sous-chaîne |
 | 6 | Tables verrouillées (RLS active, zéro policy) | Pas une faille : un blocage silencieux |
 | 7 | Tables vides portant encore des policies | Le précédent des six tables mortes |
 
@@ -2550,9 +2560,28 @@ destinataire et le texte, tous deux bornés.
 faire sans elle : retirer au client la main sur ce qui l'identifie. La lecture reste gouvernée
 par la RLS, qu'aucun code ne peut corriger depuis l'extérieur.
 
-Le comptage des non-lus, lui, cherche toujours l'identifiant de l'utilisateur **par `ILIKE`
-dans la clé**. Cela fonctionne, mais c'est le symptôme du même défaut de modèle : une
-appartenance qui se prouve par une sous-chaîne. À reprendre avec la refonte.
+Le comptage des non-lus, lui, cherchait l'identifiant de l'utilisateur **par `ILIKE` dans la
+clé** — repris par la refonte ci-dessous.
+
+### Messagerie : des participants explicites
+
+**Refondue le 28/09/2026** (migration `2026-09-28_messagerie_participants_explicites.sql`,
+éprouvée par `e2e/19`). Quatre défauts, dont deux découverts en la préparant :
+
+| Défaut | Correction |
+|---|---|
+| Aucun modèle de participants : la lecture cherchait `auth.uid()` **dans la chaîne** `conversation_key` | `client_id` et `prestataire_id` en colonnes, remplis depuis la clé pour l'existant ; la règle de lecture les compare. Contraintes `NOT VALID` sur les nouveaux messages : deux participants distincts, auteur du bon côté |
+| Le non-lu vivait en `localStorage` : propre à l'appareil, et ouvrir **une** conversation éteignait le badge de **toutes** | `lu_at`, posé par `marquer_messages_lus` à l'ouverture de la conversation et à chaque message reçu. Le badge compte `lu_at IS NULL` hors messages de l'utilisateur. L'historique est réputé lu à la migration |
+| La table n'était **pas publiée pour le temps réel** : l'écran s'abonnait, mais ne recevait rien — un message n'apparaissait chez l'autre qu'en rechargeant | Ajoutée à `supabase_realtime`. L'abonnement filtre sur `client_id` et vérifie le prestataire à la réception |
+| `anon` et `authenticated` détenaient `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` — `TRUNCATE` n'est **pas** soumis à la RLS | Le navigateur ne garde que `SELECT` (authentifié). Une pièce ne repose plus sur l'absence d'une policy |
+
+**Ordre de passage : la migration, puis le code.** Le nouveau code échoue avant la migration
+(colonnes inconnues). L'ancien fonctionne après elle grâce au déclencheur
+`messages_participants_depuis_cle`, qui déduit les participants de la clé quand l'écrivain ne
+les fournit pas — sans lui, les contraintes auraient refusé tout message envoyé par l'ancien
+code entre la migration et le déploiement. Les
+messages déjà échangés dont la clé ne suit pas le format `prov{uuid}-user{uuid}` resteraient
+sans participants, donc illisibles : la vérification n° 1 de la migration doit rendre 0.
 
 ### Écrire à un prestataire après la prestation : l'équipe ALANE seulement
 

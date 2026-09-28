@@ -333,7 +333,8 @@ Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En rés
   frais de service, facture des frais, bascule du compte Stripe. Ils sont inventoriés dans
   [IMMATRICULATION.md](IMMATRICULATION.md), établi par relecture du code : **le lire avant d'y
   toucher**, plusieurs de ces points ne se découvrent pas autrement.
-- **`messages`** n'a pas de vrai modèle de conversation : les participants sont extraits d'une
-  chaîne de caractères, y compris dans les règles de sécurité. À refondre avant montée en charge.
+- **`messages`** a un vrai modèle de participants depuis le 28/09/2026 (`client_id`,
+  `prestataire_id`, `lu_at`) : la lecture ne cherche plus un identifiant dans une chaîne. Voir
+  DOCUMENTATION.md §5 « Messagerie : des participants explicites ».
 - **Les trois fichiers de schéma SQL** divergents de la racine ont été retirés le 28/09/2026.
   **La référence, c'est la base** ; un changement de schéma passe par `migrations/` (règle 1.7).

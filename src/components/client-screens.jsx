@@ -4594,11 +4594,33 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
 
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString("fr", { hour:"2-digit", minute:"2-digit" });
 
-  // convKey : identique des deux côtés — basé sur providerId + clientId
+  // Les deux participants — si chatClientId est fourni, l'utilisateur courant
+  // est le prestataire. La conversation est lue par ces deux colonnes, plus par
+  // une clé fabriquée (migration 2026-09-28_messagerie_participants_explicites).
+  const participants = (uid) => ({
+    prestataireId: chatClientId ? uid : p.id,
+    clientId:      chatClientId ? chatClientId : uid,
+  });
   const buildKey = (uid) => {
-    const providerId = chatClientId ? uid : p.id; // si chatClientId fourni → user courant est le prestataire
-    const clientId   = chatClientId ? chatClientId : uid;
-    return `prov${providerId}-user${clientId}`;
+    const { prestataireId, clientId } = participants(uid);
+    return `prov${prestataireId}-user${clientId}`;
+  };
+  const interlocuteurId = chatClientId ? chatClientId : p.id;
+
+  // « Lu » posé par le serveur, pour cette conversation seulement. Un échec ne
+  // gêne pas la lecture : il laisse le badge allumé, et il est dit.
+  const marquerLus = async () => {
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "marquer_messages_lus", interlocuteur_id: interlocuteurId }),
+      });
+      if (!r.ok) console.error("[chat] « lu » non enregistré :", r.status);
+    } catch (e) {
+      console.error("[chat] « lu » non enregistré :", e.message);
+    }
   };
 
   useEffect(() => {
@@ -4610,11 +4632,12 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
   }, [chatClientId]);
 
   const loadMsgs = async (uid) => {
-    const key = buildKey(uid);
+    const { prestataireId, clientId } = participants(uid);
     const { data, error } = await supabase
       .from("messages")
       .select("*")
-      .eq("conversation_key", key)
+      .eq("client_id", clientId)
+      .eq("prestataire_id", prestataireId)
       .order("created_at", { ascending: true });
     // Un échec de lecture affichait une conversation vide, indiscernable d'une
     // conversation qui n'a jamais commencé.
@@ -4623,6 +4646,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       showToast("Conversation illisible : " + error.message, "error");
     } else {
       setMsgs(data || []);
+      if ((data || []).some(m => m.sender_id !== uid && !m.lu_at)) marquerLus();
     }
     setLoading(false);
   };
@@ -4631,10 +4655,16 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
     if (!userId) return;
     loadMsgs(userId);
     const key = buildKey(userId);
+    const { prestataireId } = participants(userId);
+    // Le temps réel n'accepte qu'un filtre : on filtre sur le client, et le
+    // prestataire est vérifié à la réception. (La table n'était pas publiée
+    // pour le temps réel jusqu'au 28/09/2026 : cet abonnement ne recevait rien.)
     const channel = supabase
       .channel(`chat:${key}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_key=eq.${key}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `client_id=eq.${participants(userId).clientId}` },
         ({ new: newMsg }) => {
+          if (newMsg.prestataire_id !== prestataireId) return;
+          if (newMsg.sender_id !== userId) marquerLus();
           setMsgs(prev => {
             if (prev.some(m => m.id === newMsg.id)) return prev;
             if (newMsg.sender_id === userId) {

@@ -3103,8 +3103,11 @@ export default async function handler(req, res) {
     // `chat_notify` vérifiait déjà le droit d'écrire. Le navigateur n'envoie
     // plus que le destinataire et le texte.
     //
-    // Ce n'est pas la refonte du modèle de conversation — elle reste à faire —
-    // mais elle retire au client la main sur ce qui l'identifie.
+    // Depuis le 28/09/2026, le message porte ses deux participants en colonnes
+    // (`client_id`, `prestataire_id`) : la lecture ne cherche plus un
+    // identifiant dans une chaîne (migration
+    // 2026-09-28_messagerie_participants_explicites.sql). La clé reste écrite,
+    // pour les messages et abonnements antérieurs.
     if (action === "envoyer_message") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
@@ -3131,7 +3134,10 @@ export default async function handler(req, res) {
       const ins = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ conversation_key: cle, sender_id: caller.id, sender_tag: tag, content: texte }),
+        body: JSON.stringify({
+          conversation_key: cle, sender_id: caller.id, sender_tag: tag, content: texte,
+          client_id: lien.client_id, prestataire_id: lien.prestataire_id,
+        }),
       }).catch(e => { console.error("[message] insertion impossible :", e.message); return null; });
       const lignesMsg = ins ? await ins.json().catch(() => []) : null;
       if (!ins || !ins.ok || !Array.isArray(lignesMsg) || lignesMsg.length === 0) {
@@ -3140,6 +3146,35 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true, message: lignesMsg[0] });
+    }
+
+    // ── « Lu » : le destinataire a ouvert la conversation ─────────────
+    //
+    // Le non-lu vivait dans le navigateur (un horodatage en localStorage) :
+    // propre à l'appareil, et ouvrir UNE conversation effaçait le badge de
+    // toutes. Il est désormais porté par le message (`lu_at`), et seul le
+    // destinataire peut le poser — jamais sur ses propres messages.
+    if (action === "marquer_messages_lus") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { interlocuteur_id } = payload;
+      if (!interlocuteur_id || !isUuid(interlocuteur_id) || interlocuteur_id === caller.id) {
+        return res.status(400).json({ error: "Interlocuteur invalide" });
+      }
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/messages?sender_id=eq.${interlocuteur_id}&lu_at=is.null`
+        + `&or=(and(client_id.eq.${caller.id},prestataire_id.eq.${interlocuteur_id}),and(client_id.eq.${interlocuteur_id},prestataire_id.eq.${caller.id}))`,
+        {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ lu_at: new Date().toISOString() }),
+        }
+      );
+      const lus = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(lus)) {
+        console.error(`[message] « lu » non enregistré pour ${caller.id} (${r.status}) : ${JSON.stringify(lus || {}).slice(0, 200)}`);
+        return res.status(500).json({ error: "Lecture non enregistrée." });
+      }
+      return res.status(200).json({ success: true, lus: lus.length });
     }
 
     if (action === "chat_notify") {
