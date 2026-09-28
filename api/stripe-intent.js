@@ -533,7 +533,12 @@ export default async function handler(req, res) {
     if (!upCb.ok) {
       const txt = await upCb.text().catch(() => "");
       console.error(`[stripe-intent] réduction non enregistrée sur ${intentMissionId} :`, txt.slice(0, 200));
-      reduction = 0;
+      // On prélève selon ce qui est ENREGISTRÉ, pas selon 0 : c'est la valeur
+      // enregistrée que débitera la confirmation et que borneront les
+      // remboursements. Avec la case « Utiliser mon cashback », décocher après
+      // avoir coché est un cas ordinaire : retomber à 0 aurait débité la carte
+      // du prix plein ET le cashback (relecture du 28/09/2026).
+      reduction = Number(mission.cashback_applique || 0);
     }
   }
 

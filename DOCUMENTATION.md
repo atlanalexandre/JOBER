@@ -2649,7 +2649,10 @@ alors dans « Demandes ouvertes », marquée « Déjà réservée et payée », 
 client n'a désigné personne et n'a aucun écran pour choisir : jusqu'au 28/09/2026, se proposer
 n'y faisait **rien**, et la prestation restait sans prestataire jusqu'à son annulation à l'heure
 prévue. Désormais, « ✅ Je prends cette prestation » → `candidater` l'attribue **directement**
-(`assigned`) au premier prestataire éligible : tarif réglé au moins égal au sien, quota mensuel
+(`assigned`) au premier prestataire éligible — **pas à moins de 30 minutes du début** (la
+prestation disparaît alors de la liste ; la tâche planifiée l'annule et la rembourse une fois
+l'heure passée, et sa clôture est conditionnée au statut pour ne jamais écraser une reprise) —,
+tarif réglé au moins égal au sien, quota mensuel
 (`quotaMensuelAtteint()`, partagé avec `respond_mission`), pas d'autre prestation sur le
 créneau. L'écriture est conditionnelle (`status=open`, sans prestataire) : si deux prestataires
 se proposent en même temps, un seul l'emporte. Une candidature `accepted` garde la trace
@@ -3456,6 +3459,15 @@ sans que personne ne la surveille. Le tunnel ne propose que la carte et Apple Pa
 le consommait : à la fermeture du portefeuille, il est devenu crédité, affiché, et dépensable
 nulle part — alors que l'article 5B.1 des CGPS promet un crédit « utilisable pour le paiement
 total ou partiel de futures Prestations ».
+
+**`increment_cashback` échouait à chaque appel du 27/08 au 28/09/2026** (« column reference
+"cashback_balance" is ambiguous » : les noms de sortie de `RETURNS TABLE` masquaient les
+colonnes). Seule la validation par le client créditait, par un PATCH de secours. Ni la
+validation automatique, ni « Valider de force » ou « Ajuster le cashback » au back-office, ni
+aucune restitution après remboursement ne fonctionnaient — sans le dire. Réparée par
+`2026-09-28_reparer_increment_cashback.sql` (`#variable_conflict use_column`, même signature) ;
+les appelants lisent désormais son résultat, et `restituerCashback` est aussi appelé par
+l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
 
 **Le client décide** (décision d'Alexandre, 28/09/2026). Le tunnel propose la case « 💰
 Utiliser mon cashback », décochée par défaut, et envoie `utiliser_cashback` à

@@ -14,6 +14,7 @@ import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { restituerCashback } from "./_cashback.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -77,8 +78,11 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
     if (montant <= 0 || !mission.client_id) return true;
     try {
       const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: hdrs });
-      const pd = await pr.json().catch(() => []);
-      const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
+      const pd = await pr.json().catch(() => null);
+      // Solde illisible : on n'écrit RIEN. Lu comme 0, le recrédit écrasait le
+      // reste du portefeuille (même correctif que les quatre copies de missions.js).
+      if (!pr.ok || !Array.isArray(pd) || !pd[0]) throw new Error(`solde illisible (${pr.status})`);
+      const solde = Number(pd[0].prepaid_balance || 0);
       const ok = await ecrireVerifie(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`,
         { prepaid_balance: Math.round((solde + montant) * 100) / 100 }, hdrs, `cron/expiration ${mission.id}`);
       if (!ok) return false;
@@ -107,7 +111,15 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
       body: new URLSearchParams({ payment_intent: intent, reason: "requested_by_customer" }).toString(),
     });
     const d = await r.json();
-    if (d.id) { console.log(`[cron/expiration] Stripe OK ${d.id} — prestation ${mission.id}`); return true; }
+    if (d.id) {
+      console.log(`[cron/expiration] Stripe OK ${d.id} — prestation ${mission.id}`);
+      // Le cashback imputé sur cette prestation est rendu, comme le fait
+      // rembourserPrestation() de missions.js : Stripe ne rend que ce que la
+      // carte a payé. Il manquait ici — le client perdait la part réglée en
+      // cashback, alors que la notification promet un remboursement intégral.
+      await restituerCashback(mission, supabaseUrl, hdrs, "cron/expiration");
+      return true;
+    }
     console.error(`[cron/expiration] Stripe a refusé — ${mission.id} :`, JSON.stringify(d));
     return false;
   } catch (e) {
@@ -375,9 +387,19 @@ export default async function handler(req, res) {
             }
             remboursees++;
           }
-          cloturees++;
-          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+          // Écriture conditionnelle : seule une prestation TOUJOURS sans
+          // prestataire est close. Si elle a été reprise entre la lecture et
+          // ici, on ne l'écrase pas en « annulée » — on le dit, fort.
+          const close = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=in.(open,needs_replacement)`,
             { status: rembourse ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
+          if (!close) {
+            if (rembourse) console.error(`[cron] ⚠️ prestation ${m.id} REMBOURSÉE mais plus sans prestataire à la clôture : `
+              + "reprise entre-temps ? À vérifier à la main avant tout versement.");
+            // Ni candidatures rejetées, ni « prestation annulée » annoncée au
+            // client : la prestation n'est pas close.
+            return;
+          }
+          cloturees++;
           // Rejeter toutes candidatures en attente
           await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
             method: "PATCH",
@@ -1794,24 +1816,25 @@ ${(() => {
         if (pastMissions.length) {
           await Promise.all(pastMissions.map(async (m) => {
             const label = m.metier || m.sector || "votre prestation";
-            const notifier = async (userId, title, corps) => {
+            // Cette fonction locale s'appelait `notifier`, comme celle de
+            // _push.js qu'elle voulait appeler : elle s'appelait donc ELLE-MÊME,
+            // en boucle, jusqu'au débordement de pile. Aucune relance de
+            // validation n'arrivait dans l'application (relecture du 28/09/2026).
+            // notifier() de _push.js écrit la notification ET la push.
+            const prevenir = async (userId, title, corps) => {
               if (!userId) return 0;
-              const r = await notifier({ user_id: userId, type: "mission", title, body: corps}, SUPABASE_URL, headers).catch(e => { console.error("[relance] notification non insérée :", e.message); return null; });
-              if (r && !r.ok) {
-                const detail = await r.text().catch(() => "");
-                console.error(`[relance] notification refusée (${r.status}) : ${detail.slice(0, 200)}`);
-              }
-              await sendPushToUser(userId, { title, body: corps, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
+              const depose = await notifier({ user_id: userId, type: "mission", title, body: corps }, SUPABASE_URL, headers);
+              if (!depose) console.error(`[relance] notification NON déposée pour ${userId}.`);
               return 1;
             };
 
             let envoyees = 0;
             if (!m.validation_prestataire) {
-              envoyees += await notifier(m.prestataire_id, "⏱ Confirmez la fin de votre prestation",
+              envoyees += await prevenir(m.prestataire_id, "⏱ Confirmez la fin de votre prestation",
                 `« ${label} » du ${m.date} est terminée. Confirmez-la pour déclencher votre paiement.`);
             }
             if (m.validation_prestataire && !m.validation_client) {
-              envoyees += await notifier(m.client_id, "✅ Prestation à valider",
+              envoyees += await prevenir(m.client_id, "✅ Prestation à valider",
                 `Le prestataire a confirmé la fin de « ${label} » du ${m.date}. Validez-la depuis votre espace.`);
             }
             validationSent += envoyees;
@@ -1993,11 +2016,17 @@ ${(() => {
               }
 
               await Promise.all([
-                // Mise à jour atomique du cashback via RPC pour éviter les race conditions
+                // Mise à jour atomique du cashback via RPC pour éviter les race conditions.
+                // Son résultat n'était pas lu : la fonction a échoué à chaque appel du
+                // 27/08 au 28/09/2026, et aucun cashback d'auto-validation n'a été
+                // crédité sans que rien ne le dise.
                 fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=representation" },
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
-                }).catch(e => console.error("cron cashback update error:", e)),
+                }).then(async r => {
+                  if (!r.ok) console.error(`[cron/auto-validation] cashback de ${cashbackEarned} € NON crédité au client de ${m.id} (${r.status}) :`,
+                    (await r.text().catch(() => "")).slice(0, 200), "— à créditer à la main.");
+                }).catch(e => console.error(`[cron/auto-validation] cashback NON crédité pour ${m.id} :`, e.message)),
                 // Notification client
                 notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${euros(cashbackEarned)}` : ""}`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Notification prestataire

@@ -1183,12 +1183,9 @@ export default async function handler(req, res) {
       }) : false;
       let dansApplication = false;
       if (t.user_id) {
-        try {
-          await notifier({ user_id: t.user_id, type: "system", title: `💬 Réponse du support : ${t.subject || "votre demande"}`.slice(0, 120), body: texte.slice(0, 1000) }, SUPABASE_URL, headers);
-          dansApplication = true;
-        } catch (e) {
-          console.error("[bo-action/repondre_ticket] réponse NON déposée dans l'application :", e?.message);
-        }
+        // notifier() ne lève jamais : c'est son retour qui dit si la réponse est déposée.
+        dansApplication = await notifier({ user_id: t.user_id, type: "system", title: `💬 Réponse du support : ${t.subject || "votre demande"}`.slice(0, 120), body: texte.slice(0, 1000) }, SUPABASE_URL, headers) === true;
+        if (!dansApplication) console.error("[bo-action/repondre_ticket] réponse NON déposée dans l'application.");
       }
       if (!emailParti && !dansApplication) {
         return res.status(502).json({ error: email ? "La réponse n'a pu partir ni par e-mail ni dans l'application." : "Ce ticket n'a ni adresse e-mail ni compte : impossible de répondre." });
@@ -1543,13 +1540,9 @@ export default async function handler(req, res) {
           <p style="color:#888;font-size:13px;">L'équipe ALANE</p>
         `),
       });
-      let dansApplication = true;
-      try {
-        await notifier({ user_id: profileId, type: "system", title: `✉️ ${subject.trim()}`.slice(0, 120), body: message.trim().slice(0, 1000) }, SUPABASE_URL, headers);
-      } catch (e) {
-        dansApplication = false;
-        console.error("[bo-action/send_user_email] message NON déposé dans l'application :", e?.message);
-      }
+      // notifier() ne lève jamais : c'est son retour qui dit si le message est déposé.
+      const dansApplication = await notifier({ user_id: profileId, type: "system", title: `✉️ ${subject.trim()}`.slice(0, 120), body: message.trim().slice(0, 1000) }, SUPABASE_URL, headers) === true;
+      if (!dansApplication) console.error("[bo-action/send_user_email] message NON déposé dans l'application.");
       if (!emailParti && !dansApplication) {
         return res.status(502).json({ error: "Le message n'a pu partir ni par e-mail ni dans l'application." });
       }
@@ -2614,7 +2607,14 @@ export default async function handler(req, res) {
     if (action === "adjust_cashback") {
       const { profileId, delta, reason } = body;
       if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
+      // Le résultat n'était pas lu : du 27/08 au 28/09/2026 la fonction échouait
+      // à chaque appel, et le back-office annonçait un ajustement jamais fait.
+      const ajust = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(e => { console.error("[bo-action/adjust_cashback] appel impossible :", e?.message); return null; });
+      if (!ajust?.ok) {
+        const txt = ajust ? await ajust.text().catch(() => "") : "";
+        console.error(`[bo-action/adjust_cashback] ajustement refusé (${ajust?.status}) :`, txt.slice(0, 200));
+        return res.status(502).json({ error: "Le cashback n'a pas pu être ajusté. Rien n'a été modifié." });
+      }
       await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       return res.status(200).json({ ok: true });

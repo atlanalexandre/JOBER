@@ -152,9 +152,13 @@ export async function notifier(corps, supabaseUrl, headers, options = {}) {
   const userId = corps?.user_id;
   if (!userId) {
     console.error("[notifier] notification sans destinataire, ignorée :", JSON.stringify(corps).slice(0, 120));
-    return;
+    return false;
   }
 
+  // Renvoie true si la notification est bien DÉPOSÉE dans l'application. La
+  // fonction ne lève jamais : sans ce retour, un appelant qui voulait savoir si
+  // le message était arrivé concluait toujours que oui (relecture du 28/09/2026).
+  let depose = false;
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
       method: "POST",
@@ -164,12 +168,14 @@ export async function notifier(corps, supabaseUrl, headers, options = {}) {
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       console.error(`[notifier] insertion refusée pour ${userId} :`, txt.slice(0, 200));
+    } else {
+      depose = true;
     }
   } catch (e) {
     console.error(`[notifier] insertion impossible pour ${userId} :`, e.message);
   }
 
-  if (!push) return;
+  if (!push) return depose;
   // Le titre et le corps sont ceux de la notification : deux textes différents
   // pour un même événement, c'est deux textes à maintenir, et l'un des deux
   // finit par mentir.
@@ -179,4 +185,5 @@ export async function notifier(corps, supabaseUrl, headers, options = {}) {
     supabaseUrl,
     headers
   ).catch(e => console.error(`[notifier] push impossible pour ${userId} :`, e.message));
+  return depose;
 }

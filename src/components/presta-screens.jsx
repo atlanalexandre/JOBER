@@ -3239,7 +3239,10 @@ export function DemandesOuvertes({ onRepris }) {
         puis réserve et paie à votre tarif. Rien ne vous engage tant qu'il n'a pas réservé.
       </div>
       {demandes.map(d => {
-        const propose = !!d.ma_candidature;
+        // Sur une prestation déjà payée, une proposition antérieure (faite avant
+        // la reprise directe) ne doit pas bloquer le bouton : le client n'a
+        // aucun écran pour la retenir, seule la reprise la fait aboutir.
+        const propose = !!d.ma_candidature && !(d.deja_payee && d.ma_candidature === "pending");
         return (
           <div key={d.id} style={{ background:"rgba(16,217,143,0.07)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:14, padding:"14px 14px", marginBottom:10 }}>
             <div style={{ color:C.text, fontSize:13, fontWeight:700, marginBottom:2 }}>

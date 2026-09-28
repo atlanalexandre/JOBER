@@ -218,3 +218,28 @@ test("prestation déjà payée revenue en diffusion : le premier qui se propose 
 
   expect((await api("/api/missions", { action: "candidater", mission_id: m.id }, second.jeton)).statut, "déjà prise").toBe(409);
 });
+
+test("reprise directe : refusée à moins de 30 minutes du début, possible malgré une proposition antérieure", async () => {
+  // Relecture du 28/09/2026. La date seule était contrôlée : une prestation de 08 h
+  // restait « à prendre » à 09 h. Et une proposition faite avant la reprise directe
+  // grisait le bouton, alors que seule la reprise peut faire aboutir une prestation payée.
+  const initial = await prestataireOperationnel();
+  const tardif = await prestataireOperationnel();
+  const c = await client();
+
+  const bientot = await reservationPayee({ prestataire: initial, client: c, debutMs: Date.now() + 10 * 60000 });
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${bientot.id}'`);
+  const lo = await api("/api/missions", { action: "list_open" }, tardif.jeton);
+  expect(lo.json.demandes.find(d => d.id === bientot.id), "masquée : commence dans 10 minutes").toBeUndefined();
+  expect((await api("/api/missions", { action: "candidater", mission_id: bientot.id }, tardif.jeton)).statut).toBe(409);
+  expect((await etat(bientot.id)).prestataire_id).toBeNull();
+
+  const plusTard = await reservationPayee({ prestataire: initial, client: c, dansJours: 7 });
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${plusTard.id}'`);
+  // Proposition « à l'ancienne », laissée en attente avant la mise en place de la reprise.
+  await sql(`insert into candidatures (mission_id, prestataire_id, status) values ('${plusTard.id}', '${tardif.id}', 'pending')`);
+  const r = await api("/api/missions", { action: "candidater", mission_id: plusTard.id }, tardif.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.json.attribuee).toBe(true);
+  expect((await etat(plusTard.id)).prestataire_id).toBe(tardif.id);
+});
