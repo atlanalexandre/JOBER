@@ -43,8 +43,11 @@
 -- • Publie la table pour le temps réel.
 --
 -- ORDRE : cette migration PUIS le déploiement du code qui lit ces colonnes.
--- L'ancien code continue de fonctionner après elle (il lit par la clé, que le
--- serveur écrit toujours) ; le nouveau, lui, échouerait avant.
+-- L'ancien code doit continuer de fonctionner entre les deux : son
+-- `envoyer_message` n'écrit que la clé, pas les participants. Un déclencheur
+-- les en déduit donc à l'insertion — sans lui, les contraintes ci-dessous
+-- refuseraient tout nouveau message jusqu'au déploiement (erreur relevée le
+-- 28/09/2026, avant tout passage en production du nouveau code).
 -- ═══════════════════════════════════════════════════════════════════════════
 
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS client_id      uuid;
@@ -62,6 +65,26 @@ UPDATE public.messages
 -- propre à l'appareil, ne permet pas de savoir lesquels l'étaient. Sans cela,
 -- chaque utilisateur verrait d'un coup tout son historique « non lu ».
 UPDATE public.messages SET lu_at = created_at WHERE lu_at IS NULL;
+
+-- Participants déduits de la clé quand l'écrivain ne les fournit pas (ancien code).
+CREATE OR REPLACE FUNCTION public.messages_participants_depuis_cle()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE m text[];
+BEGIN
+  IF NEW.client_id IS NULL OR NEW.prestataire_id IS NULL THEN
+    m := regexp_match(NEW.conversation_key, '^prov([0-9a-f-]{36})-user([0-9a-f-]{36})$');
+    IF m IS NOT NULL THEN
+      NEW.prestataire_id := COALESCE(NEW.prestataire_id, m[1]::uuid);
+      NEW.client_id      := COALESCE(NEW.client_id,      m[2]::uuid);
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.messages_participants_depuis_cle() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS messages_participants_depuis_cle ON public.messages;
+CREATE TRIGGER messages_participants_depuis_cle
+  BEFORE INSERT ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_participants_depuis_cle();
 
 ALTER TABLE public.messages DROP CONSTRAINT IF EXISTS messages_participants_requis;
 ALTER TABLE public.messages ADD CONSTRAINT messages_participants_requis

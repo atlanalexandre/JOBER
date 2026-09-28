@@ -2575,8 +2575,11 @@ clé** — repris par la refonte ci-dessous.
 | La table n'était **pas publiée pour le temps réel** : l'écran s'abonnait, mais ne recevait rien — un message n'apparaissait chez l'autre qu'en rechargeant | Ajoutée à `supabase_realtime`. L'abonnement filtre sur `client_id` et vérifie le prestataire à la réception |
 | `anon` et `authenticated` détenaient `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` — `TRUNCATE` n'est **pas** soumis à la RLS | Le navigateur ne garde que `SELECT` (authentifié). Une pièce ne repose plus sur l'absence d'une policy |
 
-**Ordre de passage : la migration, puis le code.** L'ancien code fonctionne après la migration
-(il lit par la clé, toujours écrite) ; le nouveau échoue avant (colonnes inconnues). Les
+**Ordre de passage : la migration, puis le code.** Le nouveau code échoue avant la migration
+(colonnes inconnues). L'ancien fonctionne après elle grâce au déclencheur
+`messages_participants_depuis_cle`, qui déduit les participants de la clé quand l'écrivain ne
+les fournit pas — sans lui, les contraintes auraient refusé tout message envoyé par l'ancien
+code entre la migration et le déploiement. Les
 messages déjà échangés dont la clé ne suit pas le format `prov{uuid}-user{uuid}` resteraient
 sans participants, donc illisibles : la vérification n° 1 de la migration doit rendre 0.
 
