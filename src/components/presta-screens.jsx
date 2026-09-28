@@ -2476,6 +2476,9 @@ export function PMissionsTab({ onNavigate }) {
       {/* Remplacements qu'un confrère propose à ce prestataire (CGPS art. 9) */}
       <RemplacementsProposes onRepondu={()=>{ loadPending?.(); chargerRemplacements(); }} />
 
+      {/* Demandes diffusées par des clients qui n'ont désigné personne */}
+      <DemandesOuvertes />
+
       {/* Contrat électronique prestataire */}
       {/* Contrat de prestation — acceptation prestation */}
       {contractAcceptMission && (
@@ -3172,6 +3175,87 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 // Le remplaçant est un indépendant : il ne peut pas être volontaire d'office
 // pour une prestation qu'il n'a pas acceptée. Son accord est donc requis, au
 // même titre que celui du client.
+// ── Demandes ouvertes : « Ne pas choisir le prestataire » ─────────────
+//
+// Un client a décrit un besoin sans désigner personne. Le prestataire du métier
+// voit la demande — la ville, jamais l'adresse — et se propose d'un clic ; le
+// client choisit parmi ceux qui se sont proposés, puis réserve et paie. Aucun
+// écran ne permettait de se proposer : ces demandes ne pouvaient pas aboutir.
+export function DemandesOuvertes() {
+  const [demandes, setDemandes] = useState([]);
+  const [enCours, setEnCours]   = useState(null);
+  const [erreur, setErreur]     = useState(null);
+
+  const appel = async (corps) => {
+    const { data: sd } = await supabase.auth.getSession();
+    if (!sd?.session?.access_token) throw new Error("Session expirée — reconnectez-vous.");
+    const r = await fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd.session.access_token}` },
+      body: JSON.stringify(corps),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`);
+    return j;
+  };
+
+  const charger = async () => {
+    try {
+      const j = await appel({ action: "list_open" });
+      setDemandes(Array.isArray(j.demandes) ? j.demandes : []);
+      setErreur(null);
+    } catch (e) {
+      console.error("[demandes ouvertes] chargement échoué :", e.message);
+      setErreur(e.message);
+    }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const proposer = async (id) => {
+    setEnCours(id);
+    try {
+      await appel({ action: "candidater", mission_id: id });
+      showToast("C'est noté : le client est prévenu que vous êtes disponible.", "success");
+      await charger();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+    setEnCours(null);
+  };
+
+  if (erreur) return <div style={{ color:C.textMuted, fontSize:11, marginBottom:12 }}>Demandes ouvertes indisponibles : {erreur}</div>;
+  if (!demandes.length) return null;
+
+  const jourFr = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long", timeZone:"Europe/Paris" });
+  return (
+    <div style={{ marginBottom:16 }}>
+      <div style={{ color:C.text, fontWeight:800, fontSize:14, marginBottom:8 }}>📢 Demandes ouvertes ({demandes.length})</div>
+      <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.5, marginBottom:10 }}>
+        Des clients cherchent quelqu'un dans votre métier. Proposez-vous si vous êtes disponible : le client choisit,
+        puis réserve et paie à votre tarif. Rien ne vous engage tant qu'il n'a pas réservé.
+      </div>
+      {demandes.map(d => {
+        const propose = !!d.ma_candidature;
+        return (
+          <div key={d.id} style={{ background:"rgba(16,217,143,0.07)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:14, padding:"14px 14px", marginBottom:10 }}>
+            <div style={{ color:C.text, fontSize:13, fontWeight:700, marginBottom:2 }}>
+              {d.metier || "Prestation"}{d.ville ? ` — ${d.ville}` : ""}
+            </div>
+            <div style={{ color:C.textSub, fontSize:12, marginBottom:d.description?6:10 }}>
+              {jourFr(d.date)}{d.heure_debut ? ` à ${String(d.heure_debut).slice(0,5).replace(":","h")}` : ""}{d.hours ? ` · ${d.hours} h` : ""}
+            </div>
+            {d.description && <div style={{ color:C.textMuted, fontSize:11, fontStyle:"italic", marginBottom:10 }}>« {d.description} »</div>}
+            <button disabled={propose || enCours===d.id} onClick={()=>proposer(d.id)}
+              style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background: propose ? "rgba(255,255,255,0.08)" : C.success, color: propose ? C.textSub : "#fff", fontWeight:800, fontSize:12, cursor: propose ? "default" : "pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
+              {enCours===d.id ? "…" : propose ? (d.ma_candidature === "rejected" ? "Le client a choisi quelqu'un d'autre" : "✓ Proposé — en attente du client") : "🙋 Je suis disponible"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function RemplacementsProposes({ onRepondu }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
