@@ -885,7 +885,11 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: "Les demandes ouvertes n'ont pas pu être chargées." });
       }
       const pour = lignes.filter(m =>
-        (!secteurs.length || !m.sector || secteurs.includes(String(m.sector)))
+        // Une prestation déjà payée qui commence dans moins de 30 minutes ne
+        // peut plus être reprise (voir `candidater`) : la montrer inviterait à
+        // un clic qui sera refusé.
+        (!m.stripe_payment_intent || ((debutPrestationMs(m.date, m.heure_debut) ?? 0) - Date.now() >= 30 * 60000))
+        && (!secteurs.length || !m.sector || secteurs.includes(String(m.sector)))
         && (!metiers.length || !m.metier || metiers.includes(String(m.metier).toLowerCase())));
       let miennes = {};
       if (pour.length) {
@@ -950,6 +954,16 @@ export default async function handler(req, res) {
       // qui se propose la prend — c'est lui qui choisit, ce que la diffusion
       // prévoit (CGPS art. 5.2), et le tarif est celui qui a été payé.
       if (m.stripe_payment_intent) {
+        // Pas de reprise à moins de 30 minutes du début. La date seule ne
+        // suffisait pas : une prestation de 08 h restait « à prendre » à 09 h.
+        // Et la tâche planifiée, qui annule et rembourse une prestation sans
+        // prestataire une fois son heure de début passée, pouvait la rembourser
+        // au moment même où un prestataire la prenait. Avec cette marge, les
+        // deux ne peuvent plus se croiser (relecture du 28/09/2026).
+        const debut = debutPrestationMs(m.date, m.heure_debut);
+        if (debut === null || debut - Date.now() < 30 * 60000) {
+          return res.status(409).json({ error: "Cette prestation commence trop tôt pour être reprise." });
+        }
         const tarifSien = Number(meta.tarif_net) || 0;
         const tarifPaye = Number(m.tarif_horaire) || 0;
         if (tarifPaye > 0 && tarifSien > tarifPaye + 0.01) {
@@ -4359,8 +4373,10 @@ export default async function handler(req, res) {
         try {
           const pRes = await fetch(
             `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
-          const pRows = await pRes.json().catch(() => []);
-          const soldeActuel = Number((Array.isArray(pRows) && pRows[0]?.prepaid_balance) || 0);
+          const pRows = await pRes.json().catch(() => null);
+          // Solde illisible : lu comme 0, le recrédit effacerait le reste du portefeuille.
+          if (!pRes.ok || !Array.isArray(pRows) || !pRows[0]) throw new Error(`solde illisible (${pRes.status})`);
+          const soldeActuel = Number(pRows[0].prepaid_balance || 0);
           const nouveauSolde = Math.round((soldeActuel + montantDu / 100) * 100) / 100;
           const majSolde = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
             method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },

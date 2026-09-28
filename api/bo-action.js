@@ -1183,12 +1183,9 @@ export default async function handler(req, res) {
       }) : false;
       let dansApplication = false;
       if (t.user_id) {
-        try {
-          await notifier({ user_id: t.user_id, type: "system", title: `💬 Réponse du support : ${t.subject || "votre demande"}`.slice(0, 120), body: texte.slice(0, 1000) }, SUPABASE_URL, headers);
-          dansApplication = true;
-        } catch (e) {
-          console.error("[bo-action/repondre_ticket] réponse NON déposée dans l'application :", e?.message);
-        }
+        // notifier() ne lève jamais : c'est son retour qui dit si la réponse est déposée.
+        dansApplication = await notifier({ user_id: t.user_id, type: "system", title: `💬 Réponse du support : ${t.subject || "votre demande"}`.slice(0, 120), body: texte.slice(0, 1000) }, SUPABASE_URL, headers) === true;
+        if (!dansApplication) console.error("[bo-action/repondre_ticket] réponse NON déposée dans l'application.");
       }
       if (!emailParti && !dansApplication) {
         return res.status(502).json({ error: email ? "La réponse n'a pu partir ni par e-mail ni dans l'application." : "Ce ticket n'a ni adresse e-mail ni compte : impossible de répondre." });
@@ -1543,13 +1540,9 @@ export default async function handler(req, res) {
           <p style="color:#888;font-size:13px;">L'équipe ALANE</p>
         `),
       });
-      let dansApplication = true;
-      try {
-        await notifier({ user_id: profileId, type: "system", title: `✉️ ${subject.trim()}`.slice(0, 120), body: message.trim().slice(0, 1000) }, SUPABASE_URL, headers);
-      } catch (e) {
-        dansApplication = false;
-        console.error("[bo-action/send_user_email] message NON déposé dans l'application :", e?.message);
-      }
+      // notifier() ne lève jamais : c'est son retour qui dit si le message est déposé.
+      const dansApplication = await notifier({ user_id: profileId, type: "system", title: `✉️ ${subject.trim()}`.slice(0, 120), body: message.trim().slice(0, 1000) }, SUPABASE_URL, headers) === true;
+      if (!dansApplication) console.error("[bo-action/send_user_email] message NON déposé dans l'application.");
       if (!emailParti && !dansApplication) {
         return res.status(502).json({ error: "Le message n'a pu partir ni par e-mail ni dans l'application." });
       }

@@ -77,8 +77,11 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
     if (montant <= 0 || !mission.client_id) return true;
     try {
       const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: hdrs });
-      const pd = await pr.json().catch(() => []);
-      const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
+      const pd = await pr.json().catch(() => null);
+      // Solde illisible : on n'écrit RIEN. Lu comme 0, le recrédit écrasait le
+      // reste du portefeuille (même correctif que les quatre copies de missions.js).
+      if (!pr.ok || !Array.isArray(pd) || !pd[0]) throw new Error(`solde illisible (${pr.status})`);
+      const solde = Number(pd[0].prepaid_balance || 0);
       const ok = await ecrireVerifie(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`,
         { prepaid_balance: Math.round((solde + montant) * 100) / 100 }, hdrs, `cron/expiration ${mission.id}`);
       if (!ok) return false;
@@ -376,8 +379,15 @@ export default async function handler(req, res) {
             remboursees++;
           }
           cloturees++;
-          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+          // Écriture conditionnelle : seule une prestation TOUJOURS sans
+          // prestataire est close. Si elle a été reprise entre la lecture et
+          // ici, on ne l'écrase pas en « annulée » — on le dit, fort.
+          const close = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=in.(open,needs_replacement)`,
             { status: rembourse ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
+          if (!close && rembourse) {
+            console.error(`[cron] ⚠️ prestation ${m.id} REMBOURSÉE mais plus sans prestataire à la clôture : `
+              + "reprise entre-temps ? À vérifier à la main avant tout versement.");
+          }
           // Rejeter toutes candidatures en attente
           await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
             method: "PATCH",
