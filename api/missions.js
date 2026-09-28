@@ -563,6 +563,45 @@ async function fermerDiffusion(diffusionId, clientId, prestataireRetenu, motif, 
   return { ok: true };
 }
 
+// Quota mensuel du prestataire — partagé par `respond_mission` et par la reprise
+// directe d'une prestation payée (`candidater`). Deux copies de cette règle
+// auraient fini par diverger, comme celles de l'action `accept`.
+// Renvoie null si le prestataire peut prendre une prestation, sinon { error, limit_reached }.
+async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
+  try {
+    const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}&select=missions_completed_month,trial_exhausted,plan_abonnement,subscription_end_date`, { headers });
+    const prData = await prRes.json();
+    const prProfile = Array.isArray(prData) && prData[0];
+    // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+    // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+    // et cette valeur était écrite telle quelle dans user_metadata. Comme
+    // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+    // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+    // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+    let plan = prProfile?.plan_abonnement || "free";
+    // Date de fin lue dans `profiles`, comme le plan — voir api/_abonnement.js.
+    if (abonnementEchu(prProfile)) {
+      plan = "free";
+      await retrograderEnGratuit(prestataireId, SUPABASE_URL, headers, "quota");
+    }
+    const trialExhausted = prProfile?.trial_exhausted === true;
+    const basePlanLimit = await limitePlanMensuelle(plan, prestataireId, SUPABASE_URL, headers);
+    const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
+    if (limit < 999) {
+      const slotRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_prestataire_slot`, {
+        method: "POST", headers,
+        body: JSON.stringify({ p_prestataire_id: prestataireId, p_limit: limit }),
+      });
+      const slots = slotRes.ok ? (await slotRes.json().catch(() => 0)) : 0;
+      if (slots <= 0) return { error: `Limite atteinte — vous avez atteint votre limite de ${limit} prestation${limit > 1 ? "s" : ""}/mois pour votre plan ${plan}.`, limit_reached: true };
+    }
+    return null;
+  } catch (e) {
+    console.error(`[quota] vérification impossible pour ${prestataireId} :`, e.message);
+    return { error: "Erreur vérification limite plan", limit_reached: false };
+  }
+}
+
 // Passe au candidat suivant après un refus ou une absence de réponse, pour les
 // prestations affectées par la plateforme (CGPS art. 5.2).
 //
@@ -836,7 +875,7 @@ export default async function handler(req, res) {
         .filter(Boolean).map(x => String(x).toLowerCase());
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?status=eq.open&prestataire_id=is.null&date=gte.${dateDuJourFr()}`
-        + `&client_id=neq.${caller.id}&select=id,sector,metier,date,heure_debut,hours,ville,description,created_at`
+        + `&client_id=neq.${caller.id}&select=id,sector,metier,date,heure_debut,hours,ville,description,created_at,stripe_payment_intent,tarif_horaire`
         + "&order=date.asc&limit=100",
         { headers }
       );
@@ -858,7 +897,16 @@ export default async function handler(req, res) {
         }
         miennes = Object.fromEntries(cand.map(c => [c.mission_id, c.status]));
       }
-      return res.status(200).json({ acces: true, demandes: pour.map(m => ({ ...m, ma_candidature: miennes[m.id] || null })) });
+      // Une prestation PAYÉE peut se trouver ici : affectée par la plateforme, elle
+      // bascule en diffusion quand plus aucun candidat ne répond (cascade,
+      // affecter_tiers). Le client a déjà réservé et payé : celui qui se propose
+      // la prend directement (voir `candidater`). L'identifiant Stripe ne sort pas.
+      return res.status(200).json({ acces: true, demandes: pour.map(({ stripe_payment_intent, tarif_horaire, ...m }) => ({
+        ...m,
+        deja_payee: !!stripe_payment_intent,
+        tarif_horaire: stripe_payment_intent ? tarif_horaire : undefined,
+        ma_candidature: miennes[m.id] || null,
+      })) });
     }
 
     // candidater : « Je suis disponible », par un prestataire, sur une demande ouverte.
@@ -876,7 +924,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Votre accès aux prestations n'est pas encore ouvert." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,status,prestataire_id,sector,metier,date&limit=1`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,status,prestataire_id,sector,metier,titre,date,heure_debut,hours,tarif_horaire,stripe_payment_intent&limit=1`, { headers });
       const m = (await mr.json().catch(() => []))[0];
       if (!mr.ok || !m) return res.status(404).json({ error: "Demande introuvable." });
       if (m.status !== "open" || m.prestataire_id || !m.date || String(m.date) < dateDuJourFr()) {
@@ -890,6 +938,54 @@ export default async function handler(req, res) {
       if ((m.sector && secteurs.length && !secteurs.includes(String(m.sector)))
         || (m.metier && metiers.length && !metiers.includes(String(m.metier).toLowerCase()))) {
         return res.status(403).json({ error: "Cette demande ne correspond pas à votre métier." });
+      }
+
+      // ── Prestation déjà payée : reprise directe ──
+      //
+      // Une prestation affectée par la plateforme revient ici quand aucun
+      // candidat n'a répondu. Le client a réservé et payé ; il n'a désigné
+      // personne et n'a aucun écran pour choisir parmi des candidatures. Se
+      // proposer ne faisait donc rien : la prestation restait sans prestataire
+      // jusqu'à son annulation à l'heure prévue. Le premier prestataire éligible
+      // qui se propose la prend — c'est lui qui choisit, ce que la diffusion
+      // prévoit (CGPS art. 5.2), et le tarif est celui qui a été payé.
+      if (m.stripe_payment_intent) {
+        const tarifSien = Number(meta.tarif_net) || 0;
+        const tarifPaye = Number(m.tarif_horaire) || 0;
+        if (tarifPaye > 0 && tarifSien > tarifPaye + 0.01) {
+          return res.status(409).json({ error: `Cette prestation a été réglée à ${euros(tarifPaye)}/h, en dessous de votre tarif.` });
+        }
+        const quota = await quotaMensuelAtteint(caller.id, SUPABASE_URL, headers);
+        if (quota) return res.status(403).json(quota);
+        const conflit = await checkPrestaireConflict(caller.id, m.date, m.heure_debut, m.hours, SUPABASE_URL, headers, mission_id);
+        if (conflit) return res.status(409).json({ error: "Vous avez déjà une prestation sur ce créneau." });
+
+        // Écriture conditionnelle : si deux prestataires se proposent en même
+        // temps, un seul l'emporte.
+        const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.open&prestataire_id=is.null`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ status: "assigned", prestataire_id: caller.id, acceptance_deadline: null }),
+        });
+        const pris = await ar.json().catch(() => null);
+        if (!ar.ok || !Array.isArray(pris)) {
+          console.error(`[candidater] reprise de ${mission_id} par ${caller.id} NON enregistrée : ${ar.status} ${JSON.stringify(pris || {}).slice(0, 200)}`);
+          return res.status(500).json({ error: "La prestation n'a pas pu vous être attribuée. Réessayez." });
+        }
+        if (!pris.length) return res.status(409).json({ error: "Un autre prestataire vient de prendre cette prestation." });
+
+        await declencherOffreLancement(caller.id, SUPABASE_URL, headers);
+        // Trace de qui s'est proposé : c'est la preuve horodatée du choix du prestataire.
+        const tr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ mission_id, prestataire_id: caller.id, status: "accepted", message }),
+        });
+        if (!tr.ok && tr.status !== 409) console.error(`[candidater] trace de la reprise de ${mission_id} non enregistrée (${tr.status}).`);
+        await notifier({
+          user_id: m.client_id, type: "mission", ref_id: mission_id,
+          title: "Prestataire trouvé ✅",
+          body: `${prof.prenom || "Un prestataire"} a pris en charge votre prestation ${m.titre || m.metier || ""} du ${m.date}.`,
+        }, SUPABASE_URL, headers).catch(e => console.error("[candidater] notification client échouée :", e.message));
+        return res.status(200).json({ success: true, attribuee: true });
       }
 
       const ir = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
@@ -4939,37 +5035,7 @@ export default async function handler(req, res) {
 
       // Vérification quota (même logique que `accept`) — vérification atomique via RPC
       if (response === "accept") {
-        const quotaResult = await (async () => {
-          try {
-            const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement,subscription_end_date`, { headers });
-            const prData = await prRes.json();
-            const prProfile = Array.isArray(prData) && prData[0];
-            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
-            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
-            // et cette valeur était écrite telle quelle dans user_metadata. Comme
-            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
-            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
-            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
-            let plan = prProfile?.plan_abonnement || "free";
-            // Date de fin lue dans `profiles`, comme le plan — voir api/_abonnement.js.
-            if (abonnementEchu(prProfile)) {
-              plan = "free";
-              await retrograderEnGratuit(caller.id, SUPABASE_URL, headers, "quota");
-            }
-            const trialExhausted = prProfile?.trial_exhausted === true;
-            const basePlanLimit = await limitePlanMensuelle(plan, caller.id, SUPABASE_URL, headers);
-            const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
-            if (limit < 999) {
-              const slotRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_prestataire_slot`, {
-                method: "POST", headers,
-                body: JSON.stringify({ p_prestataire_id: caller.id, p_limit: limit }),
-              });
-              const slots = slotRes.ok ? (await slotRes.json().catch(() => 0)) : 0;
-              if (slots <= 0) return { error: `Limite atteinte — vous avez atteint votre limite de ${limit} prestation${limit > 1 ? "s" : ""}/mois pour votre plan ${plan}.`, limit_reached: true };
-            }
-            return null;
-          } catch { return { error: "Erreur vérification limite plan", limit_reached: false }; }
-        })();
+        const quotaResult = await quotaMensuelAtteint(caller.id, SUPABASE_URL, headers);
         if (quotaResult) return res.status(403).json(quotaResult);
       }
 

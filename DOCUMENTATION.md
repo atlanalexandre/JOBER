@@ -2569,6 +2569,20 @@ demandes, **adresse et identifiant du client compris**, à tout compte connecté
 La prestation réservée est une **nouvelle** ligne de `missions` : la demande diffusée n'a ni
 prix ni prestataire, elle ne sert qu'à recueillir les propositions. Éprouvé par `e2e/18`.
 
+**Cas particulier : la prestation déjà payée.** Une prestation affectée par la plateforme
+(client pro ou particulier chez un tiers, CGPS art. 5.2) repasse `open`, sans prestataire,
+quand plus aucun candidat ne répond (`affecterCandidatSuivant`, `affecter_tiers`). Elle apparaît
+alors dans « Demandes ouvertes », marquée « Déjà réservée et payée », avec le tarif réglé. Le
+client n'a désigné personne et n'a aucun écran pour choisir : jusqu'au 28/09/2026, se proposer
+n'y faisait **rien**, et la prestation restait sans prestataire jusqu'à son annulation à l'heure
+prévue. Désormais, « ✅ Je prends cette prestation » → `candidater` l'attribue **directement**
+(`assigned`) au premier prestataire éligible : tarif réglé au moins égal au sien, quota mensuel
+(`quotaMensuelAtteint()`, partagé avec `respond_mission`), pas d'autre prestation sur le
+créneau. L'écriture est conditionnelle (`status=open`, sans prestataire) : si deux prestataires
+se proposent en même temps, un seul l'emporte. Une candidature `accepted` garde la trace
+horodatée de ce choix, et le client est prévenu. `list_open` ne renvoie jamais l'identifiant
+Stripe, seulement `deja_payee`.
+
 ### Réserver chaque semaine : chaque prestation payée à son tour
 
 **Mis en place le 25/09/2026**, décision d'Alexandre : « chaque semaine payée au fur et à
