@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
+import { REGIONS, regionDe } from "../constants/regions.js";
 import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
@@ -239,6 +240,7 @@ function BOComptes() {
   const [secteurFilter, setSecteurFilter] = useState("all");
   const [metierFilter, setMetierFilter]   = useState("all");
   const [villeFilter, setVilleFilter]     = useState("all");
+  const [regionFilter, setRegionFilter]   = useState("all");
   const [actioning, setActioning] = useState(null);
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
@@ -588,10 +590,15 @@ function BOComptes() {
   // Les valeurs proposées viennent des comptes réellement présents : proposer
   // un secteur ou une ville sans personne dedans ne rend service à personne.
   const optionsFiltres = (() => {
-    const secteurs = new Map(), metiers = new Map(), villes = new Map();
+    const secteurs = new Map(), metiers = new Map(), villes = new Map(), regions = new Map();
     for (const p of profiles) {
-      if (p.role !== "prestataire") continue;
-      for (const { secteur, metier } of metiersDuProfil(p)) {
+      // Région et ville valent pour les clients comme pour les prestataires ;
+      // secteur et métier, pour les prestataires seulement.
+      if (roleFilter !== "all" && p.role !== roleFilter) continue;
+      const reg = regionDe(p) || "inconnue";
+      regions.set(reg, (regions.get(reg) || 0) + 1);
+      if (regionFilter !== "all" && reg !== regionFilter) continue;
+      if (p.role === "prestataire") for (const { secteur, metier } of metiersDuProfil(p)) {
         if (secteur) secteurs.set(secteur, (secteurs.get(secteur) || 0) + 1);
         if (metier)  metiers.set(metier,  (metiers.get(metier)  || 0) + 1);
       }
@@ -607,6 +614,10 @@ function BOComptes() {
       metiers:  [...metiers.entries()].sort(parNom),
       villes:   [...villes.entries()].map(([cle, v]) => [cle, v.libelle, v.n])
                   .sort((a, b) => a[1].localeCompare(b[1], "fr")),
+      // Île-de-France en tête, les autres par ordre alphabétique, « non renseignée » en dernier.
+      regions:  [...regions.entries()]
+                  .sort((a, b) => (a[0] === "idf" ? -1 : b[0] === "idf" ? 1 : a[0] === "inconnue" ? 1 : b[0] === "inconnue" ? -1
+                    : (REGIONS[a[0]]?.libelle || "").localeCompare(REGIONS[b[0]]?.libelle || "", "fr"))),
     };
   })();
 
@@ -618,6 +629,7 @@ function BOComptes() {
     if (secteurFilter !== "all" && !exerce.some(e => e.secteur === secteurFilter)) return false;
     if (metierFilter  !== "all" && !exerce.some(e => e.metier  === metierFilter))  return false;
     if (villeFilter   !== "all" && cleVille(p.ville) !== villeFilter)              return false;
+    if (regionFilter  !== "all" && (regionDe(p) || "inconnue") !== regionFilter)   return false;
 
     if (searchLow) {
       // Identité, coordonnées, localisation : comparaison littérale.
@@ -637,8 +649,8 @@ function BOComptes() {
     return true;
   });
 
-  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all";
-  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); };
+  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all";
+  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); };
 
   return (
     <div style={{ padding:"16px 18px" }}>
@@ -695,16 +707,19 @@ function BOComptes() {
         ))}
       </div>
 
-      {/* Tri des prestataires par métier, secteur ou localisation.
-          Masqué quand la vue ne montre que des clients : ces trois champs ne
-          sont renseignés que pour les prestataires. */}
-      {roleFilter !== "client" && (
+      {/* Tri par région et ville (clients et prestataires), et, pour les
+          prestataires, par secteur et métier — seuls renseignés pour eux. */}
+      {(
         <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
           {[
-            ["🗂️", secteurFilter, setSecteurFilter, "Tous les secteurs",
-             optionsFiltres.secteurs.map(([id, n]) => [id, `${SECTOR_LABELS[id] || id} (${n})`])],
-            ["💼", metierFilter, setMetierFilter, "Tous les métiers",
-             optionsFiltres.metiers.map(([m, n]) => [m, `${m} (${n})`])],
+            ["🗺️", regionFilter, (v) => { setRegionFilter(v); setVilleFilter("all"); }, "Toutes les régions",
+             optionsFiltres.regions.map(([id, n]) => [id, `${id === "inconnue" ? "Région non renseignée" : REGIONS[id]?.libelle || id} (${n})`])],
+            ...(roleFilter !== "client" ? [
+              ["🗂️", secteurFilter, setSecteurFilter, "Tous les secteurs",
+               optionsFiltres.secteurs.map(([id, n]) => [id, `${SECTOR_LABELS[id] || id} (${n})`])],
+              ["💼", metierFilter, setMetierFilter, "Tous les métiers",
+               optionsFiltres.metiers.map(([m, n]) => [m, `${m} (${n})`])],
+            ] : []),
             ["📍", villeFilter, setVilleFilter, "Toutes les villes",
              optionsFiltres.villes.map(([cle, lib, n]) => [cle, `${lib} (${n})`])],
           ].map(([icone, valeur, setValeur, libelleTout, options]) => (
@@ -1531,30 +1546,59 @@ export function BOSupport() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState("open");
   const [actioning, setActioning] = useState(null);
+  // Brouillons de réponse, par ticket.
+  const [reponses, setReponses] = useState({});
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await boFetch({ action:"list_tickets" });
       const data = await res.json();
+      if (!res.ok) showToast(data?.error || `Tickets illisibles (${res.status})`, "error");
       setTickets(Array.isArray(data) ? data : []);
-    } catch { setTickets([]); }
+    } catch (e) {
+      console.error("[support] tickets illisibles :", e.message);
+      showToast("Tickets illisibles — vérifiez la connexion.", "error");
+      setTickets([]);
+    }
     setLoading(false);
   };
 
   useEffect(()=>{ load(); },[]);
 
+  // Le résultat était ignoré : un ticket qui ne se fermait pas semblait fermé
+  // jusqu'au rechargement suivant.
+  const appeler = async (corps, cle) => {
+    setActioning(cle);
+    try {
+      const res = await boFetch(corps);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j.error || `Erreur ${res.status}`, "error"); return null; }
+      return j;
+    } catch (e) {
+      showToast(e?.message || "Erreur réseau", "error");
+      return null;
+    } finally {
+      setActioning(null);
+    }
+  };
+
   const closeTicket = async (id) => {
-    setActioning(id);
-    await boFetch({ action:"close_ticket", profileId:id });
-    setActioning(null);
-    load();
+    if (await appeler({ action:"close_ticket", profileId:id }, id)) load();
   };
 
   const deleteTicket = async (id) => {
-    setActioning(id + "_del");
-    await boFetch({ action:"delete_ticket", profileId:id });
-    setActioning(null);
+    if (await appeler({ action:"delete_ticket", profileId:id }, id + "_del")) load();
+  };
+
+  const repondre = async (t, fermer) => {
+    const texte = (reponses[t.id] || "").trim();
+    if (!texte) return;
+    const j = await appeler({ action:"repondre_ticket", ticketId:t.id, reponse:texte, fermer }, t.id + "_rep");
+    if (!j) return;
+    const canaux = [j.email && "e-mail", j.application && "application"].filter(Boolean).join(" et ");
+    showToast(`Réponse envoyée (${canaux})${fermer ? (j.ferme ? ", ticket fermé." : " — mais le ticket n'a pas pu être fermé.") : "."}`, fermer && !j.ferme ? "error" : "success");
+    setReponses(r => ({ ...r, [t.id]: "" }));
     load();
   };
 
@@ -1584,9 +1628,34 @@ export function BOSupport() {
               {t.status==="open"?"Ouvert":"Fermé"}
             </div>
           </div>
-          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:t.status==="open"?10:0, background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px" }}>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:10, background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px", whiteSpace:"pre-wrap" }}>
             {t.message}
           </div>
+          {(t.reponses || []).map((r, i) => (
+            <div key={i} style={{ color:C.white, fontSize:12, lineHeight:1.6, marginBottom:8, marginLeft:18, background:`${C.violet}1A`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"10px", whiteSpace:"pre-wrap" }}>
+              <div style={{ color:C.violet, fontSize:10, fontWeight:700, marginBottom:4 }}>↩︎ Réponse ALANE · {new Date(r.at).toLocaleString("fr-FR")}</div>
+              {r.texte}
+            </div>
+          ))}
+          {(t.user_email || t.user_id) ? (
+            <div style={{ marginBottom:10 }}>
+              <textarea value={reponses[t.id] || ""} onChange={e=>setReponses(r => ({ ...r, [t.id]: e.target.value }))}
+                placeholder="Votre réponse — envoyée par e-mail et dans l'application…" rows={3}
+                style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical" }} />
+              <div style={{ display:"flex", gap:8, marginTop:6, flexWrap:"wrap" }}>
+                <button onClick={()=>repondre(t, false)} disabled={!!actioning || !(reponses[t.id]||"").trim()} style={{ padding:"8px 14px", borderRadius:10, border:"none", background:`${C.violet}33`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:(actioning===t.id+"_rep" || !(reponses[t.id]||"").trim())?0.5:1 }}>
+                  {actioning===t.id+"_rep" ? "…" : "✉️ Répondre"}
+                </button>
+                {t.status==="open" && (
+                  <button onClick={()=>repondre(t, true)} disabled={!!actioning || !(reponses[t.id]||"").trim()} style={{ padding:"8px 14px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:(actioning===t.id+"_rep" || !(reponses[t.id]||"").trim())?0.5:1 }}>
+                    ✉️ Répondre et fermer
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:10 }}>Ticket anonyme sans adresse : impossible de répondre.</div>
+          )}
           <div style={{ display:"flex", gap:8, marginTop:2 }}>
             {t.status==="open" && (
               <button onClick={()=>closeTicket(t.id)} disabled={!!actioning} style={{ padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>

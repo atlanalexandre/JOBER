@@ -1129,8 +1129,83 @@ export default async function handler(req, res) {
 
     if (action === "list_tickets") {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc`, { headers });
-      const data = await r.json();
-      return res.status(200).json(Array.isArray(data) ? data : []);
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(data)) {
+        console.error(`[bo-action/list_tickets] tickets illisibles (${r.status})`);
+        return res.status(502).json({ error: "Tickets illisibles." });
+      }
+      // Les réponses d'ALANE sont tenues au journal (`bo_logs`, action
+      // « repondre_ticket ») : c'est la trace de ce qui a été répondu, par qui
+      // et quand, sans nouvelle table.
+      let reponses = {};
+      if (data.length) {
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.repondre_ticket&target_id=in.(${data.map(t => t.id).join(",")})&select=target_id,details,created_at&order=created_at.asc`, { headers });
+        const logs = await lr.json().catch(() => null);
+        if (!lr.ok || !Array.isArray(logs)) console.error(`[bo-action/list_tickets] réponses illisibles (${lr.status})`);
+        else for (const l of logs) (reponses[l.target_id] ||= []).push({ texte: l.details?.reponse || "", at: l.created_at });
+      }
+      return res.status(200).json(data.map(t => ({ ...t, reponses: reponses[t.id] || [] })));
+    }
+
+    // Répondre à un ticket depuis le back-office (demande d'Alexandre du
+    // 28/09/2026). Il fallait sortir du back-office pour écrire à la personne,
+    // et rien ne gardait trace de la réponse. Elle part par e-mail et, si le
+    // ticket vient d'un compte, dans l'application (notification + push). Elle
+    // est journalisée, et peut clore le ticket dans le même geste.
+    if (action === "repondre_ticket") {
+      const { ticketId, reponse, fermer } = req.body || {};
+      if (!isUuidId(ticketId)) return res.status(400).json({ error: "ticketId invalide" });
+      const texte = String(reponse || "").trim();
+      if (!texte) return res.status(400).json({ error: "Réponse vide" });
+      if (texte.length > 5000) return res.status(400).json({ error: "Réponse trop longue (5000 caractères maximum)." });
+
+      const tr = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${ticketId}&select=id,subject,message,user_email,user_name,user_id&limit=1`, { headers });
+      const t = (await tr.json().catch(() => []))[0];
+      if (!tr.ok || !t) return res.status(404).json({ error: "Ticket introuvable" });
+
+      // L'adresse du compte l'emporte sur celle saisie dans le formulaire.
+      let email = t.user_email || null;
+      if (t.user_id) {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${t.user_id}`, { headers });
+        const u = ur.ok ? await ur.json().catch(() => null) : null;
+        if (u?.email) email = u.email;
+      }
+      const prenom = (t.user_name || "").split(" ")[0];
+      const emailParti = email ? await sendEmail({
+        to: email,
+        subject: `Re : ${t.subject || "votre demande"} — ALANE`,
+        html: emailHtml(`
+          <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
+          <p>${esc(texte).replace(/\n/g, "<br/>")}</p>
+          <p style="color:#888;font-size:13px;">L'équipe ALANE</p>
+          <div style="margin-top:20px;padding:12px 14px;border-left:3px solid #ccc;color:#888;font-size:12px;white-space:pre-wrap;">Votre message :\n${esc(t.message || "")}</div>
+        `),
+      }) : false;
+      let dansApplication = false;
+      if (t.user_id) {
+        try {
+          await notifier({ user_id: t.user_id, type: "system", title: `💬 Réponse du support : ${t.subject || "votre demande"}`.slice(0, 120), body: texte.slice(0, 1000) }, SUPABASE_URL, headers);
+          dansApplication = true;
+        } catch (e) {
+          console.error("[bo-action/repondre_ticket] réponse NON déposée dans l'application :", e?.message);
+        }
+      }
+      if (!emailParti && !dansApplication) {
+        return res.status(502).json({ error: email ? "La réponse n'a pu partir ni par e-mail ni dans l'application." : "Ce ticket n'a ni adresse e-mail ni compte : impossible de répondre." });
+      }
+      await journaliser("repondre_ticket", { target_id: ticketId, target_email: email, details: { reponse: texte, email: !!emailParti, application: dansApplication } });
+
+      let ferme = false;
+      if (fermer) {
+        const fr = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${ticketId}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ status: "closed" }),
+        });
+        const fl = await fr.json().catch(() => null);
+        ferme = fr.ok && Array.isArray(fl) && fl.length > 0;
+        if (!ferme) console.error(`[bo-action/repondre_ticket] ticket ${ticketId} répondu mais NON clos (${fr.status}).`);
+      }
+      return res.status(200).json({ success: true, email: !!emailParti, application: dansApplication, ferme });
     }
 
     if (action === "list_disputes") {

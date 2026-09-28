@@ -196,3 +196,24 @@ test("ALANE écrit à un prestataire, à tout moment : e-mail ET message dans l'
   const [n] = await sql(`select title, body from notifications where user_id = '${p.id}' and title like '%${sujet}%'`);
   expect(n?.body).toContain("un mot de l'équipe");
 });
+
+test("support : ALANE répond depuis le back-office, la réponse arrive et le ticket se ferme", async () => {
+  const p = await prestataireOperationnel();
+  const sujet = `Recette support ${Date.now()}`;
+  const t = await api("/api/support", { subject: sujet, message: "Mon dossier est-il complet ? Merci.", userEmail: p.email, userName: "Recette" }, p.jeton);
+  expect(t.statut, t.texte.slice(0, 200)).toBe(200);
+  const [ticket] = await sql(`select id from support_tickets where subject = '${sujet}'`);
+  expect(ticket?.id).toBeTruthy();
+
+  const r = await bo("repondre_ticket", { ticketId: ticket.id, reponse: "Votre dossier est complet, validation sous 48 h.", fermer: true });
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.json.application).toBe(true);
+  expect(r.json.ferme).toBe(true);
+
+  const [n] = await sql(`select body from notifications where user_id = '${p.id}' and title like '%${sujet}%'`);
+  expect(n?.body).toContain("dossier est complet");
+  const liste = await bo("list_tickets");
+  const vu = liste.json.find(x => x.id === ticket.id);
+  expect(vu.status).toBe("closed");
+  expect(vu.reponses.map(x => x.texte)).toContain("Votre dossier est complet, validation sous 48 h.");
+});

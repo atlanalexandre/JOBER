@@ -2561,6 +2561,26 @@ une fois la prestation finie, le client ne peut plus écrire. L'équipe ALANE, e
 signale un canal manquant ; l'envoi est journalisé (`bo_logs`). Le prestataire répond par
 e-mail — il n'y a pas de fil de discussion avec ALANE dans l'application. Éprouvé par `e2e/14`.
 
+### Support : répondre depuis le back-office
+
+**Depuis le 28/09/2026.** Un ticket (`support_tickets`, créé par `/api/support`) ne pouvait être
+que fermé ou supprimé : il fallait sortir du back-office pour répondre. L'onglet Support porte
+désormais une zone de réponse, « ✉️ Répondre » ou « ✉️ Répondre et fermer » (action
+`repondre_ticket`). La réponse part **par e-mail** (adresse du compte si le ticket en vient,
+sinon celle du formulaire) **et dans l'application** si le ticket vient d'un compte
+(`notifier()`). Elle est tenue au journal — `bo_logs`, action `repondre_ticket`, texte dans
+`details.reponse` — et `list_tickets` la relit pour afficher le fil sous le ticket : aucune
+colonne ni table nouvelle. Un ticket anonyme sans adresse ne peut pas recevoir de réponse.
+Éprouvé par `e2e/14`.
+
+### Back-office : filtre par région
+
+L'écran Comptes filtre par **région** (clients et prestataires), puis par ville. La région vient
+du code postal (`regionDe()`, `src/constants/regions.js` — deux premiers chiffres, trois pour
+l'outre-mer) ; sans code postal, seules quelques grandes villes sont reconnues par leur nom, et
+le reste est « Région non renseignée » plutôt que deviné. Île-de-France = 75, 77, 78, 91, 92, 93,
+94, 95. Secteur et métier restent réservés aux prestataires.
+
 ### Ne pas choisir le prestataire : la demande diffusée
 
 **Réparé le 28/09/2026**, décision d'Alexandre. Le parcours ne pouvait pas aboutir : aucun
