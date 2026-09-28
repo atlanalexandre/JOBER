@@ -3902,17 +3902,31 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   // lue ici même, sans dépendre du catalogue public — dont le filtrage laissait
   // régulièrement le client sans rien.
   const [photoPresta, setPhotoPresta] = useState(p?.photo_url || null);
+  // Le nom complet est lu par le serveur, qui vérifie que la prestation est celle du client : le
+  // catalogue ne donne que l'initiale du nom, et la base refuse au navigateur
+  // la lecture du profil d'autrui (l'ancienne lecture directe échouait en silence).
   useEffect(() => {
-    if (!p?.id) return;
-    supabase.from("profiles").select("prenom,nom,avatar_url").eq("id", p.id).single()
-      .then(({ data }) => {
-        if (!data) return;
-        if (!providerName || providerName === "Prestataire") {
-          setProviderName([data.prenom, data.nom].filter(Boolean).join(" ") || "Prestataire");
-        }
-        if (data.avatar_url) setPhotoPresta(data.avatar_url);
-      });
-  }, [p?.id]);
+    if (!resolvedMissionId) return;
+    let actif = true;
+    (async () => {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+          body: JSON.stringify({ action: "identite_prestataire", mission_id: resolvedMissionId }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { console.error("[suivi] identité du prestataire illisible :", r.status, j.error || ""); return; }
+        if (!actif) return;
+        const complet = [j.prenom, j.nom].filter(Boolean).join(" ");
+        if (complet) setProviderName(complet);
+      } catch (e) {
+        console.error("[suivi] identité du prestataire illisible :", e.message);
+      }
+    })();
+    return () => { actif = false; };
+  }, [resolvedMissionId]);
 
   // Poll prestation status + prestataire GPS every 20s
   useEffect(()=>{

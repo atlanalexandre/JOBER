@@ -3355,6 +3355,36 @@ export default async function handler(req, res) {
     }
 
 
+    // Nom complet et photo du prestataire, pour le client de CETTE prestation.
+    //
+    // Le catalogue public ne donne plus que l'initiale du nom (28/09/2026).
+    // L'écran de suivi lisait `profiles` directement depuis le navigateur — ce
+    // que la RLS refuse pour le profil d'autrui, sans erreur visible : il s'en
+    // remettait donc, en réalité, au catalogue.
+    if (action === "identite_prestataire") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
+        + `&status=in.(pending_acceptance,assigned,completed,closed,disputed)&select=prestataire_id&limit=1`,
+        { headers }
+      );
+      const m = (await mr.json().catch(() => []))[0];
+      if (!mr.ok || !m?.prestataire_id) return res.status(404).json({ error: "Prestation introuvable" });
+      // Le nom seulement : la photo montrée au client est celle qu'ALANE a
+      // validée (document `photo`, servi par `list_client`), jamais `avatar_url`,
+      // que le prestataire change à sa guise.
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=prenom,nom&limit=1`, { headers });
+      const prof = (await pr.json().catch(() => []))[0];
+      if (!pr.ok || !prof) {
+        console.error(`[identite_prestataire] profil ${m.prestataire_id} illisible (${pr.status})`);
+        return res.status(502).json({ error: "Identité du prestataire illisible." });
+      }
+      return res.status(200).json({ prenom: prof.prenom || "", nom: prof.nom || "" });
+    }
+
     if (action === "get_position") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });

@@ -163,6 +163,17 @@ export default async function handler(req, res) {
       for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
     } catch (e) { console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
 
+    // Nom de famille réduit à son initiale (décision d'Alexandre du 28/09/2026).
+    // Ce catalogue est public, sans compte : le nom complet permettait de
+    // retrouver le prestataire ailleurs et de le contacter sans passer par la
+    // plateforme, et exposait l'identité de particuliers au-delà du nécessaire
+    // (RGPD, minimisation). Le client qui a réservé obtient le nom complet par
+    // `identite_prestataire` (/api/missions), vérifié sur SA prestation.
+    const initiale = (nom) => {
+      const n = String(nom || "").trim();
+      return n ? `${n.charAt(0).toLocaleUpperCase("fr-FR")}.` : "";
+    };
+
     // Enrich each profile with user_metadata
     const enriched = approvedProfiles.map((p) => {
       const meta = userMetaMap[p.id] || {};
@@ -172,9 +183,9 @@ export default async function handler(req, res) {
         : 0;
       return {
         id:            p.id,
-        name:          `${p.prenom || meta.prenom || ""} ${p.nom || meta.nom || ""}`.trim() || "Prestataire",
+        name:          `${p.prenom || meta.prenom || ""} ${initiale(p.nom || meta.nom)}`.trim() || "Prestataire",
         prenom:        p.prenom || meta.prenom || "",
-        nom:           p.nom    || meta.nom    || "",
+        nom:           initiale(p.nom || meta.nom),
         secteur:          meta.secteur          || meta.sector    || null,
         metier:           meta.metier           || meta.job_title || null,
         niveau:           meta.niveau           || null,
