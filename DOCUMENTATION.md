@@ -2550,6 +2550,17 @@ Le comptage des non-lus, lui, cherche toujours l'identifiant de l'utilisateur **
 dans la clé**. Cela fonctionne, mais c'est le symptôme du même défaut de modèle : une
 appartenance qui se prouve par une sous-chaîne. À reprendre avec la refonte.
 
+### Écrire à un prestataire après la prestation : l'équipe ALANE seulement
+
+**Décision d'Alexandre, 28/09/2026.** La messagerie client ↔ prestataire (`envoyer_message`)
+n'est ouverte que pendant une prestation en commun (`open`, `pending_acceptance`, `assigned`) :
+une fois la prestation finie, le client ne peut plus écrire. L'équipe ALANE, elle, peut écrire
+à tout utilisateur à tout moment, depuis le back-office (fiche → « 📧 Contacter », action
+`send_user_email`) : **e-mail, et notification dans l'application doublée d'une push**
+(`notifier()`). La réponse dit quel canal est parti (`email`, `application`) et le back-office
+signale un canal manquant ; l'envoi est journalisé (`bo_logs`). Le prestataire répond par
+e-mail — il n'y a pas de fil de discussion avec ALANE dans l'application. Éprouvé par `e2e/14`.
+
 ### Ne pas choisir le prestataire : la demande diffusée
 
 **Réparé le 28/09/2026**, décision d'Alexandre. Le parcours ne pouvait pas aboutir : aucun
