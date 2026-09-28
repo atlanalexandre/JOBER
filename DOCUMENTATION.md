@@ -1061,25 +1061,20 @@ compte à moitié créé se répare donc tout seul à la première reconnexion.
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
 
-### Deux endpoints sans aucune authentification
+### Un endpoint sans authentification : le catalogue
 
-Ce sont les seules exceptions, et elles méritent d'être connues avant d'être copiées comme
-modèle :
+- **`get-profile.js`** — **authentifié**. Il recevait un `userId` dans le corps de la requête
+  et renvoyait en service role le rôle, le statut et l'abonnement de n'importe quel compte. Il
+  ne lit plus que le profil de l'appelant, dont l'identifiant vient du jeton vérifié. (Cette
+  section le disait encore ouvert jusqu'au 28/09/2026.)
+- **`prestataires.js`** — sert le catalogue des prestataires approuvés (identifiant, prénom,
+  nom, photo) sans vérifier l'appelant. Cela **contourne la décision S-11** de l'audit, qui
+  avait fermé ce catalogue aux comptes connectés en retirant les policies RLS publiques : la
+  restriction porte sur l'accès direct à la table, pas sur cet endpoint. La route allégée
+  `?action=count` doit rester publique (écran d'accueil avant connexion).
 
-- **`get-profile.js`** — reçoit un `userId` dans le corps de la requête et renvoie `role`,
-  `status`, `missions_enabled` et `plan_abonnement` de ce compte, en service role, donc
-  **hors RLS**. Quiconque connaît un identifiant peut lire ces champs. Les données restent
-  limitées (ni nom, ni email, ni téléphone) mais la lecture n'est pas contrôlée.
-- **`prestataires.js`** — sert le catalogue complet des prestataires approuvés (identifiant,
-  prénom, nom, photo) sans vérifier l'appelant. À noter : cela **contourne la décision S-11**
-  de l'audit, qui avait fermé ce catalogue aux comptes connectés en retirant les policies RLS
-  publiques. La restriction porte sur l'accès direct à la table, pas sur cet endpoint.
-  La route allégée `?action=count`, elle, doit rester publique : l'écran d'accueil s'en sert
-  avant toute connexion.
-
-Refermer ces deux points est une décision produit, pas une correction évidente : `get-profile`
-est appelé pendant la connexion, et le catalogue sert aussi les liens de partage `?profil=`
-qui fonctionnent aujourd'hui sans compte.
+Refermer le catalogue est une **décision produit** : il sert aussi les liens de partage
+`?profil=`, qui fonctionnent aujourd'hui sans compte.
 
 ### Ce que le front n'a plus le droit d'écrire
 
