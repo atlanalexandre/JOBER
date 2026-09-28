@@ -2918,17 +2918,19 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   if (!p) return null;
   const isUrgent = p.urgentMode || localUrgent || false;
   const [step,setStep]=useState(1);
-  const [hours,setHours]=useState(isUrgent ? 4 : 8);
+  // Venue d'une demande diffusée, la réservation en reprend les termes.
+  const prefill = p?.prefill || {};
+  const [hours,setHours]=useState(isUrgent ? 4 : (Number(prefill.hours) || 8));
   const [missionType, setMissionType] = useState("single");
   // Série hebdomadaire : chaque semaine est payée à son tour, sur la carte
   // enregistrée, et proposée au même prestataire (api/_recurrence.js).
   const [chaqueSemaine, setChaqueSemaine] = useState(false);
-  const [startDate, setStartDate] = useState("");
+  const [startDate, setStartDate] = useState(prefill.date || "");
   const [endDate, setEndDate] = useState("");
-  const [startTime, setStartTime] = useState("08:00");
-  const [description, setDescription] = useState("");
-  const [adresse, setAdresse]         = useState("");
-  const [ville, setVille]             = useState("");
+  const [startTime, setStartTime] = useState(prefill.startTime ? String(prefill.startTime).slice(0, 5) : "08:00");
+  const [description, setDescription] = useState(prefill.description || "");
+  const [adresse, setAdresse]         = useState(prefill.adresse || "");
+  const [ville, setVille]             = useState(prefill.ville || "");
   const [cp, setCp]                   = useState("");
   const [instructions, setInstructions] = useState("");
   const [adresseError, setAdresseError] = useState(false);
@@ -9532,7 +9534,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const prestation = { sector:s, metier, date, hours, description, adresse, ville };
+    const prestation = { sector:s, metier, date, hours, description, adresse, ville, heure_debut: startTime || null };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -9640,8 +9642,31 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   );
 }
 
-export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
+export function MissionBroadcastScreen({ prestation, onChoose, onCancel: quitter }) {
   const m = prestation || {};
+  // Quitter l'écran retire la demande : elle resterait sinon ouverte, et des
+  // prestataires continueraient à s'y proposer pour rien.
+  const onCancel = async () => {
+    if (m.id) {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const r = await fetch("/api/missions", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd?.session?.access_token || ""}` },
+          body: JSON.stringify({ action:"annuler_diffusion", mission_id:m.id }),
+        });
+        if (!r.ok && r.status !== 404) {
+          const j = await r.json().catch(() => ({}));
+          showToast(j.error || "La demande n'a pas pu être retirée.", "error");
+          return;
+        }
+      } catch (e) {
+        showToast(e?.message || "Erreur réseau", "error");
+        return;
+      }
+    }
+    quitter();
+  };
   const { providers } = useProviders();
   const [notifiedCount, setNotifiedCount] = useState(0);
   const [candidatures, setCandidatures]   = useState([]);
@@ -9680,12 +9705,24 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
   useEffect(()=>{
     if(!m.id) return;
     const poll = async () => {
+      // Lues par le serveur : la base ne montre une candidature qu'à son auteur.
+      // La lecture directe revenait donc toujours vide, et le client attendait
+      // des propositions déjà arrivées.
       const { data: sd } = await supabase.auth.getSession();
       if (!sd?.session) return;
-      const { data } = await supabase.from("candidatures")
-        .select("id,prestataire_id,status,created_at")
-        .eq("mission_id", m.id)
-        .eq("status","pending");
+      let data = null;
+      try {
+        const rc = await fetch("/api/missions", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd.session.access_token}` },
+          body: JSON.stringify({ action:"get_candidatures", mission_id:m.id }),
+        });
+        const jc = await rc.json().catch(() => null);
+        if (rc.ok && Array.isArray(jc)) data = jc.filter(c => c.status === "pending");
+        else console.error("[diffusion] candidatures illisibles :", rc.status, jc?.error);
+      } catch (e) {
+        console.error("[diffusion] candidatures illisibles :", e.message);
+      }
       if(Array.isArray(data)){
         // Enrich with provider info from providers list
         const enriched = data.map(c => {
@@ -9768,7 +9805,7 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
                   </div>
                   <div>
                     <div style={{ fontWeight:800, color:C.success, fontSize:16 }}>{tarifLabel(p)}</div>
-                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {((p.rateNum||0)*m.hours).toFixed(2).replace(".",",")} €</div>
+                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {formatMontant((p.rateNum||0)*m.hours)} HT</div>
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>

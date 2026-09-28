@@ -1839,7 +1839,16 @@ export default function App() {
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={(m)=>{ if(m?.id) setSelectedMissionId(m.id); setScreen("mission_broadcast"); setPendingMission(m); }} />}
-      {screen==="mission_broadcast" && <MissionBroadcastScreen prestation={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
+      {screen==="mission_broadcast" && <MissionBroadcastScreen prestation={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{
+        // Le prestataire choisi parmi ceux qui se sont proposés : la réservation
+        // reprend la demande (date, heure, durée, lieu), et le paiement la fermera.
+        setSelectedProvider({ ...p, diffusionId: pendingMission?.id || null, prefill: {
+          date: pendingMission?.date || "", startTime: pendingMission?.heure_debut || "",
+          hours: pendingMission?.hours || null, description: pendingMission?.description || "",
+          adresse: pendingMission?.adresse || "", ville: pendingMission?.ville || "",
+        } });
+        setBookingSource("mission_broadcast"); setScreen("booking");
+      }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
@@ -1956,7 +1965,9 @@ export default function App() {
                 headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
                 body: JSON.stringify(chezUnTiers
                   ? { action:"affecter_tiers", mission_id:missionId, stripe_payment_intent:intentId||null, retractation_renoncee:true }
-                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, stripe_payment_intent:intentId||null, retractation_renoncee:true }),
+                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, stripe_payment_intent:intentId||null, retractation_renoncee:true,
+                      // Réservation issue d'une demande diffusée : le serveur la ferme.
+                      diffusion_id: selectedProvider?.diffusionId || undefined }),
               });
               if(!rA.ok){
                 const jA = await rA.json().catch(()=>({}));

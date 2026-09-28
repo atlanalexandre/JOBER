@@ -746,7 +746,11 @@ aux prestations (`enable_missions`) ne l'exigeait pas — l'exigence ne vivait q
 Elle exige désormais, pour un prestataire dont `user_metadata.nationalite` contient « hors »,
 un titre de séjour **déposé et vérifié**, comme la carte professionnelle d'un métier réglementé.
 
-**`candidatures`** — les prestataires qui postulent à une mission ouverte.
+**`candidatures`** — les prestataires qui se proposent sur une demande diffusée (`missions.status =
+'open'`, sans prestataire). Statuts : `pending`, `accepted`, `rejected` ; une seule par
+`(mission_id, prestataire_id)`. **Écrite et lue uniquement par `/api`** (`candidater`,
+`get_candidatures`, `fermerDiffusion`) : la RLS ne donne la lecture qu'au prestataire auteur, et
+aucune écriture au navigateur. Voir §6 « Ne pas choisir le prestataire ».
 
 **`notifications`**, **`messages`**, **`support_tickets`**, **`ratings`**,
 **`tracking_positions`** (géolocalisation en cours de prestation), **`favorites`**,
@@ -2545,6 +2549,25 @@ Le comptage des non-lus, lui, cherche toujours l'identifiant de l'utilisateur **
 dans la clé**. Cela fonctionne, mais c'est le symptôme du même défaut de modèle : une
 appartenance qui se prouve par une sous-chaîne. À reprendre avec la refonte.
 
+### Ne pas choisir le prestataire : la demande diffusée
+
+**Réparé le 28/09/2026**, décision d'Alexandre. Le parcours ne pouvait pas aboutir : aucun
+écran ne permettait à un prestataire de se proposer (écriture de `candidatures` fermée au
+navigateur le 17/08, à juste titre — une candidature mène à un paiement), le client ne pouvait
+pas lire les propositions (RLS réservée à l'auteur), et `list_open` renvoyait toutes les
+demandes, **adresse et identifiant du client compris**, à tout compte connecté.
+
+| Étape | Qui | Ce qui se passe |
+|---|---|---|
+| Demande | client, « Ne pas choisir le prestataire » (écran du métier) | `MissionRequestScreen` crée une prestation `open`, sans prestataire, sans prix : date, heure, durée, ville, adresse. `broadcast` prévient les prestataires qui peuvent se proposer (validés, accès ouvert, secteur principal ou secondaire, bon métier, dans leur rayon) |
+| Proposition | prestataire, onglet Prestations, bloc « 📢 Demandes ouvertes » | `list_open` : les demandes de son métier, **ville et horaire seulement**. « 🙋 Je suis disponible » → `candidater` (validé, accès ouvert, bon métier, une seule fois, demande encore ouverte). Le client est prévenu |
+| Choix | client, écran « Demande diffusée » | Propositions lues par `get_candidatures` (sa demande seulement). « Choisir » ouvre la réservation **pré-remplie** ; il réserve et paie au tarif du prestataire, comme d'ordinaire |
+| Paiement | serveur, `assign_after_payment` avec `diffusion_id` | `fermerDiffusion()` : la demande passe `cancelled` (« pourvue »), la candidature du prestataire payé `accepted`, les autres `rejected`, leurs auteurs prévenus. **Seulement si le prestataire payé s'était proposé** : l'identifiant vient du navigateur |
+| Abandon | client, « Annuler la demande » | `annuler_diffusion` : même fermeture, candidats prévenus |
+
+La prestation réservée est une **nouvelle** ligne de `missions` : la demande diffusée n'a ni
+prix ni prestataire, elle ne sert qu'à recueillir les propositions. Éprouvé par `e2e/18`.
+
 ### Réserver chaque semaine : chaque prestation payée à son tour
 
 **Mis en place le 25/09/2026**, décision d'Alexandre : « chaque semaine payée au fur et à
@@ -3625,6 +3648,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
 | `16` | à l'écran : prix urgent = tarif du prestataire + `urgency_surcharge`, identique sur l'écran d'urgence, la réservation et en base, 20 min pour répondre ; suivi « Prestation confirmée » puis « En route vers vous » à la première position ; abonnement annuel au centime (« soit 287,90 € facturés une fois par an ») |
 | `17` | série hebdomadaire : case à l'écran et accord exprès ; semaine suivante créée, débitée seule (Stripe), proposée au même prestataire, après validation par le client ou automatique ; refus remboursé et fin de série ; arrêt par le client |
+| `18` | demande diffusée par l'écran (client) ; « Je suis disponible » par l'écran (prestataire) ; choix, réservation pré-remplie, paiement ; demande fermée et autres candidats prévenus ; droits (adresse jamais montrée, une seule proposition, métier, client) ; retrait par le client |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

@@ -518,6 +518,49 @@ function affecteeParLaPlateforme(mission) {
   return !!d && d.lieu !== "etablissement_propre";
 }
 
+// Ferme une demande diffusée : elle quitte la liste des demandes ouvertes, la
+// candidature retenue (s'il y en a une) est acceptée, les autres refusées, et
+// leurs auteurs prévenus. Appelée quand le client retire sa demande, et quand il
+// a réservé et PAYÉ l'un des prestataires qui s'étaient proposés.
+async function fermerDiffusion(diffusionId, clientId, prestataireRetenu, motif, supabaseUrl, headers) {
+  const fr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${diffusionId}&client_id=eq.${clientId}&status=eq.open&prestataire_id=is.null`, {
+    method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+    body: JSON.stringify({ status: "cancelled", cancellation_reason: `Demande diffusée ${motif}` }),
+  });
+  const rows = await fr.json().catch(() => null);
+  if (!fr.ok || !Array.isArray(rows)) {
+    console.error(`[diffusion] ${diffusionId} NON fermée (${fr.status}) ${JSON.stringify(rows || {}).slice(0, 200)}`);
+    return { ok: false, code: 500, error: "La demande n'a pas pu être fermée. Réessayez." };
+  }
+  if (!rows.length) return { ok: false, code: 404, error: "Demande introuvable ou déjà fermée." };
+  const m = rows[0];
+
+  const cr = await fetch(`${supabaseUrl}/rest/v1/candidatures?mission_id=eq.${diffusionId}&status=eq.pending&select=id,prestataire_id`, { headers });
+  const cands = await cr.json().catch(() => null);
+  if (!cr.ok || !Array.isArray(cands)) {
+    console.error(`[diffusion] candidatures de ${diffusionId} illisibles (${cr.status}) — prestataires NON prévenus.`);
+    return { ok: true };
+  }
+  for (const c of cands) {
+    const retenu = prestataireRetenu && c.prestataire_id === prestataireRetenu;
+    const ur = await fetch(`${supabaseUrl}/rest/v1/candidatures?id=eq.${c.id}`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ status: retenu ? "accepted" : "rejected" }),
+    });
+    if (!ur.ok) console.error(`[diffusion] candidature ${c.id} NON mise à jour (${ur.status}).`);
+    if (!retenu) {
+      await notifier({
+        user_id: c.prestataire_id, type: "mission",
+        title: "Demande pourvue",
+        body: prestataireRetenu
+          ? `Le client a retenu un autre prestataire pour sa demande ${m.metier || ""} du ${m.date}. Merci de vous être proposé.`
+          : `Le client a retiré sa demande ${m.metier || ""} du ${m.date}.`,
+      }, supabaseUrl, headers).catch(e => console.error("[diffusion] notification prestataire échouée :", e.message));
+    }
+  }
+  return { ok: true };
+}
+
 // Passe au candidat suivant après un refus ou une absence de réponse, pour les
 // prestations affectées par la plateforme (CGPS art. 5.2).
 //
@@ -766,20 +809,118 @@ export default async function handler(req, res) {
       return res.status(201).json({ success: true, mission });
     }
 
+    // ── Demandes diffusées : « Ne pas choisir le prestataire » ───────────────
+    //
+    // Le client décrit un besoin sans désigner personne ; les prestataires du
+    // métier qui sont disponibles se proposent ; le client choisit parmi eux,
+    // puis réserve et paie comme d'ordinaire. Le parcours ne pouvait pas aboutir
+    // (recette du 25/09/2026) : aucun écran ne permettait à un prestataire de se
+    // proposer, l'écriture de `candidatures` étant fermée au navigateur depuis le
+    // 17/08 — à juste titre, une candidature menant à un paiement — et le client
+    // ne pouvait même pas lire celles de sa demande. Tout passe désormais ici.
+    //
+    // list_open : les demandes ouvertes qui correspondent au prestataire. Elle
+    // renvoyait TOUTES les demandes, adresse exacte et identifiant du client
+    // compris, à n'importe quel compte connecté. On ne montre que la ville.
     if (action === "list_open") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { sector, metier, limit: rawLimit, offset: rawOffset } = payload;
-      const pageLimit  = Math.min(Math.max(1, parseInt(rawLimit,  10) || 50), 100);
-      const pageOffset = Math.max(0, parseInt(rawOffset, 10) || 0);
-      // Exclure les missions dont la date est passée (missions fantômes)
-      const todayStr = new Date().toISOString().slice(0, 10);
-      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&or=(date.gte.${todayStr},date.is.null)&order=created_at.desc&limit=${pageLimit}&offset=${pageOffset}`;
-      if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
-      if (metier) url += `&metier=eq.${encodeURIComponent(metier)}`;
-      const r = await fetch(url, { headers });
-      const missions = await r.json();
-      return res.status(200).json(Array.isArray(missions) ? missions : []);
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,status,missions_enabled`, { headers });
+      const prof = (await pr.json().catch(() => []))[0];
+      if (!pr.ok || prof?.role !== "prestataire") return res.status(403).json({ error: "Réservé aux prestataires." });
+      if (prof.status !== "approved" || !prof.missions_enabled) return res.status(200).json({ demandes: [], acces: false });
+
+      const meta = caller.user_metadata || {};
+      const secteurs = secteursDuProfil(meta);
+      const metiers = [meta.metier, ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier || x) : [])]
+        .filter(Boolean).map(x => String(x).toLowerCase());
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.open&prestataire_id=is.null&date=gte.${dateDuJourFr()}`
+        + `&client_id=neq.${caller.id}&select=id,sector,metier,date,heure_debut,hours,ville,description,created_at`
+        + "&order=date.asc&limit=100",
+        { headers }
+      );
+      const lignes = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(lignes)) {
+        console.error(`[list_open] demandes illisibles (${r.status})`);
+        return res.status(502).json({ error: "Les demandes ouvertes n'ont pas pu être chargées." });
+      }
+      const pour = lignes.filter(m =>
+        (!secteurs.length || !m.sector || secteurs.includes(String(m.sector)))
+        && (!metiers.length || !m.metier || metiers.includes(String(m.metier).toLowerCase())));
+      let miennes = {};
+      if (pour.length) {
+        const cr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${caller.id}&mission_id=in.(${pour.map(m => m.id).join(",")})&select=mission_id,status`, { headers });
+        const cand = await cr.json().catch(() => null);
+        if (!cr.ok || !Array.isArray(cand)) {
+          console.error(`[list_open] candidatures de ${caller.id} illisibles (${cr.status})`);
+          return res.status(502).json({ error: "Les demandes ouvertes n'ont pas pu être chargées." });
+        }
+        miennes = Object.fromEntries(cand.map(c => [c.mission_id, c.status]));
+      }
+      return res.status(200).json({ acces: true, demandes: pour.map(m => ({ ...m, ma_candidature: miennes[m.id] || null })) });
+    }
+
+    // candidater : « Je suis disponible », par un prestataire, sur une demande ouverte.
+    if (action === "candidater") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const message = payload.message ? String(payload.message).trim().slice(0, 300) || null : null;
+
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,status,missions_enabled,prenom`, { headers });
+      const prof = (await pr.json().catch(() => []))[0];
+      if (!pr.ok || prof?.role !== "prestataire") return res.status(403).json({ error: "Réservé aux prestataires." });
+      if (prof.status !== "approved" || !prof.missions_enabled) {
+        return res.status(403).json({ error: "Votre accès aux prestations n'est pas encore ouvert." });
+      }
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,status,prestataire_id,sector,metier,date&limit=1`, { headers });
+      const m = (await mr.json().catch(() => []))[0];
+      if (!mr.ok || !m) return res.status(404).json({ error: "Demande introuvable." });
+      if (m.status !== "open" || m.prestataire_id || !m.date || String(m.date) < dateDuJourFr()) {
+        return res.status(409).json({ error: "Cette demande n'est plus ouverte." });
+      }
+      if (m.client_id === caller.id) return res.status(403).json({ error: "Vous ne pouvez pas répondre à votre propre demande." });
+      const meta = caller.user_metadata || {};
+      const secteurs = secteursDuProfil(meta);
+      const metiers = [meta.metier, ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier || x) : [])]
+        .filter(Boolean).map(x => String(x).toLowerCase());
+      if ((m.sector && secteurs.length && !secteurs.includes(String(m.sector)))
+        || (m.metier && metiers.length && !metiers.includes(String(m.metier).toLowerCase()))) {
+        return res.status(403).json({ error: "Cette demande ne correspond pas à votre métier." });
+      }
+
+      const ir = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ mission_id, prestataire_id: caller.id, status: "pending", message }),
+      });
+      const ins = await ir.json().catch(() => null);
+      if (ir.status === 409 || ins?.code === "23505") return res.status(409).json({ error: "Vous vous êtes déjà proposé sur cette demande." });
+      if (!ir.ok || !Array.isArray(ins) || !ins.length) {
+        console.error(`[candidater] ${caller.id} sur ${mission_id} NON enregistré : ${ir.status} ${JSON.stringify(ins || {}).slice(0, 200)}`);
+        return res.status(500).json({ error: "Votre proposition n'a pas pu être enregistrée. Réessayez." });
+      }
+      await notifier({
+        user_id: m.client_id, type: "mission", ref_id: mission_id,
+        title: "🙋 Un prestataire est disponible",
+        body: `${prof.prenom || "Un prestataire"} est disponible pour votre demande ${m.metier || ""} du ${m.date}. Ouvrez votre demande pour le choisir.`,
+      }, SUPABASE_URL, headers).catch(e => console.error("[candidater] notification client échouée :", e.message));
+      return res.status(200).json({ success: true, candidature_id: ins[0].id });
+    }
+
+    // annuler_diffusion : le client retire sa demande ; les prestataires qui
+    // s'étaient proposés sont prévenus.
+    if (action === "annuler_diffusion") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const fermee = await fermerDiffusion(mission_id, caller.id, null, "retirée par le client", SUPABASE_URL, headers);
+      if (!fermee.ok) return res.status(fermee.code).json({ error: fermee.error });
+      return res.status(200).json({ success: true });
     }
 
     // ── attestation_conformite ────────────────────────────────────────
@@ -2397,6 +2538,22 @@ export default async function handler(req, res) {
       }
       await prevenirNouvelleDemande(mission_id, SUPABASE_URL, headers);
 
+      // Réservation issue d'une demande diffusée : le prestataire choisi s'y était
+      // proposé. La demande est fermée et les autres candidats prévenus — elle
+      // restait sinon ouverte, et d'autres continuaient à s'y proposer. Seulement
+      // si le prestataire payé avait bien candidaté : l'identifiant vient du
+      // navigateur, il ne doit fermer que ce qui le concerne.
+      if (payload.diffusion_id && isUuid(payload.diffusion_id)) {
+        const cr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${payload.diffusion_id}&prestataire_id=eq.${prestataire_id}&select=id&limit=1`, { headers });
+        const cand = await cr.json().catch(() => null);
+        if (cr.ok && Array.isArray(cand) && cand.length) {
+          const f = await fermerDiffusion(payload.diffusion_id, caller.id, prestataire_id, `pourvue (réservation ${mission_id})`, SUPABASE_URL, headers);
+          if (!f.ok) console.error(`[assign_after_payment] demande diffusée ${payload.diffusion_id} NON fermée : ${f.error}`);
+        } else {
+          console.error(`[assign_after_payment] ${prestataire_id} n'a pas candidaté sur ${payload.diffusion_id} — demande laissée ouverte.`);
+        }
+      }
+
       // Le paiement a abouti : c'est ici, et pas avant, que le cashback promis
       // au tunnel est réellement prélevé. Un panier abandonné ne consomme rien.
       // Le webhook Stripe passe par le même helper — `cashback_debite` rend le
@@ -2686,7 +2843,10 @@ export default async function handler(req, res) {
 
       // Fetch all approved prestataires
       const pr = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
+        // Seuls ceux qui peuvent se proposer : validés ET accès ouvert (list_open,
+        // candidater). Prévenir les autres, c'était leur montrer une demande
+        // qu'ils ne voient ni ne peuvent prendre.
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id`,
         { headers }
       );
       const profiles = await pr.json();
@@ -2730,9 +2890,13 @@ export default async function handler(req, res) {
             try {
               const ud = userMetaMap[p.id] || {};
               const meta = ud.user_metadata || {};
-              const presta_sector = meta.secteur || meta.sector;
-              console.log("[broadcast] checking prestataire sector:", presta_sector, "vs mission:", sector);
-              if (sector && presta_sector !== sector) return;
+              // Secteur principal OU secondaire, et métier : les mêmes critères que
+              // list_open. Seul le premier secteur déclaré était regardé.
+              const secteursP = secteursDuProfil(meta);
+              if (sector && secteursP.length && !secteursP.includes(String(sector))) return;
+              const metiersP = [meta.metier, ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier || x) : [])]
+                .filter(Boolean).map(x => String(x).toLowerCase());
+              if (mission?.metier && metiersP.length && !metiersP.includes(String(mission.metier).toLowerCase())) return;
 
               // Geo filter: respect prestataire's zone_km (rayon d'intervention)
               const zoneKm = Number(meta.zone_km) || 50; // default 50 km
@@ -2755,7 +2919,7 @@ export default async function handler(req, res) {
                   user_id: p.id,
                   type: "mission",
                   title: pushTitle,
-                  body: `${pushBody}. Postulez dans votre espace !`,
+                  body: `${pushBody}. Si vous êtes disponible, proposez-vous depuis l'onglet Prestations.`,
                 }, SUPABASE_URL, headers);
 
               console.log("[broadcast] in-app notification sent");
