@@ -3460,6 +3460,15 @@ le consommait : à la fermeture du portefeuille, il est devenu crédité, affich
 nulle part — alors que l'article 5B.1 des CGPS promet un crédit « utilisable pour le paiement
 total ou partiel de futures Prestations ».
 
+**`increment_cashback` échouait à chaque appel du 27/08 au 28/09/2026** (« column reference
+"cashback_balance" is ambiguous » : les noms de sortie de `RETURNS TABLE` masquaient les
+colonnes). Seule la validation par le client créditait, par un PATCH de secours. Ni la
+validation automatique, ni « Valider de force » ou « Ajuster le cashback » au back-office, ni
+aucune restitution après remboursement ne fonctionnaient — sans le dire. Réparée par
+`2026-09-28_reparer_increment_cashback.sql` (`#variable_conflict use_column`, même signature) ;
+les appelants lisent désormais son résultat, et `restituerCashback` est aussi appelé par
+l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
+
 **Le client décide** (décision d'Alexandre, 28/09/2026). Le tunnel propose la case « 💰
 Utiliser mon cashback », décochée par défaut, et envoie `utiliser_cashback` à
 `stripe-intent`. Sans `true`, la réduction vaut 0 et le solde reste intact. Le navigateur ne

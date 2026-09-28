@@ -2607,7 +2607,14 @@ export default async function handler(req, res) {
     if (action === "adjust_cashback") {
       const { profileId, delta, reason } = body;
       if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
+      // Le résultat n'était pas lu : du 27/08 au 28/09/2026 la fonction échouait
+      // à chaque appel, et le back-office annonçait un ajustement jamais fait.
+      const ajust = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(e => { console.error("[bo-action/adjust_cashback] appel impossible :", e?.message); return null; });
+      if (!ajust?.ok) {
+        const txt = ajust ? await ajust.text().catch(() => "") : "";
+        console.error(`[bo-action/adjust_cashback] ajustement refusé (${ajust?.status}) :`, txt.slice(0, 200));
+        return res.status(502).json({ error: "Le cashback n'a pas pu être ajusté. Rien n'a été modifié." });
+      }
       await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       return res.status(200).json({ ok: true });

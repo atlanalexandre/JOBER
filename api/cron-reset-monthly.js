@@ -1816,24 +1816,25 @@ ${(() => {
         if (pastMissions.length) {
           await Promise.all(pastMissions.map(async (m) => {
             const label = m.metier || m.sector || "votre prestation";
-            const notifier = async (userId, title, corps) => {
+            // Cette fonction locale s'appelait `notifier`, comme celle de
+            // _push.js qu'elle voulait appeler : elle s'appelait donc ELLE-MÊME,
+            // en boucle, jusqu'au débordement de pile. Aucune relance de
+            // validation n'arrivait dans l'application (relecture du 28/09/2026).
+            // notifier() de _push.js écrit la notification ET la push.
+            const prevenir = async (userId, title, corps) => {
               if (!userId) return 0;
-              const r = await notifier({ user_id: userId, type: "mission", title, body: corps}, SUPABASE_URL, headers).catch(e => { console.error("[relance] notification non insérée :", e.message); return null; });
-              if (r && !r.ok) {
-                const detail = await r.text().catch(() => "");
-                console.error(`[relance] notification refusée (${r.status}) : ${detail.slice(0, 200)}`);
-              }
-              await sendPushToUser(userId, { title, body: corps, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
+              const depose = await notifier({ user_id: userId, type: "mission", title, body: corps }, SUPABASE_URL, headers);
+              if (!depose) console.error(`[relance] notification NON déposée pour ${userId}.`);
               return 1;
             };
 
             let envoyees = 0;
             if (!m.validation_prestataire) {
-              envoyees += await notifier(m.prestataire_id, "⏱ Confirmez la fin de votre prestation",
+              envoyees += await prevenir(m.prestataire_id, "⏱ Confirmez la fin de votre prestation",
                 `« ${label} » du ${m.date} est terminée. Confirmez-la pour déclencher votre paiement.`);
             }
             if (m.validation_prestataire && !m.validation_client) {
-              envoyees += await notifier(m.client_id, "✅ Prestation à valider",
+              envoyees += await prevenir(m.client_id, "✅ Prestation à valider",
                 `Le prestataire a confirmé la fin de « ${label} » du ${m.date}. Validez-la depuis votre espace.`);
             }
             validationSent += envoyees;
@@ -2015,11 +2016,17 @@ ${(() => {
               }
 
               await Promise.all([
-                // Mise à jour atomique du cashback via RPC pour éviter les race conditions
+                // Mise à jour atomique du cashback via RPC pour éviter les race conditions.
+                // Son résultat n'était pas lu : la fonction a échoué à chaque appel du
+                // 27/08 au 28/09/2026, et aucun cashback d'auto-validation n'a été
+                // crédité sans que rien ne le dise.
                 fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=representation" },
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
-                }).catch(e => console.error("cron cashback update error:", e)),
+                }).then(async r => {
+                  if (!r.ok) console.error(`[cron/auto-validation] cashback de ${cashbackEarned} € NON crédité au client de ${m.id} (${r.status}) :`,
+                    (await r.text().catch(() => "")).slice(0, 200), "— à créditer à la main.");
+                }).catch(e => console.error(`[cron/auto-validation] cashback NON crédité pour ${m.id} :`, e.message)),
                 // Notification client
                 notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${euros(cashbackEarned)}` : ""}`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Notification prestataire
