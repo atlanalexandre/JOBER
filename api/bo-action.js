@@ -1454,7 +1454,12 @@ export default async function handler(req, res) {
       const userEmail = userData.email;
       if (!userEmail) return res.status(404).json({ error: "Email introuvable" });
       const prenom = userData.user_metadata?.prenom || "";
-      await sendEmail({
+      // Le message d'ALANE arrive AUSSI dans l'application et sur le téléphone
+      // (décision d'Alexandre du 28/09/2026 : pouvoir écrire à un prestataire à
+      // tout moment, y compris après la prestation). La messagerie client ↔
+      // prestataire, elle, reste fermée une fois la prestation finie : seule
+      // l'équipe ALANE garde la parole.
+      const emailParti = await sendEmail({
         to: userEmail,
         subject: subject.trim(),
         html: emailHtml(`
@@ -1463,12 +1468,18 @@ export default async function handler(req, res) {
           <p style="color:#888;font-size:13px;">L'équipe ALANE</p>
         `),
       });
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "send_user_email", target_id: profileId, target_email: userEmail }),
-      }).catch(e => console.error("[bo-action/send_user_email] échec ignoré :", e?.message));
-      return res.status(200).json({ success: true });
+      let dansApplication = true;
+      try {
+        await notifier({ user_id: profileId, type: "system", title: `✉️ ${subject.trim()}`.slice(0, 120), body: message.trim().slice(0, 1000) }, SUPABASE_URL, headers);
+      } catch (e) {
+        dansApplication = false;
+        console.error("[bo-action/send_user_email] message NON déposé dans l'application :", e?.message);
+      }
+      if (!emailParti && !dansApplication) {
+        return res.status(502).json({ error: "Le message n'a pu partir ni par e-mail ni dans l'application." });
+      }
+      await journaliser("send_user_email", { target_id: profileId, target_email: userEmail, details: { email: !!emailParti, application: dansApplication } });
+      return res.status(200).json({ success: true, email: !!emailParti, application: dansApplication });
     }
 
     if (action === "send_test_email") {

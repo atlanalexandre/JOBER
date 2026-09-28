@@ -497,6 +497,10 @@ function BOComptes() {
       const res = await boFetch({ action:"send_user_email", profileId: contactModal.profileId, subject: contactSubject.trim(), message: contactMessage.trim() });
       const data = await res.json();
       setContactResult(data.success ? "ok" : "error");
+      // Un des deux canaux peut manquer : on le dit plutôt que d'afficher un succès complet.
+      if (data.success && (!data.email || !data.application)) {
+        showToast(data.email ? "E-mail envoyé, mais pas déposé dans l'application." : "Déposé dans l'application, mais l'e-mail n'est pas parti.", "error");
+      }
       if (data.success) setTimeout(() => { setContactModal(null); setContactSubject(""); setContactMessage(""); setContactResult(null); }, 1500);
     } catch { setContactResult("error"); }
     setContactSending(false);
@@ -1467,6 +1471,7 @@ function BOComptes() {
             <h3 style={{ color:C.text, fontSize:15, fontWeight:800, margin:"0 0 4px" }}>📧 Contacter</h3>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 16px" }}>
               À : <strong style={{ color:"rgba(255,255,255,0.8)" }}>{contactModal.name}</strong> · {contactModal.email}
+              <br/>Envoyé par e-mail <strong>et</strong> dans l'application (notification et téléphone), à tout moment.
             </p>
             <label style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>SUJET *</label>
             <input

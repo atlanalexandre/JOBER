@@ -184,3 +184,15 @@ test("hors Union européenne : le titre de séjour s'enregistre, et l'accès n'o
   const ouvert = await bo("enable_missions", { profileId: p.id });
   expect(ouvert.statut, ouvert.texte.slice(0, 200)).toBe(200);
 });
+
+test("ALANE écrit à un prestataire, à tout moment : e-mail ET message dans l'application", async () => {
+  // Décision du 28/09/2026 : seule l'équipe ALANE peut écrire à un prestataire une
+  // fois la prestation finie. Le « Contacter » du back-office n'envoyait qu'un e-mail.
+  const p = await prestataireOperationnel();
+  const sujet = `Recette ${Date.now()}`;
+  const r = await bo("send_user_email", { profileId: p.id, subject: sujet, message: "Bonjour, un mot de l'équipe." });
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.json.application).toBe(true);
+  const [n] = await sql(`select title, body from notifications where user_id = '${p.id}' and title like '%${sujet}%'`);
+  expect(n?.body).toContain("un mot de l'équipe");
+});
