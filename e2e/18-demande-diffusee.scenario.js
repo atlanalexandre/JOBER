@@ -180,3 +180,41 @@ test("payer un prestataire qui ne s'était pas proposé ne ferme pas la demande"
   expect((await etat(m.id)).prestataire_id).toBe(p.id);
   expect((await etat(d)).status, "la demande reste ouverte").toBe("open");
 });
+
+test("prestation déjà payée revenue en diffusion : le premier qui se propose la prend", async () => {
+  // Une prestation affectée par la plateforme repasse `open` quand plus aucun candidat
+  // ne répond (cascade, affecter_tiers). Le client a payé et n'a aucun écran pour
+  // choisir : se proposer ne faisait rien, jusqu'à l'annulation à l'heure prévue.
+  const initial = await prestataireOperationnel();
+  const preneur = await prestataireOperationnel();
+  const second  = await prestataireOperationnel();
+  const tropCher = await prestataireOperationnel({ tarif: 20 });
+  const c = await client();
+  const m = await reservationPayee({ prestataire: initial, client: c });
+  // État laissé par la cascade à court de candidats (affecterCandidatSuivant).
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${m.id}'`);
+
+  const lo = await api("/api/missions", { action: "list_open" }, preneur.jeton);
+  expect(lo.statut).toBe(200);
+  const vue = lo.json.demandes.find(d => d.id === m.id);
+  expect(vue, "visible dans les demandes ouvertes").toBeTruthy();
+  expect(vue.deja_payee).toBe(true);
+  expect(Number(vue.tarif_horaire)).toBe(13);
+  expect(vue.stripe_payment_intent, "l'identifiant Stripe ne sort pas").toBeUndefined();
+
+  const cher = await api("/api/missions", { action: "candidater", mission_id: m.id }, tropCher.jeton);
+  expect(cher.statut, "tarif réglé inférieur au sien").toBe(409);
+
+  const r = await api("/api/missions", { action: "candidater", mission_id: m.id }, preneur.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.json.attribuee).toBe(true);
+  const apres = await etat(m.id);
+  expect(apres.status).toBe("assigned");
+  expect(apres.prestataire_id).toBe(preneur.id);
+  const [trace] = await sql(`select status from candidatures where mission_id = '${m.id}' and prestataire_id = '${preneur.id}'`);
+  expect(trace?.status, "trace horodatée du choix").toBe("accepted");
+  const [n] = await sql(`select title from notifications where user_id = '${c.id}' and ref_id = '${m.id}' order by created_at desc limit 1`);
+  expect(n?.title).toContain("Prestataire trouvé");
+
+  expect((await api("/api/missions", { action: "candidater", mission_id: m.id }, second.jeton)).statut, "déjà prise").toBe(409);
+});

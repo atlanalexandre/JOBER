@@ -2477,7 +2477,7 @@ export function PMissionsTab({ onNavigate }) {
       <RemplacementsProposes onRepondu={()=>{ loadPending?.(); chargerRemplacements(); }} />
 
       {/* Demandes diffusées par des clients qui n'ont désigné personne */}
-      <DemandesOuvertes />
+      <DemandesOuvertes onRepris={()=>loadPending?.()} />
 
       {/* Contrat électronique prestataire */}
       {/* Contrat de prestation — acceptation prestation */}
@@ -3181,7 +3181,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 // voit la demande — la ville, jamais l'adresse — et se propose d'un clic ; le
 // client choisit parmi ceux qui se sont proposés, puis réserve et paie. Aucun
 // écran ne permettait de se proposer : ces demandes ne pouvaient pas aboutir.
-export function DemandesOuvertes() {
+export function DemandesOuvertes({ onRepris }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
   const [erreur, setErreur]     = useState(null);
@@ -3214,9 +3214,13 @@ export function DemandesOuvertes() {
   const proposer = async (id) => {
     setEnCours(id);
     try {
-      await appel({ action: "candidater", mission_id: id });
-      showToast("C'est noté : le client est prévenu que vous êtes disponible.", "success");
+      const j = await appel({ action: "candidater", mission_id: id });
+      // Prestation déjà payée par le client : elle est attribuée tout de suite.
+      showToast(j.attribuee
+        ? "La prestation est à vous : elle apparaît dans vos prestations à venir."
+        : "C'est noté : le client est prévenu que vous êtes disponible.", "success");
       await charger();
+      if (j.attribuee) onRepris?.();
     } catch (e) {
       showToast(e.message, "error");
     }
@@ -3245,9 +3249,14 @@ export function DemandesOuvertes() {
               {jourFr(d.date)}{d.heure_debut ? ` à ${String(d.heure_debut).slice(0,5).replace(":","h")}` : ""}{d.hours ? ` · ${d.hours} h` : ""}
             </div>
             {d.description && <div style={{ color:C.textMuted, fontSize:11, fontStyle:"italic", marginBottom:10 }}>« {d.description} »</div>}
+            {d.deja_payee && (
+              <div style={{ color:C.success, fontSize:11, fontWeight:700, marginBottom:10 }}>
+                Déjà réservée et payée{d.tarif_horaire ? ` à ${formatMontant(d.tarif_horaire)}/h` : ""} — elle est à vous si vous la prenez.
+              </div>
+            )}
             <button disabled={propose || enCours===d.id} onClick={()=>proposer(d.id)}
               style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background: propose ? "rgba(255,255,255,0.08)" : C.success, color: propose ? C.textSub : "#fff", fontWeight:800, fontSize:12, cursor: propose ? "default" : "pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
-              {enCours===d.id ? "…" : propose ? (d.ma_candidature === "rejected" ? "Le client a choisi quelqu'un d'autre" : "✓ Proposé — en attente du client") : "🙋 Je suis disponible"}
+              {enCours===d.id ? "…" : propose ? (d.ma_candidature === "rejected" ? "Le client a choisi quelqu'un d'autre" : "✓ Proposé — en attente du client") : d.deja_payee ? "✅ Je prends cette prestation" : "🙋 Je suis disponible"}
             </button>
           </div>
         );
