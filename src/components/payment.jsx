@@ -400,6 +400,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   // Deux formules auraient fini par diverger, et c'est le client qui aurait vu
   // l'écart au moment de payer.
   const [cashbackDispo, setCashbackDispo] = useState(0);
+  // Le cashback n'est déduit que si le client l'accepte ; sinon il s'accumule.
+  const [utiliserCashback, setUtiliserCashback] = useState(false);
   // « Mémoriser ma carte » — décochée par défaut. Une coordonnée bancaire ne se
   // conserve que sur demande expresse du client, jamais par défaut.
   const [memoriserCarte, setMemoriserCarte] = useState(false);
@@ -564,7 +566,13 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   // Stripe ne demanderait pas.
   // `mode` n'est renseigné que par le paiement d'un complément.
   const estSupplement = Boolean(mode);
-  const reduction = estSupplement ? 0 : reductionCashback(cashbackDispo, Number(total));
+  const reductionPossible = estSupplement ? 0 : reductionCashback(cashbackDispo, Number(total));
+  const reduction = utiliserCashback ? reductionPossible : 0;
+  // Apple Pay / Google Pay est configuré une seule fois, au montage : son
+  // gestionnaire lit le choix du client ici, et le montant affiché dans la
+  // feuille de paiement est mis à jour à chaque changement (effet plus bas).
+  const reductionRef = useRef(0);
+  reductionRef.current = reduction;
   const aPayer = Math.round((Number(total) - reduction) * 100) / 100;
   const eur = (v) => Number(v).toFixed(2).replace(".", ",");
 
@@ -605,7 +613,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           const r = await fetch("/api/stripe-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
-            body: JSON.stringify({ mode: mode || undefined, amount: total, currency: "eur", mission_id: missionId, metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
+            body: JSON.stringify({ mode: mode || undefined, amount: total, currency: "eur", mission_id: missionId, utiliser_cashback: reductionRef.current > 0, metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
           });
           const { clientSecret, error: intentErr } = await r.json();
           if (intentErr || !clientSecret) { ev.complete("fail"); setStripeError(intentErr || "Erreur création paiement"); setProcessing(false); return; }
@@ -624,6 +632,12 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       setApplePayAvailable(true);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!paymentRequestRef.current || !(aPayer > 0)) return;
+    try { paymentRequestRef.current.update({ total: { label: "ALANE", amount: Math.round(aPayer * 100) } }); }
+    catch (e) { console.error("[paiement] montant Apple Pay non mis à jour :", e.message); }
+  }, [aPayer, applePayAvailable]);
 
   useEffect(() => {
     if (!applePayAvailable || !applePayBtnRef.current || !paymentRequestRef.current || !applePayStripeRef.current) return;
@@ -682,6 +696,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         body: JSON.stringify({
           mode: mode || undefined, amount: total, currency: "eur",
           customerId: savedCard?.customerId || null, mission_id: missionId,
+          // Accord du client pour déduire son cashback (case ci-dessous).
+          utiliser_cashback: reduction > 0,
           // Envoyé seulement si le client a choisi la carte de la commande.
           // Le serveur refuse tout identifiant qui ne serait pas celui du
           // paiement de CETTE prestation.
@@ -806,6 +822,16 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                 <div style={{ color:C.textSub, fontSize:11 }}>{description}</div>
               </div>
             </div>
+          )}
+          {reductionPossible > 0 && (
+            <label style={{ display:"flex", gap:10, alignItems:"flex-start", paddingTop:12, cursor:"pointer" }}>
+              <input type="checkbox" checked={utiliserCashback} onChange={e=>setUtiliserCashback(e.target.checked)}
+                style={{ marginTop:2, width:18, height:18, accentColor:C.success, flexShrink:0 }} />
+              <span style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>
+                <strong style={{ color:C.success }}>💰 Utiliser mon cashback</strong> — {eur(reductionPossible)} € déduits de ce paiement.
+                Sinon, il continue de s'accumuler pour une prochaine réservation.
+              </span>
+            </label>
           )}
           {reduction > 0 && (
             <>

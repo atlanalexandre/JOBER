@@ -1,4 +1,5 @@
-// Le cashback se dépense en réduction du paiement, comme un avoir (depuis le 17/08/2026).
+// Le cashback se dépense en réduction du paiement, comme un avoir (depuis le 17/08/2026),
+// et seulement si le client l'accepte (depuis le 28/09/2026) : sinon il s'accumule.
 //
 // Jusqu'au 28/09/2026, la documentation affirmait qu'il n'avait « plus de chemin de
 // dépense » et l'écran exigeait un minimum de 10 € — ni l'un ni l'autre n'était vrai,
@@ -11,12 +12,12 @@ import { prestataireOperationnel, client, reservationPayee, paiementStripe } fro
 
 test.describe.configure({ timeout: 180_000 });
 
-test("5 € de cashback : la carte paie 5 € de moins, le solde tombe à zéro, le prix reste entier", async () => {
+test("cashback accepté : la carte paie 5 € de moins, le solde tombe à zéro, le prix reste entier", async () => {
   const p = await prestataireOperationnel();
   const c = await client();
   await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
 
-  const m = await reservationPayee({ prestataire: p, client: c });
+  const m = await reservationPayee({ prestataire: p, client: c, utiliserCashback: true });
 
   const [ligne] = await sql(`select montant_total, cashback_applique, cashback_debite from missions where id = '${m.id}'`);
   expect(Number(ligne.montant_total), "le prix de la prestation ne bouge pas").toBe(m.montant);
@@ -28,4 +29,19 @@ test("5 € de cashback : la carte paie 5 € de moins, le solde tombe à zéro,
 
   const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
   expect(Number(prof.cashback_balance)).toBe(0);
+});
+
+test("cashback non accepté : prix plein, le solde est conservé et continue de s'accumuler", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+
+  const m = await reservationPayee({ prestataire: p, client: c });
+
+  const [ligne] = await sql(`select cashback_applique from missions where id = '${m.id}'`);
+  expect(Number(ligne.cashback_applique || 0)).toBe(0);
+  const pi = await paiementStripe(m.paymentIntent);
+  expect(pi.preleve, "prix plein sans l'accord du client").toBe(Math.round(m.montant * 100));
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "solde intact").toBe(5);
 });

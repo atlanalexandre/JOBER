@@ -1785,7 +1785,7 @@ export default async function handler(req, res) {
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
-            body: `+${euros(cashbackEarned)} crédités. Solde : ${euros(atomicBalance)}, déduit automatiquement de votre prochaine réservation.`,
+            body: `+${euros(cashbackEarned)} crédités. Solde : ${euros(atomicBalance)}, utilisable au paiement d'une prochaine réservation.`,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
       }
 

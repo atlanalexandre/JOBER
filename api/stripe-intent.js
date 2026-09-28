@@ -497,7 +497,12 @@ export default async function handler(req, res) {
     );
     const cbD = await cbR.json().catch(() => []);
     const solde = Number(Array.isArray(cbD) && cbD[0]?.cashback_balance || 0);
-    reduction = reductionCashback(solde, computed);
+    // Le client CHOISIT d'utiliser son cashback (décision d'Alexandre du
+    // 28/09/2026) : sans son accord exprès, il continue de s'accumuler. La
+    // case vient du navigateur, et c'est sans risque : elle ne peut que
+    // renoncer à une réduction, dont le montant reste calculé ici, sur le
+    // solde lu en base.
+    reduction = req.body?.utiliser_cashback === true ? reductionCashback(solde, computed) : 0;
   } catch (e) {
     // Un cashback illisible ne bloque pas un encaissement : le client paie le
     // prix plein et son solde reste intact. L'inverse — refuser la réservation
