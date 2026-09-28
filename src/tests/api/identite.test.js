@@ -111,7 +111,15 @@ describe("la photo suit la prestation, pas le catalogue", () => {
 
   it("est affichée dans l'écran de suivi", () => {
     expect(client).toContain("setPhotoPresta");
-    expect(client).toContain('select("prenom,nom,avatar_url")');
+  });
+
+  // L'écran de suivi lisait `profiles` d'autrui depuis le navigateur : la RLS le
+  // refuse, en silence. Le nom complet vient du serveur, pour le seul client de
+  // la prestation — et jamais la photo libre `avatar_url` (28/09/2026).
+  it("tient le nom complet du serveur, sans photo non validée", () => {
+    expect(client).toContain('action: "identite_prestataire"');
+    expect(client).not.toContain('select("prenom,nom,avatar_url")');
+    expect(missions).toContain("select=prenom,nom&limit=1");
   });
 
   // Le repli sur les initiales était muet : le client pouvait croire qu'il n'y

@@ -1080,7 +1080,14 @@ du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
   ne lit plus que le profil de l'appelant, dont l'identifiant vient du jeton vérifié. (Cette
   section le disait encore ouvert jusqu'au 28/09/2026.)
 - **`prestataires.js`** — sert le catalogue des prestataires approuvés (identifiant, prénom,
-  nom, photo) sans vérifier l'appelant. Cela **contourne la décision S-11** de l'audit, qui
+  **initiale du nom** depuis le 28/09/2026 — « Sam R. » —, photo si consentie) sans vérifier
+  l'appelant. Le nom complet ne sort plus du catalogue : il permettait de retrouver le
+  prestataire ailleurs et de le contacter hors plateforme, et exposait l'identité de particuliers
+  au-delà du nécessaire. Le **client de la prestation** l'obtient par `identite_prestataire`
+  (`/api/missions`, prestation vérifiée : `pending_acceptance` à `closed` ou `disputed`), que lit
+  l'écran de suivi ; l'historique le reçoit par `list_client`. L'écran de suivi lisait
+  auparavant `profiles` depuis le navigateur, ce que la RLS refuse pour autrui — en silence.
+  Éprouvé par `e2e/21`. Cela **contourne la décision S-11** de l'audit, qui
   avait fermé ce catalogue aux comptes connectés en retirant les policies RLS publiques : la
   restriction porte sur l'accès direct à la table, pas sur cet endpoint. La route allégée
   `?action=count` doit rester publique (écran d'accueil avant connexion).
