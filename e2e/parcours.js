@@ -179,8 +179,12 @@ export async function payerParCarte(page, { numero = "4242424242424242", titulai
   await page.getByPlaceholder("Jean Dupont").fill(titulaire);
   // Plusieurs cadres Stripe sur la page (Google Pay, Link, carte) : on prend celui qui
   // contient le champ du numéro.
+  // 60 s et non 30 : le formulaire vient de js.stripe.com, et depuis la machine de
+  // recette (réseau filtré) son chargement a dépassé 30 s une fois le 28/09/2026 —
+  // le même scénario passait au passage suivant. Le délai laissé à Stripe n'est
+  // pas ce que ce scénario éprouve.
   let cadre = null;
-  for (let essai = 0; essai < 30 && !cadre; essai++) {
+  for (let essai = 0; essai < 60 && !cadre; essai++) {
     for (const f of page.frames()) {
       if (await f.locator('input[name="number"]').count().catch(() => 0)) { cadre = f; break; }
     }
