@@ -1014,6 +1014,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
+| `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 
@@ -2577,7 +2578,7 @@ mesure, avec le délai des 48 h ». Le client ne paie jamais la série d'avance.
 |---|---|---|
 | Réservation | client, écran de réservation | Case « 🔁 Répéter chaque semaine » (date unique, hors urgence, jamais chez un tiers : la plateforme y choisit le prestataire, CGPS art. 5.2). La prestation porte `recurrence = 'weekly'` |
 | Paiement de la 1re semaine | client, tunnel | Accord exprès obligatoire (case décochée, paiement bloqué sans elle) pour les prélèvements suivants. `stripe-intent` rattache la carte au client (`setup_future_usage = off_session`) **d'office**, quoi qu'envoie le navigateur |
-| Validation d'une semaine | client (`complete`) **ou** tâche planifiée (validation automatique après 24 h) | `programmerOccurrenceSuivante()` de `api/_recurrence.js` : crée la semaine suivante (J + 7, même prestataire, même tarif, frais d'une prestation simple), la **débite seule** sur la carte de la première (`off_session`, clé d'idempotence `serie-{id}`), puis la propose au prestataire (`prevenirNouvelleDemande()`, `api/_nouvelle_demande.js`) avec le délai de réponse ordinaire |
+| Validation d'une semaine | client (`complete`) **ou** tâche planifiée (validation automatique après 24 h — c'est le seul chemin d'auto-validation depuis le 28/09/2026) | `programmerOccurrenceSuivante()` de `api/_recurrence.js` : crée la semaine suivante (J + 7, même prestataire, même tarif, frais d'une prestation simple), la **débite seule** sur la carte de la première (`off_session`, clé d'idempotence `serie-{id}`), puis la propose au prestataire (`prevenirNouvelleDemande()`, `api/_nouvelle_demande.js`) avec le délai de réponse ordinaire |
 | Réponse du prestataire | prestataire | Comme toute réservation : accepte, ou refuse → remboursement intégral de cette semaine, et la série s'arrête (plus de semaine validée) |
 | Versement | tâche planifiée | Règle commune : 48 h après la fin de **chaque** prestation |
 | Arrêt | client, « Arrêter la série » dans ses prestations | Action `arreter_serie` : `recurrence` remise à `null` sur la prestation et ses suivantes. Les semaines déjà payées restent prévues et s'annulent par l'annulation ordinaire |
@@ -2655,6 +2656,31 @@ signalements, et beaucoup sont légitimes : compteurs, horodatages accessoires, 
 l'échec est sans conséquence. Le critère qui compte — « de l'argent a-t-il déjà bougé avant
 cette ligne ? » — ne se décide pas automatiquement. C'est une liste à relire, pas une liste à
 corriger ; en faire un bloqueur produirait un contrôle qu'on ignore.
+
+**Deuxième passage le 28/09/2026 : de 31 signalements à 7.** Toutes les écritures retenues
+passent désormais par `ecrireVerifie()` de `api/_ecriture.js`, qui demande la ligne écrite en
+retour et lit comme un échec un refus de la base **ou** une écriture qui ne touche aucune ligne.
+Les plus graves :
+
+| Où | Ce qui se passait |
+|---|---|
+| Tâche planifiée — versements | Virement Stripe **émis mais jamais inscrit** (`payout_status` restait `pending`) : aucun écran ne montrait que le prestataire était payé. La clé d'idempotence `payout-{id}` évite le double virement, mais Stripe l'oublie après 24 h. L'échec est désormais journalisé « VERSÉ … mais NON inscrit », à reprendre à la main |
+| Tâche planifiée — clôtures et expirations | Prestation remboursée restée ouverte, donc versable |
+| Recrédits de portefeuille (refus, expiration, trois annulations) | En plus du résultat non lu : un **solde illisible était pris pour 0**, et l'écriture « 0 + remboursement » effaçait tout le reste du portefeuille. Un solde illisible n'écrit plus rien |
+| Back-office — remboursement, annulation, réaffectation, abonnement | Réponse « succès » alors que la prestation n'était ni close ni annulée après un remboursement parti. Répond désormais une erreur explicite |
+| Décalage d'arrivée, heures supplémentaires (demande, refus) | Ces heures fondent la facturation ; l'autre partie était prévenue d'une réponse jamais enregistrée |
+
+Les 7 restants sont des lignes de `bo_logs` et des copies de `user_metadata` dont `profiles`,
+vérifié juste à côté, fait autorité.
+
+**Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
+validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
+24 h, « au cas où la tâche planifiée ne tournerait pas ». Elle ne programmait **aucun
+versement** : passée `completed` sans `payout_status`, la prestation n'était plus reprise par la
+tâche planifiée (qui ne valide que les `assigned`) et **le prestataire n'était jamais payé**.
+Elle réécrivait aussi `montant_total` sans les frais de service, créditait un cashback au barème
+recopié en dur, et interrompait les séries hebdomadaires. La validation automatique n'a plus
+qu'un chemin : la tâche planifiée (`cron-reset-monthly`, `action=reminders`).
 
 ### Le bouton « Ma facture » ne faisait rien sur iPhone
 

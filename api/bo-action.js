@@ -17,6 +17,7 @@ import { echeanceVersementMs } from "./_temps.js";
 import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
 import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
 import { appUrl } from "./_url.js";
+import { ecrireVerifie } from "./_ecriture.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -1013,7 +1014,10 @@ export default async function handler(req, res) {
     if (action === "set_subscription") {
       const { plan, end_date } = body;
       if (!profileId || !plan) return res.status(400).json({ error: "profileId + plan requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ plan_abonnement:plan, subscription_end_date:end_date||null }) }).catch(e => console.error("[bo-action/set_subscription] échec ignoré :", e?.message));
+      // C'est `profiles` que lit l'application : sans cette écriture, rien ne change.
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { plan_abonnement:plan, subscription_end_date:end_date||null }, headers, "bo-action/set_subscription")) {
+        return res.status(500).json({ error: "L'abonnement n'a pas pu être modifié." });
+      }
       const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const existingUser = getR.ok ? await getR.json() : {};
       const existingMeta = existingUser.user_metadata || {};
@@ -2436,7 +2440,11 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" });
         }
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"closed" }) });
+      // Le remboursement est parti : une clôture refusée en silence laisserait la
+      // prestation ouverte — et versable au prestataire — alors que le client est remboursé.
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"closed" }, headers, "bo-action/manual_refund")) {
+        return res.status(500).json({ error: "Remboursement effectué, mais la prestation n'a pas pu être clôturée. Clôturez-la avant tout versement." });
+      }
       if (m.client_id) {
         await notifier({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/manual_refund] échec ignoré :", e?.message));
       }
@@ -2456,7 +2464,11 @@ export default async function handler(req, res) {
         const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
         if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"cancelled" }) });
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"cancelled" }, headers, "bo-action/cancel_mission")) {
+        return res.status(500).json({ error: refund && m.stripe_payment_intent
+          ? "Remboursement effectué, mais la prestation n'a pas pu être annulée. Annulez-la avant tout versement."
+          : "La prestation n'a pas pu être annulée. Réessayez." });
+      }
       const notifs = [];
       if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:reason||(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Un remboursement sera effectué sous 5-10 jours ouvrés.":"Votre prestation a été annulée par ALANE."), read:false });
       if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:reason||"Une prestation vous a été retirée par ALANE.", read:false });
@@ -2487,7 +2499,9 @@ export default async function handler(req, res) {
       const newUser = (authData.users||[]).find(u => u.email === new_presta_email.trim());
       if (!newUser) return res.status(404).json({ error: "Prestataire introuvable avec cet email" });
       const old_presta = m.prestataire_id;
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }) });
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }, headers, "bo-action/reassign_mission")) {
+        return res.status(500).json({ error: "La réaffectation n'a pas pu être enregistrée. Personne n'a été prévenu." });
+      }
       if (old_presta && old_presta !== newUser.id) await notifier({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));
       await notifier({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"reassign_mission", target_id:mission_id, details:{ old_presta, new_presta:newUser.id, reason } }) }).catch(e => console.error("[bo-action/reassign_mission] échec ignoré :", e?.message));

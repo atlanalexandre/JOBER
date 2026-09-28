@@ -13,6 +13,7 @@ import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION,
 import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
+import { ecrireVerifie } from "./_ecriture.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -78,10 +79,9 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
       const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: hdrs });
       const pd = await pr.json().catch(() => []);
       const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
-      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`, {
-        method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
-        body: JSON.stringify({ prepaid_balance: Math.round((solde + montant) * 100) / 100 }),
-      });
+      const ok = await ecrireVerifie(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`,
+        { prepaid_balance: Math.round((solde + montant) * 100) / 100 }, hdrs, `cron/expiration ${mission.id}`);
+      if (!ok) return false;
       console.log(`[cron/expiration] portefeuille recrédité de ${montant} € — prestation ${mission.id}`);
       return true;
     } catch (e) {
@@ -228,11 +228,8 @@ export default async function handler(req, res) {
           // demandé de remettre en circulation.
           const rembZ = await rembourserPrestation(z, SUPABASE_URL, headers);
           if (!rembZ) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${z.id}`);
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "refused", prestataire_id: null, broadcast_sent_at: null }),
-          }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
+          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`,
+            { status: "refused", prestataire_id: null, broadcast_sent_at: null }, headers, `cron/expiration ${z.id}`);
           if (z.client_id) {
             await notifier({
                 user_id: z.client_id,
@@ -379,11 +376,8 @@ export default async function handler(req, res) {
             remboursees++;
           }
           cloturees++;
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: rembourse ? "cancelled" : "closed" }),
-          }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
+          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+            { status: rembourse ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
           // Rejeter toutes candidatures en attente
           await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
             method: "PATCH",
@@ -626,10 +620,8 @@ export default async function handler(req, res) {
                   + `${m.prestataire_id} n'a pas de compte Stripe Connect actif `
                   + `(compte ${pp?.stripe_account_id ? `« ${pp.stripe_account_status || "sans statut"} »` : "absent"}). `
                   + "Le versement restera en attente tant que ce compte n'est pas activé.");
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "pending" }),
-                }).catch(e => console.error(`[versements] retour en attente ${m.id} :`, e.message));
+                await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "pending" }, headers, `versements/retour en attente ${m.id}`);
                 continue;
               }
 
@@ -657,10 +649,8 @@ export default async function handler(req, res) {
               const cents = Math.round(net * 100);
 
               if (cents < 100) {
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "failed" }),
-                }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
+                await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "failed" }, headers, `versements/montant ${m.id}`);
                 console.error(m.payout_amount == null
                   ? `[versements] montant absent — prestation ${m.id} : payout_amount non renseigné à la clôture, virement à faire à la main`
                   : `[versements] montant trop faible (${cents} c) — prestation ${m.id}`);
@@ -684,31 +674,28 @@ export default async function handler(req, res) {
               const td = await tr.json().catch(() => ({}));
 
               if (tr.ok && td.id) {
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({
-                    payout_status: "transferred", stripe_transfer_id: td.id,
-                  }),
-                }).catch(e => console.error(`[versements] statut non écrit ${m.id} :`, e.message));
+                // Le virement EST parti. S'il n'est pas inscrit, la prestation reste
+                // « processing » — jamais reprise, donc jamais versée deux fois —
+                // mais le back-office l'ignore : l'échec doit se voir.
+                const inscrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "transferred", stripe_transfer_id: td.id }, headers, `versements/virement ${td.id} ÉMIS`);
+                if (!inscrit) console.error(`[versements] ${td.id} VERSÉ au prestataire ${m.prestataire_id} mais NON inscrit sur ${m.id} : `
+                  + "passer payout_status à transferred et stripe_transfer_id à la main.");
 
                 emis++;
                 bilan.versements++;
                 console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
                   + `) — prestation ${m.id}`);
               } else {
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "failed" }),
-                }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
+                await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "failed" }, headers, `versements/refus ${m.id}`);
                 console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status);
               }
             } catch (e) {
               // On ne laisse jamais une prestation coincée en `processing` :
               // elle ne serait plus jamais reprise par aucun passage.
-              await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ payout_status: "pending" }),
-              }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
+              await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                { payout_status: "pending" }, headers, `versements/reprise ${m.id}`);
               console.error(`[versements] échec sur ${m.id} :`, e.message);
             }
           }
@@ -2158,13 +2145,11 @@ ${(() => {
       await Promise.all(zombies.map(async zm => {
         const rembOk = await rembourserPrestation(zm, SUPABASE_URL, headers);
         if (!rembOk) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${zm.id}`);
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${zm.id}`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          // « refused » et non « open » : le client est remboursé, la prestation
-          // est donc close. La laisser ouverte avec son paiement remboursé
-          // permettrait à un prestataire de l'accepter sans contrepartie.
-          body: JSON.stringify({ status: "refused", prestataire_id: null }),
-        }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
+        // « refused » et non « open » : le client est remboursé, la prestation
+        // est donc close. La laisser ouverte avec son paiement remboursé
+        // permettrait à un prestataire de l'accepter sans contrepartie.
+        await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${zm.id}`,
+          { status: "refused", prestataire_id: null }, headers, `cron/expiration ${zm.id}`);
         if (zm.client_id) {
           await notifier({
               user_id: zm.client_id, type: "mission",
