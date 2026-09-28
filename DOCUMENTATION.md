@@ -1411,15 +1411,19 @@ nommés en français. Ils ne sont **pas appliqués automatiquement** : il faut l
 l'éditeur SQL Supabase. Chaque fichier porte ses requêtes de vérification et sa procédure
 de retour arrière.
 
-Les trois fichiers `*.sql` à la racine (`supabase-schema.sql`, `supabase_schema.sql`,
-`supabase_migration.sql`) sont des reliquats divergents — **aucun ne fait autorité**.
+**La référence du schéma, c'est la base** — et ce document, qui la décrit. Trois fichiers
+`*.sql` traînaient à la racine (`supabase-schema.sql`, `supabase_schema.sql`,
+`supabase_migration.sql`) : des reliquats divergents dont aucun ne faisait autorité. Ils ont été
+**retirés le 28/09/2026** (toujours lisibles dans l'historique git). Ils décrivaient encore les
+six tables supprimées le 05/08 et une messagerie sans participants : les garder, c'était
+inviter la session suivante à construire dessus.
 
-Cette divergence a déjà coûté une panne complète : `supabase-schema.sql` annonce
-`documents.id uuid`, `supabase_schema.sql` annonce `documents.id BIGSERIAL`. Le backoffice
+Cette divergence avait déjà coûté une panne complète : `supabase-schema.sql` annonçait
+`documents.id uuid`, `supabase_schema.sql` annonçait `documents.id BIGSERIAL`. Le backoffice
 avait été écrit sur la première hypothèse et exigeait un uuid, si bien que **la validation
 et le refus d'un document répondaient toujours « docId invalide »** — les boutons n'ont
 jamais fonctionné. Avant d'écrire un contrôle de format sur une clé primaire, **relever son
-type dans la base** (`SELECT pg_typeof(id) FROM <table> LIMIT 1;`), jamais dans ces fichiers.
+type dans la base** (`SELECT pg_typeof(id) FROM <table> LIMIT 1;`), jamais dans un fichier.
 
 ---
 

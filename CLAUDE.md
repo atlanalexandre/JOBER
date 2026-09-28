@@ -335,6 +335,5 @@ Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En rés
   toucher**, plusieurs de ces points ne se découvrent pas autrement.
 - **`messages`** n'a pas de vrai modèle de conversation : les participants sont extraits d'une
   chaîne de caractères, y compris dans les règles de sécurité. À refondre avant montée en charge.
-- **Trois fichiers de schéma SQL** divergents à la racine (`supabase-schema.sql`,
-  `supabase_schema.sql`, `supabase_migration.sql`). Aucun ne fait autorité : **la référence,
-  c'est la base**.
+- **Les trois fichiers de schéma SQL** divergents de la racine ont été retirés le 28/09/2026.
+  **La référence, c'est la base** ; un changement de schéma passe par `migrations/` (règle 1.7).
