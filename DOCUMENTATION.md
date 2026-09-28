@@ -2649,7 +2649,10 @@ alors dans « Demandes ouvertes », marquée « Déjà réservée et payée », 
 client n'a désigné personne et n'a aucun écran pour choisir : jusqu'au 28/09/2026, se proposer
 n'y faisait **rien**, et la prestation restait sans prestataire jusqu'à son annulation à l'heure
 prévue. Désormais, « ✅ Je prends cette prestation » → `candidater` l'attribue **directement**
-(`assigned`) au premier prestataire éligible : tarif réglé au moins égal au sien, quota mensuel
+(`assigned`) au premier prestataire éligible — **pas à moins de 30 minutes du début** (la
+prestation disparaît alors de la liste ; la tâche planifiée l'annule et la rembourse une fois
+l'heure passée, et sa clôture est conditionnée au statut pour ne jamais écraser une reprise) —,
+tarif réglé au moins égal au sien, quota mensuel
 (`quotaMensuelAtteint()`, partagé avec `respond_mission`), pas d'autre prestation sur le
 créneau. L'écriture est conditionnelle (`status=open`, sans prestataire) : si deux prestataires
 se proposent en même temps, un seul l'emporte. Une candidature `accepted` garde la trace
