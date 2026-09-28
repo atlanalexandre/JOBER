@@ -2579,7 +2579,9 @@ L'écran Comptes filtre par **région** (clients et prestataires), puis par vill
 du code postal (`regionDe()`, `src/constants/regions.js` — deux premiers chiffres, trois pour
 l'outre-mer) ; sans code postal, seules quelques grandes villes sont reconnues par leur nom, et
 le reste est « Région non renseignée » plutôt que deviné. Île-de-France = 75, 77, 78, 91, 92, 93,
-94, 95. Secteur et métier restent réservés aux prestataires.
+94, 95. Secteur et métier restent réservés aux prestataires. La recherche filtre déjà par nom,
+prénom, e-mail et téléphone ; un sélecteur trie la liste par date (défaut), par nom ou par
+prénom (A → Z, comptes sans nom en dernier).
 
 ### Ne pas choisir le prestataire : la demande diffusée
 

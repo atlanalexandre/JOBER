@@ -241,6 +241,8 @@ function BOComptes() {
   const [metierFilter, setMetierFilter]   = useState("all");
   const [villeFilter, setVilleFilter]     = useState("all");
   const [regionFilter, setRegionFilter]   = useState("all");
+  // Ordre de la liste : du plus récent (défaut) ou par nom, A → Z.
+  const [tri, setTri]                     = useState("recent");
   const [actioning, setActioning] = useState(null);
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
@@ -649,6 +651,19 @@ function BOComptes() {
     return true;
   });
 
+  // Tri par nom : comparaison à la française (accents, majuscules), les
+  // comptes sans nom en dernier. « Plus récents » garde l'ordre du serveur.
+  const trier = (liste) => {
+    if (tri === "recent") return liste;
+    const cle = (p) => (tri === "nom" ? [p.nom, p.prenom] : [p.prenom, p.nom]).filter(Boolean).join(" ").trim();
+    return [...liste].sort((a, b) => {
+      const ka = cle(a), kb = cle(b);
+      if (!ka) return kb ? 1 : 0;
+      if (!kb) return -1;
+      return ka.localeCompare(kb, "fr", { sensitivity: "base" });
+    });
+  };
+
   const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all";
   const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); };
 
@@ -745,9 +760,17 @@ function BOComptes() {
       )}
 
       {!loading && (
-        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:10 }}>
-          {filtered.length} compte{filtered.length > 1 ? "s" : ""}
-          {filtered.length !== profiles.length ? ` sur ${profiles.length}` : ""}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:10 }}>
+          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>
+            {filtered.length} compte{filtered.length > 1 ? "s" : ""}
+            {filtered.length !== profiles.length ? ` sur ${profiles.length}` : ""}
+          </div>
+          <select value={tri} onChange={e => setTri(e.target.value)}
+            style={{ padding:"5px 8px", borderRadius:10, fontSize:11, fontFamily:"inherit", border:"1px solid rgba(255,255,255,0.15)", background:"#0D1B3E", color:"rgba(255,255,255,0.7)", outline:"none" }}>
+            <option value="recent">↓ Plus récents</option>
+            <option value="nom">🔤 Nom, A → Z</option>
+            <option value="prenom">🔤 Prénom, A → Z</option>
+          </select>
         </div>
       )}
 
@@ -764,7 +787,7 @@ function BOComptes() {
             </div>
           )}
         </div>
-      ) : filtered.map(p => (
+      ) : trier(filtered).map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
             <div style={{ flex:1, minWidth:0 }}>
