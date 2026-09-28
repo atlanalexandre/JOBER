@@ -78,8 +78,8 @@ export default async function handler(req, res) {
   // entier (BIGSERIAL). Exiger un uuid faisait échouer toute validation et tout refus de
   // document avec « docId invalide », y compris « Tout valider » sur les 7 pièces d'un
   // prestataire — le bouton n'a donc jamais fonctionné. Les deux formes sont acceptées et
-  // strictement validées : les fichiers du dépôt se contredisent sur le type de cette
-  // colonne (`supabase-schema.sql` dit uuid, `supabase_schema.sql` dit BIGSERIAL) et la
+  // strictement validées : les anciens fichiers de schéma du dépôt (retirés le 28/09/2026)
+  // se contredisaient sur le type de cette colonne (uuid contre BIGSERIAL), et la
   // référence est la base, pas le dépôt.
   const isDocId = (v) => {
     if (isUuidId(v)) return true;
