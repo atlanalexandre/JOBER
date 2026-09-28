@@ -300,16 +300,18 @@ Il ne signale que ce qu'il peut prouver. **Un contrôle qui produit des faux pos
 ignoré, et un garde-fou ignoré ne protège plus rien** : avant d'élargir une règle, vérifier
 qu'elle ne crie pas sur du code légitime.
 
-**`.github/workflows/veille.yml`** — relecture IA quotidienne du diff de la veille. Elle
-cherche ce qu'un script ne sait pas voir : une règle appliquée sur un chemin et pas sur
-l'autre, une règle recopiée qui a divergé, un réglage que plus personne ne lit, une promesse
-sans implémentation.
+**La relecture quotidienne** — une session Claude Code planifiée chaque jour à **6 h (Paris)**
+(Routine « Relecture quotidienne ALANE »), qui remplace depuis le 28/09/2026 la relecture IA
+de `.github/workflows/veille.yml`, jugée inutile par Alexandre. Elle relit en profondeur les
+changements de la veille et les chemins d'argent, rejoue la recette complète (`e2e/`), corrige
+ce qu'elle trouve — une pull request par sujet — et envoie un résumé à Alexandre.
 
-Elle **ouvre une pull request, elle ne pousse jamais sur `main`**. La raison tient dans un cas
-réel : le correctif évident de la carte enregistrée aurait ouvert une faille permettant de
-débiter la carte d'autrui, parce qu'un paramètre voisin était lu depuis le navigateur. Il
-fallait corriger les deux ensemble. Sur une application qui manipule de l'argent, la revue
-humaine n'est pas une lenteur administrative.
+Elle **ouvre des pull requests, elle ne fusionne jamais** (décision d'Alexandre du 28/09/2026).
+La raison tient dans un cas réel : le correctif évident de la carte enregistrée aurait ouvert
+une faille permettant de débiter la carte d'autrui, parce qu'un paramètre voisin était lu
+depuis le navigateur. Il fallait corriger les deux ensemble. Sur une application qui manipule
+de l'argent, la revue humaine n'est pas une lenteur administrative. Elle n'écrit jamais en
+production, ni dans une base, ni dans un dashboard.
 
 ---
 
