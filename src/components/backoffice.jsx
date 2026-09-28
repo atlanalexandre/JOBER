@@ -2866,7 +2866,7 @@ export function BOTest({ onNavigate }) {
     { id:"search_filters",    label:"Recherche / filtres",     icon:"🔍" },
     { id:"dashboard",         label:"Dashboard client",        icon:"📊" },
     { id:"mission_history",   label:"Historique prestations",     icon:"📋" },
-    { id:"cashback",          label:"Wallet cashback",         icon:"💰" },
+    { id:"cashback",          label:"Cashback",                icon:"💰" },
     { id:"notifications",     label:"Notifications",           icon:"🔔" },
     { id:"favorites",         label:"Favoris",                 icon:"❤️" },
     { id:"mission_request",   label:"Créer une prestation",       icon:"➕" },

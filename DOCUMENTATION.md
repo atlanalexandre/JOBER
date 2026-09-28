@@ -72,8 +72,11 @@ prestation en direct (géolocalisation), valide, note. Cumule un cashback progre
 
 Le **portefeuille prépayé est fermé depuis le 16/08/2026** (avis prudentiel, CGPS art. 5B.3) :
 plus de rechargement, plus de paiement depuis le solde. Les soldes constitués restent
-remboursables — aucun n'existait à la fermeture. Conséquence à traiter : **le cashback n'a
-plus de chemin de dépense**, le paiement par portefeuille étant le seul qui le consommait.
+remboursables — aucun n'existait à la fermeture. Le cashback, lui, **se dépense en réduction du
+paiement par carte**, automatiquement, depuis le 17/08/2026 (§5 « Le cashback s'impute en
+réduction ») : tout le solde est déduit, en laissant au moins 1 € à la carte. Ce paragraphe
+annonçait encore le contraire jusqu'au 28/09/2026, et plusieurs écrans parlaient d'un « wallet »
+fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour.
 
 ### Prestataire
 Dépose ses documents, attend la validation par l'administration, reçoit des propositions,

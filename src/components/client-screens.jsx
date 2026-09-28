@@ -1236,7 +1236,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ position:"absolute", right:18, top:18, fontSize:28 }}>💎</div>
 
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-            <span style={{ fontSize:10, letterSpacing:1.6, textTransform:"uppercase", color:"rgba(255,255,255,0.6)", fontWeight:600 }}>Cashback wallet</span>
+            <span style={{ fontSize:10, letterSpacing:1.6, textTransform:"uppercase", color:"rgba(255,255,255,0.6)", fontWeight:600 }}>Mon cashback</span>
             <span style={{ padding:"2px 7px", borderRadius:999, background:`${C.accentGold}25`, color:C.accentGold, fontSize:9, fontWeight:700, letterSpacing:0.5 }}>{tier.icon} {tier.label.toUpperCase()}</span>
           </div>
 
@@ -7620,7 +7620,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Prestation terminée ?</div>
                 <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-                  Le prestataire a confirmé la fin de prestation. En validant, vous confirmez que la prestation s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+                  Le prestataire a confirmé la fin de prestation. En validant, vous confirmez que la prestation s'est bien déroulée. Votre cashback sera crédité, puis déduit automatiquement de votre prochaine réservation.
                 </div>
                 <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
                   {completing ? "Validation…" : "✅ Valider la prestation"}
@@ -7687,7 +7687,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
                   <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
-                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>déduit de votre prochaine réservation</div>
                 </div>
               </div>
               {selected.prestataire_id && !ratedMissions.has(selected.id) && (
@@ -8421,7 +8421,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:16, display:"flex", alignItems:"center", gap:6 }}>← Retour</button>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
-            <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1, textTransform:"uppercase", margin:"0 0 4px" }}>Mon wallet</p>
+            <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1, textTransform:"uppercase", margin:"0 0 4px" }}>Fidélité</p>
             <h2 style={{ color:C.text, fontSize:26, fontWeight:700, margin:0, fontFamily:font.display }}>Cashback</h2>
           </div>
           <Badge color={tier.color} small>{tier.icon} {tier.label}</Badge>
@@ -8439,20 +8439,25 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           <div style={{ position:"absolute", top:-30, right:-30, width:140, height:140, borderRadius:"50%", background:`${C.violet}12`, pointerEvents:"none" }} />
           <p style={{ color:C.textSub, fontSize:11, letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>Solde disponible</p>
           <div style={{ fontSize:44, fontWeight:800, color:C.text, fontFamily:font.display, letterSpacing:-1, marginBottom:4 }}>
-            {wLoading ? "—" : Number(w.balance).toFixed(2)} <span style={{ fontSize:22, color:C.textSub }}>€</span>
+            {wLoading ? "—" : Number(w.balance).toLocaleString("fr-FR", { minimumFractionDigits:2, maximumFractionDigits:2 })} <span style={{ fontSize:22, color:C.textSub }}>€</span>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, margin:"0 0 16px" }}>
-            {w.balance >= 10 ? <span style={{ color:C.accentGold }}>Disponible à l'utilisation</span> : "Minimum 10 € pour utiliser votre cashback"}
+            {/* Aucun minimum : le serveur déduit tout le solde disponible, en laissant
+                au moins RESTE_A_PAYER_MIN (1 €) à régler par carte (api/_cashback.js).
+                L'écran annonçait « Minimum 10 € », une règle qui n'existe nulle part. */}
+            {w.balance > 0
+              ? <span style={{ color:C.accentGold }}>Déduit automatiquement de votre prochaine réservation</span>
+              : "Cumulez du cashback à chaque prestation validée"}
           </p>
           <Btn onClick={()=>onNavigate("search_filters")} style={{ fontSize:13, padding:"10px 20px" }}>
-            Utiliser mon cashback →
+            Réserver une prestation →
           </Btn>
         </div>
 
         {/* Stats rapides */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
-            { label:"Solde wallet",  value:formatMontant(w.balance),        color:C.success, icon:"💰" },
+            { label:"Solde",         value:formatMontant(w.balance),        color:C.success, icon:"💰" },
             { label:"Ce mois",       value:`${w.missionsThisMonth} prestation${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
