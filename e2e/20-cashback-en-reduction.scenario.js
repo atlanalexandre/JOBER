@@ -8,7 +8,7 @@
 // la prestation (`montant_total`, base de la facture et du versement) ne bouge pas.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, paiementStripe } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, paiementStripe, tachePlanifiee } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -44,4 +44,27 @@ test("cashback non accepté : prix plein, le solde est conservé et continue de 
   expect(pi.preleve, "prix plein sans l'accord du client").toBe(Math.round(m.montant * 100));
   const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
   expect(Number(prof.cashback_balance), "solde intact").toBe(5);
+});
+
+test("annulation automatique faute de prestataire : la carte ET le cashback sont rendus", async () => {
+  // Relecture du 28/09/2026 : la tâche planifiée remboursait la carte mais gardait
+  // la part réglée en cashback, alors que la notification promet un remboursement intégral.
+  const p = await prestataireOperationnel();
+  const c = await client();
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+  const m = await reservationPayee({ prestataire: p, client: c, utiliserCashback: true });
+  expect(Number((await sql(`select cashback_balance from profiles where id = '${c.id}'`))[0].cashback_balance)).toBe(0);
+
+  // Personne n'a repris la prestation, et son heure de début est passée.
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null,
+    date = (now() at time zone 'Europe/Paris')::date - 1 where id = '${m.id}'`);
+  const t = await tachePlanifiee();
+  expect(t.statut, t.texte.slice(0, 200)).toBe(200);
+
+  const [ligne] = await sql(`select status from missions where id = '${m.id}'`);
+  expect(ligne.status).toBe("cancelled");
+  const pi = await paiementStripe(m.paymentIntent);
+  expect(pi.rembourse, "la carte est remboursée").toBe(pi.preleve);
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "le cashback est rendu").toBe(5);
 });

@@ -14,6 +14,7 @@ import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { restituerCashback } from "./_cashback.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -110,7 +111,15 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
       body: new URLSearchParams({ payment_intent: intent, reason: "requested_by_customer" }).toString(),
     });
     const d = await r.json();
-    if (d.id) { console.log(`[cron/expiration] Stripe OK ${d.id} — prestation ${mission.id}`); return true; }
+    if (d.id) {
+      console.log(`[cron/expiration] Stripe OK ${d.id} — prestation ${mission.id}`);
+      // Le cashback imputé sur cette prestation est rendu, comme le fait
+      // rembourserPrestation() de missions.js : Stripe ne rend que ce que la
+      // carte a payé. Il manquait ici — le client perdait la part réglée en
+      // cashback, alors que la notification promet un remboursement intégral.
+      await restituerCashback(mission, supabaseUrl, hdrs, "cron/expiration");
+      return true;
+    }
     console.error(`[cron/expiration] Stripe a refusé — ${mission.id} :`, JSON.stringify(d));
     return false;
   } catch (e) {
@@ -378,16 +387,19 @@ export default async function handler(req, res) {
             }
             remboursees++;
           }
-          cloturees++;
           // Écriture conditionnelle : seule une prestation TOUJOURS sans
           // prestataire est close. Si elle a été reprise entre la lecture et
           // ici, on ne l'écrase pas en « annulée » — on le dit, fort.
           const close = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=in.(open,needs_replacement)`,
             { status: rembourse ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
-          if (!close && rembourse) {
-            console.error(`[cron] ⚠️ prestation ${m.id} REMBOURSÉE mais plus sans prestataire à la clôture : `
+          if (!close) {
+            if (rembourse) console.error(`[cron] ⚠️ prestation ${m.id} REMBOURSÉE mais plus sans prestataire à la clôture : `
               + "reprise entre-temps ? À vérifier à la main avant tout versement.");
+            // Ni candidatures rejetées, ni « prestation annulée » annoncée au
+            // client : la prestation n'est pas close.
+            return;
           }
+          cloturees++;
           // Rejeter toutes candidatures en attente
           await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
             method: "PATCH",
