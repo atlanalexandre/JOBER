@@ -61,9 +61,9 @@ async function pkStripe() {
  *      fait stripe.js dans le navigateur ;
  *   3. /api/missions « assign_after_payment », comme App.jsx après un succès.
  */
-export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240, chezUnTiers = false, diffusionId = null }) {
+export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240, chezUnTiers = false, diffusionId = null, utiliserCashback = false }) {
   const intent = await api("/api/stripe-intent",
-    { amount: montant, currency: "eur", mission_id: missionId, metadata: { prestataire: prestataireId } }, jetonClient);
+    { amount: montant, currency: "eur", mission_id: missionId, utiliser_cashback: utiliserCashback, metadata: { prestataire: prestataireId } }, jetonClient);
   if (!intent.json?.clientSecret) return { etape: "creation du paiement", statut: intent.statut, detail: intent.texte.slice(0, 300) };
 
   const secret = intent.json.clientSecret;
@@ -230,7 +230,7 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
  *
  * `dansJours` et `heure` fixent le début de la prestation, en heure de Paris.
  */
-export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13, urgent = false, declaration = null, recurrence = null, diffusionId = null }) {
+export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13, urgent = false, declaration = null, recurrence = null, diffusionId = null, utiliserCashback = false }) {
   const id = crypto.randomUUID();
   // `debutMs` (instant précis) l'emporte sur `dansJours` + `heure` : utile pour
   // une prestation qui commence dans quelques heures.
@@ -262,7 +262,7 @@ export async function reservationPayee({ prestataire, client: c, dansJours = 5, 
   }
   const chezUnTiers = !!declaration && declaration.lieu !== "etablissement_propre";
 
-  const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant, prestataireId: prestataire?.id, chezUnTiers, diffusionId });
+  const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant, prestataireId: prestataire?.id, chezUnTiers, diffusionId, utiliserCashback });
   expect(r.etape, `paiement et affectation : ${JSON.stringify(r)}`).toBe("ok");
   return { id, date, montant, paymentIntent: r.paymentIntent, mode: r.mode };
 }

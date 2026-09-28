@@ -73,8 +73,10 @@ prestation en direct (géolocalisation), valide, note. Cumule un cashback progre
 Le **portefeuille prépayé est fermé depuis le 16/08/2026** (avis prudentiel, CGPS art. 5B.3) :
 plus de rechargement, plus de paiement depuis le solde. Les soldes constitués restent
 remboursables — aucun n'existait à la fermeture. Le cashback, lui, **se dépense en réduction du
-paiement par carte**, automatiquement, depuis le 17/08/2026 (§5 « Le cashback s'impute en
-réduction ») : tout le solde est déduit, en laissant au moins 1 € à la carte. Ce paragraphe
+paiement par carte** depuis le 17/08/2026 (§5 « Le cashback s'impute en réduction ») — **au
+choix du client** depuis le 28/09/2026 : une case « Utiliser mon cashback », décochée par
+défaut, au paiement. Cochée, tout le solde est déduit en laissant au moins 1 € à la carte ;
+décochée, il continue de s'accumuler. Ce paragraphe
 annonçait encore le contraire jusqu'au 28/09/2026, et plusieurs écrans parlaient d'un « wallet »
 fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour.
 
@@ -3381,6 +3383,13 @@ sans que personne ne la surveille. Le tunnel ne propose que la carte et Apple Pa
 le consommait : à la fermeture du portefeuille, il est devenu crédité, affiché, et dépensable
 nulle part — alors que l'article 5B.1 des CGPS promet un crédit « utilisable pour le paiement
 total ou partiel de futures Prestations ».
+
+**Le client décide** (décision d'Alexandre, 28/09/2026). Le tunnel propose la case « 💰
+Utiliser mon cashback », décochée par défaut, et envoie `utiliser_cashback` à
+`stripe-intent`. Sans `true`, la réduction vaut 0 et le solde reste intact. Le navigateur ne
+peut que renoncer : le montant de la réduction reste calculé par le serveur, sur le solde lu
+en base. Apple Pay / Google Pay suit le même choix (montant de la feuille mis à jour).
+Éprouvé par `e2e/20`, dans les deux sens.
 
 Trois règles gouvernent cette imputation, et il faut les trois :
 
