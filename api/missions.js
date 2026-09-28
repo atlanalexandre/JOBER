@@ -63,6 +63,7 @@ import crypto from "crypto";
 import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
+import { ecrireVerifie } from "./_ecriture.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -177,13 +178,14 @@ async function rembourserPrestation(mission, supabaseUrl, serviceHeaders, motif)
     if (montant <= 0 || !mission.client_id) return { ok: true, mode: "wallet_vide" };
     try {
       const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: serviceHeaders });
-      const pd = await pr.json().catch(() => []);
-      const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
-      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`, {
-        method: "PATCH",
-        headers: { ...serviceHeaders, "Prefer": "return=minimal" },
-        body: JSON.stringify({ prepaid_balance: Math.round((solde + montant) * 100) / 100 }),
-      });
+      const pd = await pr.json().catch(() => null);
+      // Solde illisible : on n'écrit RIEN. Le lire comme 0 puis écrire « 0 + montant »
+      // effacerait tout le reste du portefeuille.
+      if (!pr.ok || !Array.isArray(pd) || !pd[0]) throw new Error(`solde illisible (${pr.status})`);
+      const solde = Number(pd[0].prepaid_balance || 0);
+      const ecrit = await ecrireVerifie(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`,
+        { prepaid_balance: Math.round((solde + montant) * 100) / 100 }, serviceHeaders, `remboursement/${motif}`);
+      if (!ecrit) return { ok: false, mode: "wallet", detail: "recredit_non_enregistre" };
       console.log(`[remboursement/${motif}] portefeuille recrédité de ${montant} € — prestation ${mission.id}`);
       return { ok: true, mode: "wallet", detail: montant };
     } catch (e) {
@@ -587,10 +589,8 @@ async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
 
   const suivants = await candidatsPourMission(mission, supabaseUrl, headers, dejaVus);
   if (!suivants.length) {
-    await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
-      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ status: "open", prestataire_id: null, acceptance_deadline: null }),
-    }).catch(e => console.error("[cascade] bascule en diffusion échouée :", e.message));
+    await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`,
+      { status: "open", prestataire_id: null, acceptance_deadline: null }, headers, "cascade/bascule en diffusion");
     return { mode: "diffusion", prestataire_id: null };
   }
 
@@ -1116,63 +1116,20 @@ export default async function handler(req, res) {
         });
       }
 
-      // ── Auto-validation après 24h (fallback si le cron Vercel n'est pas actif) ──
-      const nowTs = Date.now();
-      const toAutoValidate = missions.filter(m => {
-        if (m.status !== "assigned" || !m.validation_prestataire) return false;
-        if (!m.date) return false;
-        // heure_debut est en heure locale française — Vercel tourne en UTC.
-        // La conversion vit dans _temps.js, elle n'est plus recopiée ici.
-        const missionEndMs = finPrestationMs({ ...m, started_at: null, actual_hours: null });
-        return missionEndMs !== null && nowTs - missionEndMs >= 24 * 3600000;
-      });
-
-      if (toAutoValidate.length > 0) {
-        await Promise.all(toAutoValidate.map(async m => {
-          try {
-            const hours = m.actual_hours ?? m.hours ?? 0;
-            const montantTotal = Math.round(Number(hours) * Number(m.tarif_horaire || 0) * 100) / 100;
-            await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-              method: "PATCH",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal || m.montant_total }),
-            });
-            // Mettre à jour le statut local pour que la réponse reflète déjà la validation
-            m.status = "completed";
-            m.validation_client = true;
-            m.montant_total = montantTotal || m.montant_total;
-            // Créditer le cashback client (même logique que l'action complete)
-            if (m.client_id && montantTotal > 0) {
-              try {
-                const pr2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=commandes_mois`, { headers });
-                const pr2Data = pr2.ok ? await pr2.json().catch(() => []) : [];
-                const clientProfile = Array.isArray(pr2Data) && pr2Data[0];
-                const missionsThisMonth = (clientProfile?.commandes_mois || 0) + 1;
-                const CASHBACK_TIERS = [
-                  { min: 0,  max: 2,   rate: 0.005  },
-                  { min: 3,  max: 5,   rate: 0.0075 },
-                  { min: 6,  max: 9,   rate: 0.01   },
-                  { min: 10, max: 999, rate: 0.015  },
-                ];
-                const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
-                const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
-                await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
-                  method: "POST",
-                  headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
-                }).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
-                if (cashbackEarned > 0) {
-                  notifier({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement. Cashback crédité.`}, SUPABASE_URL, headers).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
-                }
-              } catch (e2) { console.error(`auto-validate cashback ${m.id}:`, e2.message); }
-            }
-            // Notifier le prestataire
-            if (m.prestataire_id) {
-              notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`}, SUPABASE_URL, headers).catch(e => console.error("[missions/list_client] échec ignoré :", e?.message));
-            }
-          } catch (e) { console.error(`auto-validate mission ${m.id}:`, e.message); }
-        }));
-      }
+      // ── Plus d'auto-validation ici (retirée le 28/09/2026) ──
+      //
+      // Cette liste validait d'office, à son affichage, les prestations finies
+      // depuis plus de 24 h — « au cas où le cron ne tournerait pas ». Elle le
+      // faisait en retard sur tout ce qui a été corrigé ailleurs :
+      //   • AUCUN versement programmé (payout_status restait vide). La prestation
+      //     passant « completed », la tâche planifiée — qui ne valide que les
+      //     « assigned » — ne la reprenait jamais : le prestataire n'était jamais
+      //     payé, sans qu'aucun écran ne le montre ;
+      //   • `montant_total` réécrit avec la seule part horaire : les frais de
+      //     service encaissés disparaissaient de la prestation ;
+      //   • cashback au barème recopié en dur, série hebdomadaire interrompue.
+      // La validation automatique appartient à la tâche planifiée
+      // (cron-reset-monthly, « reminders »), qui fait tout cela correctement.
 
       // Enrich missions: candidatures + prestataire name directly on mission (for direct assignments without candidatures)
       // ── LA PHOTO D'IDENTIFICATION EST CELLE QU'ALANE A VALIDÉE (11/09/2026)
@@ -1691,11 +1648,8 @@ export default async function handler(req, res) {
       if (!rpcRes.ok) {
         console.error("[complete] increment_cashback RPC failed, fallback direct PATCH:", rpcRes.status, "mission_id:", mission_id);
         // Fallback : mise à jour directe avec service role key
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ cashback_balance: newBalance, commandes_mois: missionsThisMonth }),
-        }).catch(e => console.error("[complete] fallback cashback PATCH failed:", e.message));
+        await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`,
+          { cashback_balance: newBalance, commandes_mois: missionsThisMonth }, headers, "complete/cashback de secours");
       } else {
         atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
           ? rpcData[0].cashback_balance
@@ -3469,16 +3423,14 @@ export default async function handler(req, res) {
         // Remboursement sur le wallet prépayé
         try {
           const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
-          const profData = await profR.json().catch(() => []);
-          const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+          const profData = await profR.json().catch(() => null);
+          // Solde illisible : lu comme 0, le recrédit effacerait le reste du portefeuille.
+          if (!profR.ok || !Array.isArray(profData) || !profData[0]) throw new Error(`solde illisible (${profR.status})`);
+          const currentBal = Number(profData[0].prepaid_balance || 0);
           const refundEuros = refundAmount / 100;
           const newBal = Math.round((currentBal + refundEuros) * 100) / 100;
-          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ prepaid_balance: newBal }),
-          });
-          walletRefunded = true;
+          walletRefunded = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`,
+            { prepaid_balance: newBal }, headers, "cancel_client/recrédit portefeuille");
         } catch (e) {
           console.error("[cancel_client] wallet refund failed:", e.message);
         }
@@ -3749,14 +3701,13 @@ export default async function handler(req, res) {
         // Remboursement proraté sur le wallet prépayé
         try {
           const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
-          const profData = await profR.json().catch(() => []);
-          const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+          const profData = await profR.json().catch(() => null);
+          // Solde illisible : lu comme 0, le recrédit effacerait le reste du portefeuille.
+          if (!profR.ok || !Array.isArray(profData) || !profData[0]) throw new Error(`solde illisible (${profR.status})`);
+          const currentBal = Number(profData[0].prepaid_balance || 0);
           const newBal = Math.round((currentBal + refundAmount) * 100) / 100;
-          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ prepaid_balance: newBal }),
-          });
+          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`,
+            { prepaid_balance: newBal }, headers, "cancel_in_progress/recrédit portefeuille");
         } catch (e) {
           console.error("[cancel_in_progress] wallet refund failed:", e.message);
         }
@@ -4475,10 +4426,11 @@ export default async function handler(req, res) {
         ? Math.max(0, Math.round((plannedHours - delayMins / 60) * 100) / 100)
         : plannedHours;
       // hours = durée effective du timer (réduite si refus) ; actual_hours = même valeur pour ancrer la facturation
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ delay_status: response, hours: actualHours, actual_hours: actualHours }),
-      });
+      // Ces heures fondent la facturation : une réponse non enregistrée ne doit
+      // pas être annoncée au prestataire comme acquise.
+      const decalageEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+        { delay_status: response, hours: actualHours, actual_hours: actualHours }, headers, "reponse_decalage");
+      if (!decalageEcrit) return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
       if (m2.prestataire_id) {
         const label = m2.titre || m2.metier || "la prestation";
         await notifier({
@@ -5305,11 +5257,9 @@ export default async function handler(req, res) {
       }
 
       // Enregistrer la demande
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ extra_hours_requested: eh, extra_hours_status: "pending" }),
-      });
+      const demandeEcrite = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+        { extra_hours_requested: eh, extra_hours_status: "pending" }, headers, "heures_supp/demande");
+      if (!demandeEcrite) return res.status(500).json({ error: "Votre demande n'a pas pu être enregistrée. Réessayez." });
 
       // Notifier le prestataire
       if (mission.prestataire_id) {
@@ -5416,11 +5366,9 @@ export default async function handler(req, res) {
         }
       } else {
         // Refus : effacer la demande
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null }),
-        });
+        const refusEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+          { extra_hours_status: "refused", extra_hours_requested: null }, headers, "heures_supp/refus");
+        if (!refusEcrit) return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
       }
 
       // Notifier le client
@@ -5990,14 +5938,13 @@ export default async function handler(req, res) {
           if (refundAmountEuros > 0 && mission.client_id) {
             try {
               const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers });
-              const profData = await profR.json().catch(() => []);
-              const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+              const profData = await profR.json().catch(() => null);
+              // Solde illisible : lu comme 0, le recrédit effacerait le reste du portefeuille.
+              if (!profR.ok || !Array.isArray(profData) || !profData[0]) throw new Error(`solde illisible (${profR.status})`);
+              const currentBal = Number(profData[0].prepaid_balance || 0);
               const newBal = Math.round((currentBal + refundAmountEuros) * 100) / 100;
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}`, {
-                method: "PATCH",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ prepaid_balance: newBal }),
-              });
+              await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}`,
+                { prepaid_balance: newBal }, headers, "presta_cancel/recrédit portefeuille");
             } catch (e) {
               console.error("[presta_cancel] wallet refund failed:", e.message);
             }
