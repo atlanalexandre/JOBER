@@ -253,7 +253,9 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
   **La ligne est écrite par le serveur** (`/api/notify-doc`, via `enregistrerDocument()` de
   `src/lib/documents.js`), jamais par un `upsert` du navigateur : la base le refuse, faute du
   droit de modifier `prestataire_id` et `verified` — et c'est voulu. Les cinq écrans de dépôt
-  étaient cassés ainsi, en silence (constaté en recette le 25/09/2026).
+  étaient cassés ainsi, en silence (constaté en recette le 25/09/2026). Depuis le 29/09/2026,
+  le navigateur n'a plus **aucun** droit d'écriture sur `documents` : il y créait une pièce
+  déjà « vérifiée ». Ne jamais le lui rendre.
 - Le bucket est **privé** : la lecture passe par une URL signée générée côté `/api`.
 
 ---

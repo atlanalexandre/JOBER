@@ -1,5 +1,6 @@
 import { lireReglagesSecteurs, etatDesSecteurs, secteursDuProfil } from "./_secteurs.js";
 import { PLACES_OFFRE } from "./_offre.js";
+import { justificatifsDe, habiliteDans } from "./_habilitations.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -174,9 +175,35 @@ export default async function handler(req, res) {
       return n ? `${n.charAt(0).toLocaleUpperCase("fr-FR")}.` : "";
     };
 
+    // Métier réglementé ajouté après l'activation (décision d'Alexandre du
+    // 29/09/2026) : le prestataire reste au catalogue pour ses autres métiers,
+    // mais celui-là n'y figure qu'une fois son titre vérifié. Retiré de la fiche
+    // ici, il ne peut pas être réservé pour ce métier ; assign_after_payment
+    // refuse de toute façon l'appel direct.
+    const justifs = await justificatifsDe(approvedProfiles.map(p => p.id), SUPABASE_URL, headers);
+
+    // Tous ses métiers sont réglementés et aucun titre n'est vérifié : il ne
+    // peut rien exercer, il n'a rien à faire au catalogue.
+    const sansMetierExercable = (p) => {
+      const m = userMetaMap[p.id] || {};
+      const tous = [m.metier, ...(Array.isArray(m.metiers_list) ? m.metiers_list.map(x => x?.metier || x) : [])].filter(Boolean);
+      return tous.length > 0 && !tous.some(x => habiliteDans(justifs, p.id, x));
+    };
+
     // Enrich each profile with user_metadata
-    const enriched = approvedProfiles.map((p) => {
-      const meta = userMetaMap[p.id] || {};
+    const enriched = approvedProfiles.filter(p => !sansMetierExercable(p)).map((p) => {
+      const metaBrute = userMetaMap[p.id] || {};
+      const listeHabilitee = (Array.isArray(metaBrute.metiers_list) ? metaBrute.metiers_list : [])
+        .filter(x => habiliteDans(justifs, p.id, x?.metier || x));
+      const principalHabilite = habiliteDans(justifs, p.id, metaBrute.metier);
+      const premier = listeHabilitee[0];
+      const meta = {
+        ...metaBrute,
+        metiers_list: listeHabilitee,
+        metier: principalHabilite ? metaBrute.metier : (premier?.metier || null),
+        secteur: principalHabilite ? metaBrute.secteur : (premier?.sector || premier?.secteur || null),
+        sector: principalHabilite ? metaBrute.sector : (premier?.sector || premier?.secteur || null),
+      };
       const provRatings = ratingsByProvider[p.id] || [];
       const avgRating = provRatings.length
         ? Math.round(provRatings.reduce((a, b) => a + b, 0) / provRatings.length * 10) / 10

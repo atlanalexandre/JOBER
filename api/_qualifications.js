@@ -167,3 +167,40 @@ export const NOTES_METIERS = {
 export function noteMetier(metier) {
   return NOTES_METIERS[metier]?.texte || null;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Le justificatif couvre-t-il CE métier ? (29/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le titre n'était exigé qu'à l'ouverture de l'accès aux prestations. Un
+// prestataire déjà activé pouvait ensuite ajouter lui-même « Agent de
+// sécurité » à ses métiers et être proposé, sans jamais avoir produit de carte
+// CNAPS. Décision d'Alexandre : ne pas bloquer le compte, mais imposer le
+// justificatif du métier ajouté. Ses autres métiers restent ouverts ; celui-là
+// ne l'est qu'une fois son titre déposé ET vérifié.
+//
+// Un seul document « diplomes » par prestataire porte tous ses titres. Pour
+// savoir s'il couvre le nouveau métier, `documents.titres_couverts` note, À LA
+// VÉRIFICATION, les titres qu'il couvrait alors (verify_doc). Un titre ajouté
+// ensuite n'y figure pas : le justificatif est à compléter, puis à revérifier.
+//
+// La règle lit `titres_couverts` seul, pas `verified`. Quand le prestataire
+// remplace sa pièce pour y ajouter le nouveau titre, `verified` repasse à false
+// (notify-doc) — mais les titres déjà constatés le restent : ses métiers
+// validés ne se ferment pas pendant l'attente. Un refus supprime la ligne, et
+// avec elle tous les titres. Seul verify_doc écrit cette colonne ; le
+// navigateur n'a aucun droit d'écriture sur `documents`.
+
+/** @param {{titres_couverts?:string[]|null}|null} justificatif  la ligne `documents` de type diplomes */
+export function peutExercer(metier, justificatif) {
+  const q = QUALIFICATIONS_OBLIGATOIRES[metier];
+  if (!q) return true;
+  return Array.isArray(justificatif?.titres_couverts) && justificatif.titres_couverts.includes(q.titre);
+}
+
+/** Les titres exigés par les métiers déclarés que le justificatif vérifié ne couvre pas. */
+export function titresNonCouverts(metiers, justificatif) {
+  return qualificationsPour(metiers).filter(q =>
+    !(Array.isArray(justificatif?.titres_couverts) && justificatif.titres_couverts.includes(q.titre)));
+}
