@@ -1669,6 +1669,11 @@ export default async function handler(req, res) {
         verification: verificationPour(doc.type, qualifPrincipale),
         expiration: etatExpiration(doc.expires_at),
         regleValidite: VALIDITE_DOCUMENTS[doc.type] || null,
+        // Titres exigés par ses métiers que la dernière vérification n'a pas
+        // constatés : le métier correspondant reste fermé tant qu'on ne revalide pas.
+        ...(doc.type === "diplomes" ? { titres_a_verifier: qualifs
+          .filter(q => !(Array.isArray(doc.titres_couverts) && doc.titres_couverts.includes(q.titre)))
+          .map(q => ({ titre: q.titre, metiers: q.metiers })) } : {}),
       }));
       return res.status(200).json(enrichis);
     }
@@ -1755,7 +1760,7 @@ export default async function handler(req, res) {
       // savoir si la ligne avait disparu ou si elle appartenait à un autre compte —
       // cas réel après recréation d'un compte, les documents gardant l'ancien
       // identifiant de prestataire.
-      const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&select=id,prestataire_id`, { headers });
+      const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&select=id,prestataire_id,type`, { headers });
       const docCheckData = await docCheckRes.json().catch(() => []);
       const docTrouve = Array.isArray(docCheckData) && docCheckData[0];
       if (!docTrouve) {
@@ -1774,6 +1779,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Date de validité invalide (attendu AAAA-MM-JJ)" });
       }
 
+      // Justificatif de qualification : la vérification constate les titres
+      // des métiers déclarés À CET INSTANT. Un métier réglementé ajouté ensuite
+      // n'y figurera pas, et restera fermé jusqu'à une nouvelle vérification
+      // (décision d'Alexandre, 29/09/2026 — voir peutExercer()).
+      let titresCouverts;
+      if (docTrouve.type === "diplomes") {
+        const uT = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+        const uTData = uT.ok ? await uT.json().catch(() => null) : null;
+        if (!uTData) {
+          console.error(`[verify_doc] métiers de ${profileId} illisibles (${uT.status}) — validation non enregistrée.`);
+          return res.status(503).json({ error: "Les métiers du prestataire n'ont pas pu être lus. Réessayez dans un instant." });
+        }
+        const metiersT = uTData.user_metadata?.metiers_list || [uTData.user_metadata?.metier].filter(Boolean);
+        titresCouverts = qualificationsPour(metiersT).map(q => q.titre);
+      }
+
       const patchDocRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
@@ -1781,7 +1802,8 @@ export default async function handler(req, res) {
         // de trente jours au terme duquel la pièce d'identité est supprimée
         // (CGPS art. 14.4).
         body: JSON.stringify({ verified: true, verified_at: new Date().toISOString(),
-                               ...(expiresAt ? { expires_at: expiresAt } : {}) }),
+                               ...(expiresAt ? { expires_at: expiresAt } : {}),
+                               ...(titresCouverts ? { titres_couverts: titresCouverts } : {}) }),
       });
       // L'écriture n'était pas vérifiée : un refus de PostgREST renvoyait quand même
       // « success: true » et l'écran affichait le document comme validé alors qu'il

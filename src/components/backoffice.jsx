@@ -353,7 +353,7 @@ function BOComptes() {
     try {
       const r = await boFetch({ action:"verify_doc", profileId, docId, expiresAt: validite.expiresAt });
       const j = await r.json().catch(() => ({}));
-      if (r.ok) setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
+      if (r.ok) setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true, titres_a_verifier:[] } : doc) }));
       else showToast(j.error || `Erreur ${r.status}`, "error");
     } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setDocVerifying(null);
@@ -1160,6 +1160,14 @@ function BOComptes() {
                         <div style={{ flex:"1 1 130px", minWidth:0 }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{DOC_LABEL[doc.type]||doc.type}</div>
                           <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
+                          {/* Métier réglementé ajouté après la vérification : la
+                              pièce doit porter ce titre, et être revalidée. Le
+                              métier reste fermé d'ici là (peutExercer). */}
+                          {doc.verified && doc.titres_a_verifier?.length > 0 && (
+                            <div style={{ fontSize:10, marginTop:2, fontWeight:700, color:C.accentGold, whiteSpace:"normal" }}>
+                              ⚠️ À revérifier : {doc.titres_a_verifier.map(t => `${t.titre} (${t.metiers.join(", ")})`).join(" ; ")}
+                            </div>
+                          )}
                           {/* La péremption. Un vrai document devenu caduc est le
                               risque le plus concret d'un dossier : personne ne
                               rouvre jamais une pièce validée. */}
@@ -1181,8 +1189,8 @@ function BOComptes() {
                           {doc.signedUrl && (
                             <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.6)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}
-                          {!doc.verified && !doc.isVirtual && (
-                            <button onClick={()=>handleVerifyDoc(p.id, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                          {(!doc.verified || doc.titres_a_verifier?.length > 0) && !doc.isVirtual && (
+                            <button title={doc.verified ? "La pièce porte bien les titres à revérifier : valider" : "Valider"} onClick={()=>handleVerifyDoc(p.id, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               {docVerifying===doc.id ? "…" : "✓"}
                             </button>
                           )}

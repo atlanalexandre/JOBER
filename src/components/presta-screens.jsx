@@ -4,6 +4,7 @@ import { enregistrerDocument } from "../lib/documents.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
+import { titresNonCouverts } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
@@ -966,7 +967,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                   <div style={{ color:"#F0B429", fontWeight:800, fontSize:12.5, marginBottom:5 }}>⚖️ Métier réglementé — justificatif obligatoire</div>
                   <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
                     <strong style={{ color:C.text }}>{q.titre}</strong>{q.detail ? ` — ${q.detail}` : ""}.
-                    <br/>Vous devrez le déposer dans vos documents : sans lui, votre accès aux prestations ne pourra pas être ouvert.
+                    <br/>Vous devrez le déposer dans vos documents : ce métier ne vous sera proposé qu'une fois ce justificatif vérifié.
                     <div style={{ color:C.textMuted, fontSize:11, marginTop:5 }}>{q.texte}</div>
                   </div>
                 </div>
@@ -1989,6 +1990,43 @@ export function CarteVirements({ compact = false }) {
       <button onClick={configurer} disabled={envoi}
         style={{ width:"100%", padding:"11px", borderRadius:12, border:"none", background:C.accentGold, color:"#231A04", fontWeight:800, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.6:1 }}>
         {envoi ? "Ouverture…" : etat.compte ? "Terminer la configuration →" : "Configurer mes virements →"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Un métier réglementé ajouté après l'activation reste fermé tant que son titre
+ * n'est pas vérifié (décision d'Alexandre, 29/09/2026 — peutExercer()). Le
+ * document « diplômes » peut pourtant s'afficher « validé » : il l'a été pour
+ * les titres d'alors. Sans ce bandeau, le prestataire ne saurait pas pourquoi
+ * ce métier ne lui propose rien.
+ */
+export function AlerteTitresACompleter({ onNavigate }) {
+  const [manquants, setManquants] = useState([]);
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user;
+      if (!u) return;
+      const { data: rows, error } = await supabase.from("documents")
+        .select("verified,titres_couverts").eq("prestataire_id", u.id).eq("type", "diplomes");
+      if (error) { console.error("[titres] justificatif illisible :", error.message); return; }
+      const metiers = u.user_metadata?.metiers_list || [u.user_metadata?.metier].filter(Boolean);
+      setManquants(titresNonCouverts(metiers, (rows || [])[0] || null));
+    });
+  }, []);
+  if (!manquants.length) return null;
+  return (
+    <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:16, padding:"14px 16px", marginBottom:14 }}>
+      <div style={{ fontWeight:800, color:"#F0B429", fontSize:13, marginBottom:4 }}>⚖️ Justificatif à fournir</div>
+      <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
+        {manquants.map(q => (
+          <div key={q.titre}>« {q.metiers.join(" », « ")} » : <strong style={{ color:C.text }}>{q.titre}</strong> ({q.texte}).</div>
+        ))}
+        <div style={{ marginTop:6 }}>Ce métier ne vous est pas proposé tant que ce justificatif n'a pas été vérifié. Vos autres métiers restent ouverts.</div>
+      </div>
+      <button onClick={() => onNavigate("doc_upload")} style={{ marginTop:10, padding:"9px 14px", borderRadius:10, border:"none", background:"#F0B429", color:"#050E20", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+        Déposer le justificatif
       </button>
     </div>
   );
@@ -4336,6 +4374,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           })}
           <CarteVirements />
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
+          <AlerteTitresACompleter onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
           {/* Bandeau « Prestations urgentes activées — vous êtes prioritaire »
               retiré le 17/08/2026 : aucune priorité de ce genre n'existe.

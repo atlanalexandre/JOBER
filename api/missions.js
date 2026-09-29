@@ -65,6 +65,7 @@ import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
+import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -467,6 +468,10 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
     await Promise.all(villesCandidates.map(v => geocodeFR(v)));
   }
 
+  // Métier réglementé : le justificatif vérifié doit couvrir SON titre
+  // (api/_habilitations.js). Une seule lecture pour toute la liste.
+  const justifs = await justificatifsDe(eligibles.map(p => p.id), supabaseUrl, headers);
+
   const retenus = [];
   for (const p of eligibles) {
     const m = metas[p.id] || {};
@@ -475,6 +480,7 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
     const metiers = [m.metier, ...(Array.isArray(m.metiers_list) ? m.metiers_list.map(x => x?.metier || x) : [])]
       .filter(Boolean).map(x => String(x).toLowerCase());
     if (mission.metier && metiers.length && !metiers.includes(String(mission.metier).toLowerCase())) continue;
+    if (!habiliteDans(justifs, p.id, mission.metier)) continue;
     // Secteur : principal OU secondaire, comme le métier deux lignes plus
     // haut. Le contrôle ne lisait que `m.secteur`, donc le premier métier
     // déclaré : un prestataire qui passait le test du métier échouait sur
@@ -885,13 +891,16 @@ export default async function handler(req, res) {
         console.error(`[list_open] demandes illisibles (${r.status})`);
         return res.status(502).json({ error: "Les demandes ouvertes n'ont pas pu être chargées." });
       }
+      // Métier réglementé : seulement si son justificatif est vérifié pour ce titre.
+      const justifsListe = await justificatifsDe([caller.id], SUPABASE_URL, headers);
       const pour = lignes.filter(m =>
         // Une prestation déjà payée qui commence dans moins de 30 minutes ne
         // peut plus être reprise (voir `candidater`) : la montrer inviterait à
         // un clic qui sera refusé.
         (!m.stripe_payment_intent || ((debutPrestationMs(m.date, m.heure_debut) ?? 0) - Date.now() >= 30 * 60000))
         && (!secteurs.length || !m.sector || secteurs.includes(String(m.sector)))
-        && (!metiers.length || !m.metier || metiers.includes(String(m.metier).toLowerCase())));
+        && (!metiers.length || !m.metier || metiers.includes(String(m.metier).toLowerCase()))
+        && habiliteDans(justifsListe, caller.id, m.metier));
       let miennes = {};
       if (pour.length) {
         const cr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${caller.id}&mission_id=in.(${pour.map(m => m.id).join(",")})&select=mission_id,status`, { headers });
@@ -943,6 +952,10 @@ export default async function handler(req, res) {
       if ((m.sector && secteurs.length && !secteurs.includes(String(m.sector)))
         || (m.metier && metiers.length && !metiers.includes(String(m.metier).toLowerCase()))) {
         return res.status(403).json({ error: "Cette demande ne correspond pas à votre métier." });
+      }
+      // Métier réglementé ajouté après l'activation : pas sans son titre vérifié.
+      if (!(await habilitePour(caller.id, m.metier, SUPABASE_URL, headers))) {
+        return res.status(403).json({ error: `« ${m.metier} » est un métier réglementé : déposez le justificatif demandé dans vos documents. Ce métier s'ouvrira dès sa vérification.` });
       }
 
       // ── Prestation déjà payée : reprise directe ──
@@ -2509,6 +2522,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Ce prestataire n'a pas encore accès aux prestations (documents en cours de vérification). Choisissez un autre prestataire." + suffixeRemboursement(r) });
       }
 
+      // Métier réglementé ajouté après l'activation, titre pas encore vérifié :
+      // le catalogue ne le propose déjà plus pour ce métier ; ceci ferme la porte
+      // d'un appel direct. Le client est remboursé, comme pour les refus ci-dessus.
+      {
+        const mMetRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=metier`, { headers });
+        const metierM = ((await mMetRes.json().catch(() => []))[0] || {}).metier;
+        // Métier illisible : on ne rembourse pas une réservation légitime sur une
+        // panne passagère — mais on le dit (le prestataire a déjà vu la demande).
+        if (!mMetRes.ok) console.error(`[assign_after_payment] métier de ${mission_id} illisible (${mMetRes.status}) — habilitation non contrôlée.`);
+        else if (!(await habilitePour(prestataire_id, metierM, SUPABASE_URL, headers))) {
+          console.error(`[assign_after_payment] ${prestataire_id} non habilité pour « ${metierM} »`);
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "titre professionnel non vérifié", SUPABASE_URL, headers);
+          return res.status(400).json({ error: `Ce prestataire n'a pas encore fait vérifier son titre professionnel pour « ${metierM || "ce métier"} ». Choisissez un autre prestataire.` + suffixeRemboursement(r) });
+        }
+      }
+
       // Tarif réellement annoncé par le prestataire. Second volet du contrôle du
       // montant : stripe-intent vérifie la cohérence du total, mais il ne connaît pas
       // encore le prestataire — la prestation est créée sans lui pour ne pas le
@@ -2954,6 +2983,9 @@ export default async function handler(req, res) {
       const missionCoords = await geocodeFR(mission?.ville).catch(() => null);
 
       let notified = 0;
+      // Métier réglementé : on ne prévient que ceux dont le titre est vérifié.
+      const justifsNotif = mission?.metier && Array.isArray(profiles)
+        ? await justificatifsDe(profiles.map(p => p.id), SUPABASE_URL, headers) : new Map();
       if (Array.isArray(profiles)) {
         const chunks = [];
         for (let i = 0; i < profiles.length; i += 20) chunks.push(profiles.slice(i, i + 20));
@@ -2969,6 +3001,7 @@ export default async function handler(req, res) {
               const metiersP = [meta.metier, ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier || x) : [])]
                 .filter(Boolean).map(x => String(x).toLowerCase());
               if (mission?.metier && metiersP.length && !metiersP.includes(String(mission.metier).toLowerCase())) return;
+              if (!habiliteDans(justifsNotif, p.id, mission?.metier)) return;
 
               // Geo filter: respect prestataire's zone_km (rayon d'intervention)
               const zoneKm = Number(meta.zone_km) || 50; // default 50 km
@@ -6242,6 +6275,8 @@ export default async function handler(req, res) {
           // sortants (email et SMS). Notification et push restent larges, au
           // niveau du secteur : ils ne coûtent rien et n'encombrent pas de boîte.
           const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+          // Métier réglementé : titre vérifié exigé (la reprise le refuserait de toute façon).
+          const justifsCibles = await justificatifsDe(cibles.map(c => c.id), SUPABASE_URL, headers);
           const jourPrestation = mission.date
             ? JOURS_FR[new Date(`${mission.date}T12:00:00`).getDay()]
             : null;
@@ -6254,6 +6289,7 @@ export default async function handler(req, res) {
               ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier) : []),
             ].filter(Boolean);
             if (mission.metier && !metiersPresta.includes(mission.metier)) return false;
+            if (!habiliteDans(justifsCibles, c.id, mission.metier)) return false;
             // Disponibilité déclarée pour ce jour de la semaine, exigée
             // explicitement : sans elle, on ne sollicite personne à l'extérieur.
             if (jourPrestation) {

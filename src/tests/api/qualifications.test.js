@@ -222,3 +222,38 @@ describe("une seule définition des pièces d'un dossier", () => {
     expect(data).toContain('export { DOCS_REQUIS, docsRequisPour } from "../../api/_documents.js"');
   });
 });
+
+// Métier réglementé ajouté après l'activation (décision d'Alexandre, 29/09/2026).
+describe("peutExercer() et titresNonCouverts()", async () => {
+  const { peutExercer, titresNonCouverts } = await import("../../../api/_qualifications.js");
+  const cnaps = { verified: true, titres_couverts: ["Carte professionnelle CNAPS"] };
+
+  it("un métier libre s'exerce sans justificatif", () => {
+    expect(peutExercer("Femme/Valet de chambre", null)).toBe(true);
+  });
+
+  it("un métier réglementé exige que la vérification ait constaté SON titre", () => {
+    expect(peutExercer("Agent de sécurité", null)).toBe(false);
+    expect(peutExercer("Agent de sécurité", cnaps)).toBe(true);
+    // Justificatif vérifié pour un autre titre (CAP pâtisserie) : ne couvre pas la carte CNAPS.
+    expect(peutExercer("Agent de sécurité", { verified: true, titres_couverts: ["CAP pâtisserie, ou 3 ans de pratique"] })).toBe(false);
+    // Ancienne ligne sans titres constatés : rien n'est couvert.
+    expect(peutExercer("Agent de sécurité", { verified: true, titres_couverts: null })).toBe(false);
+  });
+
+  it("une pièce remplacée, en attente, garde les titres déjà constatés", () => {
+    expect(peutExercer("Agent de sécurité", { verified: false, titres_couverts: ["Carte professionnelle CNAPS"] })).toBe(true);
+  });
+
+  it("liste ce qui reste à fournir", () => {
+    const manque = titresNonCouverts([{ metier: "Agent de sécurité" }, { metier: "Chauffeur livreur" }, { metier: "Serveur(se)" }], cnaps);
+    expect(manque.map(q => q.titre)).toEqual(["Permis de conduire B en cours de validité"]);
+  });
+
+  it("la migration reprend la table au 29/09/2026, métier par métier", () => {
+    const sqlMig = readFileSync(new URL("../../../migrations/2026-09-29_titres_couverts_par_justificatif.sql", import.meta.url), "utf8");
+    for (const [metier, q] of Object.entries(QUALIFICATIONS_OBLIGATOIRES)) {
+      expect(sqlMig, metier).toContain(`('${metier.replace(/'/g, "''")}', '${q.titre.replace(/'/g, "''")}')`);
+    }
+  });
+});

@@ -398,7 +398,22 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
 3. **`enable_missions` refuse d'ouvrir l'accès aux prestations** tant que le justificatif n'est
    pas déposé **et vérifié**. Un document déposé mais jamais regardé ne vaut pas une
    vérification. Si la vérification elle-même échoue, l'accès n'est pas ouvert au bénéfice du
-   doute : réponse 503, et on réessaie.
+   doute : réponse 503, et on réessaie ;
+4. **un métier réglementé ajouté APRÈS l'activation est fermé tant que son titre n'est pas
+   vérifié** (29/09/2026, décision d'Alexandre : ne pas bloquer le compte, imposer le
+   justificatif). Le contrôle n'avait lieu qu'à l'activation : un prestataire activé pouvait
+   ajouter « Agent de sécurité » et être proposé sans carte CNAPS. La vérification d'un
+   justificatif `diplomes` note désormais les titres qu'il couvre (`documents.titres_couverts`,
+   écrit par `verify_doc` seul). `peutExercer()` (`api/_qualifications.js`) ouvre un métier
+   réglementé seulement si son titre y figure, et `api/_habilitations.js` l'applique partout où un
+   prestataire est choisi, prévenu ou affecté : catalogue (le métier est retiré de sa fiche, ses
+   autres métiers restent), `list_open`, `candidater`, `assign_after_payment` (client
+   remboursé), sélection automatique et notifications. Le prestataire voit le bandeau « Justificatif
+   à fournir » ; le back-office affiche « À revérifier » sur la pièce et permet de la revalider.
+   Une pièce **remplacée** garde les titres déjà constatés pendant son attente : ses métiers
+   validés ne se ferment pas. Un refus supprime la ligne, et les titres avec. Les justificatifs
+   vérifiés avant le 29/09 ont été repris pour les métiers déclarés ce jour-là (migration
+   `2026-09-29_titres_couverts_par_justificatif.sql`). Éprouvé par `e2e/24`.
 
 > **Ce que la plateforme ne fait PAS.** Elle n'authentifie aucun titre. Contrôler une carte
 > CNAPS auprès du CNAPS, un permis auprès de l'ANTS ou un diplôme auprès de son école suppose
@@ -2455,7 +2470,7 @@ soi » contient aussi ce qu'on se doit à soi-même.
 |---|---|
 | `missions` | `payout_amount = 9999`, `payout_status = 'pending'`, `payout_due_at = hier`. Le traitement des versements lit exactement ces colonnes et vire le montant : **chemin direct vers un virement choisi**. Côté client, `montant_total` et `hours` — donc le prix et ce qui reste de frais après clôture |
 | `profiles` | `plan_abonnement = 'elite'` (illimité, sans payer), `missions_enabled = true` (accès sans vérification), `status = 'approved'`, `cashback_balance = 500` |
-| `documents` | `verified = true` sur ses propres pièces : le badge « vérifié » sans qu'aucune pièce ait été regardée — l'obligation de vigilance qui tombe |
+| `documents` | `verified = true` sur ses propres pièces : le badge « vérifié » sans qu'aucune pièce ait été regardée — l'obligation de vigilance qui tombe. **Encore possible jusqu'au 29/09/2026 par une CRÉATION de ligne** (la règle `docs_insert` ne contrôlait que `prestataire_id`) et par un changement de `type` d'une pièce vérifiée (`docs_update`) — sans compter `TRUNCATE`, hors RLS. Depuis la migration `2026-09-29_titres_couverts_par_justificatif.sql`, le navigateur n'a plus que la lecture : la ligne est écrite par `/api/notify-doc` et `/api/bo-action`, en service role |
 
 **La correction ne touche pas aux règles** : les lignes restent les bonnes. Elle retire
 l'écriture sur les colonnes qui ne regardent que le serveur.
@@ -3863,6 +3878,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `20` | cashback : utilisé seulement si le client l'accepte ; rendu si toute la prestation est annulée avant son début (faute de prestataire, back-office, client), perdu une fois démarrée |
 | `21` | catalogue public en « Prénom I. », nom complet au seul client de la prestation |
 | `22` | pointage localisé : sur place, éloigné (enregistré quand même), sans position ; constat fermé à l'écriture depuis le navigateur |
+| `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` par le catalogue |
+| `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
