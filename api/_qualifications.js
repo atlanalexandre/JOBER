@@ -66,6 +66,12 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   "Chauffeur VTC":                      { titre: "Carte professionnelle VTC", detail: "et inscription au registre des exploitants VTC", texte: "code des transports, art. L3120-2-1" },
   "Chauffeur poids lourd (permis C)":   { titre: "Permis C, FIMO et FCO à jour", detail: "carte de qualification de conducteur", texte: "code des transports, art. R3314-1" },
   "Chauffeur de bus / autocar":         { titre: "Permis D, FIMO et FCO à jour", detail: "carte de qualification de conducteur", texte: "code des transports, art. R3314-1" },
+  // Ces deux métiers conduisent forcément : un véhicule de livraison, ou celui
+  // du client. Aucun permis n'était demandé (relevé le 29/09/2026, sur la
+  // question d'un traiteur). Les coursiers, qui peuvent livrer à vélo ou à
+  // pied, ne sont PAS ici : voir NOTES_METIERS (décision d'Alexandre).
+  "Chauffeur livreur":                  { titre: "Permis de conduire B en cours de validité", detail: "le métier suppose la conduite d'un véhicule", texte: "code de la route, art. L221-2" },
+  "Voiturier":                          { titre: "Permis de conduire B en cours de validité", detail: "le voiturier conduit les véhicules des clients", texte: "code de la route, art. L221-2" },
 
   // ── Coiffure et esthétique ───────────────────────────────────────────────
   "Coiffeur(se) à domicile":            { titre: "CAP coiffure, BP, ou 3 ans de pratique", detail: "la qualification peut être détenue par le prestataire ou par celui qui contrôle l'exécution", texte: "loi n° 46-1173 du 23 mai 1946" },
@@ -148,6 +154,8 @@ export function qualificationsPour(metiers) {
 // Une exigence sans fondement finit par être contournée, et décrédibilise
 // celles qui en ont un. On informe, et on laisse le prestataire se conformer.
 export const NOTES_METIERS = {
+  "Coursier / Livreur":                   { texte: "Si vous livrez en voiture, en scooter ou en moto, déposez votre permis de conduire dans « Diplômes & certifications ». Il n'est pas exigé pour une livraison à vélo ou à pied." },
+  "Livreur courses à domicile":           { texte: "Si vous livrez en voiture, en scooter ou en moto, déposez votre permis de conduire dans « Diplômes & certifications ». Il n'est pas exigé pour une livraison à vélo ou à pied." },
   "Formateur professionnel":              { texte: "Pour facturer au titre de la formation professionnelle continue (OPCO, employeur, CPF), un numéro de déclaration d'activité auprès de la DREETS est nécessaire. Il ne l'est pas pour un cours donné à un particulier." },
   "Formateur bureautique / informatique": { texte: "Pour facturer au titre de la formation professionnelle continue (OPCO, employeur, CPF), un numéro de déclaration d'activité auprès de la DREETS est nécessaire. Il ne l'est pas pour un cours donné à un particulier." },
   "Professeur particulier / Soutien scolaire": { texte: "Les cours à domicile chez un particulier peuvent ouvrir droit au crédit d'impôt services à la personne, sous réserve d'une déclaration d'activité SAP. Ce n'est pas une condition d'exercice." },

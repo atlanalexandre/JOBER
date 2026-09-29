@@ -336,14 +336,14 @@ sécurité intérieure, art. L617-1) — et que la plateforme, qui organise la m
 aurait eu du mal à expliquer qu'elle n'avait rien demandé.
 
 [`api/_qualifications.js`](api/_qualifications.js) nomme, **métier par métier**, le titre
-attendu et le texte qui l'impose — 30 métiers à ce jour :
+attendu et le texte qui l'impose — 32 métiers à ce jour :
 
 | Famille | Titre attendu |
 |---|---|
 | Sécurité privée (6 métiers) | Carte professionnelle CNAPS, diplôme SSIAP à jour |
 | Sport et baignade (2) | Carte professionnelle d'éducateur sportif, BNSSA |
 | Animation (2) | BAFA ou équivalent |
-| Conduite (3) | Carte VTC, permis C ou D avec FIMO/FCO |
+| Conduite (5) | Carte VTC, permis C ou D avec FIMO/FCO, permis B (chauffeur livreur, voiturier — depuis le 29/09/2026) |
 | Coiffure et esthétique (2) | CAP, BP, ou 3 ans de pratique |
 | Métiers de bouche (13) | CAP de la spécialité, ou 3 ans de pratique |
 | Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
@@ -373,7 +373,9 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
 dans le même fichier, porte les conditions qui existent sans s'appliquer à tous : le numéro de
 déclaration d'activité DREETS n'est nécessaire qu'à un formateur qui facture de la **formation
 professionnelle continue** (OPCO, employeur, CPF), pas à celui qui donne un cours à un
-particulier. L'exiger de tous aurait écarté la majorité des inscrits. Ces notes s'affichent au
+particulier. L'exiger de tous aurait écarté la majorité des inscrits. Même logique pour le permis des
+coursiers (« Coursier / Livreur », « Livreur courses à domicile ») : ils peuvent livrer à vélo
+ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre, 29/09/2026). Ces notes s'affichent au
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas
 figurer dans les deux tables — c'est testé.
 
