@@ -5,6 +5,7 @@ import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_de
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 import { qualificationsPour } from "./_qualifications.js";
+import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc } from "./_documents.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
@@ -148,7 +149,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes, blacklistRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
       ]);
@@ -234,6 +235,11 @@ export default async function handler(req, res) {
           rib_present: !!ribNettoye,
           rib_fin: ribNettoye ? ribNettoye.slice(-4) : null,
           blacklisted: !!blacklisted,
+          // CV obligatoire, et confronté aux métiers déclarés (api/_cv.js) :
+          // ce que regarde celui qui ouvre l'accès aux prestations.
+          cv: p.cv || meta.cv || null,
+          cv_manques: p.role === "prestataire" ? manquesCv(p.cv || meta.cv) : [],
+          metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, meta.metiers_list || [meta.metier].filter(Boolean)) : [],
         };
       });
       return res.status(200).json(merged);
@@ -429,7 +435,7 @@ export default async function handler(req, res) {
       if (enabled) {
         const dRes = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`
-            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at,created_at,siret`,
+            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at,created_at,siret,cv`,
           { headers }
         );
         const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
@@ -465,6 +471,17 @@ export default async function handler(req, res) {
           const uq = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
           const uqData = uq.ok ? await uq.json().catch(() => null) : null;
           const attendues = qualificationsPour(uqData?.user_metadata?.metiers_list);
+
+          // ── Le CV est obligatoire (décision d'Alexandre, 29/09/2026) ──────
+          // Le client le consulte avant de réserver : un profil sans parcours
+          // ne lui dit rien. L'absence d'expérience dans le métier n'est PAS
+          // bloquante — elle est signalée à l'écran, à côté de ce bouton.
+          if (!uqData) throw new Error("compte illisible");
+          const manques = manquesCv(p0.cv || uqData.user_metadata?.cv);
+          if (manques.length > 0) {
+            console.log(`[enable_missions] ${profileId} : CV incomplet (${manques.join(", ")}) — accès non ouvert.`);
+            return res.status(409).json({ error: `Le CV du prestataire est incomplet : il manque ${manques.join(", ")}. Il le complète depuis son profil, rubrique « Mon parcours ».` });
+          }
 
           // ── Hors Union européenne : un titre de séjour PRODUIT ET VÉRIFIÉ ──
           //

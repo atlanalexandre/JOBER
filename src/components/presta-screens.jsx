@@ -8,6 +8,7 @@ import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOff
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
+import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 
 // Mêmes formats que ceux qu'accepte le bucket `Documents` (allowed_mime_types :
 // PDF, JPEG, PNG, HEIC/HEIF). Le WebP était proposé ici et refusé par le
@@ -1286,6 +1287,31 @@ export function PrestaProfilTab({ onNavigate }) {
   );
 }
 
+/**
+ * Ce qui manque au CV, et les métiers déclarés sans expérience correspondante
+ * (api/_cv.js). Le premier bloque l'accès aux prestations ; le second n'est
+ * qu'un avertissement — un débutant peut être sérieux.
+ */
+export function AlerteCv({ cv, metiers }) {
+  const manques = manquesCv(cv);
+  const sansExp = metiersSansExperience(cv, metiers);
+  if (!manques.length && !sansExp.length) return null;
+  return (
+    <div style={{ marginBottom:14, display:"flex", flexDirection:"column", gap:8 }}>
+      {manques.length > 0 && (
+        <div style={{ background:"rgba(242,94,94,0.10)", border:"1px solid rgba(242,94,94,0.40)", borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.55 }}>
+          <strong style={{ color:"#F25E5E" }}>CV incomplet</strong> — il manque {manques.join(", ")}. Sans CV complet, votre accès aux prestations ne peut pas être ouvert.
+        </div>
+      )}
+      {sansExp.length > 0 && (
+        <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.55 }}>
+          <strong style={{ color:"#F0B429" }}>⚠️ Aucune expérience en lien avec {sansExp.length === 1 ? "votre métier" : "vos métiers"} « {sansExp.join(" », « ")} »</strong>. Ajoutez-la si vous en avez une : c'est ce que le client regarde en premier.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CvEditor({ cv, onChange, color }) {
   const [titre,    setTitre]    = useState(cv?.titre    || "");
   const [accroche, setAccroche] = useState(cv?.accroche || "");
@@ -1300,7 +1326,7 @@ export function CvEditor({ cv, onChange, color }) {
       <Input label="Titre professionnel" placeholder="Ex: Cariste CACES 1/3/5 — Logisticien" value={titre} onChange={e=>{ setTitre(e.target.value); notify({titre:e.target.value}); }} />
       <div style={{ marginBottom:14 }}>
         <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Accroche</label>
-        <textarea value={accroche} onChange={e=>{ setAccroche(e.target.value); notify({accroche:e.target.value}); }} placeholder="Décrivez votre profil en 2-3 phrases…" style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"vertical", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.5 }} />
+        <textarea maxLength={CV_LIMITES.accroche} value={accroche} onChange={e=>{ setAccroche(e.target.value); notify({accroche:e.target.value}); }} placeholder="Décrivez votre profil en 2-3 phrases…" style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"vertical", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.5 }} />
       </div>
       <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>💼 Expériences</div>
       {exps.map((e,i) => (
@@ -1452,6 +1478,9 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [previewUrl, setPreviewUrl]   = useState(null);
   const [photoAuth, setPhotoAuth]     = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+  // Change quand le CV arrive de `profiles` : l'éditeur, qui prend sa valeur au
+  // montage, est alors remonté avec le bon contenu.
+  const [cvVersion, setCvVersion] = useState(0);
 
   useEffect(()=>{
     (async () => {
@@ -1465,10 +1494,14 @@ export function PrestaProfileEditScreen({ onBack }) {
         // L'IBAN vit dans profiles.rib — c'est là que le back-office et les
         // virements le lisent. user_metadata n'est qu'un repli pour les comptes
         // qui l'y avaient enregistré avant le 24/09/2026.
-        supabase.from("profiles").select("avatar_url,rib").eq("id", session.user.id).single()
-          .then(({ data }) => {
+        // Le CV aussi, depuis le 29/09/2026 (profiles.cv) ; user_metadata.cv
+        // n'est qu'un repli pour les comptes pas encore réenregistrés.
+        supabase.from("profiles").select("avatar_url,rib,cv").eq("id", session.user.id).single()
+          .then(({ data, error }) => {
+            if (error) console.error("[profil] lecture du profil :", error.message);
             setPhotoUrl(data?.avatar_url || m.photo_url || null);
             if (data?.rib) setIban(data.rib);
+            if (data?.cv) { setMeta(mm => ({ ...(mm || {}), cv: data.cv })); setCvVersion(v => v + 1); }
           });
       }
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
@@ -1568,6 +1601,13 @@ export function PrestaProfileEditScreen({ onBack }) {
       if (ribErr || !ribRows?.length) {
         throw new Error("Votre IBAN n'a pas pu être enregistré. Réessayez." + (ribErr?.message ? ` (${ribErr.message})` : ""));
       }
+      // Le CV dans profiles, vérifié : c'est seulement s'il y est bien écrit
+      // qu'on le retire ensuite du jeton. Sinon, il serait perdu.
+      const { data: cvRows, error: cvErr } = await supabase.from("profiles")
+        .update({ cv: nettoyerCv(meta?.cv) }).eq("id", uidRib).select("id");
+      if (cvErr || !cvRows?.length) {
+        throw new Error("Votre parcours n'a pas pu être enregistré. Réessayez." + (cvErr?.message ? ` (${cvErr.message})` : ""));
+      }
 
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
@@ -1578,7 +1618,9 @@ export function PrestaProfileEditScreen({ onBack }) {
         // versions de cet écran — il vient d'être enregistré dans profiles.
         telephone, rib: null,
         photo_public_auth: photoAuth,
-        cv: meta?.cv || {},
+        // Le CV est enregistré dans profiles juste au-dessus ; on le retire du
+        // jeton, où il n'a rien à faire (CLAUDE.md règle 1.1).
+        cv: null,
       };
       // photo_url ne doit JAMAIS retourner dans user_metadata : ce champ est encodé
       // dans le JWT, et un data URI de 60 Ko y dépasse la limite d'en-tête HTTP.
@@ -1798,8 +1840,9 @@ export function PrestaProfileEditScreen({ onBack }) {
         {/* CV */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📄 Mon parcours</div>
-          <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.5 }}>Renseignez votre parcours pour qu'il soit visible par les clients sur votre profil.</div>
-          <CvEditor cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
+          <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.5 }}>Obligatoire : les clients le consultent avant de réserver, et votre accès aux prestations n'est ouvert qu'une fois votre parcours renseigné.</div>
+          <AlerteCv cv={meta?.cv} metiers={meta?.metiers_list || [meta?.metier].filter(Boolean)} />
+          <CvEditor key={cvVersion} cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
 
         {sessionExpired && (
@@ -1982,7 +2025,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       // dans le jeton : c'est le serveur qui les accorde.
       const { data: p, error } = await supabase
         .from("profiles")
-        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status")
+        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status,cv")
         .eq("id", u.id).single();
       if (error) console.error("[premiers pas] profil illisible :", error.message);
       setProfil(p || {});
@@ -2003,6 +2046,10 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
       done:nbDocs >= requis, action:"doc_upload" },
+    // Obligatoire depuis le 29/09/2026 : enable_missions le refuse sans lui.
+    { id:"cv",      label:"CV renseigné",
+      aide:(() => { const m = manquesCv(profil.cv || meta.cv); return m.length ? `Il manque ${m.join(", ")} — les clients le consultent avant de réserver` : "Visible par les clients sur votre profil"; })(),
+      done:manquesCv(profil.cv || meta.cv).length === 0, action:"presta_profile_edit" },
     { id:"rib",     label:"IBAN renseigné",
       aide:"Sans IBAN, aucun versement ne peut partir",
       // profiles.rib seul : c'est là que les virements le lisent. Un IBAN resté

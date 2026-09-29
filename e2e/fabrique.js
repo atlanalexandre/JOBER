@@ -148,7 +148,14 @@ export async function bo(action, champs = {}) {
  * son résultat est vérifié : si l'une échoue, c'est un défaut à signaler, pas un
  * détail de préparation.
  */
-export async function prestataireOperationnel({ metier = "Femme/Valet de chambre", secteur = "hotellerie", tarif = 13, nationalite = null } = {}) {
+// CV obligatoire depuis le 29/09/2026 : sans lui, enable_missions refuse.
+export const CV_RECETTE = {
+  titre: "Femme de chambre — hôtellerie", accroche: "Cinq ans en hôtellerie, rigoureuse et ponctuelle.",
+  experiences: [{ poste: "Femme de chambre", entreprise: "Hôtel de recette", periode: "2020 – 2025", desc: "Recouche et départs" }],
+  formations: [], permis: "",
+};
+
+export async function prestataireOperationnel({ metier = "Femme/Valet de chambre", secteur = "hotellerie", tarif = 13, nationalite = null, cv = CV_RECETTE } = {}) {
   // Hôtellerie : c'est le seul secteur ouvert aux clients tant qu'un secteur n'a pas
   // 20 prestataires (réglages `forced_open_sectors` et `sector_min_prestataires`).
   const metiers = [{ sector: secteur, metier, niveau: "Confirmé", experienceAns: 3, tarifNet: tarif, certifs: "" }];
@@ -170,6 +177,8 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
   });
   // L'écran complète le profil juste après le signUp (completerProfil).
   await sql(`update profiles set adresse='5 rue de Lyon', code_postal='75012', ville='Paris', rib='FR7630006000011234567890189' where id='${p.id}'`);
+  // L'écran de profil l'écrit dans profiles.cv ; `cv: null` sert à éprouver le refus.
+  if (cv) await sql(`update profiles set cv = '${JSON.stringify(cv).replace(/'/g, "''")}'::jsonb where id='${p.id}'`);
 
   const approbation = await bo("approve", { profileId: p.id });
   expect(approbation.statut, `approbation : ${approbation.texte.slice(0, 200)}`).toBe(200);

@@ -117,7 +117,7 @@ export default async function handler(req, res) {
       // par l'interface du prestataire : un compte non activé restait proposé aux
       // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
       // l'affectation le refuse également côté /api/missions.
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url,plan_abonnement`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url,plan_abonnement,cv`, { headers }),
     ]);
     const profiles = await profilesRes.json();
 
@@ -215,7 +215,8 @@ export default async function handler(req, res) {
         rating:           avgRating,
         reviews:          provRatings.length,
         missions_count:   missionCountByProvider[p.id] || 0,
-        cv:               meta.cv || null,
+        // profiles.cv d'abord : le CV quitte le jeton (migration 2026-09-29_cv_hors_du_jeton).
+        cv:               p.cv || meta.cv || null,
         // profiles.avatar_url d'abord : user_metadata est encodé dans le JWT, un data URI
         // y ferait dépasser la limite d'en-tête HTTP. meta.photo_url = comptes non migrés.
         photo_url:        meta.photo_public_auth ? (p.avatar_url || meta.photo_url || null) : null,
