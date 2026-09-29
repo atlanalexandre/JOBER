@@ -148,12 +148,27 @@ export default async function handler(req, res) {
 
   try {
     if (action === "list") {
-      const [profilesRes, authRes, blacklistRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv&order=created_at.desc`, { headers }),
+      // PostgREST ne renvoie jamais plus de 1 000 lignes d'un coup. La liste
+      // s'arrêtait donc aux 1 000 comptes les plus récents, sans rien dire :
+      // les plus anciens n'apparaissaient nulle part dans le back-office — ni
+      // dans la recherche, ni pour la validation groupée (constaté en recette
+      // le 29/09/2026 : 1 880 comptes, 36 prestataires en attente invisibles).
+      // On lit par pages, dans un ordre stable.
+      const lireProfils = async () => {
+        const tous = [];
+        for (let debut = 0; ; debut += 1000) {
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv&order=created_at.desc,id.asc&limit=1000&offset=${debut}`, { headers });
+          const page = await r.json().catch(() => null);
+          if (!r.ok || !Array.isArray(page)) throw new Error(`profils illisibles (${r.status}) à partir du ${debut + 1}e`);
+          tous.push(...page);
+          if (page.length < 1000) return tous;
+        }
+      };
+      const [profiles, authRes, blacklistRes] = await Promise.all([
+        lireProfils(),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
       ]);
-      const profiles = await profilesRes.json();
       const authData = await authRes.json();
 
       // Construire les sets de hash pour lookup O(1)

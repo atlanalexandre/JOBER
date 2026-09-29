@@ -706,6 +706,52 @@ function BOComptes() {
         );
       })()}
 
+      {/* Prestataires en attente : valider le PROFIL de tous d'un coup (29/09/2026,
+          demande d'Alexandre). Chacun passe par l'action « approve » habituelle,
+          un par un : même contrôle de liste noire, même courriel qui nomme SES
+          pièces à déposer. L'accès aux prestations (`missions_enabled`) n'est PAS
+          ouvert : il reste accordé fiche par fiche, dossier vérifié. */}
+      {(() => {
+        const prestasEnAttente = profiles.filter(p => p.role === "prestataire" && p.status === "pending");
+        if (!prestasEnAttente.length) return null;
+        const n = prestasEnAttente.length;
+        return (
+          <button disabled={!!actioning} onClick={async () => {
+            const ok = await showConfirm(
+              `Valider le profil des ${n} prestataire(s) en attente ?\n\n`
+              + "Ils pourront se connecter à leur espace et déposer leurs documents. Chacun reçoit l'e-mail de bienvenue "
+              + "avec la liste de SES pièces à fournir.\n\n"
+              + "L'accès aux prestations n'est PAS ouvert : vous l'activerez fiche par fiche, une fois le dossier vérifié."
+            );
+            if (!ok) return;
+            setActioning("prestas_en_attente");
+            let valides = 0;
+            const echecs = [];
+            for (const p of prestasEnAttente) {
+              try {
+                const r = await boFetch({ action: "approve", profileId: p.id });
+                if (r.ok) valides++;
+                else {
+                  const j = await r.json().catch(() => ({}));
+                  echecs.push(p.email || p.id);
+                  console.error(`[validation groupée] ${p.email || p.id} :`, r.status, j.error);
+                }
+              } catch (e) {
+                echecs.push(p.email || p.id);
+                console.error(`[validation groupée] ${p.email || p.id} :`, e.message);
+              }
+            }
+            showToast(`${valides}/${n} profil(s) prestataire validé(s)`
+              + (echecs.length ? ` — échec pour : ${echecs.slice(0, 3).join(", ")}${echecs.length > 3 ? "…" : ""}` : ""),
+              echecs.length ? "error" : "success");
+            setActioning(null);
+            await load();
+          }} style={{ width:"100%", padding:"11px 14px", marginBottom:14, borderRadius:12, border:`1px solid ${C.success}55`, background:`${C.success}14`, color:C.success, fontWeight:800, fontSize:13, cursor:actioning?"default":"pointer", fontFamily:"inherit", opacity:actioning && actioning !== "prestas_en_attente" ? 0.5 : 1 }}>
+            {actioning === "prestas_en_attente" ? "Validation en cours…" : `✅ Valider le profil des ${n} prestataire(s) en attente (sans accès aux prestations)`}
+          </button>
+        );
+      })()}
+
       <input type="text" placeholder="🔍 Rechercher par email, prénom, nom, téléphone…" value={search} onChange={e=>setSearch(e.target.value)}
         style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:12, boxSizing:"border-box", outline:"none" }} />
 
