@@ -1871,6 +1871,18 @@ immédiate est conservée quand elle fonctionne, et le balayage ne la redouble p
 Colonne non modifiable depuis le navigateur : un compte qui l'inscrirait lui-même ne serait
 jamais signalé, donc jamais validé.
 
+**`profiles.accuse_inscription_at`** (timestamptz, ajoutée le 29/09/2026) marque l'envoi de
+l'**accusé de réception** au prestataire qui vient de s'inscrire. Alexandre l'envoyait à la main :
+le courriel `welcome` partait du navigateur, et il n'y a plus de session à l'inscription depuis
+que la confirmation de l'adresse est active — il ne partait donc presque jamais, et promettait
+une validation « sous 24 h ». Même principe que ci-dessus : le traitement automatique (toutes les
+deux heures) l'envoie à chaque prestataire `pending` dont la colonne est vide, et `welcome`
+l'envoie tout de suite quand la session existe, à l'adresse **du compte**, jamais à celle du
+corps de la requête. Une seule fois (prise conditionnelle avant l'envoi, rendue si l'envoi
+échoue). Les prestataires inscrits avant le 29/09/2026 ont été marqués sans envoi. Texte et
+règle : [`api/_accuse_inscription.js`](api/_accuse_inscription.js). **Le texte est provisoire,
+jusqu'à la création de la société** (voir IMMATRICULATION.md). Éprouvé par `e2e/26`.
+
 **`profiles_privileges_guard`** (migration `2026-07-30_secu_verrou_champs_profil.sql`) protège
 les champs privilégiés du profil. La ligne `profiles` est créée **et** modifiée par le
 navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de profil — qui y
@@ -3880,6 +3892,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `22` | pointage localisé : sur place, éloigné (enregistré quand même), sans position ; constat fermé à l'écriture depuis le navigateur |
 | `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` par le catalogue |
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
+| `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
+| `26` | accusé de réception de l'inscription : envoyé une fois par le traitement automatique, pas à un compte déjà validé |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

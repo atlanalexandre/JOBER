@@ -241,6 +241,15 @@ Ils sont remplacés par un encart qui dit ce qu'il est. Rien à faire de plus.
 
 ---
 
+## 11. L'accusé de réception de l'inscription — `api/_accuse_inscription.js`
+
+Depuis le 29/09/2026, chaque prestataire qui s'inscrit reçoit automatiquement le
+courriel qu'Alexandre envoyait à la main (« La plateforme n'est pas encore ouverte
+au public… », signé « La direction »). **Ce texte est provisoire, par décision
+d'Alexandre : il vaut jusqu'à la création de la société.** Le jour de
+l'ouverture, le réécrire dans `htmlAccuseInscription()` — c'est le seul endroit —
+pour dire ce qui se passe réellement (documents à déposer, délai de validation).
+
 ## Une fois tout fait
 
 - `npm run cgps` puis `npm run cgps:verifier` — la version publique doit suivre.

@@ -2,6 +2,7 @@ import { resendBody, sendEmail, emailHtml, esc as escEmail, euros } from "./_ema
 import { sendPushToUser, notifier } from "./_push.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
+import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
@@ -1160,6 +1161,37 @@ export default async function handler(req, res) {
       }
     } catch (e) {
       console.error("[orphelins] balayage interrompu :", e.message);
+    }
+  }
+
+  // ── Accusé de réception de l'inscription (29/09/2026) ─────────────────
+  //
+  // Alexandre l'envoyait à la main : celui que l'écran d'inscription devait
+  // déclencher ne partait presque jamais (aucune session tant que l'adresse
+  // n'est pas confirmée). Ici, rien ne dépend du navigateur. Voir
+  // api/_accuse_inscription.js — texte, règle d'envoi unique.
+  {
+    try {
+      const aPrevenir = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending`
+        + `&accuse_inscription_at=is.null&select=id&order=created_at.asc&limit=50`,
+        { headers }
+      );
+      const lignes = await aPrevenir.json().catch(() => null);
+      if (!aPrevenir.ok || !Array.isArray(lignes)) {
+        console.error(`[accusé d'inscription] relevé illisible (${aPrevenir.status}) — aucun envoi ce passage.`);
+      } else {
+        let envoyes = 0;
+        for (const { id } of lignes) {
+          const u = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+          const ud = u.ok ? await u.json().catch(() => null) : null;
+          if (!ud?.email) { console.error(`[accusé d'inscription] adresse de ${id} illisible (${u.status}) — reporté.`); continue; }
+          if (await envoyerAccuseInscription(id, ud.email, SUPABASE_URL, headers) === "envoye") envoyes++;
+        }
+        if (lignes.length) console.log(`[accusé d'inscription] ${envoyes}/${lignes.length} envoyé(s).`);
+      }
+    } catch (e) {
+      console.error("[accusé d'inscription] passage interrompu :", e.message);
     }
   }
 
