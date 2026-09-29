@@ -235,9 +235,27 @@ seuls recours étaient l'annulation ordinaire, **frais de service retenus alors 
 n'y est pour rien**, ou le litige — dont le bouton n'apparaît qu'APRÈS la prestation, donc une
 fois la personne entrée au domicile.
 
-Le pointage d'arrivée est déclaratif : le prestataire appuie sur un bouton, sans position, sans
-photo, sans code. Un prestataire qui envoyait quelqu'un d'autre à sa place n'était arrêté par
-rien.
+Le pointage d'arrivée était déclaratif pour le serveur : le téléphone pointait tout seul à
+moins de 150 m de l'adresse, mais un bouton de secours permettait de pointer de n'importe où,
+et rien ne distinguait les deux cas. Un prestataire qui envoyait quelqu'un d'autre à sa place
+n'était arrêté par rien.
+
+**Depuis le 29/09/2026, le serveur vérifie la position, sans bloquer** (décision d'Alexandre).
+`checkin_mission` reçoit la position du téléphone, la compare **une fois** à l'adresse
+(`api/_localisation.js`), et ne garde qu'un constat et une distance, **jamais les coordonnées**.
+Aucun suivi continu : l'article 10C.3 des CGPS exclut tout contrôle des horaires. Le pointage
+n'est jamais refusé pour sa position, parce qu'un GPS en immeuble peut se tromper de plusieurs
+centaines de mètres. Le constat est montré au client (notification d'arrivée, carte « Est-ce
+bien la bonne personne ? ») et au back-office (liste des prestations). Éprouvé par `e2e/22`.
+
+| Colonne de `missions` | Contenu |
+|---|---|
+| `arrivee_localisation` | `sur_place` (≤ 300 m, imprécision du GPS déduite jusqu'à 500 m), `eloignee`, `position_absente`, `adresse_introuvable` ; NULL avant le 29/09/2026 |
+| `arrivee_distance_m` | distance brute en mètres, NULL si non mesurable |
+
+Toutes deux fermées à l'écriture depuis le navigateur (migration
+`2026-09-29_pointage_localise.sql`). Le constat est écrit à part de `arrived_at` : si la
+migration manque, le pointage passe quand même.
 
 | Colonne de `missions` | Contenu |
 |---|---|
@@ -3821,6 +3839,10 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `16` | à l'écran : prix urgent = tarif du prestataire + `urgency_surcharge`, identique sur l'écran d'urgence, la réservation et en base, 20 min pour répondre ; suivi « Prestation confirmée » puis « En route vers vous » à la première position ; abonnement annuel au centime (« soit 287,90 € facturés une fois par an ») |
 | `17` | série hebdomadaire : case à l'écran et accord exprès ; semaine suivante créée, débitée seule (Stripe), proposée au même prestataire, après validation par le client ou automatique ; refus remboursé et fin de série ; arrêt par le client |
 | `18` | demande diffusée par l'écran (client) ; « Je suis disponible » par l'écran (prestataire) ; choix, réservation pré-remplie, paiement ; demande fermée et autres candidats prévenus ; droits (adresse jamais montrée, une seule proposition, métier, client) ; retrait par le client |
+| `19` | messagerie : participants posés par le serveur, lecture limitée aux deux participants, aucune écriture depuis le navigateur, « lu » posé par le seul destinataire |
+| `20` | cashback : utilisé seulement si le client l'accepte ; rendu si toute la prestation est annulée avant son début (faute de prestataire, back-office, client), perdu une fois démarrée |
+| `21` | catalogue public en « Prénom I. », nom complet au seul client de la prestation |
+| `22` | pointage localisé : sur place, éloigné (enregistré quand même), sans position ; constat fermé à l'écriture depuis le navigateur |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
