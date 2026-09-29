@@ -3893,7 +3893,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` par le catalogue |
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 | `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
-| `26` | accusé de réception de l'inscription : envoyé une fois par le traitement automatique, pas à un compte déjà validé |
+| `26` | accusé de réception de l'inscription : sans service d'envoi (recette), rien n'est marqué et l'envoi reste à faire ; un compte déjà validé n'est jamais pris ; les inscrits d'avant le 29/09 restent marqués. Le succès de l'envoi est couvert par `src/tests/api/accuse-inscription.test.js` |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

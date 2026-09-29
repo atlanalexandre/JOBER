@@ -4,6 +4,12 @@
 // jamais (aucune session tant que l'adresse n'est pas confirmée). Le serveur l'envoie
 // désormais, une seule fois, au passage du traitement automatique.
 //
+// Aucun e-mail ne part de la recette (RESEND_API_KEY absente, comme pour e2e/15) : le
+// succès de l'envoi est éprouvé par src/tests/api/accuse-inscription.test.js. Ce qui
+// l'est ici, en vrai, c'est la moitié qui protège contre l'oubli : un envoi qui échoue
+// ne marque RIEN, et le passage suivant réessaiera — le passage tourne, sans erreur,
+// et ne touche pas à un compte déjà validé.
+//
 // Prérequis : migration 2026-09-29_accuse_reception_inscription.sql.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
@@ -11,22 +17,22 @@ import { inscrire, tachePlanifiee, bo } from "./fabrique.js";
 
 test.describe.configure({ timeout: 240_000 });
 
-test("nouvel inscrit : accusé envoyé une fois par le traitement automatique ; validé avant, rien", async () => {
+test("envoi impossible (recette) : rien n'est marqué, l'accusé reste à envoyer ; un compte validé n'est pas concerné", async () => {
   const p = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765432", metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
   const deja = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765433", metier: "Serveur(se)", secteur: "hotellerie" } });
-  // Validé avant le passage : il recevra le courriel de validation, pas l'accusé.
   expect((await bo("approve", { profileId: deja.id })).statut).toBe(200);
 
   const t = await tachePlanifiee();
   expect(t.statut, t.texte.slice(0, 200)).toBe(200);
 
-  const [l] = await sql(`select accuse_inscription_at from profiles where id = '${p.id}'`);
-  expect(l.accuse_inscription_at, "accusé envoyé et marqué").not.toBeNull();
+  const [l] = await sql(`select status, accuse_inscription_at from profiles where id = '${p.id}'`);
+  expect(l.status).toBe("pending");
+  expect(l.accuse_inscription_at, "envoi échoué : prise rendue, pas marqué « envoyé »").toBeNull();
   const [d] = await sql(`select accuse_inscription_at from profiles where id = '${deja.id}'`);
-  expect(d.accuse_inscription_at, "déjà validé : pas d'accusé").toBeNull();
+  expect(d.accuse_inscription_at, "déjà validé : jamais pris").toBeNull();
 
-  // Un second passage ne renvoie rien : la date ne bouge pas.
-  await tachePlanifiee();
-  const [l2] = await sql(`select accuse_inscription_at from profiles where id = '${p.id}'`);
-  expect(l2.accuse_inscription_at).toBe(l.accuse_inscription_at);
+  // Les inscrits d'avant la migration restent marqués : ils ne recevront rien.
+  const [{ n }] = await sql(`select count(*)::int as n from profiles where role = 'prestataire'
+    and accuse_inscription_at is null and created_at < '2026-09-29'`);
+  expect(n, "aucun inscrit d'avant le 29/09 à prévenir").toBe(0);
 });
