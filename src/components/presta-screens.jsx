@@ -1830,6 +1830,48 @@ export function PrestaProfileEditScreen({ onBack }) {
 // Le code lui-même ne prouvait rien : dérivé de l'identifiant du prestataire et
 // de la date, il se générait sans jamais voir le client.
 
+/**
+ * Pointe l'arrivée, position jointe (29/09/2026).
+ *
+ * Le serveur compare UNE FOIS cette position à l'adresse de la prestation et
+ * ne garde que le constat (sur place, éloigné, position refusée) et la
+ * distance — jamais les coordonnées. Le pointage n'est pas bloqué sans
+ * position : un GPS muet en immeuble ne doit pas empêcher un prestataire
+ * honnête de travailler. Le constat, lui, le dit.
+ *
+ * `position` : celle que la détection automatique vient de relever ; sinon,
+ * un relevé est tenté ici, huit secondes au plus.
+ *
+ * Renvoie la réponse du serveur (objet), ou {} si elle est illisible.
+ */
+async function pointerArrivee(missionId, position = null) {
+  let pos = position;
+  if (!pos && navigator.geolocation) {
+    pos = await new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy }),
+        () => resolve(null), // refus ou GPS muet : le serveur le consignera comme tel
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      );
+    });
+  }
+  try {
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    const r = await fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+      body: JSON.stringify({ action: "checkin_mission", mission_id: missionId, ...(pos ? { lat: pos.lat, lng: pos.lng, precision: pos.precision } : {}) }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) console.error("[pointage] refusé :", r.status, d?.error);
+    return d;
+  } catch (e) {
+    console.error("[pointage] envoi impossible :", e.message);
+    return { error: "Erreur réseau — votre arrivée n'a pas été enregistrée. Réessayez." };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Configurer ses virements (Stripe Connect)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2393,10 +2435,7 @@ export function PMissionsTab({ onNavigate }) {
         if (haversineKm(latitude, longitude, coords.lat, coords.lng) > 0.15) continue;
         autoCheckinLockRef.current.add(m.id);
         try {
-          const { data: sd } = await supabase.auth.getSession();
-          const token = sd?.session?.access_token;
-          const r = await fetch("/api/missions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` }, body: JSON.stringify({ action: "checkin_mission", mission_id: m.id }) });
-          const d = await r.json();
+          const d = await pointerArrivee(m.id, { lat: latitude, lng: longitude, precision: pos.coords.accuracy });
           if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
         } catch { /* ignore */ }
         autoCheckinLockRef.current.delete(m.id);
@@ -2937,11 +2976,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         <button disabled={checkingInId === m.id} onClick={async () => {
                           setCheckingInId(m.id);
                           setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
-                          const { data: sd } = await supabase.auth.getSession();
-                          const token = sd?.session?.access_token;
-                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
-                          const d = await r.json();
+                          const d = await pointerArrivee(m.id);
                           if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                          else if (d.error) setCheckInGeoError(prev => ({ ...prev, [m.id]: d.error }));
                           setCheckingInId(null);
                         }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
                           {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
@@ -2975,11 +3012,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           <button disabled={checkingInId === m.id} onClick={async () => {
                             setCheckingInId(m.id);
                             setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
-                            const { data: sd } = await supabase.auth.getSession();
-                            const token = sd?.session?.access_token;
-                            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
-                            const d = await r.json();
+                            const d = await pointerArrivee(m.id);
                             if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                            else if (d.error) setCheckInGeoError(prev => ({ ...prev, [m.id]: d.error }));
                             setCheckingInId(null);
                           }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
                             {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
@@ -3003,12 +3038,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   {/* Bouton "Je suis là" — visible si prestation démarrée, pas encore validée, pas encore checké */}
                   {isStarted && !isPast && !m.arrived_at && (
                     <button onClick={async () => {
-                      const { data:{ session } } = await supabase.auth.getSession();
-                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
-                      if (r.ok) {
-                        const d = await r.json().catch(() => ({}));
-                        setAssignedMissions(prev => prev.map(x => x.id === m.id ? { ...x, arrived_at: d.arrived_at || new Date().toISOString() } : x));
-                      }
+                      const d = await pointerArrivee(m.id);
+                      if (d.arrived_at) {
+                        setAssignedMissions(prev => prev.map(x => x.id === m.id ? { ...x, arrived_at: d.arrived_at } : x));
+                      } else if (d.error) showToast(d.error);
                     }}
                       style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                       📍 Je suis là

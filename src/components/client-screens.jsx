@@ -16,6 +16,7 @@ import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
+import { libelleConstat } from "../../api/_localisation.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 // Un prestataire exerce-t-il dans ce secteur, ce métier ?
@@ -7318,6 +7319,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ color:C.textSub, fontSize:12.5, marginBottom:14, lineHeight:1.55 }}>
                 Avant de la laisser commencer, vérifiez que la personne devant vous est bien celle que vous avez réservée.
               </div>
+              {/* Constat du serveur au pointage (api/_localisation.js) : une
+                  information, pas un verdict — un GPS d'immeuble peut se
+                  tromper. Il n'existe pas sur les pointages antérieurs au
+                  29/09/2026. */}
+              {selected.arrivee_localisation && (
+                <div style={{ color: selected.arrivee_localisation === "sur_place" ? "#10D98F" : C.accentGold, fontSize:12, fontWeight:700, marginTop:-8, marginBottom:14 }}>
+                  📍 {libelleConstat(selected.arrivee_localisation, selected.arrivee_distance_m)}
+                </div>
+              )}
 
               <div style={{ display:"flex", alignItems:"center", gap:14, background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
                 <div style={{ width:64, height:64, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden" }}>

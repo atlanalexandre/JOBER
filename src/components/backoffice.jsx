@@ -5,6 +5,7 @@ import { REGIONS, regionDe } from "../constants/regions.js";
 import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
+import { libelleConstat } from "../../api/_localisation.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // La recette tourne sur les adresses Vercel (*.vercel.app) ou en local ; la
@@ -3881,6 +3882,11 @@ export function BOMissions() {
           : m.arrived_at
             ? { txt:`Arrivée signalée à ${new Date(m.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}, jamais démarrée`, col:C.accentGold }
             : { txt:"Aucun pointage du prestataire", col:C.danger };
+        // Constat de position au pointage (api/_localisation.js), absent avant le 29/09/2026.
+        if (m.arrived_at && m.arrivee_localisation) {
+          pointage.txt += ` · ${libelleConstat(m.arrivee_localisation, m.arrivee_distance_m)}`;
+          if (m.arrivee_localisation !== "sur_place" && pointage.col === C.success) pointage.col = C.accentGold;
+        }
         const montant = m.montant_total || Math.round((m.hours||0)*(m.tarif_horaire||0)*100)/100;
         return (
           <div key={m.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"14px 16px", marginBottom:10, border:`1px solid ${(STATUS_COLORS[m.status]||C.border)}22` }}>

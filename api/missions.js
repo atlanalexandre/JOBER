@@ -64,6 +64,7 @@ import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -4208,7 +4209,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,metier,titre,arrived_at,heure_debut,hours,date`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,metier,titre,arrived_at,heure_debut,hours,date,adresse,ville`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -4253,6 +4254,17 @@ export default async function handler(req, res) {
         body: JSON.stringify(patch),
       });
 
+      // Le prestataire est-il sur place ? Position comparée UNE FOIS à l'adresse,
+      // seuls le constat et la distance sont gardés (api/_localisation.js).
+      // Écrit à part : si la migration 2026-09-29_pointage_localise manque, le
+      // pointage lui-même passe quand même — PostgREST refuserait sinon toute
+      // l'écriture, arrivée comprise.
+      const lieu = [m.adresse, m.ville].filter(Boolean).join(" ");
+      const { constat, distance_m } = constatArrivee(lirePosition(payload), lieu ? await geocodeFR(lieu) : null);
+      await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+        { arrivee_localisation: constat, arrivee_distance_m: distance_m }, headers, "checkin/localisation");
+      const phraseLieu = libelleConstat(constat, distance_m);
+
       if (m.client_id) {
         const label = m.titre || m.metier || "la prestation";
 
@@ -4283,16 +4295,16 @@ export default async function handler(req, res) {
           const newEndStr = `${String(Math.floor(endMins / 60) % 24).padStart(2,"0")}h${String(endMins % 60).padStart(2,"0")}`;
           const arrivedStr = new Date(arrivedAt).toLocaleString("fr-FR", { hour:"2-digit", minute:"2-digit", timeZone:"Europe/Paris" });
           notifTitle = `${nomPresta || "Prestataire"} est arrivé(e) — ${delayMinutes} min de retard ⏰`;
-          notifBody = `${qui} est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. Vérifiez qu'il s'agit bien de cette personne, puis répondez au décalage.`;
+          notifBody = `${qui} est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. ${phraseLieu} Vérifiez qu'il s'agit bien de cette personne, puis répondez au décalage.`;
         } else {
           notifTitle = `${nomPresta || "Prestataire"} est arrivé(e) 📍`;
-          notifBody = `${qui} est arrivé(e) pour « ${label} ». Ouvrez la prestation pour vérifier qu'il s'agit bien de la personne que vous avez réservée.`;
+          notifBody = `${qui} est arrivé(e) pour « ${label} ». ${phraseLieu} Ouvrez la prestation pour vérifier qu'il s'agit bien de la personne que vous avez réservée.`;
         }
         await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(e => console.error("[missions/checkin_mission] échec ignoré :", e?.message));
         sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/checkin_mission] échec ignoré :", e?.message));
       }
 
-      return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
+      return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes, localisation: constat });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
