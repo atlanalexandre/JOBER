@@ -18,6 +18,7 @@ import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolutio
 import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { programmerOccurrenceSuivante } from "./_recurrence.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -2463,6 +2464,14 @@ export default async function handler(req, res) {
       });
       const patched = await patchRes.json().catch(() => []);
       if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Prestation déjà validée ou statut changé" });
+      // Série hebdomadaire : comme la validation par le client et la validation
+      // automatique. « Valider de force » arrêtait la série sans que personne
+      // le sache (relecture du 29/09/2026).
+      if (m.recurrence) {
+        const serie = await programmerOccurrenceSuivante(mission_id, SUPABASE_URL, headers)
+          .catch(e => { console.error(`[force_complete] série de ${mission_id} :`, e.message); return { mode: "echec" }; });
+        console.log(`[force_complete] série de ${mission_id} → ${serie.mode}${serie.mission_id ? ` (${serie.mission_id})` : ""}`);
+      }
       // Cashback client
       let CASHBACK_TIERS = [{ min:0,max:2,rate:0.005 },{ min:3,max:5,rate:0.0075 },{ min:6,max:9,rate:0.01 },{ min:10,max:999,rate:0.015 }];
       try { const cbR = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`,{headers}); const cbD = await cbR.json(); if(Array.isArray(cbD)&&Array.isArray(cbD[0]?.value)) CASHBACK_TIERS=cbD[0].value; }

@@ -128,6 +128,10 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
   const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
   let pi = null;
   let refus = null;
+  // Issue inconnue : le prélèvement a PEUT-ÊTRE eu lieu (coupure réseau après
+  // l'envoi). On ne dit alors surtout pas au client « rien n'a été débité ».
+  let incertain = false;
+  let envoye = false;
   try {
     if (!cle) throw new Error("STRIPE_SECRET_KEY absente");
     const sh = { Authorization: `Bearer ${cle}` };
@@ -138,11 +142,15 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
     if (!pr.ok || !carte || !client) {
       refus = "carte non enregistrée";
     } else {
-      const cr = await fetch("https://api.stripe.com/v1/payment_intents", {
+      // Clé d'idempotence FIXE pour la semaine qui suit CETTE prestation : un seul
+      // prélèvement quoi qu'il arrive. Elle portait l'identifiant de la nouvelle
+      // ligne, tiré au hasard à chaque appel : deux validations simultanées
+      // créaient deux semaines et débitaient la carte deux fois (relecture du
+      // 29/09/2026). Un second appel concurrent reçoit désormais une erreur
+      // d'idempotence de Stripe, traitée plus bas comme « déjà programmée ».
+      const creer = () => fetch("https://api.stripe.com/v1/payment_intents", {
         method: "POST",
-        // Un seul prélèvement par occurrence, quoi qu'il arrive (double validation,
-        // nouvel essai de la tâche planifiée).
-        headers: { ...sh, "Idempotency-Key": `serie-${nouvelleId}` },
+        headers: { ...sh, "Idempotency-Key": `serie-suivante-${m.id}` },
         body: new URLSearchParams({
           amount: String(Math.round(montant * 100)),
           currency: "eur",
@@ -159,12 +167,44 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
           description: `${m.metier || "Prestation"} — ${date} (série ${m.recurrence})`,
         }),
       });
+      // Une coupure réseau APRÈS l'envoi laissait croire à un refus : la semaine
+      // était annulée et le client lisait « rien n'a été débité » alors que la
+      // carte l'était peut-être. La même requête, avec la même clé, est rejouée
+      // une fois : Stripe renvoie alors le résultat du premier envoi.
+      let cr;
+      envoye = true;
+      try { cr = await creer(); }
+      catch (e) {
+        console.error(`[serie] ${nouvelleId} : réponse de Stripe perdue (${e.message}) — requête rejouée.`);
+        cr = await creer();
+      }
       const cj = await cr.json();
       if (cj?.status === "succeeded") pi = cj.id;
+      else if (cj?.error?.type === "idempotency_error") {
+        // Un autre appel programme déjà cette semaine : la ligne créée ici est
+        // retirée sans rien dire au client.
+        const retrait = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${nouvelleId}&stripe_payment_intent=is.null`, {
+          method: "DELETE", headers: { ...headers, "Prefer": "return=minimal" },
+        }).catch(() => null);
+        if (!retrait?.ok) console.error(`[serie] ${nouvelleId} : doublon non retiré (${retrait?.status}) — à supprimer à la main.`);
+        return { mode: "deja_programmee" };
+      }
       else refus = cj?.error?.decline_code || cj?.error?.code || cj?.status || `HTTP ${cr.status}`;
     }
   } catch (e) {
     refus = e.message;
+    // Incertain seulement si la demande de prélèvement est partie : une erreur
+    // AVANT (clé absente, carte d'origine illisible) ne débite rien.
+    incertain = envoye;
+  }
+
+  if (!pi && incertain) {
+    // Deux échecs réseau de suite : on ignore si la carte a été débitée. Rien
+    // n'est annoncé au client, la semaine reste en attente, et l'équipe doit
+    // vérifier dans Stripe (métadonnée mission = nouvelleId).
+    console.error(`[serie] ⚠️ ${missionId} → ${nouvelleId} : issue du prélèvement INCONNUE (${refus}). `
+      + "Vérifier dans Stripe avant toute action ; la semaine reste en attente.");
+    return { mode: "echec", mission_id: nouvelleId };
   }
 
   if (!pi) {
