@@ -297,3 +297,15 @@ export function etatExpiration(expiresAt, maintenant = Date.now()) {
   if (jours <= PREAVIS_JOURS) return { etat: "bientot", jours };
   return { etat: "valide", jours };
 }
+
+/**
+ * Les pièces obligatoires qui manquent encore.
+ *
+ * La photo compte aussi quand elle vit dans `profiles.avatar_url` (c'est là que
+ * l'écran de profil la range), comme le fait l'espace du prestataire.
+ */
+export function piecesManquantes(requis, typesDeposes, avecAvatar) {
+  const deposes = new Set(typesDeposes);
+  if (avecAvatar) deposes.add("photo");
+  return requis.filter(d => !deposes.has(d.id));
+}
