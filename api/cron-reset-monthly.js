@@ -227,31 +227,48 @@ export default async function handler(req, res) {
     const nowIso = new Date().toISOString();
     try {
       const zRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total`,
+        // 20 par passage, les plus anciennes d'abord : traitées une à une, elles
+        // doivent tenir dans la durée d'exécution. Le reste attend le passage suivant.
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total&order=acceptance_deadline.asc&limit=20`,
         { headers }
       );
       const zombies = await zRes.json().catch(() => []);
       if (Array.isArray(zombies) && zombies.length) {
-        await Promise.all(zombies.map(async z => {
-          // Remboursement puis clôture. La prestation était remise en « open »
-          // avec le paiement du client toujours bloqué : il avait payé pour un
-          // prestataire précis qui n'a pas répondu, et son argent restait
-          // immobilisé sur une prestation flottante que personne ne lui avait
-          // demandé de remettre en circulation.
-          const rembZ = await rembourserPrestation(z, SUPABASE_URL, headers);
-          if (!rembZ) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${z.id}`);
-          await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`,
+        // Un par un. Tous étaient remboursés en parallèle : quand beaucoup
+        // expiraient ensemble, Stripe en refusait une partie (limite de débit) —
+        // 19 prestations sur 40 en recette le 29/09/2026, jamais remboursées.
+        let remboursesZ = 0, differesZ = 0;
+        for (const z of zombies) {
+          // 1. On PREND la prestation (écriture conditionnelle) avant de
+          //    rembourser, comme la clôture ci-dessous.
+          const prise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance`,
             { status: "refused", prestataire_id: null, broadcast_sent_at: null }, headers, `cron/expiration ${z.id}`);
+          if (!prise) continue;
+          // 2. Le remboursement. Il échouait sans conséquence : la prestation
+          //    passait « refusée » quand même, n'était plus jamais reprise, et le
+          //    client lisait « Notre équipe procède au remboursement » sans que
+          //    personne ne le fasse. Elle est désormais remise en attente, pour
+          //    le passage suivant ; le client n'est prévenu qu'une fois remboursé.
+          const rembZ = await rembourserPrestation(z, SUPABASE_URL, headers);
+          if (!rembZ) {
+            differesZ++;
+            const remise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.refused`,
+              { status: "pending_acceptance" }, headers, `cron/expiration ${z.id} (remise en attente)`);
+            console.error(`[cron/expiration] remboursement impossible — prestation ${z.id} : `
+              + (remise ? "reprise au prochain passage." : "⚠️ REFUSÉE SANS REMBOURSEMENT et non remise en attente : à rembourser à la main."));
+            continue;
+          }
+          remboursesZ++;
           if (z.client_id) {
             await notifier({
                 user_id: z.client_id,
                 type: "mission",
                 title: "Prestataire non disponible",
-                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}".${rembZ ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
+                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}". Votre paiement a été intégralement remboursé. Vous pouvez choisir un autre prestataire.`,
               }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           }
-        }));
-        console.log(`[cron] expired ${zombies.length} pending_acceptance zombie(s)`);
+        }
+        console.log(`[cron] expiration : ${remboursesZ} remboursée(s), ${differesZ} différée(s) sur ${zombies.length}`);
       }
     } catch (e) { console.error("[cron] zombie expiry error:", e); }
   }
@@ -365,7 +382,10 @@ export default async function handler(req, res) {
       const differeesPersistantes = [];
       if (pastMissions.length) {
         let cloturees = 0, remboursees = 0, differees = 0;
-        await Promise.all(pastMissions.map(async m => {
+        // Une par une : en parallèle, Stripe refuse une partie des remboursements
+        // quand beaucoup de prestations tombent ensemble (voir l'expiration ci-dessus).
+        // 20 par passage, pour la même raison que l'expiration ci-dessus.
+        for (const m of pastMissions.slice(0, 20)) await (async () => {
           // Une prestation en « needs_replacement » a DÉJÀ été payée : c'est
           // précisément ce qui la distingue d'une prestation « open » réouverte
           // (voir missions.js, presta_cancel). Elle était pourtant clôturée sans le
@@ -432,7 +452,7 @@ export default async function handler(req, res) {
                 })(),
               }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           }
-        }));
+        })();
         // Le journal annonçait la clôture de toutes les prestations examinées, y
         // compris celles qui avaient échoué. Il dit maintenant ce qui s'est
         // réellement passé, remboursements et reports compris.
