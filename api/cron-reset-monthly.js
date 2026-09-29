@@ -374,30 +374,40 @@ export default async function handler(req, res) {
           // n'était venu, et l'argent restait acquis à la plateforme — en
           // contradiction directe avec le contrat, qui promet un remboursement
           // intégral en l'absence de remplaçant.
+          // 1. On PREND la prestation avant de rembourser : écriture
+          //    conditionnelle, seule une prestation toujours sans prestataire
+          //    passe. Le remboursement venait d'abord : si un prestataire la
+          //    reprenait entre la lecture et le remboursement, il travaillait et
+          //    était payé alors qu'ALANE avait déjà rendu l'argent (relecture du
+          //    29/09/2026).
           const aPaye = !!m.stripe_payment_intent;
+          const urlCloture = `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`;
+          const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)`,
+            { status: aPaye ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
+          if (!close) {
+            // Reprise entre-temps (ou écriture refusée, journalisée par
+            // ecrireVerifie) : ni remboursement, ni annonce au client.
+            return;
+          }
+          // 2. Puis le remboursement.
           let rembourse = false;
           if (aPaye) {
             rembourse = await rembourserPrestation(m, SUPABASE_URL, headers);
             if (!rembourse) {
               differees++;
               differeesPersistantes.push(m.id);
+              // La prestation doit rester visible tant que l'argent n'est pas
+              // rendu : elle retrouve son statut, et sera reprise au prochain
+              // passage. Son heure de début étant passée, personne ne peut plus
+              // la prendre (voir `candidater`).
+              const rouverte = await ecrireVerifie(`${urlCloture}&status=eq.cancelled`,
+                { status: m.status }, headers, `cron/cloture ${m.id} (réouverture)`);
               console.error(`[cron] remboursement impossible pour la prestation ${m.id} — `
-                + `clôture différée, elle sera reprise au prochain passage.`);
-              return; // ne pas clôturer : la prestation doit rester visible tant que l'argent n'est pas rendu
+                + (rouverte ? "clôture différée, elle sera reprise au prochain passage."
+                            : "⚠️ ANNULÉE SANS REMBOURSEMENT et non rouverte : à rembourser à la main."));
+              return;
             }
             remboursees++;
-          }
-          // Écriture conditionnelle : seule une prestation TOUJOURS sans
-          // prestataire est close. Si elle a été reprise entre la lecture et
-          // ici, on ne l'écrase pas en « annulée » — on le dit, fort.
-          const close = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=in.(open,needs_replacement)`,
-            { status: rembourse ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
-          if (!close) {
-            if (rembourse) console.error(`[cron] ⚠️ prestation ${m.id} REMBOURSÉE mais plus sans prestataire à la clôture : `
-              + "reprise entre-temps ? À vérifier à la main avant tout versement.");
-            // Ni candidatures rejetées, ni « prestation annulée » annoncée au
-            // client : la prestation n'est pas close.
-            return;
           }
           cloturees++;
           // Rejeter toutes candidatures en attente
@@ -611,7 +621,9 @@ export default async function handler(req, res) {
             // Verrou atomique : on passe en `processing` AVANT d'appeler Stripe.
             // Deux exécutions concurrentes du cron ne peuvent pas verser deux fois.
             const verrou = await fetch(
-              `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending`,
+              // `status=eq.completed` : un litige ouvert pendant le traitement
+              // (status → disputed) doit arrêter le virement (relecture du 29/09/2026).
+              `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending&status=eq.completed`,
               { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
                 body: JSON.stringify({ payout_status: "processing" }) }
             );
@@ -1995,9 +2007,16 @@ ${(() => {
               const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-              // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard)
-              const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+              // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard).
+              //
+              // Écriture CONDITIONNELLE : seule une prestation toujours « assigned »
+              // est validée. Elle ne l'était pas : si le client validait au même
+              // instant, le cashback était crédité deux fois et la semaine suivante
+              // d'une série créée deux fois ; et un litige ouvert entre la lecture
+              // et ici était écrasé, le prestataire payé quand même (relecture du
+              // 29/09/2026).
+              const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=eq.assigned`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
                 body: JSON.stringify({
                   status: "completed", validation_client: true, validation_prestataire: true,
                   montant_total: totalClient, cashback_credited: true,
@@ -2012,6 +2031,12 @@ ${(() => {
               });
               if (!patchRes.ok) {
                 console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());
+                continue;
+              }
+              const validees = await patchRes.json().catch(() => []);
+              if (!Array.isArray(validees) || validees.length === 0) {
+                // Validée par le client, mise en litige ou annulée entre-temps : rien à faire.
+                console.log(`cron auto-validate: ${m.id} n'est plus « assigned » — ignorée.`);
                 continue;
               }
 
