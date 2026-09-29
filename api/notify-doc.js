@@ -185,6 +185,18 @@ export default async function handler(req, res) {
   const actionWord = isRenewal ? "renouvelé" : "chargé";
   const boUrl      = (appUrl()) + "/bo";
 
+  // Un courriel par pièce, c'était sept ou huit par prestataire en cours
+  // d'inscription (décision d'Alexandre, 29/09/2026 : trop de courriels). Pendant
+  // la constitution du dossier, seule l'alerte « dossier complet » ci-dessus part.
+  //
+  // On garde le courriel pour un prestataire DÉJÀ activé qui remplace une pièce
+  // (RC Pro renouvelée, titre ajouté…) : la pièce repasse « en attente », et
+  // personne ne saurait sinon qu'il faut la revérifier. Profil illisible : on
+  // prévient, plutôt que de laisser une pièce en attente sans que personne le sache.
+  if (profil && profil.missions_enabled !== true) {
+    return res.status(200).json({ ok: true, enregistre: true });
+  }
+
   try {
     await fetch("https://api.resend.com/emails", {
       method: "POST",

@@ -279,3 +279,14 @@ describe("piecesManquantes()", async () => {
     expect(src).toContain('profil.status === "approved" && profil.missions_enabled !== true');
   });
 });
+
+describe("courriels de dépôt de pièce", () => {
+  it("rien par pièce pendant l'inscription ; seulement pour un prestataire déjà activé", () => {
+    const src = readFileSync(new URL("../../../api/notify-doc.js", import.meta.url), "utf8");
+    const garde = src.indexOf("if (profil && profil.missions_enabled !== true) {");
+    const envoiParPiece = src.indexOf("[Document] ${fullName}");
+    expect(garde, "garde présente").toBeGreaterThan(0);
+    expect(garde, "la garde précède le courriel par pièce").toBeLessThan(envoiParPiece);
+    expect(src.indexOf("Dossier complet"), "l'alerte « dossier complet » passe avant la garde").toBeLessThan(garde);
+  });
+});
