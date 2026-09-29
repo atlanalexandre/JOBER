@@ -1362,7 +1362,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant,heures_perdues`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -2093,7 +2093,7 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions`
         + `?status=eq.completed&payout_status=is.null`
         + `&select=id,prestataire_id,metier,sector,date,montant_total,tarif_horaire,hours,actual_hours`
-        + `,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,heure_debut`
+        + `,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,heure_debut,heures_perdues`
         + `&order=date&limit=100`,
         { headers }
       ).catch(() => null);
@@ -2136,7 +2136,7 @@ export default async function handler(req, res) {
       const mRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`
         + `&select=id,status,payout_status,prestataire_id,montant_total,tarif_horaire,hours,actual_hours`
-        + `,date,date_debut,date_fin,heure_debut,started_at,delay_status,arrival_delay_minutes&limit=1`,
+        + `,date,date_debut,date_fin,heure_debut,started_at,delay_status,arrival_delay_minutes,heures_perdues&limit=1`,
         { headers }
       );
       const m = (await mRes.json().catch(() => []))[0];
@@ -2431,7 +2431,7 @@ export default async function handler(req, res) {
       const { mission_id } = req.body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville,extra_hours_tarif,extra_hours_appliquees`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville,extra_hours_tarif,extra_hours_appliquees,heures_perdues`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
