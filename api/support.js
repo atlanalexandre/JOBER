@@ -2,6 +2,7 @@ import { esc, emailHtml, sendEmail, hashPii, euros } from "./_email.js";
 import { verifyUser } from "./_auth.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
@@ -102,14 +103,28 @@ export default async function handler(req, res) {
       }
     }
 
-    const isPresta = role === "prestataire";
+    // Prestataire : l'accusé de réception d'Alexandre (api/_accuse_inscription.js),
+    // envoyé une seule fois — le traitement automatique le rattrape quand
+    // l'inscription n'a pas de session. L'ancien texte promettait une
+    // validation « sous 24 h » qui n'a pas lieu.
+    //
+    // L'adresse est celle du COMPTE appelant, jamais celle du corps de la
+    // requête : sinon n'importe qui pourrait faire écrire ALANE à n'importe qui.
+    if (role === "prestataire") {
+      const SBa  = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+      const KEYa = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+      const resultat = await envoyerAccuseInscription(_welcomeCaller.id, _welcomeCaller.email, SBa,
+        { "apikey": KEYa, "Authorization": `Bearer ${KEYa}` });
+      return res.status(200).json({ ok: true, accuse: resultat });
+    }
+
     const welcomeHtml = emailHtml(`
       <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
-      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverra un e-mail dès la validation de votre compte, généralement sous 24 h." : "Notre équipe va valider votre compte et vous enverra un e-mail dès son approbation."}</p>
+      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. Notre équipe va valider votre compte et vous enverra un e-mail dès son approbation.</p>
       <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
       <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
     `);
-    await sendEmail({ to: email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
+    await sendEmail({ to: _welcomeCaller.email || email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
 
     // L'alerte à l'administration n'est PAS envoyée ici.
     //
