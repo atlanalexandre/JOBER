@@ -989,11 +989,18 @@ export default async function handler(req, res) {
 
         await declencherOffreLancement(caller.id, SUPABASE_URL, headers);
         // Trace de qui s'est proposé : c'est la preuve horodatée du choix du prestataire.
-        const tr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ mission_id, prestataire_id: caller.id, status: "accepted", message }),
+        // Upsert : une proposition antérieure (« Je suis disponible » avant la reprise
+        // directe) occupe déjà la ligne (mission, prestataire). L'insertion était alors
+        // refusée — 409, ignoré — et la proposition restait « en attente » sur une
+        // prestation pourtant attribuée (relecture du 29/09/2026).
+        const tr = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?on_conflict=mission_id,prestataire_id`, {
+          method: "POST", headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+          // Le message n'est envoyé que s'il existe : sinon il effacerait celui de la
+          // proposition antérieure.
+          body: JSON.stringify({ mission_id, prestataire_id: caller.id, status: "accepted", ...(message ? { message } : {}) }),
         });
-        if (!tr.ok && tr.status !== 409) console.error(`[candidater] trace de la reprise de ${mission_id} non enregistrée (${tr.status}).`);
+        if (!tr.ok) console.error(`[candidater] trace de la reprise de ${mission_id} non enregistrée (${tr.status}) :`,
+          (await tr.text().catch(() => "")).slice(0, 200));
         await notifier({
           user_id: m.client_id, type: "mission", ref_id: mission_id,
           title: "Prestataire trouvé ✅",

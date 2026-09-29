@@ -242,4 +242,7 @@ test("reprise directe : refusée à moins de 30 minutes du début, possible malg
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
   expect(r.json.attribuee).toBe(true);
   expect((await etat(plusTard.id)).prestataire_id).toBe(tardif.id);
+  // La proposition antérieure devient la trace de la reprise (elle restait « en attente »).
+  const [trace] = await sql(`select status from candidatures where mission_id = '${plusTard.id}' and prestataire_id = '${tardif.id}'`);
+  expect(trace?.status).toBe("accepted");
 });
