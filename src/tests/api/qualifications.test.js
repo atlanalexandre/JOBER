@@ -57,6 +57,27 @@ describe("la table des qualifications", () => {
   });
 });
 
+// Question d'un traiteur, 29/09/2026 : aucun permis n'était demandé, même à un
+// chauffeur livreur. Décision d'Alexandre : exigé de ceux qui conduisent
+// forcément, facultatif pour les coursiers, qui peuvent livrer à vélo.
+describe("le permis de conduire", () => {
+  it("est exigé du chauffeur livreur et du voiturier", () => {
+    for (const m of ["Chauffeur livreur", "Voiturier"]) {
+      expect(qualificationRequise(m)?.titre, m).toMatch(/Permis de conduire B/);
+    }
+    const docs = docsRequisPour("Française", [{ metier: "Chauffeur livreur" }]);
+    expect(docs.find(d => d.id === "diplomes")).toMatchObject({ required: true, label: "Permis de conduire B en cours de validité" });
+  });
+
+  it("n'est pas exigé du coursier, qui peut livrer à vélo, mais lui est signalé", async () => {
+    const { noteMetier } = await import("../../../api/_qualifications.js");
+    for (const m of ["Coursier / Livreur", "Livreur courses à domicile"]) {
+      expect(qualificationRequise(m), m).toBeNull();
+      expect(noteMetier(m), m).toMatch(/permis/);
+    }
+  });
+});
+
 describe("qualificationsPour()", () => {
   it("dédoublonne par titre", () => {
     const q = qualificationsPour(["Pâtissier", "Chef pâtissier", "Commis pâtissier"]);
