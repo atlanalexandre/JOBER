@@ -303,7 +303,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,stripe_payment_intent`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -383,6 +383,9 @@ export default async function handler(req, res) {
     // On ne tente PAS de la rattacher à cet instant : une carte déjà passée sur
     // un paiement sans rattachement est définitivement inutilisable, Stripe
     // refusant aussi bien sa réutilisation que son rattachement tardif.
+    // `stripe_payment_intent` n'était pas lu par la requête ci-dessus : ce
+    // contrôle ne s'exécutait jamais, et le client recevait l'erreur anglaise de
+    // Stripe au lieu de ce message (relecture du 29/09/2026).
     const pmDemande = req.body?.payment_method_id;
     if (pmDemande && mission.stripe_payment_intent) {
       try {
