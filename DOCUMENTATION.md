@@ -3526,9 +3526,18 @@ omises (`completerCashback`). Une douzaine de requêtes lisent `missions` pour r
 exiger de chacune qu'elle pense à deux colonnes de plus, c'est accepter qu'une l'oublie — et
 l'oubli serait silencieux.
 
-Le cashback consommé est **restitué** quand la prestation est remboursée
-(`restituerCashback()`, appelé par `rembourserPrestation` et par l'exécution d'une résolution) :
-la prestation n'a pas eu lieu, l'avantage n'a pas été consommé.
+Le cashback consommé est **restitué seulement si toute la prestation est annulée avant
+d'avoir démarré** (décision d'Alexandre, 29/09/2026) : annulation par le client
+(`cancel_client`), refus ou expiration (`rembourserPrestation`), clôture faute de prestataire,
+annulation ou remboursement au back-office, résolution d'un litige où le prestataire n'est
+jamais venu. **Une fois la prestation démarrée, il est perdu** — interruption
+(`cancel_in_progress`), remboursement partiel ou total après le pointage, litige sur une
+prestation réalisée.
+
+La règle vit dans `restituerCashback()` et non chez les appelants : la fonction relit
+elle-même `started_at` et `status`. Démarrée = pointage enregistré, ou statut `completed` /
+`closed`. Lecture impossible → réputée démarrée, rien n'est rendu. Éprouvé par `e2e/20`,
+dans les deux sens.
 
 ---
 
