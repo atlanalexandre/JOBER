@@ -2770,6 +2770,16 @@ Les plus graves :
 Les 7 restants sont des lignes de `bo_logs` et des copies de `user_metadata` dont `profiles`,
 vérifié juste à côté, fait autorité.
 
+**Troisième passage le 29/09/2026 : les écritures qui doivent être conditionnelles.** Une
+écriture vérifiée ne suffit pas quand l'état a pu changer entre la lecture et l'écriture :
+
+| Où | Condition ajoutée | Ce qui se passait |
+|---|---|---|
+| Validation automatique | `status=eq.assigned` | Client validant au même instant : cashback crédité deux fois, semaine suivante créée deux fois ; litige ouvert entre-temps écrasé, prestataire payé |
+| Clôture faute de prestataire | la prestation est **prise** (conditionnellement) **avant** le remboursement ; rouverte si celui-ci échoue | Reprise entre la lecture et le remboursement : prestataire payé, client déjà remboursé |
+| Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
+| Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
+
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
 24 h, « au cas où la tâche planifiée ne tournerait pas ». Elle ne programmait **aucun

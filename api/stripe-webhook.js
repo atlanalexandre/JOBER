@@ -683,7 +683,11 @@ export default async function handler(req, res) {
       // depuis le même écran. Si rien n'aboutit, cron-abandon l'annule au bout de
       // deux heures — il vise exactement ces lignes (pending_acceptance, sans
       // prestataire ni paiement).
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=eq.pending_acceptance`, {
+      // Seulement si le paiement refusé est CELUI de la prestation : un refus
+      // arrivé en retard, après un second paiement réussi, effaçait ce paiement
+      // et le prestataire d'une prestation déjà payée — que le nettoyage des
+      // réservations abandonnées annulait ensuite (relecture du 29/09/2026).
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=eq.pending_acceptance&stripe_payment_intent=eq.${encodeURIComponent(intent.id)}`, {
         method: "PATCH", headers,
         body: JSON.stringify({ prestataire_id: null, stripe_payment_intent: null }),
       }).catch(e => console.error("[payment_failed] nettoyage de la prestation échoué :", e.message));
