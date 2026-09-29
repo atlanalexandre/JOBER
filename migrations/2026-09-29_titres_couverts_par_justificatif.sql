@@ -96,7 +96,9 @@ WITH table_des_titres(metier, titre) AS (VALUES
 ),
 declares AS (
   SELECT u.id, e.value ->> 'metier' AS metier
-    FROM auth.users u, jsonb_array_elements(COALESCE(u.raw_user_meta_data -> 'metiers_list', '[]'::jsonb)) e
+    FROM auth.users u,
+         jsonb_array_elements(CASE WHEN jsonb_typeof(u.raw_user_meta_data -> 'metiers_list') = 'array'
+                                   THEN u.raw_user_meta_data -> 'metiers_list' ELSE '[]'::jsonb END) e
    WHERE jsonb_typeof(e.value) = 'object'
   UNION
   SELECT u.id, u.raw_user_meta_data ->> 'metier' FROM auth.users u
