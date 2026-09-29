@@ -100,7 +100,25 @@ réglages de la plateforme.
 Supabase Auth.
 Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approved`, `rejected`,
 `suspended`), `missions_enabled` (accès aux prestations accordé par l'administration),
-`plan_abonnement`, `cashback_balance`, `prepaid_balance`, `avatar_url`.
+`plan_abonnement`, `cashback_balance`, `prepaid_balance`, `avatar_url`, `cv`.
+
+**Le CV est obligatoire, et vit dans `profiles.cv`** (29/09/2026, décision d'Alexandre). Il
+était facultatif et rangé dans `user_metadata.cv`, donc dans le jeton de connexion (CLAUDE.md
+§1.1) : un CV imposé à tous, avec ses descriptions libres, n'avait rien à y faire. La migration
+`2026-09-29_cv_hors_du_jeton.sql` a recopié les CV existants ; l'écran de profil écrit
+`profiles.cv` (vérifié), puis retire l'ancienne copie du jeton. Les lecteurs (`/api/prestataires`,
+back-office) lisent `profiles.cv`, avec repli sur `user_metadata.cv` pour les comptes pas encore
+réenregistrés. Les règles vivent dans [`api/_cv.js`](api/_cv.js) :
+
+- **exigé** pour ouvrir l'accès aux prestations (`enable_missions` répond 409 sinon) : un
+  titre, une accroche, au moins une expérience **ou** une formation ;
+- **averti, sans bloquer** : un métier déclaré dont aucune expérience ne porte trace
+  (`metiersSansExperience()`, rapprochement de mots). Affiché au prestataire dans son éditeur
+  et au back-office à côté du bouton d'activation, **jamais au client** : un débutant peut être
+  sérieux ;
+- longueurs bornées (`CV_LIMITES`), 12 Ko au plus en base (`profiles_cv_taille_check`).
+
+Éprouvé par `e2e/23`. Les prestataires déjà activés sans CV ne sont pas suspendus.
 
 **Niveau et expérience se déclarent par MÉTIER** (31/08/2026). Chaque entrée de
 `user_metadata.metiers_list` porte son `niveau` et son `experienceAns`. Les champs globaux
@@ -970,7 +988,7 @@ C'est le point le plus déroutant du projet, et la source de plusieurs pannes.
 |---|---|---|
 | `auth.users.user_metadata` | Infos saisies à l'inscription : téléphone, adresse, secteur, métier, tarif, disponibilités, compétences | **Encodé dans le jeton, ~16 Ko max** |
 | `profiles.rib` | IBAN du prestataire | **Jamais dans `user_metadata`** — voir ci-dessous |
-| Table `profiles` | Rôle, statut, soldes, abonnement, photo | Aucune |
+| Table `profiles` | Rôle, statut, soldes, abonnement, photo, CV (`cv`, depuis le 29/09/2026) | CV : 12 Ko |
 | Storage `Documents` | Les fichiers justificatifs | 10 Mo par fichier |
 
 Beaucoup d'informations métier sont dans `user_metadata` plutôt que dans une table. C'est un
@@ -1824,7 +1842,7 @@ navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de
 choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
 `status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
-postal, `avatar_url`, `rib`.
+postal, `avatar_url`, `rib`, `cv`.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
