@@ -3476,6 +3476,18 @@ aucune restitution après remboursement ne fonctionnaient — sans le dire. Rép
 les appelants lisent désormais son résultat, et `restituerCashback` est aussi appelé par
 l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
 
+**Restitution et débit, revus le 29/09/2026.**
+- **`cashback_applique` n'est plus jamais réécrit après le paiement.** Il porte ce que la carte
+  n'a pas payé et borne les remboursements. Le ramener au montant réellement débité — à 0 quand
+  le solde était illisible — faisait dépasser ce plafond : Stripe refusait alors le remboursement
+  après l'annulation. Un solde illisible ne fait plus rien débiter ni marquer ; un débit nul ne
+  marque plus la prestation « débitée ».
+- **`restituerCashback()` prend la restitution avant de créditer** (`cashback_debite` true →
+  false, écriture conditionnelle), et la rétablit si le crédit échoue : deux chemins de
+  remboursement concurrents ne peuvent plus la rendre deux fois.
+- **Le back-office la déclenche aussi** : « Remboursement manuel » et « Annuler avec
+  remboursement » rendaient la carte, jamais le cashback.
+
 **Le client décide** (décision d'Alexandre, 28/09/2026). Le tunnel propose la case « 💰
 Utiliser mon cashback », décochée par défaut, et envoie `utiliser_cashback` à
 `stripe-intent`. Sans `true`, la réduction vaut 0 et le solde reste intact. Le navigateur ne

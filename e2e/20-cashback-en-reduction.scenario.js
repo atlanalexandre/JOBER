@@ -8,7 +8,7 @@
 // la prestation (`montant_total`, base de la facture et du versement) ne bouge pas.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, paiementStripe, tachePlanifiee } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, paiementStripe, tachePlanifiee, bo } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -67,4 +67,23 @@ test("annulation automatique faute de prestataire : la carte ET le cashback sont
   expect(pi.rembourse, "la carte est remboursée").toBe(pi.preleve);
   const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
   expect(Number(prof.cashback_balance), "le cashback est rendu").toBe(5);
+});
+
+test("remboursement manuel au back-office : la carte ET le cashback sont rendus, une seule fois", async () => {
+  // Relecture du 29/09/2026 : le back-office rendait la carte, jamais le cashback.
+  const p = await prestataireOperationnel();
+  const c = await client();
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+  const m = await reservationPayee({ prestataire: p, client: c, utiliserCashback: true });
+
+  const r = await bo("manual_refund", { mission_id: m.id, reason: "Recette" });
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const pi = await paiementStripe(m.paymentIntent);
+  expect(pi.rembourse).toBe(pi.preleve);
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "le cashback est rendu").toBe(5);
+  // La réduction reste inscrite : c'est elle qui borne ce que Stripe peut rendre.
+  const [ligne] = await sql(`select cashback_applique, cashback_debite from missions where id = '${m.id}'`);
+  expect(Number(ligne.cashback_applique)).toBe(5);
+  expect(ligne.cashback_debite, "restitution prise : plus rien à rendre").toBe(false);
 });

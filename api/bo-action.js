@@ -19,6 +19,7 @@ import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
+import { restituerCashback } from "./_cashback.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -2527,6 +2528,10 @@ export default async function handler(req, res) {
           const err = await stripeRes.json().catch(() => ({}));
           return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" });
         }
+        // Stripe ne rend que ce que la carte a payé : la part réglée en
+        // cashback est rendue ici. Elle ne l'était pas, alors que le message
+        // promet un remboursement intégral (relecture du 29/09/2026).
+        await restituerCashback(m, SUPABASE_URL, headers, "bo/manual_refund");
       }
       // Le remboursement est parti : une clôture refusée en silence laisserait la
       // prestation ouverte — et versable au prestataire — alors que le client est remboursé.
@@ -2551,6 +2556,8 @@ export default async function handler(req, res) {
       if (refund && m.stripe_payment_intent) {
         const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
         if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
+        // La part réglée en cashback, que Stripe ne rend pas (voir manual_refund).
+        await restituerCashback(m, SUPABASE_URL, headers, "bo/cancel_mission");
       }
       if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"cancelled" }, headers, "bo-action/cancel_mission")) {
         return res.status(500).json({ error: refund && m.stripe_payment_intent
