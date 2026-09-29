@@ -3537,7 +3537,8 @@ prestation réalisée.
 La règle vit dans `restituerCashback()` et non chez les appelants : la fonction relit
 elle-même `started_at` et `status`. Démarrée = pointage enregistré, ou statut `completed` /
 `closed`. Lecture impossible → réputée démarrée, rien n'est rendu. Éprouvé par `e2e/20`,
-dans les deux sens.
+dans les deux sens. La règle est écrite dans les CGPS, article 5B.1 (version du
+29/09/2026) : l'une ne change pas sans l'autre.
 
 ---
 
