@@ -192,8 +192,9 @@ export async function executerResolution({
       }
       console.log(`[resolution] remboursement ${data.id} pour la prestation ${mission.id}`);
       rembourseEuros = Math.round(Number(data.amount || 0)) / 100;
-      // Le cashback consommé revient au client : la prestation lui est
-      // remboursée, l'avantage n'a donc pas été consommé.
+      // Le cashback consommé revient au client si la prestation n'a jamais
+      // démarré (prestataire absent) ; démarrée, il est perdu — règle tenue
+      // par restituerCashback.
       await restituerCashback(mission, supabaseUrl, headers, "resolution");
     } catch (e) {
       console.error(`[resolution] remboursement Stripe impossible pour ${mission.id} :`, e.message);

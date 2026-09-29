@@ -2529,8 +2529,8 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" });
         }
         // Stripe ne rend que ce que la carte a payé : la part réglée en
-        // cashback est rendue ici. Elle ne l'était pas, alors que le message
-        // promet un remboursement intégral (relecture du 29/09/2026).
+        // cashback est rendue ici, si la prestation n'avait pas démarré
+        // (règle tenue par restituerCashback).
         await restituerCashback(m, SUPABASE_URL, headers, "bo/manual_refund");
       }
       // Le remboursement est parti : une clôture refusée en silence laisserait la

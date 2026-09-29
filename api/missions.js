@@ -3675,6 +3675,13 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Erreur lors de l'annulation — réessayez ou contactez le support." });
       }
 
+      // Annulation de toute la prestation par le client : son cashback lui
+      // revient, sauf si elle avait démarré (règle d'Alexandre du 29/09/2026,
+      // appliquée par restituerCashback). Il ne revenait jamais sur ce chemin.
+      // Après l'annulation, et non avant : un nouvel essai après un échec la
+      // retrouve, et la restitution ne se prend qu'une fois.
+      await restituerCashback({ id: mission_id, client_id: mission.client_id }, SUPABASE_URL, headers, "cancel_client");
+
       // Rejeter toutes les candidatures liées à cette mission
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&status=in.(pending,accepted)`, {
         method: "PATCH",

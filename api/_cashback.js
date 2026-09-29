@@ -272,13 +272,38 @@ async function marquerDebite(mission, supabaseUrl, headers) {
 }
 
 /**
- * Restitue le cashback consommé par une prestation remboursée.
+ * La prestation a-t-elle démarré ? Relu en base, jamais pris chez l'appelant :
+ * c'est lui qui décide si le cashback est rendu.
  *
- * Le client est rendu à l'état d'avant la commande : la carte lui rend ce
- * qu'elle a prélevé, et le cashback lui revient. Sans cela, un client remboursé
- * d'une prestation qui n'a pas eu lieu perdrait un avantage qu'il n'a pas
- * consommé — pour une prestation annulée par le prestataire ou par ALANE, ce
- * serait une double peine.
+ * Démarrée = pointage enregistré (`started_at`), ou prestation déjà réalisée
+ * (`completed`, `closed`). Illisible → réputée démarrée : on ne rend pas un
+ * avantage sans pouvoir prouver qu'il n'a pas été consommé.
+ */
+async function prestationDemarree(missionId, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=started_at,status`, { headers });
+    const d = await r.json().catch(() => null);
+    const ligne = Array.isArray(d) && d[0];
+    if (!r.ok || !ligne) {
+      console.error(`[cashback] démarrage illisible sur ${missionId} (${r.status}) — réputée démarrée, rien rendu.`);
+      return true;
+    }
+    return !!ligne.started_at || ["completed", "closed"].includes(ligne.status);
+  } catch (e) {
+    console.error(`[cashback] démarrage illisible sur ${missionId} :`, e.message, "— réputée démarrée, rien rendu.");
+    return true;
+  }
+}
+
+/**
+ * Restitue le cashback consommé par une prestation annulée AVANT son début.
+ *
+ * Règle d'Alexandre (29/09/2026) : le cashback n'est rendu que si la
+ * prestation est annulée en entier, avant d'avoir démarré — par le client, le
+ * prestataire, ALANE ou faute de prestataire. Une fois la prestation démarrée,
+ * il est consommé : une interruption, un remboursement partiel ou un litige ne
+ * le rendent pas. La règle vit ici, et non chez chaque appelant : une douzaine
+ * de chemins remboursent, et en oublier un rendrait le cashback en silence.
  *
  * Ne lève jamais : le remboursement a déjà eu lieu quand on arrive ici, et une
  * exception ferait croire à son échec.
@@ -287,6 +312,11 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
   const mission = await completerCashback(missionBrute, supabaseUrl, headers);
   const montant = Number(mission?.cashback_applique || 0);
   if (!(montant > 0) || !mission?.cashback_debite || !mission?.client_id) return { rendu: 0 };
+  if (await prestationDemarree(mission.id, supabaseUrl, headers)) {
+    console.log(`[cashback/${motif}] prestation ${mission.id} déjà démarrée — `
+      + `${montant.toFixed(2)} € de cashback consommés, non rendus.`);
+    return { rendu: 0, demarree: true };
+  }
 
   // 1. On PREND la restitution avant de créditer : écriture conditionnelle sur
   //    `cashback_debite`, qui ne réussit qu'une fois. Le crédit venait d'abord,

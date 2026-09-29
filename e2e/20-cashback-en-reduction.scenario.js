@@ -1,5 +1,6 @@
 // Le cashback se dépense en réduction du paiement, comme un avoir (depuis le 17/08/2026),
 // et seulement si le client l'accepte (depuis le 28/09/2026) : sinon il s'accumule.
+// Une prestation annulée en entier avant son début le rend ; démarrée, il est consommé.
 //
 // Jusqu'au 28/09/2026, la documentation affirmait qu'il n'avait « plus de chemin de
 // dépense » et l'écran exigeait un minimum de 10 € — ni l'un ni l'autre n'était vrai,
@@ -8,7 +9,7 @@
 // la prestation (`montant_total`, base de la facture et du versement) ne bouge pas.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, paiementStripe, tachePlanifiee, bo } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, paiementStripe, tachePlanifiee, bo, api } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -86,4 +87,34 @@ test("remboursement manuel au back-office : la carte ET le cashback sont rendus,
   const [ligne] = await sql(`select cashback_applique, cashback_debite from missions where id = '${m.id}'`);
   expect(Number(ligne.cashback_applique)).toBe(5);
   expect(ligne.cashback_debite, "restitution prise : plus rien à rendre").toBe(false);
+});
+
+// Règle d'Alexandre du 29/09/2026 : rendu si toute la prestation est annulée avant son
+// début, perdu une fois qu'elle a démarré.
+test("le client annule avant le début : le cashback lui est rendu", async () => {
+  // L'annulation par le client ne le rendait jamais.
+  const p = await prestataireOperationnel();
+  const c = await client();
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+  const m = await reservationPayee({ prestataire: p, client: c, utiliserCashback: true });
+
+  const r = await api("/api/missions", { action: "cancel_client", mission_id: m.id }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "le cashback est rendu").toBe(5);
+});
+
+test("prestation déjà démarrée : un remboursement ne rend pas le cashback", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+  const m = await reservationPayee({ prestataire: p, client: c, utiliserCashback: true });
+  await sql(`update missions set started_at = now() where id = '${m.id}'`);
+
+  const r = await bo("manual_refund", { mission_id: m.id, reason: "Recette" });
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "consommé : non rendu").toBe(0);
+  const [ligne] = await sql(`select cashback_debite from missions where id = '${m.id}'`);
+  expect(ligne.cashback_debite, "toujours marqué consommé").toBe(true);
 });
