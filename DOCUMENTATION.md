@@ -204,6 +204,13 @@ sur le **montant** et non sur les heures, puisque `heures_perdues` est un total 
 `hours` s'entend par jour : les soustraire l'une de l'autre retirerait la perte autant de fois
 qu'il y a de jours. Elle vaut 0 sur toute prestation jamais interrompue.
 
+**Encore faut-il la lire.** Jusqu'au 29/09/2026, la validation par le client (`complete`), la
+validation automatique, « Valider de force », les écrans de versement du back-office et le
+dénouement des litiges ne demandaient pas `heures_perdues` à la base : `montantsDeCloture()`
+recevait donc 0, et le prestataire était payé pour des heures déjà remboursées au client.
+`src/tests/api/cloture-heures-perdues.test.js` refuse désormais toute lecture qui alimente
+`montantsDeCloture()` sans cette colonne.
+
 Le jour en cours est déterminé par `dateDuJourFr()` (`api/_temps.js`) et non par
 `toISOString()` : Vercel tourne en UTC, et entre minuit et 2 h du matin en France la date UTC
 est encore celle de la veille — une interruption à 0 h 30 aurait compté une journée de plus

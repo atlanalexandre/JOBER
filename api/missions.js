@@ -1667,7 +1667,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at,extra_hours_tarif,extra_hours_appliquees`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at,extra_hours_tarif,extra_hours_appliquees,heures_perdues`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });

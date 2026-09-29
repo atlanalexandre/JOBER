@@ -503,7 +503,7 @@ export default async function handler(req, res) {
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
             + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
             + `delay_status,arrival_delay_minutes,`
-            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant,heures_perdues`
             + `&limit=100`,
             { headers }
           );
@@ -1934,7 +1934,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees,recurrence`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees,recurrence,heures_perdues`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
