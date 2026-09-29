@@ -189,8 +189,17 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
       `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=cashback_balance`,
       { headers }
     );
-    const pd = await pr.json().catch(() => []);
-    const solde = Number(Array.isArray(pd) && pd[0]?.cashback_balance || 0);
+    const pd = await pr.json().catch(() => null);
+    // Solde illisible : on ne débite ni ne marque rien — le second appel
+    // (webhook) réessaiera. Lu comme 0, il faisait réécrire `cashback_applique`
+    // à 0 alors que la carte avait payé le prix réduit : le plafond de
+    // remboursement dépassait alors ce que la carte avait supporté, et Stripe
+    // refusait le remboursement APRÈS l'annulation (relecture du 29/09/2026).
+    if (!pr.ok || !Array.isArray(pd) || !pd[0]) {
+      console.error(`[cashback] solde illisible (${pr.status}) — débit non tenté sur ${mission.id}.`);
+      return { debite: 0, ok: false };
+    }
+    const solde = Number(pd[0].cashback_balance || 0);
 
     // Plafonné au solde réel : voir la course décrite en tête de fichier.
     const debit = Math.min(prevu, Math.max(0, solde));
@@ -199,8 +208,9 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
         + ` ${solde.toFixed(2)} € disponibles. La réduction est honorée, l'écart est à la charge d'ALANE.`);
     }
     if (!(debit > 0)) {
-      // Rien à débiter, mais la prestation ne doit pas être reprise en boucle.
-      await marquerDebite(mission, supabaseUrl, headers, 0);
+      // Rien à débiter : la prestation n'est PAS marquée débitée, pour qu'aucune
+      // restitution ne rende un cashback jamais pris. `cashback_applique` reste
+      // ce que la carte n'a pas payé : c'est lui qui borne les remboursements.
       return { debite: 0, ok: true };
     }
 
@@ -223,7 +233,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
       return { debite: 0, ok: false };
     }
 
-    await marquerDebite(mission, supabaseUrl, headers, debit);
+    await marquerDebite(mission, supabaseUrl, headers);
     console.log(`[cashback] ${debit.toFixed(2)} € consommés sur ${mission.id}, solde ${nouveau.toFixed(2)} €`);
     return { debite: debit, ok: true };
   } catch (e) {
@@ -235,14 +245,16 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
 /**
  * Marque la prestation comme ayant consommé son cashback.
  *
- * Écrit `cashback_debite` ET la valeur réellement débitée : si le débit a été
- * plafonné, `cashback_applique` doit refléter ce qui a bougé, sinon le plafond
- * de remboursement porterait sur un cashback jamais prélevé.
+ * `cashback_applique` n'est JAMAIS réécrit ici : il porte ce que la carte n'a
+ * pas payé, et c'est lui qui borne les remboursements (montant_total −
+ * cashback_applique = ce que Stripe peut rendre). Le réécrire à la baisse
+ * quand le débit était plafonné faisait dépasser ce plafond, et Stripe
+ * refusait le remboursement après l'annulation (relecture du 29/09/2026).
+ * Un débit plafonné reste signalé dans les journaux par debiterCashback().
  */
-async function marquerDebite(mission, supabaseUrl, headers, debite) {
+async function marquerDebite(mission, supabaseUrl, headers) {
   try {
     const corps = { cashback_debite: true };
-    if (debite !== Number(mission.cashback_applique || 0)) corps.cashback_applique = debite;
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
@@ -276,10 +288,28 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
   const montant = Number(mission?.cashback_applique || 0);
   if (!(montant > 0) || !mission?.cashback_debite || !mission?.client_id) return { rendu: 0 };
 
+  // 1. On PREND la restitution avant de créditer : écriture conditionnelle sur
+  //    `cashback_debite`, qui ne réussit qu'une fois. Le crédit venait d'abord,
+  //    le marquage ensuite : l'expiration côté application et celle de la
+  //    tâche planifiée, qui partagent le même remboursement Stripe, pouvaient
+  //    rendre le cashback deux fois (relecture du 29/09/2026).
+  //    `cashback_applique` n'est pas touché : il borne les remboursements
+  //    (voir marquerDebite).
   try {
-    // La procédure `increment_cashback` crédite de façon atomique. Le second
-    // paramètre compte les prestations du mois : on n'en ajoute aucune, il ne
-    // s'agit pas d'une prestation réalisée mais d'un avoir rendu.
+    const pris = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&cashback_debite=is.true`, {
+      method: "PATCH",
+      headers: { ...headers, "Prefer": "return=representation" },
+      body: JSON.stringify({ cashback_debite: false }),
+    });
+    const lignes = await pris.json().catch(() => null);
+    if (!pris.ok || !Array.isArray(lignes)) {
+      console.error(`[cashback/${motif}] restitution non engagée sur ${mission.id} (${pris.status}) — rien rendu.`);
+      return { rendu: 0 };
+    }
+    if (!lignes.length) return { rendu: 0 }; // déjà rendue par un autre chemin
+
+    // 2. Le crédit. La procédure `increment_cashback` est atomique ; son second
+    //    paramètre compte les prestations du mois : aucune ici, c'est un avoir rendu.
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/increment_cashback`, {
       method: "POST",
       headers,
@@ -288,20 +318,15 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       console.error(`[cashback/${motif}] restitution de ${montant.toFixed(2)} € refusée sur ${mission.id} :`, txt.slice(0, 200));
+      // La restitution reste à faire : le marquage est rétabli pour qu'un
+      // passage suivant la reprenne.
+      const re = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&cashback_debite=is.false`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ cashback_debite: true }),
+      }).catch(() => null);
+      if (!re?.ok) console.error(`[cashback/${motif}] ⚠️ ${montant.toFixed(2)} € NON rendus au client de ${mission.id}, `
+        + "et marquage non rétabli : à créditer à la main (back-office, Ajuster le cashback).");
       return { rendu: 0 };
-    }
-
-    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
-      method: "PATCH",
-      headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ cashback_applique: 0, cashback_debite: false }),
-    });
-    if (!up.ok) {
-      // Le client a récupéré son cashback ; la prestation le porte encore.
-      // Signalé fort : un second passage le recréditerait.
-      const txt = await up.text().catch(() => "");
-      console.error(`[cashback/${motif}] ${montant.toFixed(2)} € rendus sur ${mission.id} mais la prestation`
-        + ` n'a pas été mise à jour — RISQUE DE DOUBLE RESTITUTION :`, txt.slice(0, 200));
     }
     console.log(`[cashback/${motif}] ${montant.toFixed(2)} € restitués au client de ${mission.id}`);
     return { rendu: montant };
