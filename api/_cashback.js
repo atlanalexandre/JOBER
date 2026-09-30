@@ -233,7 +233,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
       return { debite: 0, ok: false };
     }
 
-    await marquerDebite(mission, supabaseUrl, headers);
+    await marquerDebite(mission, supabaseUrl, headers, debit);
     console.log(`[cashback] ${debit.toFixed(2)} € consommés sur ${mission.id}, solde ${nouveau.toFixed(2)} €`);
     return { debite: debit, ok: true };
   } catch (e) {
@@ -252,7 +252,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
  * refusait le remboursement après l'annulation (relecture du 29/09/2026).
  * Un débit plafonné reste signalé dans les journaux par debiterCashback().
  */
-async function marquerDebite(mission, supabaseUrl, headers) {
+async function marquerDebite(mission, supabaseUrl, headers, debit) {
   try {
     const corps = { cashback_debite: true };
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
@@ -265,10 +265,43 @@ async function marquerDebite(mission, supabaseUrl, headers) {
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       console.error(`[cashback] marquage du débit refusé sur ${mission.id} :`, txt.slice(0, 200));
+      return;
     }
+    // Ce qui a RÉELLEMENT quitté le solde, que la restitution rendra — et non
+    // `cashback_applique`, la réduction promise. Les deux diffèrent quand le
+    // solde ne suffisait plus (deux réservations simultanées) : rendre la
+    // réduction promise créditait un cashback jamais pris (relecture du
+    // 30/09/2026). Écrit à part : sans la migration
+    // 2026-09-30_cashback_montant_debite, PostgREST refuserait tout le marquage.
+    const m = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ cashback_debite_montant: debit }),
+    });
+    if (!m.ok) console.error(`[cashback] montant débité (${Number(debit).toFixed(2)} €) non noté sur ${mission.id} (${m.status}) — une restitution rendrait la réduction promise.`);
   } catch (e) {
     console.error(`[cashback] marquage du débit impossible sur ${mission.id} :`, e.message);
   }
+}
+
+/**
+ * Ce que la restitution doit rendre : le montant réellement débité, borné par
+ * la réduction. Illisible (colonne pas encore créée, ligne antérieure au
+ * 30/09/2026) → la réduction, comme avant : c'est le cas normal, où les deux
+ * sont égaux.
+ */
+async function montantARendre(missionId, reduction, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=cashback_debite_montant`, { headers });
+    const d = await r.json().catch(() => null);
+    const v = Array.isArray(d) && d[0] ? Number(d[0].cashback_debite_montant) : NaN;
+    if (r.ok && Array.isArray(d) && d[0] && d[0].cashback_debite_montant !== null && Number.isFinite(v)) {
+      return Math.max(0, Math.min(reduction, v));
+    }
+  } catch (e) {
+    console.error(`[cashback] montant débité illisible sur ${missionId} :`, e.message);
+  }
+  return reduction;
 }
 
 /**
@@ -310,7 +343,7 @@ async function prestationDemarree(missionId, supabaseUrl, headers) {
  */
 export async function restituerCashback(missionBrute, supabaseUrl, headers, motif = "remboursement") {
   const mission = await completerCashback(missionBrute, supabaseUrl, headers);
-  const montant = Number(mission?.cashback_applique || 0);
+  let montant = Number(mission?.cashback_applique || 0);
   if (!(montant > 0) || !mission?.cashback_debite || !mission?.client_id) return { rendu: 0 };
   if (await prestationDemarree(mission.id, supabaseUrl, headers)) {
     console.log(`[cashback/${motif}] prestation ${mission.id} déjà démarrée — `
@@ -337,6 +370,8 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
       return { rendu: 0 };
     }
     if (!lignes.length) return { rendu: 0 }; // déjà rendue par un autre chemin
+    montant = await montantARendre(mission.id, montant, supabaseUrl, headers);
+    if (!(montant > 0)) return { rendu: 0 };
 
     // 2. Le crédit. La procédure `increment_cashback` est atomique ; son second
     //    paramètre compte les prestations du mois : aucune ici, c'est un avoir rendu.

@@ -3561,6 +3561,12 @@ l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
 - **`restituerCashback()` prend la restitution avant de créditer** (`cashback_debite` true →
   false, écriture conditionnelle), et la rétablit si le crédit échoue : deux chemins de
   remboursement concurrents ne peuvent plus la rendre deux fois.
+- **On ne rend que ce qui a été débité** (30/09/2026). Un débit plafonné — solde devenu
+  insuffisant entre deux réservations simultanées — laisse `cashback_applique` à la réduction
+  promise (elle borne Stripe), mais la restitution rendait cette réduction entière : le client
+  gagnait la différence. `missions.cashback_debite_montant` (migration
+  `2026-09-30_cashback_montant_debite.sql`) note ce qui a quitté le solde, et c'est lui que rend
+  `restituerCashback()`. NULL (lignes antérieures) → la réduction, comme avant.
 - **Le back-office la déclenche aussi** : « Remboursement manuel » et « Annuler avec
   remboursement » rendaient la carte, jamais le cashback.
 
