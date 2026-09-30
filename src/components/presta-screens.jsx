@@ -137,9 +137,8 @@ const PHOTO_MIN_PX = 400;
  * appelants doivent laisser passer dans ce cas.
  */
 async function dimensionsImage(file) {
-  if (typeof URL?.createObjectURL !== "function") return null;
-  const url = URL.createObjectURL(file);
   try {
+    const src = await lireEnDataUrl(file);
     return await new Promise((resolve) => {
       const img = new Image();
       // Une image qui ne se charge pas en trois secondes ne se chargera pas :
@@ -147,14 +146,28 @@ async function dimensionsImage(file) {
       const minuteur = setTimeout(() => resolve(null), 3000);
       img.onload = () => { clearTimeout(minuteur); resolve({ largeur: img.naturalWidth, hauteur: img.naturalHeight }); };
       img.onerror = () => { clearTimeout(minuteur); resolve(null); };
-      img.src = url;
+      img.src = src;
     });
   } catch (e) {
     console.error("[document] dimensions illisibles :", e.message);
     return null;
-  } finally {
-    URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * Le fichier en adresse `data:`. PAS `URL.createObjectURL` : la politique de
+ * sécurité du site (img-src, vercel.json) n'autorise pas les adresses `blob:`,
+ * et l'image ne se chargeait jamais. Le contrôle des 400 px, qui laisse passer
+ * quand il ne sait pas lire, laissait donc TOUT passer en production
+ * (constaté en recette le 30/09/2026, e2e/27).
+ */
+function lireEnDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => resolve(lecteur.result);
+    lecteur.onerror = () => reject(lecteur.error || new Error("fichier illisible"));
+    lecteur.readAsDataURL(file);
+  });
 }
 
 function ContractModal({ title, contractText, onSign, onClose }) {
@@ -1555,10 +1568,10 @@ export function PrestaProfileEditScreen({ onBack }) {
       let envoi = file;
       let apercu = null;
       try {
+        const source = await lireEnDataUrl(file);
         apercu = await new Promise((resolve, reject) => {
-          const url = URL.createObjectURL(file);
           const img = new Image();
-          const minuteur = setTimeout(() => { URL.revokeObjectURL(url); reject(new Error("décodage trop long")); }, 3000);
+          const minuteur = setTimeout(() => reject(new Error("décodage trop long")), 3000);
           img.onload = () => {
             clearTimeout(minuteur);
             const MAX = 1000;
@@ -1567,13 +1580,18 @@ export function PrestaProfileEditScreen({ onBack }) {
             canvas.width  = Math.round(img.width  * ratio);
             canvas.height = Math.round(img.height * ratio);
             canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-            URL.revokeObjectURL(url);
-            resolve(canvas.toDataURL("image/jpeg", 0.85));
+            // toBlob, et non fetch(dataURL) : la politique de sécurité du site
+            // (connect-src) refuse les adresses data:, et l'envoi repartait en
+            // silence avec le fichier d'origine (constaté en recette, e2e/27).
+            canvas.toBlob(b => b
+              ? resolve({ blob: b, apercu: canvas.toDataURL("image/jpeg", 0.85) })
+              : reject(new Error("conversion JPEG refusée par le navigateur")), "image/jpeg", 0.85);
           };
-          img.onerror = () => { clearTimeout(minuteur); URL.revokeObjectURL(url); reject(new Error("image illisible par le navigateur")); };
-          img.src = url;
+          img.onerror = () => { clearTimeout(minuteur); reject(new Error("image illisible par le navigateur")); };
+          img.src = source;
         });
-        envoi = await (await fetch(apercu)).blob();
+        envoi = apercu.blob;
+        apercu = apercu.apercu;
       } catch (err) {
         console.error("[profil] conversion JPEG impossible, envoi du fichier d'origine :", err?.message);
       }

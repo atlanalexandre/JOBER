@@ -349,7 +349,13 @@ Au **dépôt** : un contrôle des dimensions, au moins 400 × 400 pixels, pour l
 photos de la pellicule (HEIC déguisés en JPEG, Live Photos), et un contrôle qui refuse quand il
 ne sait pas empêcherait la moitié des prestataires iPhone de déposer leur dossier. Un minuteur
 de trois secondes évite qu'une image qui ne se charge pas laisse le dépôt bloqué sur
-« Envoi… ». L'intitulé de la pièce dit désormais à quoi elle sert : *« c'est cette photo que vos
+« Envoi… ». **Jusqu'au 30/09/2026, ce contrôle n'a jamais rien refusé en production** : il
+lisait l'image par une adresse `blob:`, que la politique de sécurité du site (`img-src` de
+`vercel.json`) interdit ; l'image ne se chargeait pas, et le contrôle, qui laisse passer quand
+il ne sait pas lire, laissait tout passer. Il lit désormais le fichier en adresse `data:`
+(`lireEnDataUrl()`), et e2e/27 vérifie qu'une photo de 300 px est refusée. Règle générale :
+**jamais `blob:` pour une image affichée ou décodée**, ni `fetch()` d'une adresse `data:`
+(`connect-src` l'interdit aussi). L'intitulé de la pièce dit désormais à quoi elle sert : *« c'est cette photo que vos
 clients verront pour vous reconnaître à leur porte »*.
 
 > **Pas d'heuristique de netteté ni de luminosité.** Un contrôle de « qualité » fondé sur la

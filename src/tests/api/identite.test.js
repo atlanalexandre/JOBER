@@ -218,6 +218,15 @@ describe("la qualité de la photo de profil", () => {
 
   // Sans minuteur, une image qui ne se charge jamais laisse le dépôt bloqué
   // sur « Envoi… ».
+  // Le site interdit les images `blob:` (img-src) : lue par createObjectURL,
+  // l'image ne se chargeait jamais et le contrôle laissait tout passer (30/09/2026).
+  it("lit l'image en adresse data:, que la politique de sécurité autorise", () => {
+    const deb = presta.indexOf("async function dimensionsImage");
+    const bloc = presta.slice(deb, presta.indexOf("\n}", deb));
+    expect(bloc).toContain("lireEnDataUrl(file)");
+    expect(bloc).not.toContain("createObjectURL");
+  });
+
   it("abandonne au bout de trois secondes", () => {
     expect(presta).toContain("setTimeout(() => resolve(null), 3000)");
   });
