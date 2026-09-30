@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import { messageErreurStripe } from "./_stripe_erreur.js";
+import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
+import { restituerCashback } from "./_cashback.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -35,7 +36,9 @@ export default async function handler(req, res) {
 
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
 
-  const { paymentIntentId, missionId, reason } = req.body || {};
+  // `reason` était transmis tel quel à Stripe, qui refuse tout motif inconnu :
+  // le motif est désormais fixé par rembourserDepuisLeBO().
+  const { paymentIntentId, missionId } = req.body || {};
   if (!paymentIntentId) return res.status(400).json({ error: "paymentIntentId requis" });
   if (!missionId) return res.status(400).json({ error: "missionId requis" });
 
@@ -57,58 +60,25 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette prestation" });
   }
 
-  // Fetch stripe_transfer_id before refunding so we can reverse the payout to the prestataire
-  let stripeTransferId = null;
+  // Même règle que « Rembourser » et « Annuler » du back-office
+  // (api/_remboursement_bo.js). Ce chemin remboursait D'ABORD, puis tentait de
+  // reprendre le virement du prestataire : si la reprise échouait, le client
+  // était remboursé et le prestataire gardait son virement — ALANE payait deux
+  // fois. Il ne rendait pas non plus le cashback (relecture du 30/09/2026).
+  let lignePaiement = null;
   const trRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_transfer_id`,
+    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=id,client_id,stripe_payment_intent,payout_status,stripe_transfer_id`,
     { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
   ).catch(() => null);
-  if (trRes?.ok) {
-    const trData = await trRes.json().catch(() => []);
-    stripeTransferId = Array.isArray(trData) && trData[0]?.stripe_transfer_id || null;
-  }
+  if (trRes?.ok) lignePaiement = (await trRes.json().catch(() => []))[0] || null;
+  if (!lignePaiement) return res.status(500).json({ error: "Impossible de relire la prestation : rien n'a été remboursé." });
 
   try {
-    // Create refund via Stripe API
-    const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        payment_intent: paymentIntentId,
-        reason: reason || "requested_by_customer",
-      }).toString(),
-    });
-
-    const refundData = await stripeRes.json();
-    if (!stripeRes.ok) {
-      return res.status(400).json({ error: messageErreurStripe(refundData.error, "stripe-refund") });
-    }
-
-    // Reverse the Connect transfer to the prestataire if one was made
-    let transferReversalId = null;
-    let transferReversalFailed = false;
-    if (stripeTransferId) {
-      try {
-        const revRes = await fetch(`https://api.stripe.com/v1/transfers/${stripeTransferId}/reversals`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
-        });
-        const revData = await revRes.json();
-        if (revRes.ok) {
-          transferReversalId = revData.id;
-          console.log(`[stripe-refund] Transfer ${stripeTransferId} reversed → ${transferReversalId}`);
-        } else {
-          console.error("[stripe-refund] Transfer reversal failed:", revData.error?.message);
-          transferReversalFailed = true;
-        }
-      } catch (revErr) {
-        console.error("[stripe-refund] Transfer reversal error:", revErr.message);
-        transferReversalFailed = true;
-      }
-    }
+    const rb = await rembourserDepuisLeBO(lignePaiement, "stripe-refund");
+    if (!rb.ok) return res.status(rb.code).json({ error: rb.message });
+    await restituerCashback(lignePaiement, SUPABASE_URL,
+      { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" }, "stripe-refund");
+    const annulerVersement = versementAAnnuler(lignePaiement) || rb.virementRepris;
 
     // Clôture de la prestation.
     //
@@ -126,7 +96,7 @@ export default async function handler(req, res) {
           "Content-Type": "application/json",
           "Prefer": "return=representation",
         },
-        body: JSON.stringify({ status: "closed" }),
+        body: JSON.stringify({ status: "closed", ...(annulerVersement ? { payout_status: "annule" } : {}) }),
       }).catch(e => { console.error("[stripe-refund] clôture impossible :", e.message); return null; });
       const lc = rc ? await rc.json().catch(() => []) : null;
       if (!rc || !rc.ok || !Array.isArray(lc) || lc.length === 0) {
@@ -139,7 +109,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount, transferReversalId, transferReversalFailed: transferReversalFailed || undefined });
+    return res.status(200).json({ ok: true, refundId: rb.refundId, transferReversed: rb.virementRepris || undefined });
   } catch (e) {
     console.error("stripe-refund error:", e);
     return res.status(500).json({ error: "Erreur serveur" });
