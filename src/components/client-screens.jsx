@@ -7033,6 +7033,46 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     setCancelling(false);
   };
 
+  // « Non, personne n'est venu » — prestation jamais pointée (décision
+  // d'Alexandre du 30/09/2026). Si le prestataire n'a rien confirmé, c'est une
+  // annulation pour défaillance : le serveur rembourse tout, frais compris. S'il
+  // affirme être venu, le serveur refuse (`presence_declaree`) et c'est un
+  // litige, que l'équipe tranche.
+  const [absenceEnCours, setAbsenceEnCours] = useState(false);
+  const signalerAbsence = async () => {
+    if (!selected || absenceEnCours) return;
+    if (selected.validation_prestataire) {
+      setDisputeMsg("Le prestataire n'est pas venu : il n'a jamais signalé son arrivée, et personne ne s'est présenté.");
+      setShowDisputeModal(selected.id);
+      return;
+    }
+    setAbsenceEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "cancel_client", mission_id: selected.id, motif: "absence_prestataire" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.code === "presence_declaree") {
+        setSelected(prev => prev ? { ...prev, validation_prestataire: true } : prev);
+        setDisputeMsg("Le prestataire n'est pas venu : il n'a jamais signalé son arrivée, et personne ne s'est présenté.");
+        setShowDisputeModal(selected.id);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
+      setSelected(null);
+      showToast("Signalement enregistré : vous êtes intégralement remboursé (5 à 10 jours ouvrés selon votre banque).");
+    } catch (e) {
+      showToast(e.message || "Le signalement n'a pas pu être enregistré. Réessayez.");
+    } finally {
+      setAbsenceEnCours(false);
+    }
+  };
+
   // « C'est bien elle » / « Ce n'est pas elle », au moment de l'arrivée.
   //
   // Tout passe par /api : un refus déclenche un remboursement intégral et la
@@ -7671,9 +7711,19 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
                   Le prestataire a confirmé la fin de prestation. En validant, vous confirmez que la prestation s'est bien déroulée. Votre cashback sera crédité : vous pourrez l'utiliser au paiement d'une prochaine réservation, ou le laisser s'accumuler.
                 </div>
+                {!selected.started_at && (
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                    ⚠️ Il n'a pourtant jamais signalé son arrivée. Si personne n'est venu, dites-le : notre équipe examine la situation, et le paiement reste bloqué d'ici là.
+                  </div>
+                )}
                 <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
                   {completing ? "Validation…" : "✅ Valider la prestation"}
                 </button>
+                {!selected.started_at && (
+                  <button onClick={signalerAbsence} style={{ width:"100%", marginTop:8, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                    Personne n'est venu
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ marginTop:20, background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:14, padding:"16px" }}>
@@ -7713,11 +7763,27 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       </div>
                     </>
                   );
+                  // Jamais pointée : on demande au client (décision d'Alexandre du
+                  // 30/09/2026). Sans réponse, elle est validée 24 h après la fin.
+                  if (!selected.started_at) return (
+                    <>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>La prestation a-t-elle eu lieu ?</div>
+                      <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+                        Votre prestataire n'a pas signalé son arrivée. Si personne n'est venu, vous êtes intégralement remboursé, frais de service compris. Sans réponse de votre part, la prestation sera considérée comme réalisée 24 h après l'heure de fin prévue.
+                      </div>
+                      <button onClick={handleComplete} disabled={completing || absenceEnCours} style={{ width:"100%", padding:"12px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                        {completing ? "Validation…" : "Oui, elle a eu lieu"}
+                      </button>
+                      <button onClick={signalerAbsence} disabled={completing || absenceEnCours} style={{ width:"100%", marginTop:8, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                        {absenceEnCours ? "Envoi…" : "Non, personne n'est venu"}
+                      </button>
+                    </>
+                  );
                   return (
                     <>
                       <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
                       <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
-                        Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. La prestation est automatiquement validée sous 24h si le prestataire a confirmé.
+                        Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. Sans action de votre part, la prestation est validée automatiquement 24 h après l'heure de fin prévue.
                       </div>
                     </>
                   );

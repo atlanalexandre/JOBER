@@ -3126,6 +3126,28 @@ Horaire illisible : les deux gestes sont **autorisés**. Empêcher un prestatair
 qu'il travaille parce qu'une date est mal formée serait le punir d'un défaut qui n'est pas le
 sien — et le client, lui, attend sur place.
 
+### Une prestation jamais pointée : on demande au client
+
+**Constaté en recette le 30/09/2026** : une prestation dont le prestataire n'avait jamais
+signalé son arrivée était **validée d'office** par la tâche planifiée 24 h après l'heure de fin
+prévue, et le virement programmé — y compris quand personne n'était venu, sans que le client
+en sache rien. Le prestataire, lui, lisait « sans pointage, elle ne pourra pas être payée ».
+
+Règle décidée par Alexandre le 30/09/2026 :
+
+| Réponse du client | Le prestataire a confirmé la fin (`validation_prestataire`) | Effet |
+|---|---|---|
+| « Oui, elle a eu lieu » | peu importe | `complete` — autorisé sans confirmation du prestataire **pour une prestation jamais pointée dont l'horaire est passé**, et seulement elle |
+| « Non, personne n'est venu » | non | `cancel_client` : le retard dépasse le seuil de défaillance, **remboursement intégral, frais compris** (CGPS 8.2) |
+| « Non, personne n'est venu » | **oui** | `cancel_client` répond **409 `presence_declaree`** : parole contre parole, c'est un **litige** (`dispute`), qui gèle le virement ; l'équipe tranche |
+| pas de réponse | — | validation automatique 24 h après l'heure de fin prévue, comme avant |
+
+La question part de la tâche planifiée (toutes les 2 h), avec la relance « pointage
+manquant » du prestataire, **une seule fois** : une notification `La prestation a-t-elle eu
+lieu ?` portant `ref_id` sert de témoin. `cancel_client` refuse désormais **toute** annulation
+d'une prestation dont le prestataire a confirmé la fin — le client pouvait jusque-là se
+rembourser, frais compris, alors que le prestataire déclarait avoir travaillé.
+
 ### L'accueil client montre la prochaine prestation
 
 **Ajouté le 17/08/2026, à la demande d'Alexandre.** Il fallait ouvrir « Prestations » puis
