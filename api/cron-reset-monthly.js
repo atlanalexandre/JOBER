@@ -18,6 +18,7 @@ import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -2017,7 +2018,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees,recurrence,heures_perdues`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees,recurrence,heures_perdues,stripe_payment_intent`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -2060,7 +2061,7 @@ ${(() => {
               // frais de service encaissés, donc la trace de ce que le client avait
               // payé — et ignorait le plafonnement des heures en cas de décalage
               // d'horaire jamais arbitré.
-              const { jours, partPrestataire, totalClient } = montantsDeCloture(m);
+              const { jours, partPrestataire, totalClient, ajustementRetard } = montantsDeCloture(m);
               if (partPrestataire <= 0) {
                 console.error(`cron auto-validate: montant nul pour ${m.id} `
                   + `(heures=${m.actual_hours ?? m.hours}, tarif=${m.tarif_horaire}) — non clôturée`);
@@ -2091,6 +2092,8 @@ ${(() => {
                 body: JSON.stringify({
                   status: "completed", validation_client: true, validation_prestataire: true,
                   montant_total: totalClient, cashback_credited: true,
+                  // Heures plafonnées pour décalage : la facture lit `actual_hours`.
+                  ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
                   // Ce chemin ne programmait AUCUN virement : la prestation était
                   // clôturée, le prestataire recevait un e-mail lui annonçant un
                   // paiement « sous 3 à 5 jours ouvrés », et rien n'était jamais
@@ -2109,6 +2112,16 @@ ${(() => {
                 // Validée par le client, mise en litige ou annulée entre-temps : rien à faire.
                 console.log(`cron auto-validate: ${m.id} n'est plus « assigned » — ignorée.`);
                 continue;
+              }
+
+              // Décalage jamais arbitré : heures plafonnées, et le client, qui les
+              // avait toutes payées, remboursé de celles non faites — comme à la
+              // validation par le client (api/_decalage.js).
+              if (ajustementRetard) {
+                await rembourserHeuresRetirees({
+                  mission: m, euros: valeurHeuresRetirees(m, ajustementRetard.avant, ajustementRetard.apres),
+                  supabaseUrl: SUPABASE_URL, headers, contexte: "cron/auto-validation/decalage",
+                });
               }
 
               await Promise.all([

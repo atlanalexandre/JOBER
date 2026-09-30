@@ -2171,7 +2171,16 @@ notifié. Trois issues :
 |---|---|---|
 | `approved` | repoussée du retard | heures prévues |
 | `rejected` | heure initiale | réduites par `respond_delay` |
-| `pending` (sans réponse) | heure initiale | plafonnées à la validation, dans `complete` |
+| `pending` (sans réponse) | heure initiale | plafonnées à la clôture (`complete`, ou validation automatique du cron) |
+
+**Les heures retirées sont remboursées au client** (depuis le 30/09/2026, `api/_decalage.js`).
+Elles ne l'étaient jamais : 110,98 € payés pour 8 h, 7 h facturées, prestataire payé 91 €, 0 €
+rendu — l'heure non faite restait à ALANE et la facture la présentait comme des frais de service.
+`respond_delay` (refus) rembourse la valeur des heures retirées et baisse `montant_total`
+d'autant, pour que la clôture retrouve les frais d'origine ; la clôture d'un décalage non arbitré
+rembourse de même et inscrit les heures plafonnées dans `actual_hours`, que lit la facture du
+prestataire. Clé d'idempotence `refund-decalage-{id}` : un seul remboursement par prestation.
+Éprouvé par `e2e/29`.
 
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
@@ -3467,8 +3476,9 @@ retenus, échoués, et signale ceux dont l'échéance est dépassée de plus de 
 symptôme d'un cron qui ne tourne plus.
 
 Le montant est **figé à la clôture et jamais recalculé** : la clôture plafonne les heures
-quand le client n'a jamais arbitré un décalage d'horaire, sans réécrire `actual_hours`. Un
-traitement différé qui referait le calcul verserait plus que ce que le client a payé.
+quand le client n'a jamais arbitré un décalage d'horaire. Depuis le 30/09/2026 elle inscrit ce
+plafond dans `actual_hours` (la facture du prestataire le lit), et le recalcul retrouve le même
+montant ; le figer reste la règle : un traitement différé ne doit pas refaire le calcul.
 
 Il n'existe **qu'un seul chemin d'émission**. `account.updated` dans `stripe-webhook.js` en
 émettait un second, avec son propre calcul et sans regarder `payout_due_at` : un prestataire
