@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { verifyUser } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
@@ -6,6 +7,12 @@ import { nombreDeJours } from "./_cloture.js";
 import { reductionCashback } from "./_cashback.js";
 import { appUrl } from "./_url.js";
 import { messageErreurStripe } from "./_stripe_erreur.js";
+
+/** Empreinte courte et stable des paramètres d'un PaymentIntent (clé d'idempotence). */
+export function empreinteParametres(params) {
+  const trie = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join("&");
+  return crypto.createHash("sha256").update(trie).digest("hex").slice(0, 24);
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -100,7 +107,8 @@ export default async function handler(req, res) {
       if (si.error) return res.status(400).json({ error: messageErreurStripe(si.error, "stripe-intent/carte") });
       return res.status(200).json({ clientSecret: si.client_secret, customerId });
     } catch (e) {
-      return res.status(500).json({ error: "Erreur Stripe setup" });
+      console.error(`[setup_card] enregistrement de carte impossible pour ${caller.id} :`, e.message);
+      return res.status(500).json({ error: "La carte n'a pas pu être enregistrée. Réessayez." });
     }
   }
 
@@ -111,7 +119,9 @@ export default async function handler(req, res) {
     const callerPm = await verifyUser(req, SUPABASE_URL_PM, SERVICE_ROLE_PM);
     if (!callerPm) return res.status(401).json({ error: "Non authentifié" });
     const { pmId } = req.body || {};
-    if (!pmId) return res.status(400).json({ error: "pmId requis" });
+    // Format vérifié : l'identifiant entre dans l'adresse d'un appel Stripe
+    // fait avec la clé secrète (relecture du 30/09/2026).
+    if (!pmId || !/^pm_[A-Za-z0-9]+$/.test(String(pmId))) return res.status(400).json({ error: "pmId invalide" });
     try {
       const r = await fetch(`https://api.stripe.com/v1/payment_methods/${pmId}`, { headers: stripeHeaders });
       const pm = await r.json();
@@ -232,7 +242,7 @@ export default async function handler(req, res) {
     const callerDt = await verifyUser(req, SUPABASE_URL_DT, SERVICE_ROLE_DT);
     if (!callerDt) return res.status(401).json({ error: "Non authentifié" });
     const { pmId: pmToDetach } = req.body || {};
-    if (!pmToDetach) return res.status(400).json({ error: "pmId requis" });
+    if (!pmToDetach || !/^pm_[A-Za-z0-9]+$/.test(String(pmToDetach))) return res.status(400).json({ error: "pmId invalide" });
     try {
       const r = await fetch(`https://api.stripe.com/v1/payment_methods/${pmToDetach}`, { headers: stripeHeaders });
       const pm = await r.json();
@@ -406,7 +416,7 @@ export default async function handler(req, res) {
         method: "POST",
         // Le montant fait partie de la clé : une prolongation rechiffrée ne
         // doit pas réutiliser le PaymentIntent de la précédente.
-        headers: { ...stripeHeaders, "Idempotency-Key": `supp-${intentMissionId}-${callerPi.id}-${paramsS.amount}` },
+        headers: { ...stripeHeaders, "Idempotency-Key": `supp2-${intentMissionId}-${callerPi.id}-${empreinteParametres(paramsS)}` },
         body: new URLSearchParams(paramsS),
       });
       const intentS = await rs.json();
@@ -642,7 +652,14 @@ export default async function handler(req, res) {
       // Le préfixe `pi2` marque le passage au PaymentIntent avec `customer` : les
       // clés `pi-` émises dans les vingt-quatre heures précédant le déploiement
       // portent des paramètres différents et auraient provoqué la même erreur.
-      headers: { ...stripeHeaders, "Idempotency-Key": `pi2-${missionMetaId}-${callerPi.id}-${params.amount}` },
+      //
+      // L'empreinte de TOUS les paramètres en fait désormais partie (relecture
+      // du 30/09/2026). Avec le seul montant, un client dont la carte avait été
+      // refusée et qui cochait ensuite « mémoriser ma carte » renvoyait la même
+      // clé avec d'autres paramètres : Stripe refusait, et il ne pouvait plus
+      // payer cette prestation avant le lendemain. Deux envois identiques — le
+      // double clic — partagent toujours la même clé.
+      headers: { ...stripeHeaders, "Idempotency-Key": `pi3-${missionMetaId}-${callerPi.id}-${empreinteParametres(params)}` },
       body: new URLSearchParams(params),
     });
     const intent = await r.json();
