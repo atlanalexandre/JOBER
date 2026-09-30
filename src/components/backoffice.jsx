@@ -1924,6 +1924,18 @@ export function BOVersements() {
     setBusyId(null);
   };
 
+  const relancer = async (m) => {
+    if (!await showConfirm(`Relancer le versement de ${euro(m.payout_amount)} à ${nom(m.prestataire_id)} ? Il repartira au prochain traitement (toutes les deux heures).`)) return;
+    setBusyId(m.id);
+    try {
+      const r = await boFetch({ action:"relancer_versement", mission_id:m.id });
+      const d = await r.json();
+      if (d.success) { showToast("Versement relancé — il repartira au prochain traitement.", "success"); load(); }
+      else showToast(d.error || "Relance impossible", "error");
+    } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
+    setBusyId(null);
+  };
+
   const creerCreance = async (m) => {
     const montant = await showPrompt(`Somme due par ${nom(m.prestataire_id)}, en euros (art. 8B.3) :`);
     if (!montant) return;
@@ -2154,6 +2166,8 @@ export function BOVersements() {
                   ? <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>lever(m)} disabled={busyId===m.id}>Lever</Btn>
                   : (m.payout_status === "pending" || m.payout_status === "failed") &&
                     <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>retenir(m)} disabled={busyId===m.id}>Retenir</Btn>}
+                {m.payout_status === "failed" &&
+                  <Btn style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>relancer(m)} disabled={busyId===m.id}>Relancer</Btn>}
                 <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>creerCreance(m)} disabled={busyId===m.id}>Somme due</Btn>
               </div>
             </div>
@@ -2162,7 +2176,7 @@ export function BOVersements() {
       })}
 
       <div style={{ marginTop:28 }}><SectionHeader title="Sommes dues par les prestataires" /></div>
-      <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Récupérées sur les versements à venir, moitié maximum (art. 8B.3)</div>
+      <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Enregistrées et notifiées ; elles se règlent d'accord entre les parties ou par les voies de droit commun — plus aucun prélèvement sur les versements depuis le 16/08/2026 (art. 8B.3)</div>
       {data.creances.length === 0 ? (
         <Card><div style={{ color:C.gray, fontSize:13 }}>Aucune somme due en cours.</div></Card>
       ) : data.creances.map(c => (

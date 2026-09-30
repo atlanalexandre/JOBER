@@ -3481,6 +3481,14 @@ seule fois — appliquer « la moitié » créance par créance retiendrait 75 %
 Les imputations s'inscrivent **après** le virement : décrémenter une créance sur un virement
 qui n'est jamais parti reviendrait à réclamer deux fois la même somme.
 
+**Un refus de virement n'est plus définitif d'office** (30/09/2026). Le virement puise dans le
+solde *disponible* d'ALANE, où un paiement par carte n'entre qu'après quelques jours : à 48 h, un
+refus `balance_insufficient` est probable. Il passait le versement en `failed` pour toujours, sans
+réessai ni bouton. Un refus passager (`refusPassager()` : solde insuffisant, limite de débit, panne)
+remet désormais le versement en `pending` pour le passage suivant ; tout autre refus le laisse en
+`failed`, et le bouton **Relancer** de l'écran Versements (`relancer_versement`) le remet en attente
+une fois la cause réglée.
+
 L'écran **Versements** du backoffice (`BOVersements`) montre les versements en attente,
 retenus, échoués, et signale ceux dont l'échéance est dépassée de plus de six heures — le
 symptôme d'un cron qui ne tourne plus.

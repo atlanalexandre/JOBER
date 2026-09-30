@@ -2348,6 +2348,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, payout_hold_until: jusqua.toISOString() });
     }
 
+    // Un versement « échoué » (refus de Stripe) n'avait AUCUN moyen d'être
+    // relancé : « Programmer » exige un versement jamais programmé, et le seul
+    // détour — retenir puis lever — écrivait au prestataire que son versement
+    // était « suspendu » (relecture du 30/09/2026). La cause réglée (compte de
+    // paiement corrigé, par exemple), on le remet simplement en attente : le
+    // traitement des versements le reprend au passage suivant.
+    if (action === "relancer_versement") {
+      const { mission_id } = body;
+      if (!mission_id || !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const patch = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&payout_status=eq.failed&status=eq.completed`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ payout_status: "pending" }) }
+      );
+      const rows = await patch.json().catch(() => []);
+      if (!patch.ok || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(409).json({ error: "Ce versement n'est pas « échoué » (ou la prestation n'est plus clôturée) : rien à relancer." });
+      }
+      await journaliser("relancer_versement", { target_id: mission_id });
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "lever_retenue") {
       const { mission_id } = body;
       if (!mission_id || !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
