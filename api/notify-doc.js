@@ -69,6 +69,24 @@ async function enregistrerDocument(callerId, docType, SUPABASE_URL, hdrs) {
     console.error(`[notify-doc] document ${chemin} NON enregistré : ${r.status} ${JSON.stringify(lignes || {}).slice(0, 300)}`);
     return { ok: false, code: 500, error: "Le document est arrivé mais n'a pas pu être enregistré. Réessayez." };
   }
+  // Une pièce purgée (CGPS 14.4) puis redéposée gardait `purged_at` : la purge
+  // ne regarde que les lignes où il est vide, et la NOUVELLE pièce d'identité
+  // serait restée en ligne indéfiniment (constaté en recette le 30/09/2026).
+  // Écriture à part, filtrée : sans la colonne (migration
+  // 2026-08-14_conservation_documents non appliquée), seule elle échoue — pas
+  // l'enregistrement du document.
+  if (lignes[0].purged_at) {
+    try {
+      const rp = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${callerId}&type=eq.${docType}&purged_at=not.is.null`, {
+        method: "PATCH",
+        headers: { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ purged_at: null }),
+      });
+      if (!rp.ok) console.error(`[notify-doc] ${chemin} reste marquée « purgée » (${rp.status}) : la nouvelle pièce ne sera pas purgée.`);
+    } catch (e) {
+      console.error(`[notify-doc] ${chemin} reste marquée « purgée » :`, e.message);
+    }
+  }
   return { ok: true };
 }
 
