@@ -4470,7 +4470,13 @@ export default async function handler(req, res) {
             body: new URLSearchParams({
               payment_intent: mid.stripe_payment_intent,
               amount: String(montantDu),
-              reason: "fraudulent",
+              // PAS « fraudulent » : ce motif inscrit la carte ET l'e-mail du
+              // client sur la liste de blocage Radar du compte — le client qui
+              // signale la mauvaise personne ne pouvait plus jamais payer sur
+              // ALANE (constaté en recette le 30/09/2026 : pm_card_visa et
+              // l'e-mail du client de e2e/28 bloqués à la seconde du refus).
+              // Le fraudeur, ici, c'est la personne présentée, pas le payeur.
+              reason: "requested_by_customer",
             }).toString(),
           });
           const rData = await rRes.json().catch(() => ({}));
