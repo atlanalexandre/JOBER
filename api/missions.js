@@ -1684,7 +1684,15 @@ export default async function handler(req, res) {
       if (mission.client_id !== client_id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "Prestation non assignée" });
       if (!mission.stripe_payment_intent) return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette prestation — impossible de valider" });
-      if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de prestation" });
+      // Une prestation JAMAIS pointée, dont l'horaire est passé, peut être
+      // validée par le client seul : c'est sa réponse « oui, elle a eu lieu »
+      // à la question posée par la tâche planifiée (décision d'Alexandre du
+      // 30/09/2026). Sans cela, il ne pouvait qu'attendre la validation
+      // automatique. Une prestation démarrée, elle, attend toujours la
+      // confirmation du prestataire : c'est lui qui clôt les heures.
+      const finPrevueMs = finPrestationMs({ ...mission, started_at: null, actual_hours: null });
+      const jamaisPointeeEtPassee = !mission.started_at && finPrevueMs !== null && Date.now() >= finPrevueMs;
+      if (!mission.validation_prestataire && !jamaisPointeeEtPassee) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de prestation" });
 
       // Le calcul vit dans api/_cloture.js : il est partagé avec l'auto-validation
       // du cron, qui en tenait auparavant une version divergente.
@@ -3506,7 +3514,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3515,6 +3523,18 @@ export default async function handler(req, res) {
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (!["open", "assigned", "pending_acceptance", "needs_replacement"].includes(mission.status)) {
         return res.status(400).json({ error: "Cette prestation ne peut plus être annulée" });
+      }
+      // Le prestataire affirme être intervenu (fin confirmée) : le client ne
+      // peut plus annuler — donc se faire rembourser — de lui-même. Il le
+      // pouvait, frais compris, dès que le retard dépassait le seuil ci-dessous,
+      // alors même que le prestataire déclarait avoir travaillé. Parole contre
+      // parole : c'est l'équipe qui tranche (décision d'Alexandre, 30/09/2026),
+      // par un litige, qui gèle aussi le virement.
+      if (mission.status === "assigned" && mission.validation_prestataire === true) {
+        return res.status(409).json({
+          code: "presence_declaree",
+          error: "Le prestataire a confirmé être intervenu. Si ce n'est pas le cas, signalez-le : notre équipe examine la situation et vous répond sous 72 h.",
+        });
       }
 
       // Politique d'annulation : seuls les frais de service sont retenus si < 24h.

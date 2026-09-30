@@ -2307,12 +2307,37 @@ ${(() => {
                     user_id: m.prestataire_id,
                     type: "mission",
                     title: "Pointage manquant ⚠️",
-                    body: `L'horaire de votre prestation « ${mLabel2} » est dépassé et vous n'avez pas signalé votre arrivée. Ouvrez l'application pour la démarrer, sinon elle ne pourra pas être validée ni payée.`,
+                    body: `L'horaire de votre prestation « ${mLabel2} » est dépassé et vous n'avez pas signalé votre arrivée. Si vous êtes intervenu, confirmez la fin depuis l'application : votre client est interrogé, et s'il indique que personne n'est venu sans que vous l'ayez confirmée, il est remboursé.`,
                   }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
               }
               if (smsEnabled && m.prestataire_id) {
                 const tel = userMap[m.prestataire_id]?.meta?.telephone;
-                if (tel) await sendSms(BREVO_API_KEY, tel, smsTexte(`ALANE - Pointage manquant : votre prestation ${mLabel2} devait avoir commence. Signalez votre arrivee dans l'application, sans quoi elle ne pourra pas etre payee. alane.fr`));
+                if (tel) await sendSms(BREVO_API_KEY, tel, smsTexte(`ALANE - Pointage manquant : votre prestation ${mLabel2} devait avoir commence. Si vous etes intervenu, confirmez la fin dans l'application, sinon votre client pourra etre rembourse. alane.fr`));
+              }
+              // ── Le client est interrogé, UNE fois (décision d'Alexandre, 30/09/2026)
+              //
+              // Une prestation jamais pointée était validée d'office 24 h après
+              // sa fin, et le prestataire payé — y compris quand personne n'était
+              // venu, sans que le client le sache. Il répond désormais depuis
+              // l'application : « oui » valide ; « non » rembourse intégralement,
+              // ou ouvre un litige si le prestataire affirme être venu (c'est
+              // alors l'équipe qui tranche). Sans réponse sous 24 h, la
+              // prestation est validée, comme avant.
+              if (m.client_id) {
+                const titreQuestion = "La prestation a-t-elle eu lieu ?";
+                const dq = await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${m.client_id}`
+                  + `&ref_id=eq.${m.id}&title=eq.${encodeURIComponent(titreQuestion)}&select=id&limit=1`, { headers });
+                const deja = dq.ok ? await dq.json().catch(() => null) : null;
+                if (!Array.isArray(deja)) {
+                  console.error(`[sans-pointage] question au client illisible pour ${m.id} (${dq.status}) — non envoyée ce passage`);
+                } else if (deja.length === 0) {
+                  await notifier({
+                    user_id: m.client_id, type: "mission", ref_id: m.id,
+                    title: titreQuestion,
+                    body: `Votre prestataire n'a pas signalé son arrivée pour « ${mLabel2} ». Dites-nous si la prestation a bien eu lieu : `
+                        + "si personne n'est venu, vous êtes intégralement remboursé. Sans réponse de votre part sous 24 h, elle sera considérée comme réalisée.",
+                  }, SUPABASE_URL, headers).catch(e => console.error(`[sans-pointage] question au client non envoyée pour ${m.id} :`, e?.message));
+                }
               }
             } catch(e) { console.error(`sans-pointage mission ${m.id}:`, e); }
           }
