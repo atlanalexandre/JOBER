@@ -1908,6 +1908,9 @@ corps de la requête. Une seule fois (prise conditionnelle avant l'envoi, rendue
 échoue). Les prestataires inscrits avant le 29/09/2026 ont été marqués sans envoi. Texte et
 règle : [`api/_accuse_inscription.js`](api/_accuse_inscription.js). **Le texte est provisoire,
 jusqu'à la création de la société** (voir IMMATRICULATION.md). Éprouvé par `e2e/26`.
+Depuis le 30/09/2026, la fiche d'un prestataire en attente, dans « Comptes » du back-office, le
+dit : « 📧 Accusé d'inscription envoyé le … », « ⏳ pas encore envoyé — nouvel essai
+automatique », ou, pour un inscrit d'avant le 29/09, « pas d'accusé envoyé par ALANE ».
 
 **`profiles_privileges_guard`** (migration `2026-07-30_secu_verrou_champs_profil.sql`) protège
 les champs privilégiés du profil. La ligne `profiles` est créée **et** modifiée par le

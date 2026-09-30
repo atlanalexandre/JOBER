@@ -157,7 +157,7 @@ export default async function handler(req, res) {
       const lireProfils = async () => {
         const tous = [];
         for (let debut = 0; ; debut += 1000) {
-          const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv&order=created_at.desc,id.asc&limit=1000&offset=${debut}`, { headers });
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv,accuse_inscription_at&order=created_at.desc,id.asc&limit=1000&offset=${debut}`, { headers });
           const page = await r.json().catch(() => null);
           if (!r.ok || !Array.isArray(page)) throw new Error(`profils illisibles (${r.status}) à partir du ${debut + 1}e`);
           tous.push(...page);
