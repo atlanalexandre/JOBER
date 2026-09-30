@@ -10,7 +10,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, 
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
-import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement } from "../constants/editeur.js";
+import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
 import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
@@ -5466,7 +5466,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
 
   const prestaSteps = [
     { icon:"📝", title:"Inscrivez-vous", desc:"Créez votre profil auto-entrepreneur en quelques minutes. Renseignez vos métiers, vos documents et vos disponibilités.", color:C.accent },
-    { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de prestations.", color:C.accentGold },
+    { icon:"✅", title:"Faites valider votre compte", desc:VALIDATION_PRESTA.etape, color:C.accentGold },
     { icon:"📋", title:"Acceptez des prestations", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
     { icon:"💶", title:"Encaissez", desc:"48 heures après la fin de la prestation, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
   ];
