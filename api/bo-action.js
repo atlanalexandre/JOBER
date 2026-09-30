@@ -951,8 +951,52 @@ export default async function handler(req, res) {
           ),
         });
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null }) }).catch(e => console.error("[bo-action/suspend] échec ignoré :", e?.message));
-      return res.status(200).json({ success: true });
+      // ── Les prestations à venir du prestataire suspendu (30/09/2026) ─────
+      //
+      // Suspendu, il ne peut plus se connecter : ses prestations acceptées
+      // restaient pourtant à son nom, et le client attendait quelqu'un qui ne
+      // viendrait pas, sans en être prévenu. Décision d'Alexandre : chacune est
+      // annulée, le client intégralement remboursé et prévenu. Une prestation
+      // déjà démarrée reste en place — il est à l'œuvre — mais elle est
+      // signalée à l'administrateur.
+      const annulees = [], echecs = [], enCoursDemarrees = [];
+      const pr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${profileId}`
+        + `&status=in.(pending_acceptance,assigned,needs_replacement)`
+        + `&select=id,client_id,prestataire_id,status,started_at,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector,date`,
+        { headers }
+      );
+      const aVenir = await pr.json().catch(() => null);
+      if (!pr.ok || !Array.isArray(aVenir)) {
+        console.error(`[suspend] prestations de ${profileId} illisibles (${pr.status}) — rien n'a été annulé`);
+        echecs.push({ id: null, message: "Prestations illisibles : vérifiez-les à la main." });
+      } else {
+        for (const m of aVenir) {
+          if (m.started_at) { enCoursDemarrees.push(m.id); continue; }
+          if (/^pi_/.test(String(m.stripe_payment_intent || ""))) {
+            const rb = await rembourserDepuisLeBO(m, "bo-action/suspend");
+            if (!rb.ok) { echecs.push({ id: m.id, message: rb.message }); continue; }
+            if (m.client_id) await restituerCashback({ id: m.id, client_id: m.client_id }, SUPABASE_URL, headers, "suspension_prestataire");
+          }
+          if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&status=in.(pending_acceptance,assigned,needs_replacement)`,
+            { status: "cancelled", ...(versementAAnnuler(m) ? { payout_status: "annule" } : {}) }, headers, "bo-action/suspend")) {
+            echecs.push({ id: m.id, message: "Remboursée, mais non annulée : annulez-la à la main avant tout versement." });
+            continue;
+          }
+          annulees.push(m.id);
+          if (m.client_id) {
+            await notifier({
+              user_id: m.client_id, type: "mission", ref_id: m.id,
+              title: "Prestation annulée — remboursement intégral",
+              body: `Votre prestataire ne peut plus assurer la prestation « ${m.metier || m.sector || ""} »${m.date ? ` du ${m.date}` : ""}. `
+                  + "Elle est annulée et vous êtes intégralement remboursé, frais de service compris (5 à 10 jours ouvrés selon votre banque).",
+            }, SUPABASE_URL, headers).catch(e => console.error("[bo-action/suspend] client non prévenu :", e?.message));
+          }
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null, details:{ annulees, echecs, en_cours_demarrees: enCoursDemarrees } }) }).catch(e => console.error("[bo-action/suspend] échec ignoré :", e?.message));
+      return res.status(200).json({ success: true, annulees: annulees.length, echecs, enCoursDemarrees });
     }
 
     // ── Résiliation avec préavis (CGPS art. 16.2, règlement P2B art. 4) ──
