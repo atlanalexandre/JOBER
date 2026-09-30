@@ -1706,6 +1706,17 @@ chose à vérifier si le catalogue paraît vide.
 bouton du backoffice est désactivé avec la raison écrite au-dessus. La règle vit dans
 [`api/_mandats.js`](api/_mandats.js), testée.
 
+**Les pièces obligatoires aussi, validées** (30/09/2026, décision d'Alexandre).
+`enable_missions` contrôlait les mandats, le CV, le titre de séjour et la carte
+professionnelle, mais **ni la pièce d'identité, ni l'assurance RC Pro, ni le RIB, le KBIS,
+le justificatif de domicile ou la photo** : un clic trop rapide ouvrait l'accès à quelqu'un
+sans identité vérifiée ni assurance. `piecesAvantOuverture()` (`api/_documents.js`) les
+exige désormais présentes et `verified`. Trois exceptions voulues : l'URSSAF garde son délai
+de régularisation ; une pièce d'identité purgée après vérification (CGPS 14.4) reste valide,
+sa ligne étant conservée ; une pièce périmée ne bloque qu'au seuil où le balayage de nuit
+suspendrait (`suspendable`, pièces de `EXPIRATION_BLOQUANTE`). La liste du back-office
+renvoie `pieces_a_valider` : le bouton est désactivé, la liste écrite au-dessus.
+
 Le motif est contractuel : l'article 7.2 des CGPS annonce que le mandat d'encaissement est
 recueilli « préalablement à tout encaissement », et sans mandat de facturation `api/invoice.js`
 n'émet qu'une **attestation sans numéro**, pas une facture opposable à la comptabilité du

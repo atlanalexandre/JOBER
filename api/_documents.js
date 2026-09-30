@@ -309,3 +309,41 @@ export function piecesManquantes(requis, typesDeposes) {
   const deposes = new Set(typesDeposes);
   return requis.filter(d => !deposes.has(d.id));
 }
+
+/**
+ * Les pièces obligatoires qui empêchent d'ouvrir l'accès aux prestations.
+ *
+ * Le bouton « Activer l'accès aux prestations » vérifiait les mandats, le CV,
+ * le titre de séjour et la carte professionnelle — mais pas la pièce
+ * d'identité, l'assurance RC Pro, le RIB, le KBIS, le justificatif de domicile
+ * ni la photo. Un clic trop rapide ouvrait l'accès à quelqu'un sans identité
+ * vérifiée ni assurance, alors que le courriel de bienvenue promet le contraire
+ * (décision d'Alexandre du 30/09/2026 : toutes validées avant l'ouverture).
+ *
+ * Exceptions voulues :
+ *   - les pièces à régulariser (`DELAI_REGULARISATION`, l'URSSAF) gardent leur
+ *     délai, contrôlé à part ;
+ *   - une pièce d'identité PURGÉE après vérification (CGPS 14.4) reste
+ *     validée : sa ligne est conservée, `verified` compris ;
+ *   - une pièce périmée ne bloque qu'au même seuil que le balayage de nuit
+ *     (`suspendable`, pièces de `EXPIRATION_BLOQUANTE`) : ouvrir ce que la nuit
+ *     refermerait n'aurait pas de sens, refuser ce qu'elle laisse ouvert non plus.
+ *
+ * @param {Array} requis  `docsRequisPour(nationalite, metiers)`
+ * @param {Array} docs    lignes `documents` du prestataire : type, verified, expires_at
+ * @returns {Array<{type:string, label:string, raison:"absente"|"non vérifiée"|"expirée"}>}
+ */
+export function piecesAvantOuverture(requis, docs, maintenant = Date.now()) {
+  const parType = new Map((Array.isArray(docs) ? docs : []).map(d => [d.type, d]));
+  return (requis || [])
+    .filter(d => d.required && !DELAI_REGULARISATION[d.id])
+    .map(d => {
+      const doc = parType.get(d.id);
+      const raison = !doc ? "absente"
+        : doc.verified !== true ? "non vérifiée"
+        : EXPIRATION_BLOQUANTE.has(d.id) && etatExpiration(doc.expires_at, maintenant)?.etat === "suspendable" ? "expirée"
+        : null;
+      return raison ? { type: d.id, label: d.label, raison } : null;
+    })
+    .filter(Boolean);
+}

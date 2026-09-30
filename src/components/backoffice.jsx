@@ -487,7 +487,7 @@ function BOComptes() {
       // on ne paie pas un fraudeur — mais jamais quelque chose qu'on découvre
       // trois semaines plus tard dans les journaux.
       else if (j.versementsDus > 0) {
-        showToast(`Compte supprimé. ⚠️ ${j.versementsDus.toFixed(2).replace(".", ",")} € de versement n'ont pas été émis — vérifiez si la somme est due.`, "error");
+        showToast(`Compte supprimé. ⚠️ ${formatMontant(j.versementsDus)} de versements dus à ce prestataire ont été annulés — vérifiez que c'était voulu.`, "error");
       }
     } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setActioning(null);
@@ -1303,9 +1303,17 @@ function BOComptes() {
                       // avant de valider, mais ne bloque pas.
                       const cvManques = Array.isArray(p.cv_manques) ? p.cv_manques : [];
                       const sansExp   = Array.isArray(p.metiers_sans_experience) ? p.metiers_sans_experience : [];
-                      const bloque   = sansFact || sansEnc || cvManques.length > 0;
+                      // Pièces obligatoires non validées (30/09/2026) : le serveur refuse sans elles.
+                      const piecesAValider = Array.isArray(p.pieces_a_valider) ? p.pieces_a_valider : [];
+                      const bloque   = sansFact || sansEnc || cvManques.length > 0 || piecesAValider.length > 0;
                       return (
                         <>
+                          {piecesAValider.length > 0 && (
+                            <div style={{ background:"rgba(242,94,94,0.10)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"9px 12px", marginBottom:8, fontSize:11.5, color:C.text, lineHeight:1.6 }}>
+                              ⛔ Pièces à valider : {piecesAValider.join(", ")}.
+                              <br />L'accès ne peut pas être ouvert avant : validez-les dans l'onglet Documents, ou attendez leur dépôt.
+                            </div>
+                          )}
                           {cvManques.length > 0 && (
                             <div style={{ background:"rgba(242,94,94,0.10)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"9px 12px", marginBottom:8, fontSize:11.5, color:C.text, lineHeight:1.6 }}>
                               ⛔ CV incomplet : il manque {cvManques.join(", ")}.
@@ -1318,7 +1326,7 @@ function BOComptes() {
                               <br />Vérifiez son parcours avant d'ouvrir l'accès. Cet avertissement ne bloque pas : un débutant peut être sérieux.
                             </div>
                           )}
-                          {bloque && (
+                          {(sansFact || sansEnc) && (
                             <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"9px 12px", marginBottom:8, fontSize:11.5, color:C.text, lineHeight:1.6 }}>
                               ⚠️ Mandat{sansFact && sansEnc ? "s" : ""} manquant{sansFact && sansEnc ? "s" : ""} :{" "}
                               {[sansFact && "facturation", sansEnc && "encaissement"].filter(Boolean).join(" et ")}.
@@ -1326,7 +1334,7 @@ function BOComptes() {
                             </div>
                           )}
                           <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning || bloque}
-                            title={bloque ? (cvManques.length > 0 && !(sansFact || sansEnc) ? "CV incomplet" : "Mandats non acceptés par le prestataire") : ""}
+                            title={bloque ? (sansFact || sansEnc ? "Mandats non acceptés par le prestataire" : piecesAValider.length > 0 ? "Pièces à valider" : "CV incomplet") : ""}
                             style={{ padding:"9px 18px", borderRadius:10, border:"none", background:bloque?"rgba(255,255,255,0.08)":C.success, color:bloque?C.textMuted:"#fff", fontWeight:700, fontSize:13, cursor:bloque?"not-allowed":"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
                             {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux prestations"}
                           </button>
