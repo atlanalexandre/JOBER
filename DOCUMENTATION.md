@@ -523,10 +523,20 @@ qualification. Un justificatif de domicile de quatre mois ne met personne en dan
 relance, on n'exclut pas. Suspendre pour un motif disproportionné pousse à désactiver la règle
 entière, et c'est alors l'assurance qui n'est plus surveillée.
 
-**La suspension ne touche pas aux prestations déjà acceptées.** `missions_enabled` ferme
-l'accès aux **nouvelles** prestations ; celles qui sont en cours vont à leur terme. Annuler la
-prestation de demain parce qu'une attestation expire aujourd'hui punirait le client, qui n'y
-est pour rien.
+**La suspension pour pièce expirée ne touche pas aux prestations déjà acceptées.**
+`missions_enabled` ferme l'accès aux **nouvelles** prestations ; celles qui sont en cours vont à
+leur terme. Annuler la prestation de demain parce qu'une attestation expire aujourd'hui
+punirait le client, qui n'y est pour rien.
+
+**La suspension conservatoire du back-office, elle, les annule** (`suspend`, décision
+d'Alexandre du 30/09/2026). Ce n'est pas la même mesure : `status = 'suspended'` **empêche
+toute connexion**, le prestataire ne peut donc plus honorer ce qu'il a accepté. Ses
+prestations restaient pourtant à son nom, et le client attendait quelqu'un qui ne viendrait
+pas, sans en être prévenu. Chaque prestation `pending_acceptance`, `assigned` ou
+`needs_replacement` **non démarrée** est désormais remboursée (`rembourserDepuisLeBO`,
+frais compris, cashback rendu), annulée, et son client prévenu. Une prestation **déjà
+démarrée** reste en place — il est à l'œuvre — et elle est signalée à l'administrateur, avec
+les éventuels échecs de remboursement ; le tout est consigné dans `bo_logs.details`.
 
 **Les dates qui se déduisent sont calculées, les autres sont saisies.** Une attestation URSSAF
 vaut six mois à compter de son émission : la date se calcule. La période de garantie d'une
