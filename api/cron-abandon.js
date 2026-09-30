@@ -113,6 +113,11 @@ export default async function handler(req, res) {
       + `?status=eq.pending_acceptance`
       + `&prestataire_id=is.null`
       + `&stripe_payment_intent=is.null`
+      // Une semaine de série (seules à porter `parent_mission_id`) dans cet état
+      // n'est pas un tunnel abandonné : c'est un prélèvement à l'issue inconnue,
+      // laissé en attente pour vérification. L'annuler ici effaçait en silence
+      // la seule trace d'une carte peut-être débitée (relecture du 30/09/2026).
+      + `&parent_mission_id=is.null`
       + `&created_at=lt.${encodeURIComponent(purgeCutoff)}`,
       {
         method: "PATCH",
