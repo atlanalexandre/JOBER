@@ -14,6 +14,7 @@
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
 import { inscrire, tachePlanifiee, bo } from "./fabrique.js";
+import { connexionBO, ficheBO } from "./parcours.js";
 
 test.describe.configure({ timeout: 240_000 });
 
@@ -38,4 +39,18 @@ test("envoi impossible (recette) : rien n'est marqué, l'accusé reste à envoye
   const [{ n }] = await sql(`select count(*)::int as n from profiles p join auth.users u on u.id = p.id
     where p.role = 'prestataire' and p.accuse_inscription_at is null and u.created_at < '2026-09-29'`);
   expect(n, "aucun inscrit d'avant le 29/09 à prévenir").toBe(0);
+});
+
+// Le back-office le dit, sans ouvrir la base (30/09/2026).
+test("la fiche du back-office dit si l'accusé est parti", async ({ page }) => {
+  const attente = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765434", metier: "Serveur(se)", secteur: "hotellerie" } });
+  const parti = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765435", metier: "Serveur(se)", secteur: "hotellerie" } });
+  await sql(`update profiles set accuse_inscription_at = '2026-09-30T08:15:00Z' where id = '${parti.id}'`);
+
+  await connexionBO(page);
+  await ficheBO(page, attente.email, "⏳ En attente");
+  await expect(page.getByText(/Accusé d'inscription pas encore envoyé — nouvel essai automatique/)).toBeVisible();
+  await page.getByPlaceholder(/Rechercher par email/).fill(parti.email);
+  await expect(page.getByText(parti.email)).toBeVisible();
+  await expect(page.getByText("📧 Accusé d'inscription envoyé le 30/09 10:15")).toBeVisible();
 });
