@@ -22,6 +22,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { restituerCashback } from "./_cashback.js";
 import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
@@ -325,7 +326,10 @@ export default async function handler(req, res) {
           console.error("[approve] lecture de profiles.rib impossible :", e.message);
         }
         const iban2  = ribAppr ? String(ribAppr).replace(/\s/g, "").toUpperCase() : null;
-        const siret2 = meta2.kbis ? String(meta2.kbis).replace(/\s/g, "") : null;
+        // `siret` pour un prestataire, `kbis` pour un client professionnel (voir
+        // le contrôle du SIRET plus haut, et la suppression).
+        const siretBrut2 = meta2.siret || meta2.kbis;
+        const siret2 = siretBrut2 ? String(siretBrut2).replace(/\s/g, "") : null;
 
         // Vérification dans les deux sens :
         // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
@@ -697,32 +701,109 @@ export default async function handler(req, res) {
     if (action === "delete") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const reason = req.body.reason || "";
+      const ctx = "bo-action/delete";
 
       const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
-      const userData = await userRes.json();
+      const userData = await userRes.json().catch(() => ({}));
+      if (!userRes.ok) return res.status(userRes.status === 404 ? 404 : 502).json({ error: "Compte introuvable ou illisible : rien n'a été supprimé." });
       const userEmail = userData.email;
 
-      if (userEmail) {
-        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${esc(reason)}</p>` : "";
-        await sendEmail({
-          to: userEmail,
-          subject: "Votre compte ALANE a été supprimé",
-          html: emailHtml(`<p>Bonjour,</p><p>Nous vous informons que votre compte <strong>ALANE</strong> a été supprimé par notre équipe d'administration.</p>${reasonBlock}<p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support depuis l'application.</p>`),
-        });
+      // ── 1. Les prestations pas encore terminées ─────────────────────────
+      //
+      // Elles étaient remboursées « au mieux » puis EFFACÉES, remboursement
+      // réussi ou non : un échec laissait l'argent chez ALANE, sans prestation
+      // ni trace. Les prestations « ouvertes » et « à remplacer », déjà payées,
+      // n'étaient même pas remboursées. Désormais chacune est remboursée puis
+      // annulée — et le premier échec arrête tout, AVANT que rien soit effacé.
+      const enCoursRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})`
+        + `&status=in.(${STATUTS_EN_COURS.filter(st => st !== "disputed").join(",")})`
+        + `&select=id,client_id,prestataire_id,status,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector`,
+        { headers }
+      );
+      const enCours = await enCoursRes.json().catch(() => null);
+      if (!enCoursRes.ok || !Array.isArray(enCours)) {
+        return res.status(502).json({ error: "Prestations du compte illisibles : rien n'a été supprimé. Réessayez." });
+      }
+      // Une prestation en litige se tranche d'abord : la supprimer effacerait
+      // une des deux parties du dossier.
+      const litigesRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})&status=eq.disputed&select=id&limit=1`,
+        { headers }
+      );
+      const litiges = await litigesRes.json().catch(() => null);
+      if (!litigesRes.ok || !Array.isArray(litiges)) return res.status(502).json({ error: "Litiges du compte illisibles : rien n'a été supprimé." });
+      if (litiges.length) return res.status(409).json({ error: "Ce compte a une prestation en litige : tranchez-la avant de supprimer le compte." });
+
+      const paiementCarte = (m) => /^pi_/.test(String(m.stripe_payment_intent || ""));
+      for (const pm of enCours) {
+        if (paiementCarte(pm)) {
+          const rb = await rembourserDepuisLeBO(pm, ctx);
+          if (!rb.ok) {
+            return res.status(rb.code).json({ error: `Prestation ${pm.id.slice(0, 8)} : ${rb.message} Le compte n'a pas été supprimé.` });
+          }
+          // Le client d'un prestataire supprimé perd sa prestation avant
+          // qu'elle ait lieu : son cashback lui revient (règle d'Alexandre du
+          // 29/09/2026). Rien à rendre au compte supprimé lui-même.
+          if (pm.client_id && pm.client_id !== profileId) {
+            await restituerCashback({ id: pm.id, client_id: pm.client_id }, SUPABASE_URL, headers, "suppression_compte");
+          }
+        }
+        if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${pm.id}`,
+          { status: "cancelled", ...(versementAAnnuler(pm) || pm.payout_status === "held" ? { payout_status: "annule" } : {}) }, headers, ctx)) {
+          return res.status(500).json({ error: `Prestation ${pm.id.slice(0, 8)} ${paiementCarte(pm) ? "remboursée mais " : ""}non annulée : `
+            + "le compte n'a pas été supprimé. Réessayez." });
+        }
+        const autre = pm.client_id === profileId ? pm.prestataire_id : pm.client_id;
+        if (autre) {
+          await notifier({
+            user_id: autre, type: "system",
+            title: paiementCarte(pm) && autre === pm.client_id ? "Prestation annulée — remboursement en cours" : "Prestation annulée",
+            body: autre === pm.client_id
+              ? `La prestation "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire.`
+                + (paiementCarte(pm) ? " Vous êtes intégralement remboursé (5 à 10 jours ouvrés selon votre banque)." : "")
+              : `La prestation "${pm.metier || pm.sector || ""}" a été annulée : le compte du client a été fermé.`,
+          }, SUPABASE_URL, headers).catch(e => console.error(`[${ctx}] notification non envoyée :`, e?.message));
+        }
       }
 
-      // Log suppression BO
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
-      }).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
+      // ── 2. Les versements encore dus au prestataire supprimé ─────────────
+      //
+      // Supprimer un fraudeur sans le payer est l'usage attendu de cette
+      // action : les versements sont annulés, et leur montant est annoncé à
+      // l'administrateur au lieu d'être passé sous silence. Un virement en
+      // cours d'émission se laisse d'abord aboutir.
+      const vRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${profileId}&payout_status=in.(${VERSEMENTS_DUS.join(",")})&select=id,payout_amount,payout_status`,
+        { headers }
+      );
+      const vRows = await vRes.json().catch(() => null);
+      if (!vRes.ok || !Array.isArray(vRows)) return res.status(502).json({ error: "Versements du compte illisibles : rien n'a été supprimé." });
+      if (vRows.some(m => m.payout_status === "processing")) {
+        return res.status(409).json({ error: "Un virement à ce prestataire est en cours d'émission. Réessayez dans quelques minutes." });
+      }
+      const versementsDus = vRows.reduce((t, m) => t + Number(m.payout_amount || 0), 0);
+      if (vRows.length) {
+        if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${profileId}&payout_status=in.(pending,held,failed)`,
+          { payout_status: "annule" }, headers, ctx)) {
+          return res.status(500).json({ error: "Les versements dus n'ont pas pu être annulés : le compte n'a pas été supprimé." });
+        }
+        console.warn(`[${ctx}] ${vRows.length} versement(s) annulé(s) pour ${profileId}, ${versementsDus.toFixed(2)} € — `
+          + `prestations : ${vRows.map(m => m.id).join(", ")}`);
+      }
 
-      // Anti-abus : sauvegarder les identifiants dans la blacklist pour bloquer la recréation de compte
-      // Récupérer téléphone, IBAN, SIRET depuis user_metadata + consommation de missions depuis profiles
+      // ── 3. L'abonnement : sans résiliation, Stripe continuerait de prélever ─
+      if (!await resilierAbonnement(profileId, SUPABASE_URL, headers, ctx)) {
+        return res.status(502).json({ error: "L'abonnement Stripe n'a pas pu être résilié : le compte n'a pas été supprimé. Réessayez." });
+      }
+
+      // ── 4. Empreinte anti-recréation ─────────────────────────────────────
+      // Le SIRET d'un prestataire est dans `siret` ; `kbis` n'est renseigné que
+      // pour les clients professionnels. Seul `kbis` était lu : un prestataire
+      // supprimé se réinscrivait avec le même SIRET sans être reconnu.
       const meta = userData.user_metadata || {};
       const telephone = meta.telephone || null;
-      const siret     = meta.kbis || null;
+      const siret     = meta.siret || meta.kbis || null;
       const savedProfileRes = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib&limit=1`,
         { headers }
@@ -734,7 +815,7 @@ export default async function handler(req, res) {
       const ribSuppr  = savedProfile.rib || meta.rib;
       const iban      = ribSuppr ? String(ribSuppr).replace(/\s/g, "").toUpperCase() : null;
       if (userEmail || telephone || iban || siret) {
-        await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
+        const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
@@ -746,153 +827,52 @@ export default async function handler(req, res) {
             missions_completed_month: savedProfile.missions_completed_month || 0,
             plan_abonnement:          savedProfile.plan_abonnement || "free",
           }),
-        }).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
+        }).catch(e => ({ ok: false, status: e?.message }));
+        if (!bl.ok) console.error(`[${ctx}] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${profileId}`);
       }
 
-      // Versements encore dus au compte supprimé.
+      // ── 5. Effacement ────────────────────────────────────────────────────
       //
-      // Depuis que le virement est différé de 48 h après la fin (CGPS art. 17.1),
-      // une prestation validée n'est plus payée dans la foulée. Supprimer un
-      // prestataire fait donc disparaître son profil — donc son compte Stripe —
-      // et la somme reste bloquée sans que personne ne s'en aperçoive.
-      //
-      // On ne bloque pas : supprimer un fraudeur sans le payer est précisément
-      // l'usage attendu de cette action. Mais on le dit, plutôt que de le taire.
-      let versementsDus = 0;
-      try {
-        const vRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${profileId}`
-          + `&payout_status=in.(pending,processing)&status=eq.completed`
-          + `&select=id,payout_amount`,
-          { headers }
-        );
-        const vRows = vRes.ok ? await vRes.json().catch(() => []) : [];
-        if (Array.isArray(vRows) && vRows.length) {
-          versementsDus = vRows.reduce((t, m) => t + Number(m.payout_amount || 0), 0);
-          console.warn(`[delete] ${vRows.length} versement(s) non émis pour ${profileId}, `
-            + `${versementsDus.toFixed(2)} € au total — supprimés avec le compte. `
-            + `Prestations : ${vRows.map(m => m.id).join(", ")}`);
-        }
-      } catch (e) {
-        console.error("[delete] contrôle des versements dus impossible :", e.message);
-      }
-
-      // Stripe: rembourser les missions payées assignées + annuler l'abonnement actif
-      const STRIPE_SK_DEL = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-      if (STRIPE_SK_DEL) {
-        try {
-          const paidMissionsRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})&stripe_payment_intent=not.is.null&status=in.(assigned,pending_acceptance)&select=id,client_id,prestataire_id,stripe_payment_intent,montant_total,metier,sector`,
-            { headers }
-          );
-          const paidMissions = paidMissionsRes.ok ? await paidMissionsRes.json().catch(() => []) : [];
-          for (const pm of (Array.isArray(paidMissions) ? paidMissions : [])) {
-            try {
-              const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${STRIPE_SK_DEL}`,
-                  "Content-Type": "application/x-www-form-urlencoded",
-                  "Idempotency-Key": `refund-delete-${pm.id}`,
-                },
-                // PAS « fraudulent » : ce motif inscrit la carte et l'e-mail du
-                // PAYEUR sur la liste de blocage Radar. Quand le compte supprimé
-                // est un prestataire, le payeur est son client, qui n'y est pour
-                // rien et ne pourrait plus jamais payer sur ALANE (relecture du
-                // 30/09/2026). Bloquer un fraudeur reste possible, à la main,
-                // depuis le tableau de bord Stripe.
-                body: new URLSearchParams({ payment_intent: pm.stripe_payment_intent, reason: "requested_by_customer" }).toString(),
-              });
-              const rfData = await rfRes.json();
-              if (rfData?.id) {
-                console.log(`[delete] Stripe refund OK: ${rfData.id} for mission ${pm.id}`);
-                // Le client d'un prestataire supprimé perd sa prestation avant
-                // qu'elle ait lieu : son cashback lui revient (règle d'Alexandre
-                // du 29/09/2026 ; restituerCashback ne rend rien si elle avait
-                // démarré). Rien à rendre au compte supprimé lui-même.
-                if (pm.client_id && pm.client_id !== profileId) {
-                  await restituerCashback({ id: pm.id, client_id: pm.client_id }, SUPABASE_URL, headers, "suppression_compte");
-                }
-              } else {
-                console.error(`[delete] Stripe refund failed for mission ${pm.id}:`, JSON.stringify(rfData));
-              }
-            } catch (e) {
-              console.error(`[delete] Stripe refund exception for mission ${pm.id}:`, e.message);
-            }
-            // Notifier le client affecté (si ce n'est pas lui qui est supprimé)
-            const affectedClient = pm.client_id !== profileId ? pm.client_id : null;
-            if (affectedClient) {
-              await notifier({
-                  user_id: affectedClient,
-                  type: "system",
-                  title: "Prestation annulée — remboursement en cours",
-                  body: `La prestation "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
-                }, SUPABASE_URL, headers).catch(e => console.error("[bo-action/delete] échec ignoré :", e?.message));
-            }
-          }
-        } catch (e) {
-          console.error("[delete] Stripe refunds loop error:", e.message);
-        }
-
-        // Annuler l'abonnement Stripe actif
-        try {
-          const profSubRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=stripe_subscription_id`, { headers });
-          const profSubData = profSubRes.ok ? await profSubRes.json().catch(() => []) : [];
-          const stripeSubId = Array.isArray(profSubData) && profSubData[0]?.stripe_subscription_id || null;
-          if (stripeSubId) {
-            await fetch(`https://api.stripe.com/v1/subscriptions/${stripeSubId}`, {
-              method: "DELETE",
-              headers: { "Authorization": `Bearer ${STRIPE_SK_DEL}` },
-            });
-            console.log(`[delete] Stripe subscription cancelled: ${stripeSubId}`);
-          }
-        } catch (e) {
-          console.error("[delete] Stripe subscription cancel error:", e.message);
-        }
-      }
-
-      // Cascade: supprimer toutes les données liées avant de supprimer le compte
+      // Les prestations ne sont plus effacées : factures (dix ans, art.
+      // L.123-22 C. com.), virements, déclaration DAC7 et historique de l'autre
+      // partie en dépendent. Elles sont anonymisées, et la suppression du
+      // compte vide le lien vers la personne (migration
+      // 2026-09-30_comptes_supprimes_prestations_conservees).
       await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
-      // Supprimer les candidatures de ce prestataire
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
-      // Supprimer aussi toutes les candidatures sur les missions du client supprimé
-      const clientMissionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${profileId}&select=id`, { headers });
-      const clientMissions = clientMissionsRes.ok ? await clientMissionsRes.json().catch(() => []) : [];
-      if (Array.isArray(clientMissions) && clientMissions.length > 0) {
-        const missionIds = clientMissions.map(m => m.id).join(",");
-        await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=in.(${missionIds})`, {
-          method: "DELETE",
-          headers: { ...headers, "Prefer": "return=minimal" },
-        });
-      }
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${profileId},prestataire_id.eq.${profileId})`, {
-        method: "DELETE",
-        headers: { ...headers, "Prefer": "return=minimal" },
-      });
-      await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`, {
-        method: "DELETE",
-        headers: { ...headers, "Prefer": "return=minimal" },
-      });
+      await anonymiserPrestations(profileId, SUPABASE_URL, headers, ctx);
       await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?user_id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
+      // Les fichiers aussi : seules les fiches étaient effacées, et les pièces
+      // d'identité restaient dans le stockage.
+      await effacerPieces(profileId, SUPABASE_URL, headers, ctx);
 
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-        method: "DELETE",
-        headers: { ...headers, "Prefer": "return=minimal" },
-      });
-      const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!r.ok) return res.status(500).json({ error: "Erreur suppression compte auth" });
+      if (!await supprimerCompteAuth(profileId, SUPABASE_URL, headers, ctx)) {
+        return res.status(500).json({ error: "Les données du compte ont été effacées, mais le compte lui-même n'a pas pu être supprimé. "
+          + "Si ce prestataire a déjà travaillé, vérifiez que la migration 2026-09-30_comptes_supprimes_prestations_conservees est appliquée." });
+      }
+
+      await journaliser("delete", { target_id: profileId, target_email: userEmail || null,
+        details: { reason: reason || null, prestations_annulees: enCours.length, versements_annules: Math.round(versementsDus * 100) / 100 } });
+
+      // Le courriel part APRÈS la suppression : il l'annonçait avant, y compris
+      // quand elle échouait ensuite.
+      if (userEmail) {
+        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${esc(reason)}</p>` : "";
+        await sendEmail({
+          to: userEmail,
+          subject: "Votre compte ALANE a été supprimé",
+          html: emailHtml(`<p>Bonjour,</p><p>Nous vous informons que votre compte <strong>ALANE</strong> a été supprimé par notre équipe d'administration.</p>${reasonBlock}<p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support depuis l'application.</p>`),
+        });
+      }
       return res.status(200).json({ success: true, versementsDus: Math.round(versementsDus * 100) / 100 });
     }
 

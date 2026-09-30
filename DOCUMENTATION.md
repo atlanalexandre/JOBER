@@ -949,7 +949,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `subscription_prices` | `api/plans.js`, écrans d'abonnement |
 | `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()`, appliqué au plan lu dans **`profiles`** |
 | `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (8 prestations/mois aux 100 premiers prestataires) |
-| `frais_service` | tunnel de réservation, `api/stripe-intent.js`, et `api/_heures_supp.js` pour les prolongations. Sous-clés : `single` (4,90 €), `range` (2,90 €/jour), `urgent` (9,90 €), `pourcentage` (2 %), et **`minimum_prolongation`** (0,90 €) — plancher appliqué **aux seules prolongations**, qui ne rappellent pas la part fixe et ne laissaient donc que 2 %, en dessous de la commission fixe de Stripe sur les petits montants |
+| `frais_service` | tunnel de réservation, `api/stripe-intent.js`, et `api/_heures_supp.js` pour les prolongations. Sous-clés : `single` (4,90 €), `range` (2,90 €/jour, **à partir de deux jours** : une réservation « plusieurs jours » d'un seul jour paie `single` depuis le 30/09/2026), `urgent` (9,90 €), `pourcentage` (2 %), et **`minimum_prolongation`** (0,90 €) — plancher appliqué **aux seules prolongations**, qui ne rappellent pas la part fixe et ne laissaient donc que 2 %, en dessous de la commission fixe de Stripe sur les petits montants |
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
 | `seuils_dependance` | `api/bo-action.js` — action `signaux_dependance`. Absent = valeurs par défaut de `_dependance.js` (60 % du CA, 8 prestations minimum, 24 jours sur 8 semaines, fenêtre 180 j) |
 | `disabled_sectors` | `api/missions.js` — `get_sector_status` (affichage) et `assign_after_payment` (refus de réservation) |
@@ -1125,6 +1125,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
+| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1453,6 +1454,38 @@ Le contrôle à l'inscription (`support.js`, action `welcome`) était par ailleu
 lire l'IBAN** : il référençait `SUPABASE_URL`, déclaré plus bas dans la même fonction, ce qui
 levait « Cannot access before initialization » à chaque appel. Le `catch` l'avalait, la valeur
 retombait sur `user_metadata.rib` — vide depuis la migration RGPD qui a sorti l'IBAN du jeton.
+
+**Trois chemins, une seule façon de faire** (30/09/2026). La suppression par
+l'utilisateur, par le back-office et la résiliation à l'échéance d'un préavis
+(`cron-reset-monthly.js`) passent toutes par `api/_suppression.js` :
+
+| Étape | Ce qui était faux |
+|---|---|
+| Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
+| Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
+| `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
+| `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
+| `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche |
+| `supprimerCompteAuth()` | la réponse n'était pas lue : la base refusait la suppression d'un prestataire ayant déjà travaillé, et l'écran disait « supprimé » |
+
+Le back-office, en plus : les prestations non terminées sont **remboursées puis annulées**
+une à une (`rembourserDepuisLeBO`), et le premier échec arrête tout avant le moindre
+effacement — elles étaient remboursées « au mieux », puis effacées, remboursement réussi ou
+non. Un compte ayant une prestation en litige ne se supprime pas : on tranche d'abord. Les
+versements encore dus au prestataire supprimé passent à `annule` (supprimer un fraudeur
+sans le payer reste l'usage voulu), et leur total est rendu à l'écran. Le courriel
+« compte supprimé » part après la suppression, et non plus avant. Le SIRET d'un prestataire
+(`siret`, et non `kbis`) entre enfin dans l'empreinte anti-recréation, à la suppression
+comme au contrôle de l'approbation.
+
+**Les prestations survivent au compte.** Depuis la migration
+`2026-09-30_comptes_supprimes_prestations_conservees`, `missions.client_id`,
+`missions.prestataire_id`, `contracts.client_id` et `contracts.prestataire_id` passent à
+`NULL` quand le compte disparaît. Avant : supprimer un client **effaçait toutes ses
+prestations par cascade** — le prestataire qui attendait son virement n'était jamais payé —,
+et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACTION`). Une
+prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
+« Mes clients » du prestataire les ignore.
 
 **Formulaire de contact** — public, mais l'identité ne se déclare plus. `userId` était lu dans
 le corps de la requête et servait à relever la limite anti-spam de 3 à 20 messages par dix

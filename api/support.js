@@ -3,6 +3,7 @@ import { verifyUser } from "./_auth.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
@@ -318,12 +319,21 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
     try {
       // S-10: block deletion if user has active missions
+      //
+      // « À remplacer » et « en litige » manquaient : un client pouvait supprimer
+      // son compte en pleine contestation, et la prestation en attente d'un
+      // remplaçant perdait son client. Une lecture refusée ne vaut pas « rien en
+      // cours » : on ne supprime pas sans savoir.
       const activeMissionsRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${userId},prestataire_id.eq.${userId})&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+        `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${userId},prestataire_id.eq.${userId})&status=in.(${STATUTS_EN_COURS.join(",")})&select=id&limit=1`,
         { headers: hdrs }
       );
-      const activeMissions = await activeMissionsRes.json().catch(() => []);
-      if (Array.isArray(activeMissions) && activeMissions.length > 0) {
+      const activeMissions = await activeMissionsRes.json().catch(() => null);
+      if (!activeMissionsRes.ok || !Array.isArray(activeMissions)) {
+        console.error(`[delete_account] contrôle des prestations en cours impossible (${activeMissionsRes.status}) — suppression refusée pour ${userId}`);
+        return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+      if (activeMissions.length > 0) {
         return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une prestation en cours. Terminez ou annulez vos prestations actives avant de supprimer votre compte." });
       }
 
@@ -339,7 +349,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       // rien ne le vérifiait.
       const versementsRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${userId}`
-        + `&payout_status=in.(pending,processing)&status=eq.completed`
+        + `&payout_status=in.(${VERSEMENTS_DUS.join(",")})`
         + `&select=id,payout_due_at&order=payout_due_at&limit=1`,
         { headers: hdrs }
       );
@@ -360,6 +370,14 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         // rien : le silence coûterait de l'argent à quelqu'un.
         console.error(`[delete_account] contrôle des versements impossible (${versementsRes.status}) — suppression refusée pour ${userId}`);
         return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+
+      // L'abonnement d'abord : il n'était pas résilié, et Stripe continuait de
+      // prélever chaque mois un compte qui n'existait plus. S'il ne peut pas
+      // l'être, on s'arrête là — rien n'a encore été effacé.
+      if (!await resilierAbonnement(userId, SUPABASE_URL, hdrs, "delete_account")) {
+        return res.status(503).json({ error: "Votre abonnement n'a pas pu être résilié : votre compte n'a pas été supprimé. "
+          + "Réessayez dans quelques minutes, ou écrivez à support@alane.fr." });
       }
 
       // Empreinte anti-recréation, AVANT l'anonymisation qui rend les données
@@ -433,32 +451,20 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         console.error("[delete_account] vérification de l'archive impossible :", e.message);
       }
 
-      for (const filter of [`client_id=eq.${userId}`, `prestataire_id=eq.${userId}`]) {
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?${filter}`, {
-          method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
-          body: JSON.stringify({ description: null, adresse: null, ville: null }),
-        });
-      }
+      await anonymiserPrestations(userId, SUPABASE_URL, hdrs, "delete_account");
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${userId}`, { method: "DELETE", headers: hdrs });
       await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${userId}`, { method: "DELETE", headers: hdrs });
       await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?user_id=eq.${userId}`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ user_email: null, user_name: null, user_id: null }),
       });
-      const docsRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${userId}&select=storage_path`, { headers: hdrs });
-      const docs = await docsRes.json();
-      if (Array.isArray(docs) && docs.length > 0) {
-        const paths = docs.map(d => d.storage_path).filter(Boolean);
-        // Bucket = "Documents" (casse significative). L'ancienne valeur en minuscules
-        // échouait silencieusement : les pièces d'identité restaient en ligne après
-        // une demande de suppression de compte.
-        if (paths.length > 0) {
-          const delRes = await fetch(`${SUPABASE_URL}/storage/v1/object/Documents`, { method: "DELETE", headers: hdrs, body: JSON.stringify({ prefixes: paths }) }).catch(() => null);
-          if (!delRes || !delRes.ok) console.error("delete_account: suppression storage échouée", delRes?.status, paths.length, "fichier(s)");
-        }
-        await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${userId}`, { method: "DELETE", headers: hdrs });
+      await effacerPieces(userId, SUPABASE_URL, hdrs, "delete_account");
+      // La réponse de la base est lue : elle refusait la suppression de tout
+      // prestataire ayant déjà travaillé, et l'écran annonçait « supprimé ».
+      if (!await supprimerCompteAuth(userId, SUPABASE_URL, hdrs, "delete_account")) {
+        return res.status(500).json({ error: "Vos données ont été effacées, mais la fermeture du compte n'a pas abouti. "
+          + "Écrivez à support@alane.fr : nous la terminerons." });
       }
-      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { method: "DELETE", headers: hdrs });
       return res.status(200).json({ success: true });
     } catch (e) {
       console.error("delete_account error:", e.message);
