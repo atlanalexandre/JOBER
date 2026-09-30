@@ -225,6 +225,13 @@ async function rembourserPrestation(mission, supabaseUrl, serviceHeaders, motif)
       await restituerCashback(mission, supabaseUrl, serviceHeaders, motif);
       return { ok: true, mode: "stripe", detail: d.id };
     }
+    // Déjà remboursée (clé d'idempotence expirée après un premier remboursement
+    // réussi) : c'est fait, pas un échec — voir cron-reset-monthly.
+    if (d?.error?.code === "charge_already_refunded") {
+      console.log(`[remboursement/${motif}] déjà remboursée chez Stripe — prestation ${mission.id}`);
+      await restituerCashback(mission, supabaseUrl, serviceHeaders, motif);
+      return { ok: true, mode: "stripe", detail: "deja_rembourse" };
+    }
     console.error(`[remboursement/${motif}] Stripe a refusé — prestation ${mission.id} :`, JSON.stringify(d));
     return { ok: false, mode: "stripe", detail: d?.error?.message || "refus_stripe" };
   } catch (e) {

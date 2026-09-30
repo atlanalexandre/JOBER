@@ -32,7 +32,10 @@ test("envoi impossible (recette) : rien n'est marqué, l'accusé reste à envoye
   expect(d.accuse_inscription_at, "déjà validé : jamais pris").toBeNull();
 
   // Les inscrits d'avant la migration restent marqués : ils ne recevront rien.
-  const [{ n }] = await sql(`select count(*)::int as n from profiles where role = 'prestataire'
-    and accuse_inscription_at is null and created_at < '2026-09-29'`);
+  // Sur la date de création du COMPTE : e2e/11 antidate `profiles.created_at` de
+  // comptes créés le jour même pour simuler une échéance — ils ne sont pas
+  // « d'avant le 29/09 » (faux rouge du 30/09/2026).
+  const [{ n }] = await sql(`select count(*)::int as n from profiles p join auth.users u on u.id = p.id
+    where p.role = 'prestataire' and p.accuse_inscription_at is null and u.created_at < '2026-09-29'`);
   expect(n, "aucun inscrit d'avant le 29/09 à prévenir").toBe(0);
 });

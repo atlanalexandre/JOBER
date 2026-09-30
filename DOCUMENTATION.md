@@ -1876,7 +1876,7 @@ l'**accusé de réception** au prestataire qui vient de s'inscrire. Alexandre l'
 le courriel `welcome` partait du navigateur, et il n'y a plus de session à l'inscription depuis
 que la confirmation de l'adresse est active — il ne partait donc presque jamais, et promettait
 une validation « sous 24 h ». Même principe que ci-dessus : le traitement automatique (toutes les
-deux heures) l'envoie à chaque prestataire `pending` dont la colonne est vide, et `welcome`
+deux heures, **les plus récents d'abord**) l'envoie à chaque prestataire `pending` dont la colonne est vide, et `welcome`
 l'envoie tout de suite quand la session existe, à l'adresse **du compte**, jamais à celle du
 corps de la requête. Une seule fois (prise conditionnelle avant l'envoi, rendue si l'envoi
 échoue). Les prestataires inscrits avant le 29/09/2026 ont été marqués sans envoi. Texte et
@@ -2844,7 +2844,7 @@ vérifié juste à côté, fait autorité.
 | Clôture faute de prestataire | la prestation est **prise** (conditionnellement) **avant** le remboursement ; rouverte si celui-ci échoue | Reprise entre la lecture et le remboursement : prestataire payé, client déjà remboursé |
 | Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
 | Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
-| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire) |
+| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js` |
 
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
