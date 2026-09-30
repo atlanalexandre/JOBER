@@ -102,7 +102,9 @@ describe("la photo suit la prestation, pas le catalogue", () => {
   // simples initiales, au moment précis où il devait reconnaître quelqu'un.
   it("est servie par /api/missions au client de la prestation", () => {
     expect(missions).toContain("prestataire_photo:");
-    expect(missions).toContain("select=id,prenom,nom,avatar_url");
+    expect(missions).toContain("photosVerifiees(prestasActifs, SUPABASE_URL, headers)");
+    // Plus la photo de profil, que personne ne vérifie (30/09/2026).
+    expect(missions).not.toContain("select=id,prenom,nom,avatar_url");
   });
 
   it("est préférée à celle du catalogue côté écran", () => {
@@ -135,9 +137,10 @@ describe("la photo montrée au client est celle qu'ALANE a validée", () => {
   // document `photo` de DOCS_REQUIS, lui, est validé une pièce à la fois depuis
   // le back-office.
   it("sert le document photo validé, par URL signée", () => {
-    expect(missions).toContain("type=eq.photo&verified=eq.true");
-    expect(missions).toContain("/storage/v1/object/sign/Documents/");
-    expect(missions).toContain("photosVerifiees[m.prestataire_id]");
+    const photos = readFileSync(new URL("../../../api/_photos.js", import.meta.url), "utf8");
+    expect(photos).toContain("type=eq.photo&verified=eq.true");
+    expect(photos).toContain("/storage/v1/object/sign/Documents");
+    expect(missions).toContain("photosValidees.get(m.prestataire_id)");
   });
 
   // La pièce d'identité porte la date et le lieu de naissance, la nationalité
@@ -148,20 +151,16 @@ describe("la photo montrée au client est celle qu'ALANE a validée", () => {
     expect(bloc).not.toContain("titre_sejour");
   });
 
-  it("dit au client si la photo est vérifiée ou seulement déclarative", () => {
+  // Décision d'Alexandre du 30/09/2026 : plus de repli sur la photo de
+  // profil, ni de mention « déclarative » — la photo validée, ou les initiales.
+  it("ne montre que la photo validée, jamais la photo de profil", () => {
     expect(missions).toContain("prestataire_photo_verifiee");
     expect(client).toMatch(/Photo vérifiée par ALANE/);
-    expect(client).toMatch(/Photo déclarative, non vérifiée/);
-  });
-
-  // Une URL signée en échec ne doit pas faire disparaître la liste des
-  // prestations : l'écran se replie sur l'avatar, et le dit.
-  it("ne fait pas échouer la liste si la photo est illisible", () => {
-    const bloc = missions.slice(missions.indexOf("photosVerifiees"), missions.indexOf("const enriched"));
-    expect(bloc).toContain("console.error");
-    // Et le repli existe : la photo validée d'abord, l'avatar ensuite.
-    expect(missions).toContain(
-      "photosVerifiees[m.prestataire_id] || profileMap[m.prestataire_id]?.avatar_url");
+    expect(client).not.toMatch(/Photo déclarative, non vérifiée/);
+    expect(missions).not.toContain("?.avatar_url");
+    const catalogue = readFileSync(new URL("../../../api/prestataires.js", import.meta.url), "utf8");
+    expect(catalogue).not.toContain("avatar_url");
+    expect(catalogue).toContain("photosCatalogue.get(p.id)");
   });
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
-import { enregistrerDocument, signalerPhotoDeposee } from "../lib/documents.js";
+import { enregistrerDocument, maPhoto, deposerPhoto } from "../lib/documents.js";
 import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
@@ -1476,10 +1476,8 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
   const [photoUrl, setPhotoUrl]       = useState(null);
-  const [photoChanged, setPhotoChanged] = useState(false);
-  // Le compte avait-il déjà une photo à l'ouverture ? Une première photo peut
-  // compléter le dossier : le serveur est alors prié de vérifier (alerte BO).
-  const [avaitPhoto, setAvaitPhoto]   = useState(true);
+  // null : aucune photo déposée ; sinon « verifiee » ou « attente ».
+  const [photoStatut, setPhotoStatut] = useState(null);
   const [previewUrl, setPreviewUrl]   = useState(null);
   const [photoAuth, setPhotoAuth]     = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -1492,22 +1490,21 @@ export function PrestaProfileEditScreen({ onBack }) {
       const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
       const m = session?.user?.user_metadata || {};
       setMeta(m);
-      // La photo vit dans profiles.avatar_url : user_metadata est embarqué dans le JWT,
-      // et un data URI y faisait dépasser la limite d'en-tête HTTP (toute requête en 520).
-      // Repli sur m.photo_url pour les comptes pas encore migrés.
+      // La photo est le document `photo` du bucket — celle que les clients
+      // voient une fois validée —, et non plus profiles.avatar_url (30/09/2026).
       if (session?.user?.id) {
         // L'IBAN vit dans profiles.rib — c'est là que le back-office et les
         // virements le lisent. user_metadata n'est qu'un repli pour les comptes
         // qui l'y avaient enregistré avant le 24/09/2026.
         // Le CV aussi, depuis le 29/09/2026 (profiles.cv) ; user_metadata.cv
         // n'est qu'un repli pour les comptes pas encore réenregistrés.
-        supabase.from("profiles").select("avatar_url,rib,cv").eq("id", session.user.id).single()
+        maPhoto(session.user.id).then(ph => {
+          setPhotoUrl(ph.url);
+          setPhotoStatut(ph.deposee ? (ph.verifiee ? "verifiee" : "attente") : null);
+        });
+        supabase.from("profiles").select("rib,cv").eq("id", session.user.id).single()
           .then(({ data, error }) => {
             if (error) console.error("[profil] lecture du profil :", error.message);
-            setPhotoUrl(data?.avatar_url || m.photo_url || null);
-            // Profil illisible : on ne sait pas — on suppose une photo, pour ne
-            // pas signaler à tort un dossier complet.
-            if (!error) setAvaitPhoto(!!(data?.avatar_url || m.photo_url));
             if (data?.rib) setIban(data.rib);
             if (data?.cv) { setMeta(mm => ({ ...(mm || {}), cv: data.cv })); setCvVersion(v => v + 1); }
           });
@@ -1545,36 +1542,54 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { showToast("Photo trop lourde (max 10 Mo)"); return; }
+    // Mêmes contrôles que la carte de dépôt : type, poids, et au moins
+    // 400 × 400 px quand le navigateur sait lire l'image.
+    const refus = await validateDoc(file, "photo");
+    if (refus) { showToast(refus); return; }
     setPhotoUploading(true);
     try {
-      // Compression canvas → data URL JPEG 350px max, qualité 0.82
-      // Enregistrée dans profiles.avatar_url (jamais dans user_metadata : règle 1.1)
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
+      // Convertie en JPEG quand c'est possible : un HEIC d'iPhone ne s'affiche
+      // pas dans Chrome, et le client verrait une image cassée. 1000 px au plus.
+      // Si le navigateur ne sait pas décoder (pellicule iOS), on envoie le
+      // fichier d'origine plutôt que de bloquer — comme la carte de dépôt.
+      let envoi = file;
+      let apercu = null;
+      try {
+        apercu = await new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
           const img = new Image();
+          const minuteur = setTimeout(() => { URL.revokeObjectURL(url); reject(new Error("décodage trop long")); }, 3000);
           img.onload = () => {
-            const MAX = 350;
+            clearTimeout(minuteur);
+            const MAX = 1000;
             const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
             const canvas = document.createElement("canvas");
             canvas.width  = Math.round(img.width  * ratio);
             canvas.height = Math.round(img.height * ratio);
             canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL("image/jpeg", 0.82));
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL("image/jpeg", 0.85));
           };
-          img.onerror = reject;
-          img.src = ev.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      setPreviewUrl(dataUrl);
-      setPhotoUrl(dataUrl);
-      setPhotoChanged(true);
-      showToast("Photo prête — pensez à enregistrer");
+          img.onerror = () => { clearTimeout(minuteur); URL.revokeObjectURL(url); reject(new Error("image illisible par le navigateur")); };
+          img.src = url;
+        });
+        envoi = await (await fetch(apercu)).blob();
+      } catch (err) {
+        console.error("[profil] conversion JPEG impossible, envoi du fichier d'origine :", err?.message);
+      }
+      // Envoyée tout de suite, comme les autres pièces : elle repasse en
+      // attente de vérification, et le back-office la voit.
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) throw new Error("Session expirée — reconnectez-vous.");
+      await deposerPhoto(uid, envoi, { remplacement: photoStatut !== null });
+      if (apercu) { setPreviewUrl(apercu); setPhotoUrl(apercu); }
+      else maPhoto(uid).then(ph => setPhotoUrl(ph.url));
+      setPhotoStatut("attente");
+      showToast("Photo envoyée — visible des clients après vérification par ALANE");
     } catch (err) {
-      showToast("Erreur traitement photo : " + (err?.message || "inconnue"));
+      console.error("[profil] photo non envoyée :", err?.message);
+      showToast(err?.message || "La photo n'a pas pu être envoyée.");
     }
     setPhotoUploading(false);
   };
@@ -1642,16 +1657,6 @@ export function PrestaProfileEditScreen({ onBack }) {
         throw new Error(error.message);
       }
 
-      if (photoChanged) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const uid = session?.user?.id;
-        if (uid) {
-          const { error: photoErr } = await supabase.from("profiles").update({ avatar_url: photoUrl }).eq("id", uid);
-          if (photoErr) throw new Error("Profil enregistré, mais la photo n'a pas pu être sauvegardée.");
-          if (!avaitPhoto) { setAvaitPhoto(true); await signalerPhotoDeposee(); }
-        }
-      }
-
       setSaving(false);
       setSaved(true);
       setTimeout(() => { setSaved(false); onBack(); }, 1200);
@@ -1709,7 +1714,7 @@ export function PrestaProfileEditScreen({ onBack }) {
           <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:`${color}22`, border:`2px solid ${color}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0 }}>
               {(previewUrl || photoUrl)
-                ? <img src={previewUrl || photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} onError={() => { setPreviewUrl(null); setPhotoUrl(null); showToast("Impossible d'afficher la photo — vérifiez les accès du bucket Supabase"); }} />
+                ? <img src={previewUrl || photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} onError={() => { setPreviewUrl(null); setPhotoUrl(null); console.error("[profil] photo non affichable"); }} />
                 : "📷"}
             </div>
             <div>
@@ -1717,9 +1722,9 @@ export function PrestaProfileEditScreen({ onBack }) {
                 {photoUploading ? "Envoi en cours…" : (previewUrl || photoUrl) ? "Changer la photo" : "Ajouter une photo"}
                 <input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload} disabled={photoUploading} />
               </label>
-              {photoUrl && !previewUrl && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo enregistrée</div>}
-              {previewUrl && photoUploading && <div style={{ color:color, fontSize:12, marginTop:6 }}>⏳ Envoi en cours…</div>}
-              {previewUrl && !photoUploading && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo prête — enregistrez</div>}
+              {!photoUploading && photoStatut === "verifiee" && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo vérifiée par ALANE</div>}
+              {!photoUploading && photoStatut === "attente" && <div style={{ color:C.accentGold, fontSize:12, marginTop:6, lineHeight:1.4 }}>⏳ En attente de vérification — les clients la verront une fois validée par ALANE</div>}
+              {!photoUploading && photoStatut === null && <div style={{ color:C.textSub, fontSize:12, marginTop:6, lineHeight:1.4 }}>Visage de face, bien éclairé : c'est la photo que vos clients verront, après vérification.</div>}
             </div>
           </div>
           <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
@@ -3949,10 +3954,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setRibCharge(true);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
-      // profiles.avatar_url d'abord (hors JWT), repli metadata pour les comptes non migrés
-      supabase.from("profiles").select("avatar_url,mandat_facturation_at,mandat_encaissement_at").eq("id", u.id).single()
+      // La photo déposée comme pièce — celle que les clients voient une fois
+      // validée —, plus profiles.avatar_url (30/09/2026).
+      maPhoto(u.id).then(ph => setDashPhotoUrl(ph.url));
+      supabase.from("profiles").select("mandat_facturation_at,mandat_encaissement_at").eq("id", u.id).single()
         .then(({ data }) => {
-          setDashPhotoUrl(data?.avatar_url || u.user_metadata?.photo_url || null);
           setMandatFacturation(data?.mandat_facturation_at || null);
           setMandatEncaissement(data?.mandat_encaissement_at || null);
         });
@@ -4067,9 +4073,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       // l'écran affichait « ✓ Validé » dès le dépôt, alors que le backoffice
       // affichait encore « En attente ».
       setVerifiedDocIds((Array.isArray(docsArr)?docsArr:[]).filter(d=>d.verified).map(d=>d.type));
-      // Photo stockée dans profiles.avatar_url — pas dans la table documents
-      const { data: profPhoto } = await supabase.from("profiles").select("avatar_url").eq("id", u.id).single();
-      if ((profPhoto?.avatar_url || u.user_metadata?.photo_url) && !uploaded.includes("photo")) uploaded.push("photo");
+      // La photo ne compte que déposée comme pièce : profiles.avatar_url, que
+      // personne ne vérifie, n'est plus montrée aux clients (30/09/2026).
 
       // Réessayer les inserts en attente (docs uploadés sur iOS dont le fetch DB a été annulé)
       try {

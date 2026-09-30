@@ -320,11 +320,26 @@ les rapprochait :
 | `profiles.avatar_url` | le prestataire la choisit et la change quand il veut, **après** validation de son dossier | personne |
 | document `photo` de `DOCS_REQUIS` | déposé dans le bucket privé `Documents`, validé pièce par pièce depuis le back-office | l'administration |
 
-C'est la seconde qui est servie au client, par **URL signée d'une heure**, et seulement pour
-les prestations **en cours** (`assigned`, `pending_acceptance`) — c'est là que la question se
-pose, et cela borne le nombre d'URL à générer. `prestataire_photo_verifiee` dit laquelle est
-affichée, et l'écran l'annonce : « ✓ Photo vérifiée par ALANE » ou « Photo déclarative, non
-vérifiée ». Une assurance sans fondement est pire que pas d'assurance.
+**Depuis le 30/09/2026, seule la seconde est montrée aux clients, partout** (décision
+d'Alexandre : « je garde que la photo qui est vérifiée »). Elle est servie par **URL signée
+d'une heure** par `photosVerifiees()` de `api/_photos.js`, qui lit les photos validées et les
+signe en un seul appel par lot de 100 :
+
+- dans le **catalogue** (`/api/prestataires`), pour ceux qui ont coché l'accord d'affichage ;
+- sur les **prestations en cours** (`list_client` de `/api/missions`, statuts `assigned`,
+  `pending_acceptance`), quel que soit cet accord.
+
+Plus aucun repli sur `avatar_url`, et donc plus de mention « Photo déclarative, non vérifiée » :
+le client voit « ✓ Photo vérifiée par ALANE », ou les initiales avec « Aucune photo disponible ».
+Un prestataire sans photo validée apparaît sans photo.
+
+**L'écran « Modifier mon profil » dépose la photo comme pièce** (`deposerPhoto()` de
+`src/lib/documents.js`) : fichier `{id}/photo` du bucket, converti en JPEG quand le navigateur
+sait le décoder (un HEIC ne s'affiche pas dans Chrome), puis `/api/notify-doc`. Une nouvelle
+photo **repasse en attente** et n'est montrée qu'après validation. L'écran l'annonce (« En
+attente de vérification »). `profiles.avatar_url` n'est plus écrit ni lu par l'application ;
+la colonne reste en base avec ses anciennes valeurs (aucune suppression sans accord).
+`piecesManquantes()` ne compte plus `avatar_url` comme la pièce photo.
 
 **La qualité de la photo se contrôle à deux endroits** (16/09/2026), et aucun des deux ne juge
 un visage.
@@ -1028,7 +1043,7 @@ C'est le point le plus déroutant du projet, et la source de plusieurs pannes.
 |---|---|---|
 | `auth.users.user_metadata` | Infos saisies à l'inscription : téléphone, adresse, secteur, métier, tarif, disponibilités, compétences | **Encodé dans le jeton, ~16 Ko max** |
 | `profiles.rib` | IBAN du prestataire | **Jamais dans `user_metadata`** — voir ci-dessous |
-| Table `profiles` | Rôle, statut, soldes, abonnement, photo, CV (`cv`, depuis le 29/09/2026) | CV : 12 Ko |
+| Table `profiles` | Rôle, statut, soldes, abonnement, CV (`cv`, depuis le 29/09/2026). `avatar_url` : ancienne photo de profil, plus lue ni écrite depuis le 30/09/2026 — la photo est la pièce `photo` du bucket | CV : 12 Ko |
 | Storage `Documents` | Les fichiers justificatifs | 10 Mo par fichier |
 
 Beaucoup d'informations métier sont dans `user_metadata` plutôt que dans une table. C'est un
@@ -1081,7 +1096,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `bo-action.js` | Toutes les actions du backoffice |
 | `prestataires.js` | Catalogue des prestataires |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
-| `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo posée depuis l'écran de profil (elle va dans `profiles.avatar_url`, sans dépôt) la déclenche aussi depuis le 30/09/2026 : l'écran appelle `notify-doc` avec `verifierDossier: true` à l'enregistrement d'une **première** photo, et le serveur n'alerte que si la photo était la seule pièce manquante (aucune ligne `photo` dans `documents`, toutes les autres déposées, `avatar_url` renseigné). Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
+| `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
