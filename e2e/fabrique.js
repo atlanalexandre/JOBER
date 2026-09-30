@@ -61,7 +61,21 @@ async function pkStripe() {
  *      fait stripe.js dans le navigateur ;
  *   3. /api/missions « assign_after_payment », comme App.jsx après un succès.
  */
-export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240, chezUnTiers = false, diffusionId = null, utiliserCashback = false }) {
+// Cartes de test Stripe, utilisées à tour de rôle. Le 30/09/2026, Stripe s'est
+// mis à refuser `pm_card_visa` (« card_declined », motif `blocklist`) : un
+// remboursement au motif « fraudulent » — celui du refus d'identité — l'avait
+// inscrite, avec l'e-mail du client, sur la liste de blocage Radar du compte.
+// Une seule carte pour toute la recette, et tous les scénarios de paiement
+// tombaient avec elle. `pm_card_visa` reste hors de la rotation tant qu'elle
+// figure sur cette liste (Stripe, mode test → Radar → Listes). Départ au
+// hasard, pour que deux exécutions ne sollicitent pas les cartes dans le même ordre.
+const CARTES_DE_TEST = ["pm_card_mastercard", "pm_card_visa_debit", "pm_card_mastercard_debit", "pm_card_amex"];
+let prochaineCarte = Math.floor(Math.random() * CARTES_DE_TEST.length);
+export function carteDeTest() {
+  return CARTES_DE_TEST[prochaineCarte++ % CARTES_DE_TEST.length];
+}
+
+export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = carteDeTest(), delaiMinutes = 240, chezUnTiers = false, diffusionId = null, utiliserCashback = false }) {
   const intent = await api("/api/stripe-intent",
     { amount: montant, currency: "eur", mission_id: missionId, utiliser_cashback: utiliserCashback, metadata: { prestataire: prestataireId } }, jetonClient);
   if (!intent.json?.clientSecret) return { etape: "creation du paiement", statut: intent.statut, detail: intent.texte.slice(0, 300) };
