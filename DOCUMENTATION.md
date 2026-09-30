@@ -266,6 +266,11 @@ n'est jamais refusé pour sa position, parce qu'un GPS en immeuble peut se tromp
 centaines de mètres. Le constat est montré au client (notification d'arrivée, carte « Est-ce
 bien la bonne personne ? ») et au back-office (liste des prestations). Éprouvé par `e2e/22`.
 
+**C'est un indice, pas une preuve** (30/09/2026). La position vient du navigateur du
+prestataire, qui peut la fausser. Le libellé dit donc « Position du téléphone : sur place »,
+et non plus « Position vérifiée » : présenter comme preuve ce qui n'en est pas une
+tromperait le client.
+
 | Colonne de `missions` | Contenu |
 |---|---|
 | `arrivee_localisation` | `sur_place` (≤ 300 m, imprécision du GPS déduite jusqu'à 500 m), `eloignee`, `position_absente`, `adresse_introuvable` ; NULL avant le 29/09/2026 |
@@ -1076,7 +1081,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `bo-action.js` | Toutes les actions du backoffice |
 | `prestataires.js` | Catalogue des prestataires |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
-| `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant/après le dépôt, sans colonne). Une photo posée depuis l'écran de profil, et non par un dépôt, ne déclenche pas cette alerte. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
+| `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo posée depuis l'écran de profil, et non par un dépôt, ne déclenche pas cette alerte. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |

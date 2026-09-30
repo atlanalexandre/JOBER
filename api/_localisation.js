@@ -80,8 +80,11 @@ export function constatArrivee(position, adresse) {
 /** La phrase qui accompagne le constat, pour le client et le back-office. */
 export function libelleConstat(constat, distanceM) {
   switch (constat) {
-    case "sur_place":           return "Position vérifiée : sur place.";
-    case "eloignee":            return `Position relevée à ${distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1).replace(".", ",")} km` : `${distanceM} m`} de l'adresse.`;
+    // « Déclarée par le téléphone », et non « vérifiée » : la position vient du
+    // navigateur du prestataire, qui peut la fausser. C'est un indice, pas une
+    // preuve — le dire autrement serait tromper le client (relecture du 30/09/2026).
+    case "sur_place":           return "Position du téléphone : sur place.";
+    case "eloignee":            return `Position du téléphone à ${distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1).replace(".", ",")} km` : `${distanceM} m`} de l'adresse.`;
     case "position_absente":    return "Position non transmise par le téléphone du prestataire.";
     case "adresse_introuvable": return "Position non vérifiable : adresse introuvable.";
     default:                    return "";

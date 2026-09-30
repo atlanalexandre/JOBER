@@ -291,6 +291,14 @@ describe("courriels de dépôt de pièce", () => {
   });
 });
 
+describe("alerte « dossier complet » — deux dépôts simultanés", () => {
+  it("relit les pièces après l'enregistrement au lieu de se fier à la lecture d'avant", () => {
+    const src = readFileSync(new URL("../../../api/notify-doc.js", import.meta.url), "utf8");
+    expect(src).toContain("const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);");
+    expect(src.indexOf("let apres = [...avantDepot, docType];")).toBeGreaterThan(src.indexOf("enregistrerDocument(caller.id"));
+  });
+});
+
 // Relecture du 30/09/2026 : tous les identifiants dans un seul `in.(…)`.
 describe("justificatifsDe() — par lots", async () => {
   const { vi } = await import("vitest");
