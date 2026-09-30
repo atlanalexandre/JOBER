@@ -309,3 +309,17 @@ export function piecesManquantes(requis, typesDeposes, avecAvatar) {
   if (avecAvatar) deposes.add("photo");
   return requis.filter(d => !deposes.has(d.id));
 }
+
+/**
+ * La photo de profil enregistrée depuis l'écran de profil (dans
+ * `profiles.avatar_url`, sans dépôt) complète-t-elle le dossier ? Vrai seulement
+ * si elle était LA seule pièce manquante : aucune ligne `photo` dans
+ * `documents`, toutes les autres déposées, `avatar_url` renseigné — et pour un
+ * prestataire validé mais pas encore activé. Ne se fie pas à l'écran (30/09/2026).
+ */
+export function photoCompleteLeDossier(profil, requis, typesDeposes) {
+  if (!profil || profil.role !== "prestataire" || profil.status !== "approved") return false;
+  if (profil.missions_enabled === true || !profil.avatar_url) return false;
+  const sansPhoto = piecesManquantes(requis, typesDeposes, false);
+  return sansPhoto.length === 1 && sansPhoto[0].id === "photo";
+}

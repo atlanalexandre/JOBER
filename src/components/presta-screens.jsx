@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
-import { enregistrerDocument } from "../lib/documents.js";
+import { enregistrerDocument, signalerPhotoDeposee } from "../lib/documents.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
@@ -1476,6 +1476,9 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [iban, setIban]           = useState("");
   const [photoUrl, setPhotoUrl]       = useState(null);
   const [photoChanged, setPhotoChanged] = useState(false);
+  // Le compte avait-il déjà une photo à l'ouverture ? Une première photo peut
+  // compléter le dossier : le serveur est alors prié de vérifier (alerte BO).
+  const [avaitPhoto, setAvaitPhoto]   = useState(true);
   const [previewUrl, setPreviewUrl]   = useState(null);
   const [photoAuth, setPhotoAuth]     = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -1501,6 +1504,9 @@ export function PrestaProfileEditScreen({ onBack }) {
           .then(({ data, error }) => {
             if (error) console.error("[profil] lecture du profil :", error.message);
             setPhotoUrl(data?.avatar_url || m.photo_url || null);
+            // Profil illisible : on ne sait pas — on suppose une photo, pour ne
+            // pas signaler à tort un dossier complet.
+            if (!error) setAvaitPhoto(!!(data?.avatar_url || m.photo_url));
             if (data?.rib) setIban(data.rib);
             if (data?.cv) { setMeta(mm => ({ ...(mm || {}), cv: data.cv })); setCvVersion(v => v + 1); }
           });
@@ -1542,7 +1548,7 @@ export function PrestaProfileEditScreen({ onBack }) {
     setPhotoUploading(true);
     try {
       // Compression canvas → data URL JPEG 350px max, qualité 0.82
-      // Stockée directement dans user_metadata — pas de Storage bucket requis
+      // Enregistrée dans profiles.avatar_url (jamais dans user_metadata : règle 1.1)
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
@@ -1641,6 +1647,7 @@ export function PrestaProfileEditScreen({ onBack }) {
         if (uid) {
           const { error: photoErr } = await supabase.from("profiles").update({ avatar_url: photoUrl }).eq("id", uid);
           if (photoErr) throw new Error("Profil enregistré, mais la photo n'a pas pu être sauvegardée.");
+          if (!avaitPhoto) { setAvaitPhoto(true); await signalerPhotoDeposee(); }
         }
       }
 

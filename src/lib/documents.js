@@ -27,3 +27,26 @@ export async function enregistrerDocument(type, { renouvellement = false } = {})
     throw new Error(j.error || `Le document n'a pas pu être enregistré (${r.status}). Réessayez.`);
   }
 }
+
+/**
+ * Après l'enregistrement d'une PREMIÈRE photo de profil (qui va dans
+ * `profiles.avatar_url`, sans passer par le bucket) : demande au serveur si
+ * c'était la dernière pièce du dossier, pour prévenir l'administration.
+ * Ne lève jamais : la photo est enregistrée, c'est ce qui compte pour le
+ * prestataire. Un échec est journalisé.
+ */
+export async function signalerPhotoDeposee() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const jeton = data?.session?.access_token;
+    if (!jeton) { console.error("[documents] photo : pas de session, dossier non vérifié."); return; }
+    const r = await fetch("/api/notify-doc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jeton}` },
+      body: JSON.stringify({ verifierDossier: true }),
+    });
+    if (!r.ok) console.error(`[documents] photo : vérification du dossier refusée (${r.status}).`);
+  } catch (e) {
+    console.error("[documents] photo : vérification du dossier impossible :", e.message);
+  }
+}
