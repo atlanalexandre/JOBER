@@ -106,6 +106,22 @@ export async function executerResolution({
   if (!RESOLUTIONS.includes(resolution)) {
     return { ok: false, detail: `résolution inconnue : ${resolution}` };
   }
+  // La prestation est RELUE ici, en entier. Les deux appelants (back-office et
+  // traitement planifié) la lisaient chacun avec leur propre liste de colonnes,
+  // sans les heures de prolongation ni le versement : la part du prestataire
+  // se calculait au seul tarif de base, et un litige ouvert AVANT la validation
+  // — sans montant ni échéance de versement — était « versé » sans montant ni
+  // date, donc jamais repris par le traitement des versements (relecture du
+  // 30/09/2026). Relecture impossible : on s'arrête, rien n'est exécuté.
+  try {
+    const rr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&select=*`, { headers });
+    const ligne = (await rr.json().catch(() => null))?.[0];
+    if (!rr.ok || !ligne) throw new Error(`lecture ${rr.status}`);
+    mission = { ...mission, ...ligne };
+  } catch (e) {
+    console.error(`[resolution] prestation ${mission.id} illisible :`, e.message);
+    return { ok: false, detail: "La prestation n'a pas pu être relue — rien n'a été exécuté. Réessayez." };
+  }
   const patch = (body) => fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
     method: "PATCH",
     headers: { ...headers, "Prefer": "return=minimal" },
@@ -116,7 +132,19 @@ export async function executerResolution({
     // Le versement repasse en attente : le traitement des versements le
     // reprendra. Sans cette remise à zéro, une prestation dont le virement
     // avait échoué avant le litige resterait `failed` et ne serait jamais payée.
-    const r = await patch({ status: "completed", payout_status: "pending", resolution_executee_cause: cause || null });
+    // Litige ouvert avant la validation : le montant et l'échéance du versement
+    // n'ont jamais été fixés. On les fixe ici — la part du prestataire, calculée
+    // comme à toute clôture, versée maintenant (le délai de réclamation est
+    // purgé par le litige lui-même).
+    const { partPrestataire } = montantsDeCloture(mission);
+    const complement = {};
+    if (mission.payout_amount == null) complement.payout_amount = partPrestataire;
+    if (!mission.payout_due_at) complement.payout_due_at = new Date().toISOString();
+    if (mission.payout_amount == null && !(partPrestataire > 0)) {
+      console.error(`[resolution] part du prestataire nulle ou incalculable sur ${mission.id} — versement à fixer à la main.`);
+      return { ok: false, detail: "La part du prestataire n'a pas pu être calculée : versement à fixer à la main." };
+    }
+    const r = await patch({ status: "completed", payout_status: "pending", ...complement, resolution_executee_cause: cause || null });
     if (!r.ok) {
       const detail = await r.text().catch(() => "");
       console.error(`[resolution] versement non enregistré (${r.status}) pour ${mission.id} : ${detail.slice(0, 200)}`);
