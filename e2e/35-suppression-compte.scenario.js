@@ -41,6 +41,19 @@ async function prestationTerminee(p, c, champs) {
   return id;
 }
 
+/**
+ * Un compte supprimé laisse son empreinte (téléphone, IBAN) dans la liste
+ * anti-recréation. Les comptes de recette partagent tous le même téléphone et le
+ * même IBAN : supprimer l'un d'eux faisait passer TOUS les suivants pour des
+ * comptes recréés, privés d'essai gratuit — et cassait les autres scénarios. Le
+ * compte à supprimer reçoit donc des coordonnées qui ne sont qu'à lui.
+ */
+async function coordonneesPropres(compte) {
+  const n = String(Date.now()).slice(-8);
+  await sql(`update auth.users set raw_user_meta_data = raw_user_meta_data || '{"telephone":"07${n}"}'::jsonb where id = '${compte.id}'`);
+  await sql(`update profiles set rib = 'FR76 9999 ${n} ${compte.id.slice(0, 8)}' where id = '${compte.id}'`);
+}
+
 const compteExiste = async (id) => (await sql(`select count(*)::int as n from auth.users where id = '${id}'`))[0].n === 1;
 
 test("un client supprime son compte : le virement dû au prestataire n'est pas effacé avec lui", async () => {
@@ -48,6 +61,7 @@ test("un client supprime son compte : le virement dû au prestataire n'est pas e
   const c = await client();
   const mission = await prestationTerminee(p, c, { payout_status: "pending" });
 
+  await coordonneesPropres(c);
   const r = await api("/api/support", { action: "delete_account" }, c.jeton);
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
   expect(await compteExiste(c.id), "le compte du client est bien supprimé").toBe(false);
@@ -63,6 +77,7 @@ test("un prestataire qui a déjà travaillé supprime son compte : il est réell
   const c = await client();
   const mission = await prestationTerminee(p, c, { payout_status: "transferred" });
 
+  await coordonneesPropres(p);
   const r = await api("/api/support", { action: "delete_account" }, p.jeton);
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
   expect(await compteExiste(p.id), "« compte supprimé » doit être vrai").toBe(false);
@@ -85,6 +100,7 @@ test("le back-office supprime un prestataire : son client est remboursé, la pre
   await sql(`update documents set storage_path = '${p.id}/cni' where prestataire_id = '${p.id}' and type = 'cni'`);
   expect(await fichiersDe(p.id), "le dossier du prestataire est bien dans le stockage").toBe(2);
 
+  await coordonneesPropres(p);
   const r = await bo("delete", { profileId: p.id, reason: "Scénario de recette" });
   expect(r.statut, r.texte.slice(0, 300)).toBe(200);
   expect(await compteExiste(p.id)).toBe(false);
