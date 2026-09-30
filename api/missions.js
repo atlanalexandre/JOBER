@@ -68,6 +68,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
+import { lireTout } from "./_lignes.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -434,12 +435,18 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
   const jourDemande = mission.date ? JOURS_SEMAINE[new Date(`${mission.date}T12:00:00`).getDay()] : null;
   const tarifMax = Number(mission.tarif_horaire) || 0;
 
-  const pr = await fetch(
-    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,missions_completed_month,trial_exhausted,plan_abonnement`,
-    { headers }
-  );
-  const profils = await pr.json().catch(() => []);
-  if (!Array.isArray(profils) || !profils.length) return [];
+  // Page par page : au-delà de mille prestataires, les suivants n'étaient
+  // jamais candidats (PostgREST plafonne à 1 000 lignes, api/_lignes.js).
+  let profils;
+  try {
+    profils = await lireTout(
+      `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,missions_completed_month,trial_exhausted,plan_abonnement`,
+      headers);
+  } catch (e) {
+    console.error("[candidats] prestataires illisibles :", e.message);
+    return [];
+  }
+  if (!profils.length) return [];
 
   const exclus = new Set(exclure.filter(Boolean));
   const eligibles = profils.filter(p => !exclus.has(p.id) && !p.trial_exhausted);

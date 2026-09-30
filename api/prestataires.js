@@ -2,6 +2,7 @@ import { lireReglagesSecteurs, etatDesSecteurs, secteursDuProfil } from "./_sect
 import { PLACES_OFFRE } from "./_offre.js";
 import { justificatifsDe, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
+import { lireTout } from "./_lignes.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -113,15 +114,18 @@ export default async function handler(req, res) {
     // un aller-retour complet vers Supabase, à CHAQUE chargement du catalogue,
     // pour rien. Le filtre qu'elle servait a été retiré volontairement (voir le
     // commentaire plus bas) ; la requête, elle, avait été oubliée.
-    const [profilesRes] = await Promise.all([
+    // Page par page : au-delà de mille prestataires, les plus récents étaient
+    // invisibles du catalogue (PostgREST plafonne à 1 000 lignes, api/_lignes.js).
+    const profiles = await lireTout(
+
       // `missions_enabled` est le second verrou du backoffice, posé après vérification
       // des documents (bouton « Activer l'accès aux prestations »). Il n'était lu que
       // par l'interface du prestataire : un compte non activé restait proposé aux
       // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
       // l'affectation le refuse également côté /api/missions.
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,plan_abonnement,cv`, { headers }),
-    ]);
-    const profiles = await profilesRes.json();
+      `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,plan_abonnement,cv`,
+      headers
+    );
 
     if (!Array.isArray(profiles) || profiles.length === 0) {
       return res.status(200).json({ prestataires: [] });

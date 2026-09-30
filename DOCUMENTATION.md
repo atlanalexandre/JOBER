@@ -1069,6 +1069,16 @@ qui décide de ce qui est lisible.
 d'environnement Vercel et n'est utilisée que dans `/api`. Si elle fuitait, toute la base
 serait exposée.
 
+### Jamais plus de 1 000 lignes par requête
+
+PostgREST rend **au plus 1 000 lignes**, quel que soit le `limit` demandé : `limit=5000` en rend
+1 000, sans erreur ni avertissement. Ce qui dépasse se comporte comme « absent ». Constaté en
+recette le 30/09/2026 avec 1 017 prestataires actifs : le traitement des documents suspendait des
+prestataires dont l'attestation URSSAF était vérifiée (1 076 attestations, 1 000 lues), et le
+catalogue n'en montrait que 995. Toute lecture qui doit être **complète** — un balayage, un
+catalogue, une recherche de candidats — passe par `lireTout()` de `api/_lignes.js`, qui lit page
+par page et lève si une page est refusée.
+
 ### La RLS, en pratique
 
 Chaque table a des règles décrivant qui peut lire et écrire quoi. Le principe général :
