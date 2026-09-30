@@ -135,6 +135,22 @@ describe("calculerFrais", () => {
     expect(calculerFrais("range", 560, 5, F)).toBe(25.70);
   });
 
+  it("fait payer à un « plusieurs jours » d'un seul jour les frais d'une prestation ponctuelle", () => {
+    // 4,90 € + 2 % de 112 €, comme une réservation « un jour »
+    expect(calculerFrais("range", 112, 1, F)).toBe(calculerFrais("single", 112, 1, F));
+    expect(calculerFrais("range", 112, 1, F)).toBe(7.14);
+    // dès deux jours, la part fixe redevient 2,90 € par jour
+    expect(calculerFrais("range", 224, 2, F)).toBe(10.28); // 5,80 + 4,48
+  });
+
+  it("admet encore l'ancien calcul d'un onglet non rechargé", () => {
+    // 2,90 € + 2 % de 112 € = 5,14 €, tel que le calculait la version précédente
+    const m = { tarif_horaire: 14, hours: 8, date_debut: "2026-10-05", date_fin: "2026-10-05" };
+    expect(verifierMontant(m, 112 + 5.14, F).ok).toBe(true);
+    expect(verifierMontant(m, 112 + 7.14, F).ok).toBe(true);
+    expect(verifierMontant(m, 112 + 3.00, F).ok).toBe(false);
+  });
+
   it("reste bénéficiaire sur les gros montants — c'est sa raison d'être", () => {
     // Sur 1 000 €, un forfait de 4,90 € ne couvrirait pas les ~15 € prélevés
     // par le prestataire de paiement. Avec 2 %, les frais suivent le montant.
