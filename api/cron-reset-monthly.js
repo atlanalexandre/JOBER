@@ -19,6 +19,7 @@ import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
+import { lireTout } from "./_lignes.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -989,17 +990,19 @@ export default async function handler(req, res) {
         const debut = `${anneeRecap}-01-01`;
         const fin   = `${anneeRecap + 1}-01-01`;
 
-        const prRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire`
-          + `&select=id,prenom,recapitulatif_annuel_at&limit=1000`,
-          { headers }
-        );
-        if (!prRes.ok) {
-          const detail = await prRes.text().catch(() => "");
-          console.error(`[recapitulatif] profils illisibles (${prRes.status}) : ${detail.slice(0, 200)}`
+        // Page par page (api/_lignes.js) : au-delà de mille prestataires, les
+        // suivants ne recevaient jamais leur récapitulatif annuel.
+        let tousProfils = null;
+        try {
+          tousProfils = await lireTout(
+            `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&select=id,prenom,recapitulatif_annuel_at`,
+            headers);
+        } catch (e) {
+          console.error(`[recapitulatif] profils illisibles : ${e.message}`
             + " — vérifier que la migration 2026-08-16_conformite_dac7.sql est appliquée.");
-        } else {
-          const profils = (await prRes.json().catch(() => []))
+        }
+        if (tousProfils) {
+          const profils = tousProfils
             .filter(p => !recapitulatifDejaEnvoye(p.recapitulatif_annuel_at, anneeRecap));
 
           for (const p of profils) {
@@ -1383,15 +1386,13 @@ export default async function handler(req, res) {
     const resumeEcheances = [];
 
     try {
-      const dRes = await fetch(
+      // Page par page (api/_lignes.js) : PostgREST plafonne à 1 000 lignes.
+      const docs = await lireTout(
         `${SUPABASE_URL}/rest/v1/documents?expires_at=not.is.null`
         + `&select=id,prestataire_id,type,expires_at,relance_expiration_at`
-        + `&order=expires_at.asc&limit=1000`,
-        { headers }
+        + `&order=expires_at.asc,id.asc`,
+        headers
       );
-      if (!dRes.ok) throw new Error(`lecture refusée (${dRes.status})`);
-      const docs = await dRes.json().catch(() => []);
-      if (!Array.isArray(docs)) throw new Error("réponse illisible");
 
       // Regroupés par prestataire : on ne suspend pas cinq fois quelqu'un dont
       // cinq pièces expirent, et on ne lui écrit pas cinq courriels.
@@ -1627,22 +1628,23 @@ export default async function handler(req, res) {
       let regularises = 0;
       try {
         const types = Object.keys(DELAI_REGULARISATION);
-        const pRes = await fetch(
+        // Page par page (api/_lignes.js). `limit=5000` ne rendait que 1 000
+        // pièces : au-delà, un prestataire dont l'attestation était VÉRIFIÉE
+        // passait pour ne pas l'avoir, et était suspendu (recette, 30/09/2026,
+        // 1 076 attestations URSSAF). Une lecture refusée lève : on ne suspend
+        // jamais sur une lecture incomplète.
+        const comptes = await lireTout(
           `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved`
-          + `&missions_enabled=is.true&select=id,created_at,siret&limit=2000`,
-          { headers }
+          + `&missions_enabled=is.true&select=id,created_at,siret`,
+          headers
         );
-        if (!pRes.ok) throw new Error(`lecture des comptes refusée (${pRes.status})`);
-        const comptes = await pRes.json().catch(() => []);
 
         // Une seule lecture des pièces concernées, pour tout le monde.
-        const dRes2 = await fetch(
+        const piecesRows = await lireTout(
           `${SUPABASE_URL}/rest/v1/documents?type=in.(${types.join(",")})`
-          + `&select=prestataire_id,type,verified&limit=5000`,
-          { headers }
+          + `&select=prestataire_id,type,verified`,
+          headers
         );
-        if (!dRes2.ok) throw new Error(`lecture des pièces refusée (${dRes2.status})`);
-        const piecesRows = await dRes2.json().catch(() => []);
         const parCompte = new Map();
         for (const d of (Array.isArray(piecesRows) ? piecesRows : [])) {
           parCompte.set(`${d.prestataire_id}|${d.type}`, d);
@@ -2328,13 +2330,12 @@ ${(() => {
     // date de fin, et écrit les deux. Voir api/_abonnement.js.
     let downgrades = 0;
     try {
-      const echusRes = await fetch(
+      // Page par page (api/_lignes.js) : `limit=5000` ne rendait que 1 000 lignes.
+      const candidats = await lireTout(
         `${SUPABASE_URL}/rest/v1/profiles?plan_abonnement=neq.free&subscription_end_date=not.is.null`
-        + `&select=id,plan_abonnement,subscription_end_date&limit=5000`,
-        { headers }
+        + `&select=id,plan_abonnement,subscription_end_date`,
+        headers
       );
-      if (!echusRes.ok) throw new Error(`lecture des abonnements refusée (${echusRes.status})`);
-      const candidats = await echusRes.json().catch(() => []);
       const echus = (Array.isArray(candidats) ? candidats : []).filter(p => abonnementEchu(p));
       for (const p of echus) {
         if (await retrograderEnGratuit(p.id, SUPABASE_URL, headers, "cron/abonnements")) downgrades++;
