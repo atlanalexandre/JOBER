@@ -813,7 +813,10 @@ ligne survit avec `purged_at` : elle est la preuve que la vérification a eu lie
 qu'ALANE doit pouvoir justifier (art. L8222-1 du Code du travail, CGPS art. 10B.8 et 10D.4).
 Supprimer la ligne effacerait la démarche en même temps que la pièce. Si la suppression du
 fichier échoue, `purged_at` n'est **pas** écrit — sinon la pièce serait réputée supprimée
-alors qu'elle est toujours là, et plus rien ne repasserait dessus.
+alors qu'elle est toujours là, et plus rien ne repasserait dessus. Pour la même raison, une
+pièce **redéposée** après une purge perd sa marque (`notify-doc`, 30/09/2026) : elle la
+gardait, et la nouvelle pièce d'identité n'aurait jamais été purgée. La preuve de l'ancienne
+vérification disparaît alors avec elle — c'est la nouvelle pièce qui sera vérifiée.
 
 **La résiliation d'un compte professionnel passe par un préavis de 30 jours** (CGPS art. 16.2,
 règlement P2B). `resiliation_prevue_at` porte la date d'effet, `resiliation_motif` ce qui a été
