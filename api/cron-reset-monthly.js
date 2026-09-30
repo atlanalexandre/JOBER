@@ -8,6 +8,7 @@ import { tirerAuHasard } from "./_lots.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
@@ -952,11 +953,15 @@ export default async function handler(req, res) {
             // plutôt que de laisser les deux sans interlocuteur.
             const enCours = await fetch(
               `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${p.id},prestataire_id.eq.${p.id})`
-              + `&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+              + `&status=in.(${STATUTS_EN_COURS.join(",")})&select=id&limit=1`,
               { headers }
             ).catch(() => null);
-            const rows = enCours?.ok ? await enCours.json().catch(() => []) : [];
-            if (Array.isArray(rows) && rows.length > 0) {
+            const rows = enCours?.ok ? await enCours.json().catch(() => null) : null;
+            if (!Array.isArray(rows)) {
+              console.error(`[resiliation] ${p.id} reportée : prestations illisibles (${enCours?.status})`);
+              continue;
+            }
+            if (rows.length > 0) {
               console.log(`[resiliation] ${p.id} reportée : prestation en cours`);
               continue;
             }
@@ -965,19 +970,33 @@ export default async function handler(req, res) {
             // disparaître avec l'argent.
             const du = await fetch(
               `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${p.id}`
-              + `&payout_status=in.(pending,processing,held)&status=eq.completed&select=id&limit=1`,
+              + `&payout_status=in.(${VERSEMENTS_DUS.join(",")})&select=id&limit=1`,
               { headers }
             ).catch(() => null);
-            const duRows = du?.ok ? await du.json().catch(() => []) : [];
-            if (Array.isArray(duRows) && duRows.length > 0) {
+            const duRows = du?.ok ? await du.json().catch(() => null) : null;
+            if (!Array.isArray(duRows)) {
+              console.error(`[resiliation] ${p.id} reportée : versements illisibles (${du?.status})`);
+              continue;
+            }
+            if (duRows.length > 0) {
               console.log(`[resiliation] ${p.id} reportée : versement encore dû`);
               continue;
             }
 
-            const sup = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { method: "DELETE", headers })
-              .catch(e => { console.error(`[resiliation] suppression impossible ${p.id} :`, e.message); return null; });
-            if (!sup || !sup.ok) {
-              console.error(`[resiliation] compte ${p.id} NON supprimé (${sup?.status}) — sera repris demain`);
+            // Mêmes étapes que les deux autres suppressions (api/_suppression.js).
+            // Seul le compte d'authentification était supprimé : l'abonnement
+            // Stripe continuait de prélever, et les pièces d'identité restaient
+            // dans le stockage.
+            if (!await resilierAbonnement(p.id, SUPABASE_URL, headers, "resiliation")) {
+              console.error(`[resiliation] ${p.id} reportée : abonnement non résilié — sera repris demain`);
+              continue;
+            }
+            await anonymiserPrestations(p.id, SUPABASE_URL, headers, "resiliation");
+            await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${p.id}`, { method: "DELETE", headers })
+              .catch(e => console.error(`[resiliation] candidatures de ${p.id} non effacées :`, e.message));
+            await effacerPieces(p.id, SUPABASE_URL, headers, "resiliation");
+            if (!await supprimerCompteAuth(p.id, SUPABASE_URL, headers, "resiliation")) {
+              console.error(`[resiliation] compte ${p.id} NON supprimé — sera repris demain`);
               continue;
             }
             resiliations++;

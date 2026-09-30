@@ -3674,6 +3674,9 @@ export function PrestaClientsTab() {
       if(!prestations){ setLoading(false); return; }
       const seen = new Map();
       for(const m of prestations){
+        // Client dont le compte a été supprimé : la prestation reste (factures,
+        // virements), mais plus personne à recontacter.
+        if(!m.client_id) continue;
         if(!seen.has(m.client_id)) seen.set(m.client_id, { clientId:m.client_id, lastDate:m.date, sector:m.sector, metier:m.metier, missionCount:0, total:0 });
         const c = seen.get(m.client_id);
         c.missionCount++;
