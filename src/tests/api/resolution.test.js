@@ -109,6 +109,9 @@ describe("exécution d'une résolution", () => {
   beforeEach(() => {
     appels = [];
     vi.stubGlobal("fetch", vi.fn(async (url, opts) => {
+      // La relecture de la prestation par executerResolution (30/09/2026) n'est
+      // pas comptée : les tests ci-dessous portent sur ce qui est ÉCRIT.
+      if (String(url).includes("select=*")) return { ok: true, json: async () => [{}] };
       appels.push({ url: String(url), opts });
       if (String(url).includes("api.stripe.com")) {
         return { ok: true, json: async () => ({ id: "re_test" }) };
@@ -133,7 +136,7 @@ describe("exécution d'une résolution", () => {
   // `failed` et ne serait jamais payée.
   it("verser_prestataire replace la prestation dans la file des versements", async () => {
     const out = await executerResolution({
-      mission: { id: "m1" }, resolution: "verser_prestataire", supabaseUrl: SB, headers,
+      mission: { id: "m1", payout_amount: 91, payout_due_at: "2026-10-01T00:00:00Z" }, resolution: "verser_prestataire", supabaseUrl: SB, headers,
       cause: "accord_tacite",
     });
     expect(out.ok).toBe(true);
@@ -213,11 +216,13 @@ describe("exécution d'une résolution", () => {
   });
 
   it("un refus de Stripe ne clôt pas la prestation", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url) => {
+    vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
       if (String(url).includes("api.stripe.com")) {
         return { ok: false, json: async () => ({ error: { message: "carte expirée" } }) };
       }
-      throw new Error("la base ne devait pas être touchée");
+      // Lire la prestation est permis ; rien ne doit être ÉCRIT.
+      if (!opts.method || opts.method === "GET") return { ok: true, json: async () => [{}] };
+      throw new Error("la base ne devait pas être modifiée");
     }));
     const out = await executerResolution({
       mission: { id: "m5", stripe_payment_intent: "pi_4" }, resolution: "rembourser_client",
@@ -225,5 +230,28 @@ describe("exécution d'une résolution", () => {
     });
     expect(out.ok).toBe(false);
     expect(out.detail).toContain("carte expirée");
+  });
+});
+
+// Litige ouvert AVANT la validation : ni montant ni échéance de versement. Le
+// « versement » repartait sans eux, et le traitement des versements — qui filtre
+// sur l'échéance — ne le reprenait jamais (relecture du 30/09/2026).
+describe("verser_prestataire sur un litige ouvert avant validation", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  it("fixe la part du prestataire et une échéance immédiate", async () => {
+    const ecrits = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+      if (String(url).includes("select=*")) {
+        return { ok: true, json: async () => [{ id: "m1", tarif_horaire: 13, hours: 8, montant_total: 110.98, payout_amount: null, payout_due_at: null }] };
+      }
+      if (opts.method === "PATCH") ecrits.push(JSON.parse(opts.body));
+      return { ok: true, json: async () => [{}], text: async () => "" };
+    }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await executerResolution({ mission: { id: "m1" }, resolution: "verser_prestataire", supabaseUrl: "https://b", headers: {} });
+    expect(out.ok).toBe(true);
+    expect(ecrits[0].payout_status).toBe("pending");
+    expect(ecrits[0].payout_amount).toBe(104);
+    expect(ecrits[0].payout_due_at).toBeTruthy();
   });
 });
