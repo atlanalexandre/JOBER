@@ -18,7 +18,7 @@
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { delaiReponseMinutes } from "./_paiement.js";
 import { notifier } from "./_push.js";
-import { euros } from "./_email.js";
+import { euros, sendEmail, esc } from "./_email.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 
 const PAS_JOURS = { weekly: 7, biweekly: 14 };
@@ -172,13 +172,26 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
       // carte l'était peut-être. La même requête, avec la même clé, est rejouée
       // une fois : Stripe renvoie alors le résultat du premier envoi.
       let cr;
+      let rejoue = false;
       envoye = true;
       try { cr = await creer(); }
       catch (e) {
         console.error(`[serie] ${nouvelleId} : réponse de Stripe perdue (${e.message}) — requête rejouée.`);
+        rejoue = true;
         cr = await creer();
       }
-      const cj = await cr.json();
+      let cj = await cr.json();
+      // Rejouée, la requête peut trouver la PREMIÈRE encore en cours chez Stripe :
+      // même clé, mêmes paramètres, réponse 409 « idempotency_error ». Ce n'est
+      // alors pas « une autre semaine déjà programmée » — c'est notre propre
+      // prélèvement, peut-être réussi. Le prendre pour un doublon supprimait la
+      // semaine d'un client débité (relecture du 30/09/2026). On attend, on
+      // redemande ; si c'est encore en cours, l'issue est inconnue.
+      if (rejoue && cj?.error?.type === "idempotency_error") {
+        await new Promise(r => setTimeout(r, 3000));
+        cj = await (await creer()).json();
+        if (cj?.error?.type === "idempotency_error") throw new Error("prélèvement encore en cours chez Stripe");
+      }
       if (cj?.status === "succeeded") pi = cj.id;
       else if (cj?.error?.type === "idempotency_error") {
         // Un autre appel programme déjà cette semaine : la ligne créée ici est
@@ -204,6 +217,25 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
     // vérifier dans Stripe (métadonnée mission = nouvelleId).
     console.error(`[serie] ⚠️ ${missionId} → ${nouvelleId} : issue du prélèvement INCONNUE (${refus}). `
       + "Vérifier dans Stripe avant toute action ; la semaine reste en attente.");
+    // Un journal que personne ne lit ne protège personne : l'équipe est prévenue
+    // par courriel. La ligne, elle, n'est plus annulée par cron-abandon (filtre
+    // `parent_mission_id=is.null`) : si la carte a été débitée, elle est la
+    // seule trace de ce que le client a payé.
+    const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+    if (admin) {
+      const parti = await sendEmail({
+        to: admin,
+        subject: `⚠️ Série hebdomadaire : prélèvement à vérifier dans Stripe`,
+        html: `<p>Le prélèvement de la semaine du ${esc(dateFr(date))} (${esc(euros(montant))}) n'a pas pu être confirmé : `
+          + `deux coupures réseau avec Stripe. On ignore si la carte du client a été débitée.</p>`
+          + `<p>Dans Stripe, cherchez un paiement portant la métadonnée <strong>mission = ${esc(nouvelleId)}</strong>. `
+          + `S'il existe, la semaine doit être affectée ; sinon, elle peut être annulée.</p>`
+          + `<p>Prestation d'origine : ${esc(missionId)}.</p>`,
+      });
+      if (parti !== true) console.error(`[serie] ${nouvelleId} : alerte « prélèvement incertain » NON envoyée.`);
+    } else {
+      console.error(`[serie] ${nouvelleId} : ADMIN_EMAIL absente — alerte « prélèvement incertain » non envoyée.`);
+    }
     return { mode: "echec", mission_id: nouvelleId };
   }
 

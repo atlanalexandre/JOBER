@@ -15,14 +15,21 @@ export async function justificatifsDe(ids, supabaseUrl, headers) {
   const carte = new Map();
   if (liste.length === 0) return carte;
   try {
-    const r = await fetch(`${supabaseUrl}/rest/v1/documents?type=eq.diplomes`
-      + `&prestataire_id=in.(${liste.join(",")})&select=prestataire_id,verified,titres_couverts`, { headers });
-    const lignes = await r.json().catch(() => null);
-    if (!r.ok || !Array.isArray(lignes)) {
-      console.error(`[habilitations] justificatifs illisibles (${r.status}) — métiers réglementés refusés.`);
-      return null;
+    // Par lots de 100 identifiants : tous dans un seul `in.(…)`, l'adresse
+    // dépassait la longueur admise au-delà de quelques centaines de
+    // prestataires, la lecture échouait — et, par prudence, TOUS les métiers
+    // réglementés disparaissaient pour tout le monde (relecture du 30/09/2026).
+    for (let i = 0; i < liste.length; i += 100) {
+      const lot = liste.slice(i, i + 100);
+      const r = await fetch(`${supabaseUrl}/rest/v1/documents?type=eq.diplomes`
+        + `&prestataire_id=in.(${lot.join(",")})&select=prestataire_id,verified,titres_couverts`, { headers });
+      const lignes = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(lignes)) {
+        console.error(`[habilitations] justificatifs illisibles (${r.status}) — métiers réglementés refusés.`);
+        return null;
+      }
+      for (const l of lignes) carte.set(l.prestataire_id, l);
     }
-    for (const l of lignes) carte.set(l.prestataire_id, l);
     return carte;
   } catch (e) {
     console.error("[habilitations] justificatifs illisibles :", e.message, "— métiers réglementés refusés.");

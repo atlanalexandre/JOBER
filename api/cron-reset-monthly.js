@@ -3,6 +3,8 @@ import { sendPushToUser, notifier } from "./_push.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
+import { tirerAuHasard } from "./_lots.js";
+
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
@@ -121,6 +123,16 @@ async function rembourserPrestation(mission, supabaseUrl, hdrs) {
       await restituerCashback(mission, supabaseUrl, hdrs, "cron/expiration");
       return true;
     }
+    // Déjà remboursée : ce n'est pas un échec, c'est fait. Cela arrive quand la
+    // clé d'idempotence a expiré (24 h) après un premier remboursement réussi
+    // dont l'écriture en base avait échoué. Le traiter en échec remettait la
+    // prestation dans la file à chaque passage, pour toujours (relecture du
+    // 30/09/2026) — le cashback, lui, se rend une seule fois quoi qu'il arrive.
+    if (d?.error?.code === "charge_already_refunded") {
+      console.log(`[cron/expiration] déjà remboursée chez Stripe — prestation ${mission.id}`);
+      await restituerCashback(mission, supabaseUrl, hdrs, "cron/expiration");
+      return true;
+    }
     console.error(`[cron/expiration] Stripe a refusé — ${mission.id} :`, JSON.stringify(d));
     return false;
   } catch (e) {
@@ -228,12 +240,15 @@ export default async function handler(req, res) {
     const nowIso = new Date().toISOString();
     try {
       const zRes = await fetch(
-        // 20 par passage, les plus anciennes d'abord : traitées une à une, elles
-        // doivent tenir dans la durée d'exécution. Le reste attend le passage suivant.
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total&order=acceptance_deadline.asc&limit=20`,
+        // 20 par passage : traitées une à une, elles doivent tenir dans la durée
+        // d'exécution. Tirées AU HASARD parmi les 200 plus anciennes, et non les
+        // 20 premières : un remboursement qui échoue à chaque fois revient en
+        // attente, et restait en tête de file — il bloquait tous les suivants,
+        // indéfiniment (relecture du 30/09/2026).
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total&order=acceptance_deadline.asc&limit=200`,
         { headers }
       );
-      const zombies = await zRes.json().catch(() => []);
+      const zombies = tirerAuHasard(await zRes.json().catch(() => []), 20);
       if (Array.isArray(zombies) && zombies.length) {
         // Un par un. Tous étaient remboursés en parallèle : quand beaucoup
         // expiraient ensemble, Stripe en refusait une partie (limite de débit) —
@@ -386,7 +401,9 @@ export default async function handler(req, res) {
         // Une par une : en parallèle, Stripe refuse une partie des remboursements
         // quand beaucoup de prestations tombent ensemble (voir l'expiration ci-dessus).
         // 20 par passage, pour la même raison que l'expiration ci-dessus.
-        for (const m of pastMissions.slice(0, 20)) await (async () => {
+        // Au hasard, pour la même raison : une clôture qui échoue à chaque fois
+        // ne doit pas bloquer les autres.
+        for (const m of tirerAuHasard(pastMissions, 20)) await (async () => {
           // Une prestation en « needs_replacement » a DÉJÀ été payée : c'est
           // précisément ce qui la distingue d'une prestation « open » réouverte
           // (voir missions.js, presta_cancel). Elle était pourtant clôturée sans le
@@ -1174,7 +1191,9 @@ export default async function handler(req, res) {
     try {
       const aPrevenir = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending`
-        + `&accuse_inscription_at=is.null&select=id&order=created_at.asc&limit=50`,
+        // Les plus récents d'abord : un compte dont l'envoi échoue à chaque fois
+        // (adresse refusée) ne doit pas priver les nouveaux inscrits de l'accusé.
+        + `&accuse_inscription_at=is.null&select=id&order=created_at.desc&limit=50`,
         { headers }
       );
       const lignes = await aPrevenir.json().catch(() => null);

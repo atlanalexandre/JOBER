@@ -415,7 +415,7 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
    autres métiers restent), `list_open`, `candidater`, `assign_after_payment` (client
    remboursé), sélection automatique et notifications. Le prestataire voit le bandeau « Justificatif
    à fournir » ; le back-office affiche « À revérifier » sur la pièce et permet de la revalider.
-   Une pièce **remplacée** garde les titres déjà constatés pendant son attente : ses métiers
+   Les justificatifs sont lus par lots de 100 prestataires (un seul `in.(…)` dépassait la longueur d'adresse admise au-delà de quelques centaines, et tous les métiers réglementés disparaissaient — 30/09/2026) ; `verify_doc` compte le métier principal **et** la liste. Une pièce **remplacée** garde les titres déjà constatés pendant son attente : ses métiers
    validés ne se ferment pas. Un refus supprime la ligne, et les titres avec. Les justificatifs
    vérifiés avant le 29/09 ont été repris pour les métiers déclarés ce jour-là (migration
    `2026-09-29_titres_couverts_par_justificatif.sql`). Éprouvé par `e2e/24`.
@@ -1881,7 +1881,7 @@ l'**accusé de réception** au prestataire qui vient de s'inscrire. Alexandre l'
 le courriel `welcome` partait du navigateur, et il n'y a plus de session à l'inscription depuis
 que la confirmation de l'adresse est active — il ne partait donc presque jamais, et promettait
 une validation « sous 24 h ». Même principe que ci-dessus : le traitement automatique (toutes les
-deux heures) l'envoie à chaque prestataire `pending` dont la colonne est vide, et `welcome`
+deux heures, **les plus récents d'abord**) l'envoie à chaque prestataire `pending` dont la colonne est vide, et `welcome`
 l'envoie tout de suite quand la session existe, à l'adresse **du compte**, jamais à celle du
 corps de la requête. Une seule fois (prise conditionnelle avant l'envoi, rendue si l'envoi
 échoue). Les prestataires inscrits avant le 29/09/2026 ont été marqués sans envoi. Texte et
@@ -2745,7 +2745,7 @@ mesure, avec le délai des 48 h ». Le client ne paie jamais la série d'avance.
 |---|---|---|
 | Réservation | client, écran de réservation | Case « 🔁 Répéter chaque semaine » (date unique, hors urgence, jamais chez un tiers : la plateforme y choisit le prestataire, CGPS art. 5.2). La prestation porte `recurrence = 'weekly'` |
 | Paiement de la 1re semaine | client, tunnel | Accord exprès obligatoire (case décochée, paiement bloqué sans elle) pour les prélèvements suivants. `stripe-intent` rattache la carte au client (`setup_future_usage = off_session`) **d'office**, quoi qu'envoie le navigateur |
-| Validation d'une semaine | client (`complete`), tâche planifiée (validation automatique après 24 h) **ou** back-office (« Valider de force », depuis le 29/09/2026 — il arrêtait la série sans le dire) | `programmerOccurrenceSuivante()` de `api/_recurrence.js` : crée la semaine suivante (J + 7, même prestataire, même tarif, frais d'une prestation simple), la **débite seule** sur la carte de la première (`off_session`, clé d'idempotence **fixe** `serie-suivante-{id de la semaine validée}` — elle était tirée au hasard, et deux validations simultanées débitaient deux fois ; un appel concurrent reçoit l'erreur d'idempotence de Stripe et retire son doublon), puis la propose au prestataire (`prevenirNouvelleDemande()`, `api/_nouvelle_demande.js`) avec le délai de réponse ordinaire. Une réponse de Stripe perdue est rejouée une fois avec la même clé ; si l'issue reste inconnue, **rien n'est annoncé au client** et la semaine reste en attente, à vérifier dans Stripe |
+| Validation d'une semaine | client (`complete`), tâche planifiée (validation automatique après 24 h) **ou** back-office (« Valider de force », depuis le 29/09/2026 — il arrêtait la série sans le dire) | `programmerOccurrenceSuivante()` de `api/_recurrence.js` : crée la semaine suivante (J + 7, même prestataire, même tarif, frais d'une prestation simple), la **débite seule** sur la carte de la première (`off_session`, clé d'idempotence **fixe** `serie-suivante-{id de la semaine validée}` — elle était tirée au hasard, et deux validations simultanées débitaient deux fois ; un appel concurrent reçoit l'erreur d'idempotence de Stripe et retire son doublon), puis la propose au prestataire (`prevenirNouvelleDemande()`, `api/_nouvelle_demande.js`) avec le délai de réponse ordinaire. Une réponse de Stripe perdue est rejouée une fois avec la même clé ; si le rejeu trouve le premier envoi **encore en cours** chez Stripe (409 d'idempotence avec les mêmes paramètres), ce n'est pas un doublon : on attend 3 s et on redemande (30/09/2026 — la semaine d'un client débité était supprimée). Si l'issue reste inconnue, **rien n'est annoncé au client**, la semaine reste en attente, **l'équipe est prévenue par courriel** (métadonnée Stripe à chercher), et `cron-abandon` ne l'annule plus (`parent_mission_id=is.null`) |
 | Réponse du prestataire | prestataire | Comme toute réservation : accepte, ou refuse → remboursement intégral de cette semaine, et la série s'arrête (plus de semaine validée) |
 | Versement | tâche planifiée | Règle commune : 48 h après la fin de **chaque** prestation |
 | Arrêt | client, « Arrêter la série » dans ses prestations | Action `arreter_serie` : `recurrence` remise à `null` sur la prestation et ses suivantes. Les semaines déjà payées restent prévues et s'annulent par l'annulation ordinaire |
@@ -2849,7 +2849,7 @@ vérifié juste à côté, fait autorité.
 | Clôture faute de prestataire | la prestation est **prise** (conditionnellement) **avant** le remboursement ; rouverte si celui-ci échoue | Reprise entre la lecture et le remboursement : prestataire payé, client déjà remboursé |
 | Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
 | Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
-| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire) |
+| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js` |
 
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
@@ -3566,6 +3566,12 @@ l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
 - **`restituerCashback()` prend la restitution avant de créditer** (`cashback_debite` true →
   false, écriture conditionnelle), et la rétablit si le crédit échoue : deux chemins de
   remboursement concurrents ne peuvent plus la rendre deux fois.
+- **On ne rend que ce qui a été débité** (30/09/2026). Un débit plafonné — solde devenu
+  insuffisant entre deux réservations simultanées — laisse `cashback_applique` à la réduction
+  promise (elle borne Stripe), mais la restitution rendait cette réduction entière : le client
+  gagnait la différence. `missions.cashback_debite_montant` (migration
+  `2026-09-30_cashback_montant_debite.sql`) note ce qui a quitté le solde, et c'est lui que rend
+  `restituerCashback()`. NULL (lignes antérieures) → la réduction, comme avant.
 - **Le back-office la déclenche aussi** : « Remboursement manuel » et « Annuler avec
   remboursement » rendaient la carte, jamais le cashback.
 

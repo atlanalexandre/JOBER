@@ -296,5 +296,22 @@ describe("alerte « dossier complet » — deux dépôts simultanés", () => {
     const src = readFileSync(new URL("../../../api/notify-doc.js", import.meta.url), "utf8");
     expect(src).toContain("const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);");
     expect(src.indexOf("let apres = [...avantDepot, docType];")).toBeGreaterThan(src.indexOf("enregistrerDocument(caller.id"));
+// Relecture du 30/09/2026 : tous les identifiants dans un seul `in.(…)`.
+describe("justificatifsDe() — par lots", async () => {
+  const { vi } = await import("vitest");
+  const { justificatifsDe } = await import("../../../api/_habilitations.js");
+  it("250 prestataires : trois lectures courtes, pas une adresse géante", async () => {
+    const urls = [];
+    vi.stubGlobal("fetch", vi.fn(async (u) => { urls.push(String(u)); return new Response("[]", { status: 200 }); }));
+    const ids = Array.from({ length: 250 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    const carte = await justificatifsDe(ids, "https://b", {});
+    vi.unstubAllGlobals();
+    expect(carte).toBeInstanceOf(Map);
+    expect(urls).toHaveLength(3);
+    expect(Math.max(...urls.map(u => u.length))).toBeLessThan(4500);
+  });
+  it("verify_doc compte le métier principal ET la liste", () => {
+    const src = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(src).toContain("const metiersT = [uTData.user_metadata?.metier, ...(");
   });
 });
