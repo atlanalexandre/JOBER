@@ -1,6 +1,7 @@
 import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
@@ -1733,11 +1734,30 @@ export default async function handler(req, res) {
       const completePatchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", montant_total: totalClient, validation_client: true }),
+        // Heures plafonnées pour décalage : inscrites dans `actual_hours`, sans quoi
+        // la facture du prestataire — qui lit cette colonne — portait les heures
+        // prévues quand il était payé des heures faites. Le recalcul reste stable :
+        // montantsDeCloture() retrouve le même plafond.
+        body: JSON.stringify({
+          status: "completed", montant_total: totalClient, validation_client: true,
+          ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
+        }),
       });
       const completedRows = await completePatchRes.json().catch(() => []);
       if (!Array.isArray(completedRows) || completedRows.length === 0) {
         return res.status(409).json({ error: "Prestation déjà validée" });
+      }
+
+      // Décalage jamais arbitré : la clôture vient de plafonner les heures. Le
+      // client, qui les avait toutes payées, est remboursé de celles qui n'ont
+      // pas été faites (api/_decalage.js). La validation est acquise (écriture
+      // conditionnelle ci-dessus) : ce remboursement ne part qu'une fois.
+      if (ajustementRetard) {
+        await rembourserHeuresRetirees({
+          mission: { ...mission, id: mission_id },
+          euros: valeurHeuresRetirees(mission, ajustementRetard.avant, ajustementRetard.apres),
+          supabaseUrl: SUPABASE_URL, headers, contexte: "complete/decalage",
+        });
       }
 
       // Mise à jour atomique du cashback via RPC — p_missions = nombre de jours (multi-dates)
@@ -1888,7 +1908,7 @@ export default async function handler(req, res) {
       // Le MONTANT est figé ici, il n'est pas recalculé au moment du virement :
       // `partPrestataire` tient compte du plafonnement des heures appliqué plus
       // haut quand le client n'a jamais arbitré un décalage d'horaire, et ce
-      // plafonnement n'est pas réécrit dans `actual_hours`. Un traitement
+      // plafonnement est inscrit dans `actual_hours` (depuis le 30/09/2026). Un traitement
       // différé qui referait le calcul verserait plus que ce qui a été facturé.
       if (partPrestataire > 0 && mission.prestataire_id) {
         const echeance = new Date(echeanceVersement).toISOString();
@@ -4672,7 +4692,7 @@ export default async function handler(req, res) {
       const { mission_id, response } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       if (!["approved", "rejected"].includes(response)) return res.status(400).json({ error: "response invalide" });
-      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre`, { headers });
+      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre,tarif_horaire,extra_hours_tarif,extra_hours_appliquees,date_debut,date_fin,montant_total,stripe_payment_intent`, { headers });
       const mData2 = await mr2.json();
       const m2 = Array.isArray(mData2) && mData2[0];
       if (!m2) return res.status(404).json({ error: "Prestation introuvable" });
@@ -4685,9 +4705,23 @@ export default async function handler(req, res) {
       // hours = durée effective du timer (réduite si refus) ; actual_hours = même valeur pour ancrer la facturation
       // Ces heures fondent la facturation : une réponse non enregistrée ne doit
       // pas être annoncée au prestataire comme acquise.
-      const decalageEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
-        { delay_status: response, hours: actualHours, actual_hours: actualHours }, headers, "reponse_decalage");
+      //
+      // Refusé, le décalage retire des heures : leur valeur revient au client
+      // (api/_decalage.js). `montant_total` baisse d'autant, sans quoi la clôture
+      // — qui déduit les frais de service de ce total — présenterait l'heure non
+      // faite comme des frais. Écriture CONDITIONNELLE sur `delay_status` : une
+      // seule réponse est enregistrée, donc un seul remboursement.
+      const aRendre = response === "rejected" ? valeurHeuresRetirees(m2, plannedHours, actualHours) : 0;
+      const majDecalage = { delay_status: response, hours: actualHours, actual_hours: actualHours };
+      if (aRendre > 0 && Number(m2.montant_total) > 0) {
+        majDecalage.montant_total = Math.max(0, Math.round((Number(m2.montant_total) - aRendre) * 100) / 100);
+      }
+      const decalageEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&delay_status=eq.pending`,
+        majDecalage, headers, "reponse_decalage");
       if (!decalageEcrit) return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
+      const remboursementDecalage = aRendre > 0
+        ? await rembourserHeuresRetirees({ mission: m2, euros: aRendre, supabaseUrl: SUPABASE_URL, headers, contexte: "reponse_decalage" })
+        : null;
       if (m2.prestataire_id) {
         const label = m2.titre || m2.metier || "la prestation";
         await notifier({
@@ -4705,7 +4739,11 @@ export default async function handler(req, res) {
                 + `Si ce décalage ne vous est pas imputable, écrivez à direction@alane.fr : la prestation sera réexaminée.`,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_delay] échec ignoré :", e?.message));
       }
-      return res.status(200).json({ ok: true, actual_hours: actualHours });
+      return res.status(200).json({
+        ok: true, actual_hours: actualHours,
+        rembourse: remboursementDecalage ? remboursementDecalage.centimes / 100 : 0,
+        remboursement_ok: remboursementDecalage ? remboursementDecalage.ok : true,
+      });
     }
 
     // Dépôt d'un avis. L'insertion se faisait depuis le navigateur : le contrôle
