@@ -793,11 +793,24 @@ export default async function handler(req, res) {
                   "Content-Type": "application/x-www-form-urlencoded",
                   "Idempotency-Key": `refund-delete-${pm.id}`,
                 },
-                body: new URLSearchParams({ payment_intent: pm.stripe_payment_intent, reason: "fraudulent" }).toString(),
+                // PAS « fraudulent » : ce motif inscrit la carte et l'e-mail du
+                // PAYEUR sur la liste de blocage Radar. Quand le compte supprimé
+                // est un prestataire, le payeur est son client, qui n'y est pour
+                // rien et ne pourrait plus jamais payer sur ALANE (relecture du
+                // 30/09/2026). Bloquer un fraudeur reste possible, à la main,
+                // depuis le tableau de bord Stripe.
+                body: new URLSearchParams({ payment_intent: pm.stripe_payment_intent, reason: "requested_by_customer" }).toString(),
               });
               const rfData = await rfRes.json();
               if (rfData?.id) {
                 console.log(`[delete] Stripe refund OK: ${rfData.id} for mission ${pm.id}`);
+                // Le client d'un prestataire supprimé perd sa prestation avant
+                // qu'elle ait lieu : son cashback lui revient (règle d'Alexandre
+                // du 29/09/2026 ; restituerCashback ne rend rien si elle avait
+                // démarré). Rien à rendre au compte supprimé lui-même.
+                if (pm.client_id && pm.client_id !== profileId) {
+                  await restituerCashback({ id: pm.id, client_id: pm.client_id }, SUPABASE_URL, headers, "suppression_compte");
+                }
               } else {
                 console.error(`[delete] Stripe refund failed for mission ${pm.id}:`, JSON.stringify(rfData));
               }

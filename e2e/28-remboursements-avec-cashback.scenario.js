@@ -63,4 +63,17 @@ test("identité refusée : la carte est rendue en entier — Stripe ne refuse pl
   const pi = await paiementStripe(m.paymentIntent);
   expect(pi.rembourse, "la carte récupère tout ce qu'elle a payé").toBe(pi.preleve);
   expect(await soldeCashback(c.id), "le cashback revient").toBe(5);
+  // Le motif du remboursement n'est PAS « fraudulent » : Stripe inscrirait la carte
+  // et l'e-mail de ce client — qui n'a rien fait — sur sa liste de blocage.
+  expect(await emailBloqueChezStripe(c.email), "le client n'est pas bloqué par Stripe").toBe(false);
 });
+
+async function emailBloqueChezStripe(email) {
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  const h = { Authorization: `Bearer ${cle}` };
+  const listes = await (await fetch("https://api.stripe.com/v1/radar/value_lists?alias=email_blocklist", { headers: h })).json();
+  const liste = listes.data?.[0];
+  if (!liste) return false;
+  const items = await (await fetch(`https://api.stripe.com/v1/radar/value_list_items?value_list=${liste.id}&value=${encodeURIComponent(email)}`, { headers: h })).json();
+  return (items.data || []).length > 0;
+}
