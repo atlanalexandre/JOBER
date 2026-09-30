@@ -150,7 +150,20 @@ export default async function handler(req, res) {
   if (avantDepot && profil && profil.status === "approved" && profil.missions_enabled !== true) {
     const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
     const manquaient = piecesManquantes(requis, avantDepot, !!profil.avatar_url);
-    const manquent   = piecesManquantes(requis, [...avantDepot, docType], !!profil.avatar_url);
+    // Relu APRÈS l'enregistrement, et non déduit de la lecture d'avant : deux
+    // dépôts simultanés des deux dernières pièces voyaient chacun l'autre
+    // manquer, et personne n'était prévenu (relecture du 30/09/2026). Relu,
+    // au moins l'un des deux voit le dossier complet — au pire, deux alertes.
+    let apres = [...avantDepot, docType];
+    try {
+      const ar = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${caller.id}&select=type`, { headers: hdrs });
+      const al = await ar.json().catch(() => null);
+      if (ar.ok && Array.isArray(al)) apres = al.map(l => l.type);
+      else console.error(`[notify-doc] pièces relues illisibles (${ar.status}) — repli sur la lecture d'avant.`);
+    } catch (e) {
+      console.error("[notify-doc] pièces relues illisibles :", e.message);
+    }
+    const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);
     if (manquaient.length > 0 && manquent.length === 0) {
       const restes = [
         ...mandatsManquants(profil),

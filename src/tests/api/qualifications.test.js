@@ -290,3 +290,11 @@ describe("courriels de dépôt de pièce", () => {
     expect(src.indexOf("Dossier complet"), "l'alerte « dossier complet » passe avant la garde").toBeLessThan(garde);
   });
 });
+
+describe("alerte « dossier complet » — deux dépôts simultanés", () => {
+  it("relit les pièces après l'enregistrement au lieu de se fier à la lecture d'avant", () => {
+    const src = readFileSync(new URL("../../../api/notify-doc.js", import.meta.url), "utf8");
+    expect(src).toContain("const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);");
+    expect(src.indexOf("let apres = [...avantDepot, docType];")).toBeGreaterThan(src.indexOf("enregistrerDocument(caller.id"));
+  });
+});

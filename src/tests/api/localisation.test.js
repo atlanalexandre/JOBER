@@ -56,9 +56,9 @@ describe("lirePosition()", () => {
 
 describe("libelleConstat()", () => {
   it("dit la distance en français", () => {
-    expect(libelleConstat("eloignee", 2340)).toBe("Position relevée à 2,3 km de l'adresse.");
-    expect(libelleConstat("eloignee", 420)).toBe("Position relevée à 420 m de l'adresse.");
-    expect(libelleConstat("sur_place", 40)).toBe("Position vérifiée : sur place.");
+    expect(libelleConstat("eloignee", 2340)).toBe("Position du téléphone à 2,3 km de l'adresse.");
+    expect(libelleConstat("eloignee", 420)).toBe("Position du téléphone à 420 m de l'adresse.");
+    expect(libelleConstat("sur_place", 40)).toBe("Position du téléphone : sur place.");
   });
 });
 
