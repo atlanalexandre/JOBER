@@ -1699,10 +1699,19 @@ closed               clôturée
 ```
 
 Chemins de sortie : `cancelled` (annulation), `disputed` (litige),
-`needs_replacement` (le prestataire se désiste, retour au marché), `rejected` / `refused`.
+`needs_replacement` (payée, prestataire écarté avant affectation), `rejected` / `refused`.
 
-**`needs_replacement` signifie « déjà payée ».** C'est ce qui la distingue d'une prestation
-réouverte en `open` : le prestataire s'est désisté après paiement, l'argent du client est
+**Le prestataire se désiste d'une prestation payée : elle est annulée** (décision d'Alexandre
+du 30/09/2026, conforme aux CGPS art. 8.2). `presta_cancel` rembourse intégralement le client,
+lui rend son cashback, passe la prestation en `cancelled` et l'invite à réserver quelqu'un
+d'autre. Elle passait auparavant en `needs_replacement` en gardant son paiement : l'écran
+annonçait un paiement bloqué déjà rendu, aucun prestataire ne pouvait la reprendre (la place de
+marché ne lit que `open`), et un remplaçant affecté depuis le back-office aurait été payé par
+ALANE. Une prestation non payée retourne, elle, en `open`. Le back-office refuse désormais de
+réaffecter une prestation annulée, close ou terminée.
+
+**`needs_replacement` signifie « déjà payée ».** Il ne subsiste que pour un paiement confirmé
+dont le prestataire n'a plus accès aux prestations (webhook Stripe) : l'argent du client est
 conservé le temps de trouver un remplaçant. Si l'heure de début passe sans remplaçant, le
 traitement automatique **rembourse intégralement** puis passe la prestation en `cancelled` —
 le contrat le promet, et rien ne l'appliquait : la prestation était clôturée et l'argent

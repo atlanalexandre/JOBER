@@ -6259,8 +6259,17 @@ export default async function handler(req, res) {
       const rRempl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ status: "needs_replacement", prestataire_id: null }),
-      }).catch(e => { console.error("[presta_cancel] mise en recherche impossible :", e.message); return null; });
+        // Payée : le client vient d'être intégralement remboursé (CGPS art. 8.2),
+        // la prestation est ANNULÉE — décision d'Alexandre du 30/09/2026. Elle
+        // passait « Recherche d'un remplaçant » en gardant son paiement : l'écran
+        // annonçait un paiement bloqué qui ne l'était plus, aucun prestataire ne
+        // pouvait la reprendre (la place de marché ne lit que « open »), et un
+        // remplaçant affecté depuis le back-office aurait été payé par ALANE sur
+        // un paiement déjà rendu. Non payée : elle retourne sur la place de marché.
+        body: JSON.stringify(mission.stripe_payment_intent
+          ? { status: "cancelled", prestataire_id: null }
+          : { status: "open", prestataire_id: null }),
+      }).catch(e => { console.error("[presta_cancel] mise à jour impossible :", e.message); return null; });
       const lRempl = rRempl ? await rRempl.json().catch(() => []) : null;
       if (!rRempl || !rRempl.ok || !Array.isArray(lRempl) || lRempl.length === 0) {
         console.error(`[presta_cancel] prestation ${mission_id} NON remise en recherche (${rRempl?.status}) `
@@ -6279,12 +6288,16 @@ export default async function handler(req, res) {
         await restituerCashback({ id: mission_id, client_id: mission.client_id }, SUPABASE_URL, headers, "presta_cancel");
       }
 
-      // Recherche d'un remplaçant. L'écran client annonce « nous recherchons un
+      // Recherche d'un remplaçant — seulement pour une prestation NON payée, remise
+      // sur la place de marché. Payée, elle vient d'être annulée et remboursée :
+      // solliciter des remplaçants pour elle serait leur proposer un travail que
+      // personne ne paiera.
+      // L'écran client annonce « nous recherchons un
       // remplaçant » : jusqu'ici personne n'était prévenu, la prestation devenait
       // seulement visible sur la place de marché. Trois canaux, dosés selon
       // l'urgence : notification et push pour tous les prestataires du secteur,
       // SMS réservé aux désistements de dernière minute.
-      try {
+      if (!mission.stripe_payment_intent) try {
         const libelle = mission.titre || mission.metier || "Prestation";
         const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
         const corps = `Une prestation « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} cherche un prestataire : celui qui était prévu s'est désisté.`;
@@ -6451,19 +6464,16 @@ export default async function handler(req, res) {
       }).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
 
       if (mission.client_id) {
+        // `notifier()` écrit la notification ET la push (CLAUDE.md) : le second
+        // envoi, à part, faisait sonner le téléphone deux fois.
         await notifier({
             user_id: mission.client_id,
             type: "mission",
-            title: "❌ Prestataire indisponible",
-            body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
+            title: "❌ Prestation annulée par le prestataire",
+            body: mission.stripe_payment_intent
+              ? `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Elle est annulée et vous êtes intégralement remboursé, frais de service compris (5 à 10 jours ouvrés selon votre banque). Vous pouvez réserver un autre prestataire.`
+              : `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Elle est de nouveau proposée aux autres prestataires.`,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
-
-        // Web push au client
-        sendPushToUser(mission.client_id, {
-          title: "❌ Prestataire indisponible",
-          body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
-          url: "/",
-        }, SUPABASE_URL, headers).catch(e => console.error("[missions/presta_cancel] échec ignoré :", e?.message));
       }
 
       return res.status(200).json({ success: true });

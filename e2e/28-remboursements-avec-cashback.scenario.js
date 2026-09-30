@@ -11,7 +11,7 @@
 //     d'Alexandre du 29/09/2026).
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, paiementStripe, api } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, paiementStripe, api, bo } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -48,6 +48,12 @@ test("le prestataire annule : remboursement intégral de la carte, et le cashbac
   const pi = await paiementStripe(m.paymentIntent);
   expect(pi.rembourse).toBe(pi.preleve);
   expect(await soldeCashback(c.id), "le cashback revient").toBe(5);
+  // Décision d'Alexandre du 30/09/2026 : remboursée, la prestation est annulée —
+  // plus de « recherche d'un remplaçant » sur un paiement déjà rendu.
+  const [l] = await sql(`select status from missions where id = '${m.id}'`);
+  expect(l.status).toBe("cancelled");
+  expect((await bo("reassign_mission", { mission_id: m.id, new_presta_email: p.email })).statut,
+    "annulée : le back-office ne peut plus la réaffecter").toBe(409);
 });
 
 test("identité refusée : la carte est rendue en entier — Stripe ne refuse plus — et le cashback revient", async () => {
