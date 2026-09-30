@@ -106,8 +106,13 @@ export function nombreDeJours(mission) {
  */
 export function calculerFrais(type, prixPrestation, nbJours = 1, frais = FRAIS_PAR_DEFAUT) {
   const b = { ...FRAIS_PAR_DEFAUT, ...(frais || {}) };
+  // Une réservation « plusieurs jours » qui ne couvre qu'UN jour est une
+  // prestation ponctuelle, et paie les frais d'une prestation ponctuelle
+  // (décision d'Alexandre du 30/09/2026). Elle payait 2,90 € au lieu de 4,90 € :
+  // le même service coûtait deux euros de moins selon le bouton choisi.
+  const multiJours = type === "range" && Number(nbJours) > 1;
   const fixe = type === "urgent" ? Number(b.urgent) || 0
-             : type === "range"  ? (Number(b.range) || 0) * Math.max(1, nbJours)
+             : multiJours        ? (Number(b.range) || 0) * nbJours
              : Number(b.single) || 0;
   const variable = Math.max(0, Number(prixPrestation) || 0) * (Number(b.pourcentage) || 0) / 100;
   return Math.round((fixe + variable) * 100) / 100;
@@ -138,6 +143,15 @@ export function verifierMontant(mission, total, frais = FRAIS_PAR_DEFAUT) {
   const prixPrestation = partHoraire * nbJours;
   const fraisAdmis = ["single", "range", "urgent"]
     .map(t => calculerFrais(t, prixPrestation, nbJours, frais));
+  // Transition : un onglet resté ouvert sur une version antérieure au
+  // 30/09/2026 calcule encore 2,90 € pour un « plusieurs jours » d'un seul
+  // jour. On l'admet plutôt que de refuser le paiement : l'écart est en faveur
+  // du client, et bloquer sa réservation coûterait bien davantage.
+  if (nbJours <= 1) {
+    const b = { ...FRAIS_PAR_DEFAUT, ...(frais || {}) };
+    fraisAdmis.push(Math.round(((Number(b.range) || 0)
+      + Math.max(0, prixPrestation) * (Number(b.pourcentage) || 0) / 100) * 100) / 100);
+  }
   const fraisConstates = Math.round((Number(total) - partHoraire * nbJours) * 100) / 100;
 
   // La comparaison se fait en centimes entiers. En euros flottants, un écart
