@@ -21,6 +21,8 @@ import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { restituerCashback } from "./_cashback.js";
+import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -2503,17 +2505,23 @@ export default async function handler(req, res) {
       const { mission_id } = req.body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville,extra_hours_tarif,extra_hours_appliquees,heures_perdues`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville,extra_hours_tarif,extra_hours_appliquees,heures_perdues,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (!["assigned","pending_acceptance"].includes(m.status)) return res.status(400).json({ error: `Statut ${m.status} — seules les prestations assigned/pending_acceptance peuvent être validées` });
+      // Sans paiement, valider programmait quand même le versement au
+      // prestataire : ALANE l'aurait payé de sa poche, pour une prestation
+      // qu'aucun client n'a réglée (relecture du 30/09/2026).
+      if (!String(m.stripe_payment_intent || "").startsWith("pi_")) {
+        return res.status(400).json({ error: "Aucun paiement par carte n'est enregistré sur cette prestation : la valider ferait verser au prestataire une somme qu'aucun client n'a réglée." });
+      }
 
       // Montants calculés par api/_cloture.js, comme les deux autres chemins de
       // clôture. Celui-ci en tenait une quatrième version : elle omettait le nombre
       // de jours et écrasait `montant_total` par la seule part horaire, effaçant les
       // frais de service encaissés — donc la trace de ce que le client avait payé.
-      const { partPrestataire, totalClient } = montantsDeCloture(m);
+      const { partPrestataire, totalClient, jours, ajustementRetard } = montantsDeCloture(m);
       // PATCH atomique — garde le guard status=eq.assigned pour éviter double-crédit
       const patchStatus = m.status === "pending_acceptance" ? "pending_acceptance" : "assigned";
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.${patchStatus}`, {
@@ -2522,6 +2530,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           status: "completed", montant_total: totalClient,
           validation_prestataire: true, validation_client: true,
+          // Heures plafonnées pour décalage : la facture lit `actual_hours`
+          // (comme la validation par le client et le cron).
+          ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
           // Ce chemin ne programmait aucun virement : la prestation était clôturée,
           // le prestataire recevait « votre paiement est en cours », et rien n'était
           // jamais émis. Il suit désormais la même règle que les autres — versement
@@ -2535,6 +2546,14 @@ export default async function handler(req, res) {
       });
       const patched = await patchRes.json().catch(() => []);
       if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Prestation déjà validée ou statut changé" });
+      // Décalage jamais arbitré : le client est remboursé des heures non faites,
+      // comme sur les trois autres chemins de clôture (api/_decalage.js).
+      if (ajustementRetard) {
+        await rembourserHeuresRetirees({
+          mission: m, euros: valeurHeuresRetirees(m, ajustementRetard.avant, ajustementRetard.apres),
+          supabaseUrl: SUPABASE_URL, headers, contexte: "bo/force_complete/decalage",
+        });
+      }
       // Série hebdomadaire : comme la validation par le client et la validation
       // automatique. « Valider de force » arrêtait la série sans que personne
       // le sache (relecture du 29/09/2026).
@@ -2554,10 +2573,12 @@ export default async function handler(req, res) {
       const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers });
       const profileD = await profileR.json();
       const prof = Array.isArray(profileD) && profileD[0];
-      const mCount = (prof?.commandes_mois||0)+1;   // commandes du CLIENT, pas le quota prestataire
+      // Commandes du CLIENT, pas le quota prestataire ; une prestation de cinq
+      // jours en compte cinq, comme à la validation par le client.
+      const mCount = (prof?.commandes_mois||0)+jours;
       const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
       const cashback = Math.round(partPrestataire*rate*100)/100;
-      const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>null);
+      const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:jours }) }).catch(()=>null);
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
@@ -2584,20 +2605,16 @@ export default async function handler(req, res) {
       const { mission_id, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent,payout_status,stripe_transfer_id`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (m.stripe_payment_intent) {
-        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`, "Content-Type": "application/x-www-form-urlencoded" },
-          body: `payment_intent=${m.stripe_payment_intent}`,
-        });
-        if (!stripeRes.ok) {
-          const err = await stripeRes.json().catch(() => ({}));
-          return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" });
-        }
+        // Virement déjà versé repris d'abord, anti-double clic, message en
+        // français (api/_remboursement_bo.js).
+        const rb = await rembourserDepuisLeBO(m, "bo/manual_refund");
+        if (!rb.ok) return res.status(rb.code).json({ error: rb.message });
+        if (rb.virementRepris) m.payout_status = "held"; // repris : à annuler ci-dessous
         // Stripe ne rend que ce que la carte a payé : la part réglée en
         // cashback est rendue ici, si la prestation n'avait pas démarré
         // (règle tenue par restituerCashback).
@@ -2605,7 +2622,9 @@ export default async function handler(req, res) {
       }
       // Le remboursement est parti : une clôture refusée en silence laisserait la
       // prestation ouverte — et versable au prestataire — alors que le client est remboursé.
-      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"closed" }, headers, "bo-action/manual_refund")) {
+      // `payout_status: annule` : plus aucun versement ne doit partir sur une
+      // prestation remboursée, quel que soit son statut plus tard.
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"closed", ...(versementAAnnuler(m) ? { payout_status:"annule" } : {}) }, headers, "bo-action/manual_refund")) {
         return res.status(500).json({ error: "Remboursement effectué, mais la prestation n'a pas pu être clôturée. Clôturez-la avant tout versement." });
       }
       if (m.client_id) {
@@ -2619,17 +2638,18 @@ export default async function handler(req, res) {
       const { mission_id, refund, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent,payout_status,stripe_transfer_id`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (refund && m.stripe_payment_intent) {
-        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
-        if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
+        const rb = await rembourserDepuisLeBO(m, "bo/cancel_mission");
+        if (!rb.ok) return res.status(rb.code).json({ error: rb.message });
+        if (rb.virementRepris) m.payout_status = "held"; // repris : à annuler ci-dessous
         // La part réglée en cashback, que Stripe ne rend pas (voir manual_refund).
         await restituerCashback(m, SUPABASE_URL, headers, "bo/cancel_mission");
       }
-      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"cancelled" }, headers, "bo-action/cancel_mission")) {
+      if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { status:"cancelled", ...(versementAAnnuler(m) ? { payout_status:"annule" } : {}) }, headers, "bo-action/cancel_mission")) {
         return res.status(500).json({ error: refund && m.stripe_payment_intent
           ? "Remboursement effectué, mais la prestation n'a pas pu être annulée. Annulez-la avant tout versement."
           : "La prestation n'a pas pu être annulée. Réessayez." });
