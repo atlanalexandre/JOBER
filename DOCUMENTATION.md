@@ -410,7 +410,7 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
    autres métiers restent), `list_open`, `candidater`, `assign_after_payment` (client
    remboursé), sélection automatique et notifications. Le prestataire voit le bandeau « Justificatif
    à fournir » ; le back-office affiche « À revérifier » sur la pièce et permet de la revalider.
-   Une pièce **remplacée** garde les titres déjà constatés pendant son attente : ses métiers
+   Les justificatifs sont lus par lots de 100 prestataires (un seul `in.(…)` dépassait la longueur d'adresse admise au-delà de quelques centaines, et tous les métiers réglementés disparaissaient — 30/09/2026) ; `verify_doc` compte le métier principal **et** la liste. Une pièce **remplacée** garde les titres déjà constatés pendant son attente : ses métiers
    validés ne se ferment pas. Un refus supprime la ligne, et les titres avec. Les justificatifs
    vérifiés avant le 29/09 ont été repris pour les métiers déclarés ce jour-là (migration
    `2026-09-29_titres_couverts_par_justificatif.sql`). Éprouvé par `e2e/24`.
