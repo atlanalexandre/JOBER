@@ -3490,6 +3490,20 @@ seule fois — appliquer « la moitié » créance par créance retiendrait 75 %
 Les imputations s'inscrivent **après** le virement : décrémenter une créance sur un virement
 qui n'est jamais parti reviendrait à réclamer deux fois la même somme.
 
+**Une contestation bancaire retient le versement** (décision d'Alexandre du 30/09/2026, CGPS
+art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` passe un versement
+encore à venir (`pending` ou `failed`) en `held`, motif `opposition_bancaire`, quatre-vingt-dix
+jours au plus, et prévient le prestataire — les deux conditions de l'article. Sans cela, une
+contestation arrivée pendant les 48 h laissait partir le virement alors que la banque reprenait
+l'argent au client. Un versement déjà parti n'est pas touché, et une prestation pas encore close
+n'a pas de versement à retenir : l'alerte envoyée à l'administration dit, dans les trois cas, ce
+qu'il reste à faire. Si la contestation est gagnée, la retenue se lève depuis l'écran Versements.
+
+**Abonnement dont le renouvellement échoue** : retour au gratuit tout de suite, sans attendre la
+fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
+(décision d'Alexandre du 30/09/2026). La notification le dit ; elle annonçait « pour conserver
+votre accès » un accès déjà retiré.
+
 **Un refus de virement n'est plus définitif d'office** (30/09/2026). Le virement puise dans le
 solde *disponible* d'ALANE, où un paiement par carte n'entre qu'après quelques jours : à 48 h, un
 refus `balance_insufficient` est probable. Il passait le versement en `failed` pour toujours, sans

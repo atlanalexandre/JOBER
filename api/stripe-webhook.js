@@ -633,7 +633,10 @@ export default async function handler(req, res) {
         }
 
       } else {
-        // Downgrade to free (subscription canceled or payment failed past grace period)
+        // Retour au gratuit : abonnement résilié, OU paiement en échec (past_due,
+        // unpaid, incomplete) — tout de suite, sans attendre la fin des nouvelles
+        // tentatives de Stripe (décision d'Alexandre du 30/09/2026). Dès qu'un
+        // paiement aboutit, l'abonnement redevient « active » et la formule revient.
         try {
           const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
           if (getR.ok) {
@@ -733,7 +736,11 @@ export default async function handler(req, res) {
             user_id: userId,
             type: "system",
             title: "⚠️ Paiement de renouvellement échoué",
-            body: "Le renouvellement de votre abonnement ALANE a échoué. Mettez à jour votre moyen de paiement dans votre espace pour conserver votre accès Premium.",
+            // Décision d'Alexandre du 30/09/2026 : la formule payante est
+            // suspendue tant que le paiement n'aboutit pas, et revient d'elle-même
+            // dès qu'il aboutit (customer.subscription.updated, ci-dessus). Le
+            // message annonçait « pour conserver votre accès » un accès déjà retiré.
+            body: "Le renouvellement de votre abonnement ALANE a échoué : vous êtes repassé en formule gratuite. Mettez à jour votre moyen de paiement dans votre espace ; votre formule reviendra automatiquement dès que le paiement aboutira.",
           }, SUPABASE_URL, hdrs).catch(e => console.error("[stripe-webhook] échec ignoré :", e?.message));
         console.warn(`[invoice.payment_failed] Renewal failed for user ${userId} — customer ${customerId}`);
       }
@@ -764,10 +771,46 @@ export default async function handler(req, res) {
       try {
         const hdrsD = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
         const mRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=eq.${dispute.payment_intent}&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status&limit=1`,
+          `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=eq.${dispute.payment_intent}&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status,payout_status,payout_amount&limit=1`,
           { headers: hdrsD }
         );
         missionLitige = (await mRes.json().catch(() => []))[0] || null;
+
+        // ── Le versement du prestataire est retenu (décision d'Alexandre du
+        // 30/09/2026, CGPS art. 7.4 : « une opposition bancaire ou une procédure
+        // de rétrofacturation »). Sans cela, une contestation arrivée pendant les
+        // 48 h laissait partir le virement : la banque reprenait l'argent au
+        // client, et ALANE avait déjà payé le prestataire. Écriture
+        // conditionnelle : seul un versement pas encore parti est retenu.
+        // Quatre-vingt-dix jours au plus, notifié au prestataire avec son motif —
+        // les deux conditions de l'article. Levée depuis le back-office si la
+        // contestation est gagnée.
+        if (missionLitige?.id && ["pending", "failed"].includes(missionLitige.payout_status)) {
+          const maintenant = new Date();
+          const jusqua = new Date(maintenant.getTime() + 90 * 86400000);
+          const rr = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&payout_status=in.(pending,failed)`,
+            { method: "PATCH", headers: { ...hdrsD, "Prefer": "return=representation" },
+              body: JSON.stringify({ payout_status: "held", payout_hold_reason: "opposition_bancaire",
+                payout_hold_at: maintenant.toISOString(), payout_hold_until: jusqua.toISOString() }) }
+          );
+          const retenu = rr.ok ? await rr.json().catch(() => []) : [];
+          if (Array.isArray(retenu) && retenu.length) {
+            missionLitige.retenu = true;
+            if (missionLitige.prestataire_id) {
+              const finLe = jusqua.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+              await notifier({ user_id: missionLitige.prestataire_id, type: "system",
+                title: "Versement suspendu",
+                body: `Le versement de ${euros(missionLitige.payout_amount)} pour « ${missionLitige.metier || missionLitige.sector || "votre prestation"} » du ${missionLitige.date || "?"} est suspendu : `
+                  + "le client a formé une opposition bancaire sur son paiement (CGPS art. 7.4). "
+                  + `La retenue prend fin au plus tard le ${finLe}, et plus tôt si l'opposition est rejetée. `
+                  + "Vous pouvez la contester à direction@alane.fr.",
+              }, SUPABASE_URL, hdrsD).catch(e => console.error("[dispute] notification de retenue non envoyée :", e.message));
+            }
+          } else {
+            console.error(`[dispute] versement de ${missionLitige.id} NON retenu (${rr.status}) — à retenir à la main depuis le back-office.`);
+          }
+        }
 
         if (missionLitige?.client_id) {
           const ticket = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
@@ -820,6 +863,11 @@ export default async function handler(req, res) {
               <tr><td style="padding:6px 0;color:#666">Statut</td><td>${dispute.status || "—"}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-size:12px">${missionLitige ? `${missionLitige.id} — ${missionLitige.metier || missionLitige.sector || ""} du ${missionLitige.date || "?"} (${missionLitige.status})` : "non identifiée"}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-size:12px">${missionLitige?.prestataire_id || "—"}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Versement</td><td style="font-weight:700">${!missionLitige ? "—"
+                : missionLitige.retenu ? "Retenu automatiquement (90 jours au plus) — à lever dans Versements si la contestation est gagnée"
+                : missionLitige.payout_status === "transferred" ? "⚠️ DÉJÀ VERSÉ au prestataire"
+                : missionLitige.payout_status ? `« ${missionLitige.payout_status} » — non retenu, à vérifier`
+                : "Pas encore programmé : à retenir à la clôture de la prestation"}</td></tr>
             </table>
             <p style="margin-top:16px"><a href="https://dashboard.stripe.com/disputes/${dispute.id}" style="color:#7C6FE0;font-weight:700">Gérer dans Stripe Dashboard →</a></p>
           </div>`,
