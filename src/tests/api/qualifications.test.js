@@ -263,14 +263,14 @@ describe("piecesManquantes()", async () => {
   const { piecesManquantes, docsRequisPour } = await import("../../../api/_documents.js");
   const requis = docsRequisPour("Française", [{ metier: "Femme/Valet de chambre" }]).filter(d => d.required);
 
-  it("liste ce qui manque, la photo du profil comptant comme déposée", () => {
+  it("liste ce qui manque ; la photo ne compte que déposée comme pièce (30/09/2026)", () => {
     const sauf = requis.map(d => d.id).filter(id => id !== "rc_pro" && id !== "photo");
-    expect(piecesManquantes(requis, sauf, true).map(d => d.id)).toEqual(["rc_pro"]);
-    expect(piecesManquantes(requis, sauf, false).map(d => d.id).sort()).toEqual(["photo", "rc_pro"]);
+    expect(piecesManquantes(requis, sauf).map(d => d.id).sort()).toEqual(["photo", "rc_pro"]);
+    expect(piecesManquantes(requis, [...sauf, "photo"]).map(d => d.id)).toEqual(["rc_pro"]);
   });
 
   it("vide quand tout est là : c'est ce passage à vide qui déclenche l'alerte, une fois", () => {
-    expect(piecesManquantes(requis, requis.map(d => d.id), false)).toEqual([]);
+    expect(piecesManquantes(requis, requis.map(d => d.id))).toEqual([]);
   });
 
   it("la route n'alerte que si CE dépôt complète le dossier", () => {
@@ -294,7 +294,7 @@ describe("courriels de dépôt de pièce", () => {
 describe("alerte « dossier complet » — deux dépôts simultanés", () => {
   it("relit les pièces après l'enregistrement au lieu de se fier à la lecture d'avant", () => {
     const src = readFileSync(new URL("../../../api/notify-doc.js", import.meta.url), "utf8");
-    expect(src).toContain("const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);");
+    expect(src).toContain("const manquent   = piecesManquantes(requis, apres);");
     expect(src.indexOf("let apres = [...avantDepot, docType];")).toBeGreaterThan(src.indexOf("enregistrerDocument(caller.id"));
   });
 });

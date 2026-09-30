@@ -37,7 +37,9 @@ rapport avec la vraie cause.
 
 - `user_metadata` : uniquement des valeurs courtes (nom, ville, préférences). Vise < 2 Ko.
 - Fichiers, images, documents → **Supabase Storage**, et on ne garde que le chemin.
-- Une photo de profil va dans `profiles.avatar_url`, jamais dans `user_metadata`.
+- Une photo de profil va dans le bucket `Documents`, comme pièce `photo` — jamais dans
+  `user_metadata`. `profiles.avatar_url` n'est plus utilisé depuis le 30/09/2026 : seule la
+  photo validée par le back-office est montrée aux clients (`api/_photos.js`).
 
 ### 1.2 Ne jamais avaler une erreur en silence
 

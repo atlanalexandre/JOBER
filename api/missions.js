@@ -66,6 +66,7 @@ import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
+import { photosVerifiees } from "./_photos.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -1219,10 +1220,9 @@ export default async function handler(req, res) {
       const allPrestaIds = [...new Set([...rawAll.map(c => c.prestataire_id).filter(Boolean), ...directPrestaIds])];
       const profileMap = {};
       if (allPrestaIds.length > 0) {
-        // `avatar_url` est lu ICI, et pas seulement dans le catalogue public :
-        // c'est la seule chose qui permette au client de reconnaître, sur son
-        // palier, la personne qu'il a réservée.
-        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom,avatar_url`, { headers });
+        // La photo n'est plus lue ici : c'est celle qu'ALANE a validée, servie
+        // plus bas (api/_photos.js) — jamais `avatar_url` (30/09/2026).
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom`, { headers });
         const profiles = await pr.json().catch(() => []);
         if (Array.isArray(profiles)) profiles.forEach(p => { profileMap[p.id] = p; });
 
@@ -1284,9 +1284,9 @@ export default async function handler(req, res) {
       //
       // Montrer la première à quelqu'un qui va ouvrir sa porte, c'est lui
       // donner une assurance que rien ne fonde. On sert donc la seconde, par
-      // URL signée d'une heure, et on DIT laquelle est affichée : une photo
-      // vérifiée et une photo déclarative ne valent pas la même chose, et le
-      // client doit pouvoir faire la différence.
+      // URL signée d'une heure. Jusqu'au 30/09/2026, on se repliait sur la
+      // première en la disant « non vérifiée » ; Alexandre a tranché : seule la
+      // photo validée est montrée, sinon les initiales.
       //
       // Ce n'est PAS la pièce d'identité. Elle reste dans le bucket privé,
       // lisible du seul back-office : elle porte la date et le lieu de
@@ -1301,37 +1301,9 @@ export default async function handler(req, res) {
           .filter(m => m.prestataire_id && ["assigned", "pending_acceptance"].includes(m.status))
           .map(m => m.prestataire_id)
       )];
-      const photosVerifiees = {};
-      if (prestasActifs.length > 0) {
-        try {
-          const dRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/documents?prestataire_id=in.(${prestasActifs.join(",")})`
-            + `&type=eq.photo&verified=eq.true&select=prestataire_id,storage_path`,
-            { headers }
-          );
-          const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
-          if (Array.isArray(dRows)) {
-            await Promise.all(dRows.map(async (d) => {
-              if (!d.storage_path) return;
-              try {
-                const sr = await fetch(
-                  `${SUPABASE_URL}/storage/v1/object/sign/Documents/${d.storage_path}`,
-                  { method: "POST", headers, body: JSON.stringify({ expiresIn: 3600 }) }
-                );
-                const sj = await sr.json().catch(() => ({}));
-                if (sj?.signedURL) photosVerifiees[d.prestataire_id] = `${SUPABASE_URL}/storage/v1${sj.signedURL}`;
-                else console.error(`[list_client] URL signée refusée pour ${d.storage_path} (${sr.status})`);
-              } catch (e) {
-                console.error(`[list_client] URL signée impossible pour ${d.storage_path} :`, e.message);
-              }
-            }));
-          }
-        } catch (e) {
-          // La photo manquante ne doit pas faire échouer la liste des
-          // prestations : l'écran se replie sur l'avatar, et le dit.
-          console.error("[list_client] photos validées illisibles :", e.message);
-        }
-      }
+      // Lecture et signature en lots (api/_photos.js) ; un échec laisse les
+      // prestataires concernés sans photo, jamais la liste en erreur.
+      const photosValidees = await photosVerifiees(prestasActifs, SUPABASE_URL, headers);
 
       //
       // LA PHOTO SUIT LA PRESTATION, PAS LE CATALOGUE (11/09/2026)
@@ -1354,9 +1326,11 @@ export default async function handler(req, res) {
         prestataire_prenom: m.prestataire_id ? (profileMap[m.prestataire_id]?.prenom || "") : "",
         prestataire_nom:    m.prestataire_id ? (profileMap[m.prestataire_id]?.nom    || "") : "",
         prestataire_photo:  m.prestataire_id
-          ? (photosVerifiees[m.prestataire_id] || profileMap[m.prestataire_id]?.avatar_url || null)
+          ? (photosValidees.get(m.prestataire_id) || null)
           : null,
-        prestataire_photo_verifiee: m.prestataire_id ? Boolean(photosVerifiees[m.prestataire_id]) : false,
+        // Toujours vraie quand une photo est servie (30/09/2026 : plus de repli
+        // sur la photo de profil, que personne ne vérifie). Gardée pour l'écran.
+        prestataire_photo_verifiee: m.prestataire_id ? photosValidees.has(m.prestataire_id) : false,
       }));
       return res.status(200).json(enriched);
     }

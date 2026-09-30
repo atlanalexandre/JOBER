@@ -1,6 +1,7 @@
 import { lireReglagesSecteurs, etatDesSecteurs, secteursDuProfil } from "./_secteurs.js";
 import { PLACES_OFFRE } from "./_offre.js";
 import { justificatifsDe, habiliteDans } from "./_habilitations.js";
+import { photosVerifiees } from "./_photos.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -118,7 +119,7 @@ export default async function handler(req, res) {
       // par l'interface du prestataire : un compte non activé restait proposé aux
       // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
       // l'affectation le refuse également côté /api/missions.
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url,plan_abonnement,cv`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,plan_abonnement,cv`, { headers }),
     ]);
     const profiles = await profilesRes.json();
 
@@ -182,6 +183,14 @@ export default async function handler(req, res) {
     // refuse de toute façon l'appel direct.
     const justifs = await justificatifsDe(approvedProfiles.map(p => p.id), SUPABASE_URL, headers);
 
+    // Photos validées, signées pour une heure — le catalogue est gardé 3 min
+    // par l'écran (PROVIDERS_CACHE_TTL). Seulement pour ceux qui ont accepté
+    // l'affichage : inutile de signer ce qui ne sera pas montré.
+    const photosCatalogue = await photosVerifiees(
+      approvedProfiles.filter(p => userMetaMap[p.id]?.photo_public_auth).map(p => p.id),
+      SUPABASE_URL, headers
+    );
+
     // Tous ses métiers sont réglementés et aucun titre n'est vérifié : il ne
     // peut rien exercer, il n'a rien à faire au catalogue.
     const sansMetierExercable = (p) => {
@@ -244,9 +253,10 @@ export default async function handler(req, res) {
         missions_count:   missionCountByProvider[p.id] || 0,
         // profiles.cv d'abord : le CV quitte le jeton (migration 2026-09-29_cv_hors_du_jeton).
         cv:               p.cv || meta.cv || null,
-        // profiles.avatar_url d'abord : user_metadata est encodé dans le JWT, un data URI
-        // y ferait dépasser la limite d'en-tête HTTP. meta.photo_url = comptes non migrés.
-        photo_url:        meta.photo_public_auth ? (p.avatar_url || meta.photo_url || null) : null,
+        // La photo validée par ALANE, et elle seule (api/_photos.js) — plus la
+        // photo de profil, que le prestataire change sans contrôle (30/09/2026).
+        // Toujours sous réserve de son accord d'affichage dans le catalogue.
+        photo_url:        meta.photo_public_auth ? (photosCatalogue.get(p.id) || null) : null,
         zone_km:          Number(meta.zone_km) || 50,
         created_at:       p.created_at,
       };

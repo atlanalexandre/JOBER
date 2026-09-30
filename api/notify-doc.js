@@ -1,7 +1,7 @@
 import { resendBody } from "./_email.js";
 import { verifyUser } from "./_auth.js";
 import { appUrl } from "./_url.js";
-import { docsRequisPour, piecesManquantes, photoCompleteLeDossier } from "./_documents.js";
+import { docsRequisPour, piecesManquantes } from "./_documents.js";
 import { mandatsManquants } from "./_mandats.js";
 import { manquesCv } from "./_cv.js";
 
@@ -73,8 +73,6 @@ async function enregistrerDocument(callerId, docType, SUPABASE_URL, hdrs) {
 }
 
 // ── Alerte « dossier complet » ───────────────────────────────────────────────
-// Partagée par le dépôt d'une pièce et par l'enregistrement de la photo de
-// profil (qui ne passe pas par le bucket : voir `verifierDossier` plus bas).
 // Un échec d'envoi est journalisé, jamais remonté : ce n'est qu'un signal.
 async function alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL }) {
   const restes = [
@@ -123,45 +121,6 @@ export default async function handler(req, res) {
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
   const esc  = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
-  // ── La photo de profil, dernière pièce du dossier (30/09/2026) ──────────────
-  //
-  // Déposée depuis « Modifier mon profil », la photo va dans `profiles.avatar_url`
-  // sans passer par ici : si c'était la dernière pièce manquante, personne
-  // n'était prévenu que le dossier était complet. L'écran appelle donc ce mode
-  // quand il enregistre une PREMIÈRE photo. Le serveur ne croit pas l'écran sur
-  // parole : il n'alerte que si la photo était bien la seule pièce manquante —
-  // aucune ligne « photo » dans `documents`, toutes les autres pièces déposées.
-  if (req.body?.verifierDossier === true) {
-    if (!RESEND_API_KEY || !ADMIN_EMAIL) {
-      console.error("[notify-doc] RESEND_API_KEY ou ADMIN_EMAIL absente — pas d'alerte « dossier complet » (photo).");
-      return res.status(200).json({ ok: true, alerte: false });
-    }
-    try {
-      const [pr, dr] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,prenom,nom,status,missions_enabled,avatar_url,cv,mandat_facturation_at,mandat_encaissement_at`, { headers: hdrs }),
-        fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${caller.id}&select=type`, { headers: hdrs }),
-      ]);
-      const pl = await pr.json().catch(() => null);
-      const dl = await dr.json().catch(() => null);
-      if (!pr.ok || !dr.ok || !Array.isArray(pl) || !Array.isArray(dl)) {
-        console.error(`[notify-doc] dossier illisible pour ${caller.id} (${pr.status}/${dr.status}) — pas d'alerte « dossier complet » (photo).`);
-        return res.status(200).json({ ok: true, alerte: false });
-      }
-      const profil = pl[0];
-      const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
-      if (!photoCompleteLeDossier(profil, requis, dl.map(l => l.type))) {
-        return res.status(200).json({ ok: true, alerte: false });
-      }
-      const email = caller.email || "";
-      const fullName = [profil.prenom, profil.nom].filter(Boolean).join(" ") || email;
-      await alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL });
-      return res.status(200).json({ ok: true, alerte: true });
-    } catch (e) {
-      console.error(`[notify-doc] vérification du dossier (photo) interrompue pour ${caller.id} :`, e.message);
-      return res.status(200).json({ ok: true, alerte: false });
-    }
-  }
-
   const { docType, isRenewal } = req.body || {};
   if (!docType || typeof docType !== "string") return res.status(400).json({ error: "docType requis" });
   if (!TYPES_ENREGISTRABLES.includes(docType)) {
@@ -202,7 +161,7 @@ export default async function handler(req, res) {
   let prenom = "", nom = "", email = caller.email || "";
   let profil = null;
   try {
-    const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom,status,missions_enabled,avatar_url,cv,mandat_facturation_at,mandat_encaissement_at`, { headers: hdrs });
+    const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom,status,missions_enabled,cv,mandat_facturation_at,mandat_encaissement_at`, { headers: hdrs });
     const pData = pRes.ok ? await pRes.json().catch(() => []) : [];
     if (Array.isArray(pData) && pData[0]) { profil = pData[0]; prenom = pData[0].prenom || ""; nom = pData[0].nom || ""; }
     if (!prenom && !nom) {
@@ -222,7 +181,7 @@ export default async function handler(req, res) {
   // colonne à tenir. Il dit aussi ce qui bloquera encore l'activation.
   if (avantDepot && profil && profil.status === "approved" && profil.missions_enabled !== true) {
     const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
-    const manquaient = piecesManquantes(requis, avantDepot, !!profil.avatar_url);
+    const manquaient = piecesManquantes(requis, avantDepot);
     // Relu APRÈS l'enregistrement, et non déduit de la lecture d'avant : deux
     // dépôts simultanés des deux dernières pièces voyaient chacun l'autre
     // manquer, et personne n'était prévenu (relecture du 30/09/2026). Relu,
@@ -236,7 +195,7 @@ export default async function handler(req, res) {
     } catch (e) {
       console.error("[notify-doc] pièces relues illisibles :", e.message);
     }
-    const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);
+    const manquent   = piecesManquantes(requis, apres);
     if (manquaient.length > 0 && manquent.length === 0) {
       await alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL });
     }

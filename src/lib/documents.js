@@ -29,24 +29,36 @@ export async function enregistrerDocument(type, { renouvellement = false } = {})
 }
 
 /**
- * Après l'enregistrement d'une PREMIÈRE photo de profil (qui va dans
- * `profiles.avatar_url`, sans passer par le bucket) : demande au serveur si
- * c'était la dernière pièce du dossier, pour prévenir l'administration.
- * Ne lève jamais : la photo est enregistrée, c'est ce qui compte pour le
- * prestataire. Un échec est journalisé.
+ * La photo du prestataire connecté, telle que les clients la verront : le
+ * document `photo` du bucket, et non plus `profiles.avatar_url` (30/09/2026).
+ * @returns {Promise<{ url: string|null, verifiee: boolean, deposee: boolean }>}
+ *   `deposee: false` quand aucune photo n'a été déposée ; une lecture ratée
+ *   est journalisée et rendue comme « pas de photo affichable ».
  */
-export async function signalerPhotoDeposee() {
-  try {
-    const { data } = await supabase.auth.getSession();
-    const jeton = data?.session?.access_token;
-    if (!jeton) { console.error("[documents] photo : pas de session, dossier non vérifié."); return; }
-    const r = await fetch("/api/notify-doc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jeton}` },
-      body: JSON.stringify({ verifierDossier: true }),
-    });
-    if (!r.ok) console.error(`[documents] photo : vérification du dossier refusée (${r.status}).`);
-  } catch (e) {
-    console.error("[documents] photo : vérification du dossier impossible :", e.message);
+export async function maPhoto(uid) {
+  const { data: doc, error } = await supabase.from("documents")
+    .select("verified").eq("prestataire_id", uid).eq("type", "photo").maybeSingle();
+  if (error) {
+    console.error("[documents] photo : ligne illisible :", error.message);
+    return { url: null, verifiee: false, deposee: false };
   }
+  if (!doc) return { url: null, verifiee: false, deposee: false };
+  const { data: su, error: se } = await supabase.storage.from("Documents").createSignedUrl(`${uid}/photo`, 3600);
+  if (se) console.error("[documents] photo : URL signée refusée :", se.message);
+  return { url: su?.signedUrl || null, verifiee: doc.verified === true, deposee: true };
+}
+
+/**
+ * Dépose une nouvelle photo et l'enregistre : elle
+ * repasse EN ATTENTE, et n'est montrée aux clients qu'une fois validée.
+ * Lève une erreur au message lisible.
+ */
+export async function deposerPhoto(uid, blob, { remplacement = false } = {}) {
+  const { error } = await supabase.storage.from("Documents")
+    .upload(`${uid}/photo`, blob, { upsert: true, contentType: blob.type || "image/jpeg" });
+  if (error) {
+    console.error("[documents] photo : envoi refusé :", error.message);
+    throw new Error("La photo n'a pas pu être envoyée. Réessayez." + (error.message ? ` (${error.message})` : ""));
+  }
+  await enregistrerDocument("photo", { renouvellement: remplacement });
 }
