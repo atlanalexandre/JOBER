@@ -72,6 +72,40 @@ async function enregistrerDocument(callerId, docType, SUPABASE_URL, hdrs) {
   return { ok: true };
 }
 
+// ── Alerte « dossier complet » ───────────────────────────────────────────────
+// Partagée par le dépôt d'une pièce et par l'enregistrement de la photo de
+// profil (qui ne passe pas par le bucket : voir `verifierDossier` plus bas).
+// Un échec d'envoi est journalisé, jamais remonté : ce n'est qu'un signal.
+async function alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL }) {
+  const restes = [
+    ...mandatsManquants(profil),
+    ...manquesCv(profil.cv || caller.user_metadata?.cv).map(m => `CV : ${m}`),
+  ];
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: resendBody({
+        from: RESEND_FROM,
+        to: ADMIN_EMAIL,
+        subject: `✅ Dossier complet — ${fullName} : à vérifier et activer`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+          <h2 style="color:#050E20;margin-bottom:4px">✅ Toutes les pièces obligatoires sont déposées</h2>
+          <p style="color:#444">${esc(fullName)} (${esc(email)}) a déposé la dernière pièce obligatoire de son dossier.</p>
+          <p style="color:#444">Vérifiez chaque pièce dans le back-office, puis ouvrez-lui l'accès aux prestations (« ✅ Activer l'accès aux prestations »).</p>
+          ${restes.length
+            ? `<p style="color:#b45309;font-weight:700;margin-top:16px">L'activation sera encore refusée tant que manque :</p><ul style="color:#444">${restes.map(x => `<li>${esc(x)}</li>`).join("")}</ul><p style="color:#666;font-size:13px">Le prestataire le complète depuis son espace ; il y est invité.</p>`
+            : `<p style="color:#047857;font-weight:700;margin-top:16px">CV et mandats sont en ordre : rien d'autre ne bloque l'activation.</p>`}
+          <a href="${appUrl()}/bo" style="display:inline-block;margin-top:12px;padding:12px 24px;background:#7C6FE0;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px">Ouvrir le back-office →</a>
+        </div>`,
+      }),
+    });
+    if (!r.ok) console.error(`[notify-doc] alerte « dossier complet » refusée pour ${caller.id} (${r.status}).`);
+  } catch (e) {
+    console.error(`[notify-doc] alerte « dossier complet » non envoyée pour ${caller.id} :`, e.message);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -86,14 +120,60 @@ export default async function handler(req, res) {
   const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
   if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
 
+  const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
+  const esc  = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+  // ── La photo de profil, dernière pièce du dossier (30/09/2026) ──────────────
+  //
+  // Déposée depuis « Modifier mon profil », la photo va dans `profiles.avatar_url`
+  // sans passer par ici : si c'était la dernière pièce manquante, personne
+  // n'était prévenu que le dossier était complet. L'écran appelle donc ce mode
+  // quand il enregistre une PREMIÈRE photo. Le serveur ne croit pas l'écran sur
+  // parole : il n'alerte que si la photo était bien la seule pièce manquante —
+  // aucune ligne « photo » dans `documents`, toutes les autres pièces déposées.
+  if (req.body?.verifierDossier === true) {
+    if (!RESEND_API_KEY || !ADMIN_EMAIL) {
+      console.error("[notify-doc] RESEND_API_KEY ou ADMIN_EMAIL absente — pas d'alerte « dossier complet » (photo).");
+      return res.status(200).json({ ok: true, alerte: false });
+    }
+    try {
+      const [pr, dr] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,prenom,nom,status,missions_enabled,avatar_url,cv,mandat_facturation_at,mandat_encaissement_at`, { headers: hdrs }),
+        fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${caller.id}&select=type`, { headers: hdrs }),
+      ]);
+      const pl = await pr.json().catch(() => null);
+      const dl = await dr.json().catch(() => null);
+      if (!pr.ok || !dr.ok || !Array.isArray(pl) || !Array.isArray(dl)) {
+        console.error(`[notify-doc] dossier illisible pour ${caller.id} (${pr.status}/${dr.status}) — pas d'alerte « dossier complet » (photo).`);
+        return res.status(200).json({ ok: true, alerte: false });
+      }
+      const profil = pl[0];
+      if (!profil || profil.role !== "prestataire" || profil.status !== "approved" || profil.missions_enabled === true || !profil.avatar_url) {
+        return res.status(200).json({ ok: true, alerte: false });
+      }
+      const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
+      const types  = dl.map(l => l.type);
+      const sansPhoto = piecesManquantes(requis, types, false);
+      const avecPhoto = piecesManquantes(requis, types, true);
+      if (!(sansPhoto.length === 1 && sansPhoto[0].id === "photo" && avecPhoto.length === 0)) {
+        return res.status(200).json({ ok: true, alerte: false });
+      }
+      const email = caller.email || "";
+      const fullName = [profil.prenom, profil.nom].filter(Boolean).join(" ") || email;
+      await alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL });
+      return res.status(200).json({ ok: true, alerte: true });
+    } catch (e) {
+      console.error(`[notify-doc] vérification du dossier (photo) interrompue pour ${caller.id} :`, e.message);
+      return res.status(200).json({ ok: true, alerte: false });
+    }
+  }
+
   const { docType, isRenewal } = req.body || {};
   if (!docType || typeof docType !== "string") return res.status(400).json({ error: "docType requis" });
   if (!TYPES_ENREGISTRABLES.includes(docType)) {
     console.error(`[notify-doc] type de document non enregistrable : ${docType} (compte ${caller.id})`);
     return res.status(400).json({ error: "Ce type de document ne peut pas encore être enregistré. Contactez le support." });
   }
-
-  const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
 
   // Ce qui manquait AVANT ce dépôt : sert à savoir si c'est lui qui complète le
   // dossier (alerte « dossier complet », plus bas). Une lecture ratée ne bloque
@@ -138,7 +218,6 @@ export default async function handler(req, res) {
   } catch (e) { console.error("[notify-doc] nom du prestataire illisible :", e.message); }
 
   const fullName   = [prenom, nom].filter(Boolean).join(" ") || email;
-  const esc        = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
   // ── Dossier complet : UNE alerte, au dépôt de la dernière pièce (29/09/2026) ──
   //
@@ -165,33 +244,7 @@ export default async function handler(req, res) {
     }
     const manquent   = piecesManquantes(requis, apres, !!profil.avatar_url);
     if (manquaient.length > 0 && manquent.length === 0) {
-      const restes = [
-        ...mandatsManquants(profil),
-        ...manquesCv(profil.cv || caller.user_metadata?.cv).map(m => `CV : ${m}`),
-      ];
-      try {
-        const r = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: resendBody({
-            from: RESEND_FROM,
-            to: ADMIN_EMAIL,
-            subject: `✅ Dossier complet — ${fullName} : à vérifier et activer`,
-            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
-              <h2 style="color:#050E20;margin-bottom:4px">✅ Toutes les pièces obligatoires sont déposées</h2>
-              <p style="color:#444">${esc(fullName)} (${esc(email)}) a déposé la dernière pièce obligatoire de son dossier.</p>
-              <p style="color:#444">Vérifiez chaque pièce dans le back-office, puis ouvrez-lui l'accès aux prestations (« ✅ Activer l'accès aux prestations »).</p>
-              ${restes.length
-                ? `<p style="color:#b45309;font-weight:700;margin-top:16px">L'activation sera encore refusée tant que manque :</p><ul style="color:#444">${restes.map(x => `<li>${esc(x)}</li>`).join("")}</ul><p style="color:#666;font-size:13px">Le prestataire le complète depuis son espace ; il y est invité.</p>`
-                : `<p style="color:#047857;font-weight:700;margin-top:16px">CV et mandats sont en ordre : rien d'autre ne bloque l'activation.</p>`}
-              <a href="${appUrl()}/bo" style="display:inline-block;margin-top:12px;padding:12px 24px;background:#7C6FE0;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px">Ouvrir le back-office →</a>
-            </div>`,
-          }),
-        });
-        if (!r.ok) console.error(`[notify-doc] alerte « dossier complet » refusée pour ${caller.id} (${r.status}).`);
-      } catch (e) {
-        console.error(`[notify-doc] alerte « dossier complet » non envoyée pour ${caller.id} :`, e.message);
-      }
+      await alerterDossierComplet({ caller, profil, fullName, email, esc, RESEND_API_KEY, RESEND_FROM, ADMIN_EMAIL });
     }
   }
   const docLabel   = DOC_LABELS[docType] || esc(docType);
