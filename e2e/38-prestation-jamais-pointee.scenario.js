@@ -8,6 +8,7 @@
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
 import { prestataireOperationnel, client, reservationPayee, paiementStripe, api, tachePlanifiee } from "./fabrique.js";
+import { connexion, fermerBandeauCookies } from "./parcours.js";
 
 test.describe.configure({ timeout: 240_000 });
 
@@ -83,4 +84,24 @@ test("la tâche planifiée pose la question au client, une seule fois", async ()
   const [n] = await sql(`select count(*)::int as n from notifications where user_id = '${c.id}' and ref_id = '${m.id}' and title = 'La prestation a-t-elle eu lieu ?'`);
   expect(n.n).toBe(1);
   expect(await statut(m.id), "moins de 24 h après la fin : pas encore validée").toBe("assigned");
+});
+
+test("à l'écran : le client voit la question et répond « Non, personne n'est venu »", async ({ page }) => {
+  const { c, m } = await prestationNonPointee();
+  await page.addInitScript((id) => {
+    try { localStorage.setItem(`alane_tour_done_${id}`, "1"); } catch { /* stockage indisponible : le gestionnaire ci-dessous prend le relais */ }
+  }, c.id);
+  await page.addLocatorHandler(page.getByText("Passer le tutoriel"), (l) => l.click());
+  await connexion(page, { email: c.email });
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+  await fermerBandeauCookies(page);
+  await page.goto(page.url().replace(/\/dashboard.*$/, "/missions"));
+  await page.getByText("Femme/Valet de chambre").first().click();
+  await expect(page.getByText("La prestation a-t-elle eu lieu ?")).toBeVisible({ timeout: 20_000 });
+  await page.screenshot({ path: "e2e-resultats/captures/38-question.png", fullPage: true });
+  await expect(page.getByText("Annuler sans frais"), "un seul encadré : la question remplace celui du retard").toHaveCount(0);
+  await page.getByRole("button", { name: "Non, personne n'est venu" }).click();
+  await expect.poll(() => statut(m.id), { timeout: 30_000 }).toBe("cancelled");
+  const pi = await paiementStripe(m.paymentIntent);
+  expect(pi.rembourse, "frais de service compris").toBe(pi.preleve);
 });

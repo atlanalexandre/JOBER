@@ -7317,6 +7317,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             } catch { return null; }
             const retard = Math.floor((Date.now() - debutPrevu) / 60000);
             if (retard < 15) return null;   // tolérance avant d'inquiéter le client
+            // L'heure de fin passée, c'est la question « La prestation a-t-elle eu
+            // lieu ? » qui prend le relais, plus bas : les deux encadrés disaient
+            // la même chose avec deux boutons différents. Même calcul que celui-ci.
+            if (Date.now() >= debutPrevu + Math.max(1, Number(selected.hours) || 1) * 3600000) return null;
+            // Le prestataire a confirmé être venu : annuler n'est plus possible
+            // (litige), le bouton échouerait.
+            if (selected.validation_prestataire) return null;
             // Le droit d'annuler s'ouvrait à 30 min quelle que soit la durée. Sur une
             // prestation d'une heure, 30 min de retard représentent la moitié du
             // service ; sur huit heures, un contretemps. Le seuil suit la durée.
