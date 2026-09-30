@@ -78,6 +78,20 @@ export default async function handler(req, res) {
     return res.status(403).send("<h1>Accès interdit</h1>");
   }
 
+  // Une facture ne s'édite que pour une prestation RÉALISÉE (`completed`).
+  // Rien ne le vérifiait : une prestation annulée, remboursée ou jamais
+  // effectuée recevait un numéro de la séquence — définitif, puisque la
+  // numérotation doit être continue (art. 242 nonies A, ann. II du CGI) —
+  // pour une opération qui n'a pas eu lieu (relecture du 30/09/2026).
+  // Une facture déjà numérotée reste consultable : une facture émise ne
+  // disparaît pas, elle s'annule par un avoir.
+  if (mission.status !== "completed" && !mission.invoice_number) {
+    return res.status(409).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
+      + `<h2>Pas de facture pour cette prestation</h2>`
+      + `<p>Une facture n'est établie que pour une prestation réalisée. Celle-ci ne l'a pas été (annulée, remboursée ou en cours).</p>`
+      + `<p><a href="/" style="color:#7C6FE0">Retourner à l'application</a></p></body></html>`);
+  }
+
   // Fetch client profile + auth email
   let clientName = "";
   let clientEmail = "";

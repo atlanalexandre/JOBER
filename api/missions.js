@@ -6840,12 +6840,17 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "mission_id invalide" });
       }
 
-      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id`, { headers });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,invoice_number`, { headers });
       const mData = await mRes.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
       if (mission.client_id !== caller.id && mission.prestataire_id !== caller.id) {
         return res.status(403).json({ error: "Accès interdit" });
+      }
+      // Même règle que api/invoice.js : pas de facture pour une prestation qui
+      // n'a pas été réalisée, sauf si elle a déjà été numérotée.
+      if (mission.status !== "completed" && !mission.invoice_number) {
+        return res.status(409).json({ error: "Une facture n'est établie que pour une prestation réalisée." });
       }
 
       const secret = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");

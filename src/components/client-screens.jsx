@@ -7781,7 +7781,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
           )}
 
-          {(selected.status === "completed" || selected.status === "closed") && (
+          {(selected.status === "completed" || selected.invoice_number) && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
               <button
                 onClick={() => {
