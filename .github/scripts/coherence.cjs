@@ -136,7 +136,11 @@ for (const f of fichiers("api")) {
 // Elle contourne toute la sécurité RLS. Dans `src/`, elle finirait dans le
 // bundle public.
 
-for (const f of fichiers("src")) {
+// Exception : les tests (`src/tests/`). Ils ne sont importés par aucun écran,
+// donc jamais embarqués dans le bundle — et un test qui exerce une fonction
+// /api doit poser la variable, avec une valeur factice (30/09/2026). Tout autre
+// fichier de `src/` reste refusé.
+for (const f of fichiers("src").filter(f => !f.split(path.sep).join("/").startsWith("src/tests/"))) {
   parLigne(f, (texte, n) => {
     if (texte.includes("SUPABASE_SERVICE_ROLE_KEY")) {
       violation("1.5 — clé service role hors /api", f, n,
