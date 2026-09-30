@@ -847,6 +847,17 @@ function BOComptes() {
               <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, marginTop:2 }}>
                 {p.role==="prestataire"?"👷 Prestataire":"🏢 Client"} · {new Date(p.created_at).toLocaleDateString("fr-FR")}
               </div>
+              {/* Accusé de réception automatique de l'inscription (api/_accuse_inscription.js) :
+                  qu'Alexandre sache, sans ouvrir la base, s'il est bien parti. Les inscrits
+                  d'avant le 29/09/2026 ont été marqués à la migration : ils l'avaient reçu
+                  à la main. Tant qu'il n'est pas parti, le traitement automatique réessaie. */}
+              {p.role==="prestataire" && p.status==="pending" && (
+                p.accuse_inscription_at && new Date(p.created_at) < new Date("2026-09-29T00:00:00+02:00")
+                  ? <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, marginTop:2 }}>📧 Inscrit avant l'envoi automatique : pas d'accusé envoyé par ALANE</div>
+                  : p.accuse_inscription_at
+                  ? <div style={{ color:C.success, fontSize:10, marginTop:2 }}>📧 Accusé d'inscription envoyé le {new Date(p.accuse_inscription_at).toLocaleString("fr-FR", { timeZone:"Europe/Paris", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</div>
+                  : <div style={{ color:"#F0B429", fontSize:10, marginTop:2 }}>⏳ Accusé d'inscription pas encore envoyé — nouvel essai automatique</div>
+              )}
               {p.role==="prestataire" && docs[p.id] && (() => {
                 const total = docs[p.id].length;
                 const ok = docs[p.id].filter(d=>d.verified).length;
