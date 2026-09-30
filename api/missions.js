@@ -3521,6 +3521,28 @@ export default async function handler(req, res) {
           }
         } catch (e) { console.error("[missions] montant Stripe illisible — repli sur le montant en base :", e.message); }
       }
+      // Ce que la CARTE a réellement payé : le prix, moins la part réglée en
+      // cashback (api/_cashback.js). Le remboursement se calculait sur le prix
+      // entier : avec 5 € de cashback, la carte récupérait 5 € de trop — le
+      // cashback étant rendu À PART par restituerCashback() —, et sans frais
+      // retenus le remboursement dépassait le prélevé, que Stripe refuse
+      // (constaté en recette le 30/09/2026 : 105,98 € prélevés, 104,00 € rendus
+      // + 5 € de cashback, soit 1,98 € de frais retenus au lieu de 6,98 €).
+      // Lu à part : une colonne absente ferait échouer toute la lecture.
+      let cashbackApplique = 0;
+      try {
+        const rcb = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=cashback_applique`, { headers });
+        const dcb = await rcb.json().catch(() => null);
+        if (rcb.ok && Array.isArray(dcb) && dcb[0]) cashbackApplique = Math.max(0, Number(dcb[0].cashback_applique) || 0);
+        else console.error(`[cancel_client] cashback illisible sur ${mission_id} (${rcb.status}) — remboursement calculé sans réduction`);
+      } catch (e) {
+        console.error(`[cancel_client] cashback illisible sur ${mission_id} :`, e.message);
+      }
+      // Lu chez Stripe (repli ci-dessus), le montant est déjà celui de la carte.
+      const payeCarte = Number(mission.montant_total)
+        ? Math.max(0, Math.round((missionAmount - cashbackApplique) * 100) / 100)
+        : missionAmount;
+
       // Frais réellement payés = total encaissé − part horaire (tarif × heures × jours)
       const nbJours = (mission.date_debut && mission.date_fin)
         ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
@@ -3590,8 +3612,8 @@ export default async function handler(req, res) {
       // difficilement défendable.
       const retenirFrais = !annulationPourRetard;
       const refundAmount = retenirFrais
-        ? Math.max(0, Math.round((missionAmount - fraisRetenus) * 100)) // en centimes
-        : Math.round(missionAmount * 100);
+        ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
+        : Math.round(payeCarte * 100);
       const keptAmount = retenirFrais ? fraisRetenus : 0;
       if (retenirFrais) {
         console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
@@ -3719,7 +3741,8 @@ export default async function handler(req, res) {
               <h2 style="color:#050E20">✅ Annulation confirmée</h2>
               <p style="color:#444">Votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong> a bien été annulée.</p>
               <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
-                <tr><td style="padding:6px 0;color:#666">Montant payé</td><td style="font-weight:700">${esc(String(missionAmount.toFixed(2).replace(".",",")))} €</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Montant payé par carte</td><td style="font-weight:700">${euros(payeCarte)}</td></tr>
+                ${cashbackApplique > 0 ? `<tr><td style="padding:6px 0;color:#666">Réglé en cashback</td><td style="font-weight:700">${euros(cashbackApplique)}</td></tr>` : ""}
                 <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
                 ${keptAmount > 0 ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
               </table>
@@ -4396,7 +4419,13 @@ export default async function handler(req, res) {
       // été : la personne annoncée ne s'est pas présentée. Facturer une mise en
       // relation qui n'a produit personne serait indéfendable — c'est le même
       // raisonnement que la défaillance du prestataire aux CGPS art. 8.2.
-      const montantDu = Math.max(0, Math.round((Number(mid.montant_total) || 0) * 100)); // centimes
+      // Plafonné à ce que la carte a payé : avec du cashback, le prix entier
+      // dépasse le prélevé, et Stripe refusait tout le remboursement — le client
+      // restait sans prestation et sans argent (relecture du 30/09/2026). Le
+      // cashback, lui, est rendu plus bas par restituerCashback().
+      const montantDu = await plafonnerRemboursement(
+        Math.max(0, Math.round((Number(mid.montant_total) || 0) * 100)), // centimes
+        { id: mission_id, montant_total: mid.montant_total }, SUPABASE_URL, headers);
       const walletPaye = typeof mid.stripe_payment_intent === "string"
         && mid.stripe_payment_intent.startsWith("wallet_");
 
@@ -4481,6 +4510,11 @@ export default async function handler(req, res) {
                + "direction@alane.fr, et ne laissez pas cette personne intervenir.",
         });
       }
+
+      // Toute la prestation est annulée avant d'avoir eu lieu : le cashback
+      // revient au client (règle d'Alexandre du 29/09/2026 ; restituerCashback
+      // ne rend rien si elle avait démarré). Il ne revenait jamais ici.
+      await restituerCashback({ id: mission_id, client_id: mid.client_id || caller.id }, SUPABASE_URL, headers, "identite_refusee");
 
       // ── Le prestataire est suspendu le temps de la vérification ──────────
       //
@@ -6184,6 +6218,14 @@ export default async function handler(req, res) {
           error: "Votre annulation n'a pas pu être enregistrée. Écrivez à direction@alane.fr : "
                + "la prestation vous est encore attribuée.",
         });
+      }
+
+      // Le client est intégralement remboursé (CGPS art. 8.2) : son cashback lui
+      // revient avec la carte, la prestation n'ayant pas démarré (règle
+      // d'Alexandre du 29/09/2026, appliquée par restituerCashback). Il ne
+      // revenait jamais sur ce chemin.
+      if (mission.stripe_payment_intent) {
+        await restituerCashback({ id: mission_id, client_id: mission.client_id }, SUPABASE_URL, headers, "presta_cancel");
       }
 
       // Recherche d'un remplaçant. L'écran client annonce « nous recherchons un
