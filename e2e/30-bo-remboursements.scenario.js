@@ -6,7 +6,7 @@
 // même le versement au prestataire.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, paiementStripe, bo } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, paiementStripe, bo, api } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -58,4 +58,15 @@ test("virement en cours d'émission : remboursement refusé tant qu'on ne sait p
   expect((await paiementStripe(m.paymentIntent)).rembourse).toBe(0);
   const [l] = await sql(`select status from missions where id = '${m.id}'`);
   expect(l.status, "rien n'est annulé").not.toBe("cancelled");
+});
+
+test("« Remboursements Stripe » du back-office : même règle — pas de remboursement si le virement ne peut être repris", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: p, client: c });
+  await sql(`update missions set payout_status = 'transferred', stripe_transfer_id = 'tr_inconnu_recette' where id = '${m.id}'`);
+  const pin = await api("/api/bo-verify-pin", { pin: process.env.RECETTE_BO_PASSWORD });
+  const r = await api("/api/stripe-refund", { paymentIntentId: m.paymentIntent, missionId: m.id }, pin.json?.token);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(502);
+  expect((await paiementStripe(m.paymentIntent)).rembourse, "rien remboursé : ALANE ne paie pas deux fois").toBe(0);
 });
