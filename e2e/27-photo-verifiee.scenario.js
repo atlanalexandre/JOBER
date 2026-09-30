@@ -8,6 +8,7 @@
 // nouvelle photo repasse en vérification.
 import { test, expect, request } from "@playwright/test";
 import { deflateSync, crc32 } from "node:zlib";
+import { randomBytes } from "node:crypto";
 import { sql, RECETTE_REF, RECETTE_URL, BYPASS } from "./outils.js";
 import { prestataireOperationnel, api, bo, anon } from "./fabrique.js";
 import { connexion } from "./parcours.js";
@@ -17,7 +18,7 @@ test.describe.configure({ timeout: 240_000 });
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 const SUPABASE = `https://${RECETTE_REF}.supabase.co`;
 
-/** Un PNG uni de `cote` pixels, fabriqué ici : pas de fichier binaire dans le dépôt. */
+/** Un PNG de `cote` pixels, fabriqué ici : pas de fichier binaire dans le dépôt. */
 function png(cote) {
   const bloc = (type, donnees) => {
     const t = Buffer.from(type, "ascii");
@@ -28,8 +29,10 @@ function png(cote) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(cote, 0); ihdr.writeUInt32BE(cote, 4);
   ihdr[8] = 8; ihdr[9] = 2; // 8 bits, RVB
-  const ligne = Buffer.concat([Buffer.from([0]), Buffer.alloc(cote * 3, 0x9a)]);
-  const brut = Buffer.concat(Array.from({ length: cote }, () => ligne));
+  // Du bruit, comme une vraie photo : une image unie se comprime sous 1 Ko, et
+  // l'écran la refuse alors comme « fichier trop petit ».
+  const brut = Buffer.concat(Array.from({ length: cote }, () =>
+    Buffer.concat([Buffer.from([0]), randomBytes(cote * 3)])));
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     bloc("IHDR", ihdr), bloc("IDAT", deflateSync(brut)), bloc("IEND", Buffer.alloc(0)),
@@ -91,6 +94,9 @@ test("catalogue : la photo validée, jamais la photo de profil ; une nouvelle ph
   await expect(page.getByText(/Mon espace|Tableau de bord|Prestations/).first()).toBeVisible({ timeout: 30_000 });
   await page.goto("/provider/profile");
   await expect(page.getByText("✓ Photo vérifiée par ALANE")).toBeVisible({ timeout: 30_000 });
+  // La demande de géolocalisation s'ouvre par-dessus l'écran : on la referme.
+  const annuler = page.getByRole("button", { name: "Annuler" });
+  if (await annuler.isVisible().catch(() => false)) await annuler.click();
   const champ = page.locator('input[type="file"][accept="image/*"]').first();
   // Trop petite : refusée. Ce contrôle ne s'exécutait jamais en production — la
   // politique de sécurité bloquait l'image `blob:` qu'il essayait de lire.
