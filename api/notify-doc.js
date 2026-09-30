@@ -1,7 +1,7 @@
 import { resendBody } from "./_email.js";
 import { verifyUser } from "./_auth.js";
 import { appUrl } from "./_url.js";
-import { docsRequisPour, piecesManquantes } from "./_documents.js";
+import { docsRequisPour, piecesManquantes, photoCompleteLeDossier } from "./_documents.js";
 import { mandatsManquants } from "./_mandats.js";
 import { manquesCv } from "./_cv.js";
 
@@ -148,14 +148,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, alerte: false });
       }
       const profil = pl[0];
-      if (!profil || profil.role !== "prestataire" || profil.status !== "approved" || profil.missions_enabled === true || !profil.avatar_url) {
-        return res.status(200).json({ ok: true, alerte: false });
-      }
       const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
-      const types  = dl.map(l => l.type);
-      const sansPhoto = piecesManquantes(requis, types, false);
-      const avecPhoto = piecesManquantes(requis, types, true);
-      if (!(sansPhoto.length === 1 && sansPhoto[0].id === "photo" && avecPhoto.length === 0)) {
+      if (!photoCompleteLeDossier(profil, requis, dl.map(l => l.type))) {
         return res.status(200).json({ ok: true, alerte: false });
       }
       const email = caller.email || "";
