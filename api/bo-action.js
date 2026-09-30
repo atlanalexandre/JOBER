@@ -1806,7 +1806,10 @@ export default async function handler(req, res) {
           console.error(`[verify_doc] métiers de ${profileId} illisibles (${uT.status}) — validation non enregistrée.`);
           return res.status(503).json({ error: "Les métiers du prestataire n'ont pas pu être lus. Réessayez dans un instant." });
         }
-        const metiersT = uTData.user_metadata?.metiers_list || [uTData.user_metadata?.metier].filter(Boolean);
+        // Métier principal ET liste : c'est l'union que regardent le catalogue et
+        // la reprise. `metiers_list || [metier]` oubliait le principal dès que la
+        // liste existait — une revalidation lui retirait alors son titre.
+        const metiersT = [uTData.user_metadata?.metier, ...(Array.isArray(uTData.user_metadata?.metiers_list) ? uTData.user_metadata.metiers_list : [])].filter(Boolean);
         titresCouverts = qualificationsPour(metiersT).map(q => q.titre);
       }
 
