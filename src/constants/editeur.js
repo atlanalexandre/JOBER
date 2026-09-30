@@ -120,3 +120,24 @@ export function blocResponsableTraitement() {
     + `Délégué à la protection des données : ${EDITEUR.dpo || "non désigné"}\n`
     + `Contact : ${CONTACT.rgpd}`;
 }
+
+// ── Ce qu'on promet au prestataire qui vient de s'inscrire (30/09/2026) ─────
+//
+// Quatre écrans annonçaient « validation sous 24 à 48 h ouvrées », quand
+// l'accusé de réception envoyé au même moment (api/_accuse_inscription.js)
+// dit que la plateforme n'est pas encore ouverte et que le profil sera validé
+// à la mise en route d'ALANE. Le prestataire lisait les deux à une minute
+// d'intervalle. Texte provisoire, comme l'accusé : À RÉÉCRIRE LE JOUR DE
+// L'OUVERTURE, en même temps que lui (IMMATRICULATION.md §11).
+export const VALIDATION_PRESTA = {
+  /** Encart du formulaire d'inscription, au-dessus du bouton d'envoi. */
+  encart: "La plateforme n'est pas encore ouverte au public : votre profil sera validé dès la mise en route d'ALANE. Vous serez prévenu par e-mail.",
+  /** Écran affiché juste après l'envoi du dossier. */
+  titre: "Demande d'inscription reçue !",
+  message: "La plateforme n'est pas encore ouverte au public. Votre profil sera validé prochainement, dès la mise en route d'ALANE.",
+  suite: "Vous recevrez automatiquement un e-mail dès que votre accès sera actif. Aucune démarche de votre part n'est nécessaire dans l'intervalle.",
+  /** Écran « Compte en attente » (à chaque connexion), étape en cours. */
+  enAttente: "Validation dès la mise en route d'ALANE",
+  /** Étape « Faites valider votre compte » de la page « Comment ça marche ». */
+  etape: "Notre équipe vérifie votre dossier. La plateforme n'est pas encore ouverte au public : les profils seront validés dès la mise en route d'ALANE, et vous serez prévenu par e-mail.",
+};

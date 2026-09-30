@@ -6,6 +6,7 @@ import { isLaunchPhase, getCashbackTier, tauxCashback, formatMontant } from "./c
 import { CGU } from "./constants/cgu.js";
 import { SECTORS, METIERS } from "./constants/data.js";
 import { effacerPremiereVisite } from "./constants/premiere-visite.js";
+import { VALIDATION_PRESTA } from "./constants/editeur.js";
 import { nouvelleVersionDisponible, rechargerVersion } from "./lib/version.js";
 import { lireRetourConfirmation, messageConfirmationSansSession } from "./lib/confirmation.js";
 import { useResponsive } from "./hooks/useResponsive.js";
@@ -523,10 +524,13 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
   const [hasSession, setHasSession] = useState(false);
   const [manualChecking, setManualChecking] = useState(false);
   const [manualMsg, setManualMsg] = useState("");
+  // Écran commun aux deux rôles : seul le prestataire attend l'ouverture
+  // d'ALANE pour être validé (VALIDATION_PRESTA, texte provisoire).
+  const [estPresta, setEstPresta] = useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{
-      if(data?.user){ setUserEmail(data.user.email||""); setHasSession(true); }
+      if(data?.user){ setUserEmail(data.user.email||""); setHasSession(true); setEstPresta(data.user.user_metadata?.role === "prestataire"); }
     });
   },[]);
 
@@ -569,7 +573,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 
   const steps = [
     { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
-    { icon:"🔍", label:"Vérification en cours",  sub:"Délai habituel : 24 à 48h ouvrés",            done:false, active:true  },
+    { icon:"🔍", label:"Vérification en cours",  sub:estPresta ? VALIDATION_PRESTA.enAttente : "Délai habituel : 24 à 48h ouvrés", done:false, active:true  },
     { icon:"🎉", label:"Accès accordé",           sub:"Vous recevrez un email de confirmation",      done:false, active:false },
   ];
 
@@ -578,7 +582,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
       <div style={{ width:80, height:80, borderRadius:24, background:checking?"rgba(16,217,143,0.15)":"rgba(124,111,224,0.15)", border:`2px solid ${checking?"#10D98F":"rgba(124,111,224,0.4)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24, transition:"all 0.4s" }}>{checking?"🎉":"⏳"}</div>
       <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>{checking ? "Compte approuvé !" : "Compte en attente"}</h2>
       <p style={{ color:"rgba(255,255,255,0.6)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
-        {checking ? "Votre compte a été validé. Redirection en cours…" : "Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement."}
+        {checking ? "Votre compte a été validé. Redirection en cours…" : estPresta ? VALIDATION_PRESTA.message : "Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement."}
       </p>
 
       {/* Timeline */}
@@ -2171,9 +2175,9 @@ export default function App() {
         <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20, #0A1628, #162547)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center", position:"relative", overflow:"hidden" }}>
           <div style={{ position:"absolute", top:-80, right:-80, width:280, height:280, borderRadius:"50%", background:`radial-gradient(circle, ${C.accentGold}12 0%, transparent 65%)`, pointerEvents:"none" }} />
           <div style={{ fontSize:72, marginBottom:20 }}>📬</div>
-          <h2 style={{ color:C.text, fontSize:26, fontWeight:700, margin:"0 0 12px", fontFamily:font.display }}>Dossier envoyé !</h2>
-          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.8, maxWidth:300, margin:"0 auto 12px" }}>Notre équipe examine votre dossier sous <strong style={{ color:C.accentGold }}>24 à 48h ouvrées</strong>.</p>
-          <p style={{ color:C.textMuted, fontSize:13, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>Vous recevrez une notification dès que votre compte est activé.</p>
+          <h2 style={{ color:C.text, fontSize:26, fontWeight:700, margin:"0 0 12px", fontFamily:font.display }}>{VALIDATION_PRESTA.titre}</h2>
+          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.8, maxWidth:300, margin:"0 auto 12px" }}>{VALIDATION_PRESTA.message}</p>
+          <p style={{ color:C.textMuted, fontSize:13, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>{VALIDATION_PRESTA.suite}</p>
           <Btn full onClick={()=>setScreen("p_home")} style={{ fontSize:16, maxWidth:280 }}>Accéder à mon espace →</Btn>
         </div>
       )}

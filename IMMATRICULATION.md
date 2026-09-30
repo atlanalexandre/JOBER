@@ -250,6 +250,14 @@ d'Alexandre : il vaut jusqu'à la création de la société.** Le jour de
 l'ouverture, le réécrire dans `htmlAccuseInscription()` — c'est le seul endroit —
 pour dire ce qui se passe réellement (documents à déposer, délai de validation).
 
+**Et, dans le même temps, `VALIDATION_PRESTA` de `src/constants/editeur.js`** : le
+texte que voit le prestataire à l'écran — encart du formulaire d'inscription, écran
+« Demande d'inscription reçue », écran « Compte en attente », étape de « Comment ça
+marche ». Il dit la même
+chose que l'accusé (30/09/2026 : quatre écrans promettaient « 24 à 48 h ouvrées »
+pendant que l'accusé annonçait une validation à l'ouverture). Les deux se
+réécrivent ensemble, sinon ils se contrediront de nouveau.
+
 ## Une fois tout fait
 
 - `npm run cgps` puis `npm run cgps:verifier` — la version publique doit suivre.
