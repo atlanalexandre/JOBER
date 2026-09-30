@@ -21,6 +21,18 @@ import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 
+/**
+ * Un refus de virement qui passera de lui-même : solde disponible
+ * insuffisant, limite de débit, panne du service. Tout autre refus
+ * (compte du prestataire invalide, par exemple) demande une intervention.
+ */
+export function refusPassager(erreur, statut) {
+  const code = erreur?.code || "";
+  if (["balance_insufficient", "rate_limit", "lock_timeout"].includes(code)) return true;
+  if (erreur?.type === "api_error" || erreur?.type === "rate_limit_error") return true;
+  return Number(statut) === 429 || Number(statut) >= 500;
+}
+
 function verifyBoToken(token, secret) {
   if (!token) return false;
   const parts = token.split(".");
@@ -656,6 +668,9 @@ export default async function handler(req, res) {
           // Combien de versements ne peuvent pas partir faute de compte de
           // paiement en face. Compté pour être dit : voir plus bas.
           let bloquesSansConnect = 0;
+          // Refus passagers de Stripe (solde disponible insuffisant, service
+          // indisponible) : reportés au passage suivant, comptés pour être dits.
+          let bloquesPassagers = 0;
 
           for (const m of (Array.isArray(lots) ? lots : [])) {
             // Verrou atomique : on passe en `processing` AVANT d'appeler Stripe.
@@ -760,10 +775,25 @@ export default async function handler(req, res) {
                 bilan.versements++;
                 console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
                   + `) — prestation ${m.id}`);
+              } else if (refusPassager(td?.error, tr.status)) {
+                // Refus PASSAGER : le versement repart au prochain passage.
+                //
+                // Le cas attendu est `balance_insufficient` : le virement puise
+                // dans le solde DISPONIBLE d'ALANE, et un paiement par carte n'y
+                // entre qu'après quelques jours. À 48 h, le refus est probable ;
+                // il passait le versement en « échoué » pour toujours — aucun
+                // réessai, aucun bouton — et le prestataire n'était jamais payé
+                // (relecture du 30/09/2026).
+                bloquesPassagers++;
+                await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "pending" }, headers, `versements/report ${m.id}`);
+                console.error(`[versements] virement reporté — prestation ${m.id} : `
+                  + `${td?.error?.code || tr.status} (${td?.error?.message || "refus passager"}). Nouvel essai au prochain passage.`);
               } else {
                 await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
                   { payout_status: "failed" }, headers, `versements/refus ${m.id}`);
-                console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status);
+                console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status,
+                  "— versement « échoué » : à relancer depuis le back-office (Versements) une fois la cause réglée.");
               }
             } catch (e) {
               // On ne laisse jamais une prestation coincée en `processing` :
@@ -774,6 +804,11 @@ export default async function handler(req, res) {
             }
           }
           if (emis) console.log(`[versements] ${emis} virement(s) émis`);
+          if (bloquesPassagers) {
+            console.error(`[versements] ${bloquesPassagers} virement(s) REPORTÉS sur un refus passager de Stripe `
+              + "(le plus souvent : solde disponible insuffisant, les paiements par carte n'y entrant qu'après "
+              + "quelques jours). Ils repartent seuls aux passages suivants.");
+          }
           // Un bilan qui ne compte que les succès laisse croire qu'il n'y avait
           // rien à faire.
           if (bloquesSansConnect) {
