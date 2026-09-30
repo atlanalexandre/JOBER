@@ -11,9 +11,23 @@
 //     affichait « compte supprimé », et le compte restait ouvert.
 // Et le back-office effaçait les prestations — remboursement réussi ou non — et
 // laissait les pièces d'identité dans le stockage.
-import { test, expect } from "@playwright/test";
-import { sql } from "./outils.js";
-import { prestataireOperationnel, client, api, bo, reservationPayee, paiementStripe } from "./fabrique.js";
+import { test, expect, request } from "@playwright/test";
+import { sql, RECETTE_REF } from "./outils.js";
+import { prestataireOperationnel, client, api, bo, reservationPayee, paiementStripe, anon } from "./fabrique.js";
+
+const SUPABASE = `https://${RECETTE_REF}.supabase.co`;
+const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
+
+/** Dépose un fichier dans le dossier du prestataire, avec SON jeton, comme son espace. */
+async function deposerFichier(p, type) {
+  const c = await request.newContext({ proxy });
+  const up = await c.post(`${SUPABASE}/storage/v1/object/Documents/${p.id}/${type}`, {
+    headers: { Authorization: `Bearer ${p.jeton}`, apikey: await anon(), "x-upsert": "true", "Content-Type": "application/pdf" },
+    data: Buffer.from(`%PDF-1.4\n% piece de recette ${Date.now()}\n`),
+  });
+  expect(up.ok(), `dépôt du fichier ${type} : ${up.status()}`).toBeTruthy();
+  await c.dispose();
+}
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -64,7 +78,12 @@ test("le back-office supprime un prestataire : son client est remboursé, la pre
   const p = await prestataireOperationnel();
   const c = await client();
   const m = await reservationPayee({ prestataire: p, client: c });
-  expect(await fichiersDe(p.id), "le dossier du prestataire est bien dans le stockage").toBeGreaterThan(0);
+  // Une pièce avec sa fiche, et une sans (dépôt interrompu) : les deux doivent partir.
+  await deposerFichier(p, "cni");
+  await deposerFichier(p, "domicile");
+  await sql(`delete from documents where prestataire_id = '${p.id}' and type = 'domicile'`);
+  await sql(`update documents set storage_path = '${p.id}/cni' where prestataire_id = '${p.id}' and type = 'cni'`);
+  expect(await fichiersDe(p.id), "le dossier du prestataire est bien dans le stockage").toBe(2);
 
   const r = await bo("delete", { profileId: p.id, reason: "Scénario de recette" });
   expect(r.statut, r.texte.slice(0, 300)).toBe(200);
