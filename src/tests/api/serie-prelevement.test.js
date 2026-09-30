@@ -76,4 +76,33 @@ describe("semaine suivante d'une série", () => {
     expect(r.mode).toBe("paiement_refuse");
     expect(a.notifications.some(n => /interrompue/.test(n.title || ""))).toBe(true);
   });
+
+  // Relecture du 30/09/2026 : rejouée, la requête trouvait parfois la première
+  // encore en cours chez Stripe — prise pour « déjà programmée », la semaine
+  // d'un client peut-être débité était supprimée.
+  it("rejouée et trouvant le premier envoi en cours : attend, redemande, retrouve le paiement", async () => {
+    const a = simuler({ stripeCreation: (n) =>
+      n === 1 ? Promise.reject(new Error("ECONNRESET"))
+      : n === 2 ? json({ error: { type: "idempotency_error", message: "another in-progress request" } }, 409)
+      : json({ id: "pi_2", status: "succeeded" }) });
+    const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+    expect(a.creations).toHaveLength(3);
+    expect(a.suppressions, "notre propre semaine n'est pas supprimée").toBe(0);
+    expect(r.mode).not.toBe("deja_programmee");
+  }, 10_000);
+
+  it("toujours en cours au troisième essai : issue inconnue, rien supprimé, rien annoncé au client", async () => {
+    const a = simuler({ stripeCreation: (n) =>
+      n === 1 ? Promise.reject(new Error("ECONNRESET")) : json({ error: { type: "idempotency_error" } }, 409) });
+    const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+    expect(r.mode).toBe("echec");
+    expect(a.suppressions).toBe(0);
+    expect(a.notifications.some(n => /débité/.test(n.body || ""))).toBe(false);
+  }, 10_000);
+
+  it("le nettoyage des tunnels abandonnés épargne les semaines de série", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../../../api/cron-abandon.js", import.meta.url), "utf8");
+    expect(src).toContain("&parent_mission_id=is.null");
+  });
 });
