@@ -2696,10 +2696,17 @@ export default async function handler(req, res) {
       const { mission_id, new_presta_email, reason } = body;
       if (!mission_id || !new_presta_email) return res.status(400).json({ error: "mission_id + new_presta_email requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id,status`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      // Une prestation annulée, close ou terminée ne se réaffecte pas : elle
+      // passait « assigned » quel que soit son statut, et le prestataire affecté
+      // était payé à la clôture — sur un paiement parfois déjà remboursé au
+      // client (relecture du 30/09/2026).
+      if (!["open", "pending_acceptance", "assigned", "needs_replacement"].includes(m.status)) {
+        return res.status(409).json({ error: `Prestation « ${m.status} » : elle ne peut plus être réaffectée. Le client peut en réserver une nouvelle.` });
+      }
       // Trouver le nouveau prestataire par email
       const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
       const authData = await authRes.json();
