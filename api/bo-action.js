@@ -6,7 +6,8 @@ import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 import { qualificationsPour } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
-import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc } from "./_documents.js";
+import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
+import { lireTout } from "./_lignes.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
@@ -167,11 +168,20 @@ export default async function handler(req, res) {
           if (page.length < 1000) return tous;
         }
       };
-      const [profiles, authRes, blacklistRes] = await Promise.all([
+      const [profiles, authRes, blacklistRes, tousDocs] = await Promise.all([
         lireProfils(),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
+        // Les pièces de chacun, pour dire AVANT le clic ce qui empêche d'ouvrir
+        // l'accès. Illisibles : `null`, et l'écran n'affirme rien.
+        lireTout(`${SUPABASE_URL}/rest/v1/documents?select=id,prestataire_id,type,verified,expires_at`, headers)
+          .catch(e => { console.error("[list] pièces illisibles :", e.message); return null; }),
       ]);
+      const docsParPresta = new Map();
+      for (const d of (tousDocs || [])) {
+        if (!docsParPresta.has(d.prestataire_id)) docsParPresta.set(d.prestataire_id, []);
+        docsParPresta.get(d.prestataire_id).push(d);
+      }
       const authData = await authRes.json();
 
       // Construire les sets de hash pour lookup O(1)
@@ -224,7 +234,9 @@ export default async function handler(req, res) {
         // tant que la migration 2026-07-30_rgpd_iban_hors_du_jeton n'est pas passée.
         const ribBrut = p.rib || meta.rib;
         const iban  = ribBrut ? String(ribBrut).replace(/\s/g, "").toUpperCase() : null;
-        const siret = meta.kbis ? String(meta.kbis).replace(/\s/g, "") : null;
+        // `siret` pour un prestataire, `kbis` pour un client professionnel.
+        const siretMeta = meta.siret || meta.kbis;
+        const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
         const blacklisted =
           (email && blSets.email.has(hashPii(email))) ||
           (tel   && blSets.tel.has(hashPii(tel)))     ||
@@ -257,6 +269,10 @@ export default async function handler(req, res) {
           // ce que regarde celui qui ouvre l'accès aux prestations.
           cv: p.cv || meta.cv || null,
           cv_manques: p.role === "prestataire" ? manquesCv(p.cv || meta.cv) : [],
+          pieces_a_valider: p.role === "prestataire" && tousDocs
+            ? piecesAvantOuverture(docsRequisPour(meta.nationalite, meta.metiers_list), docsParPresta.get(p.id) || [])
+                .map(d => `${d.label} (${d.raison})`)
+            : [],
           metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, meta.metiers_list || [meta.metier].filter(Boolean)) : [],
         };
       });
@@ -549,6 +565,24 @@ export default async function handler(req, res) {
                   : `Ce prestataire déclare un métier réglementé et n'a pas produit son justificatif. Attendu : ${quoi}.`,
               });
             }
+          }
+
+          // ── Toutes les pièces obligatoires, validées (30/09/2026) ─────────
+          // Voir `piecesAvantOuverture()` : identité, assurance, RIB, KBIS,
+          // domicile et photo n'étaient pas contrôlés ici.
+          const dp = await fetch(
+            `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}&select=type,verified,expires_at`,
+            { headers }
+          );
+          const docsPresta = dp.ok ? await dp.json().catch(() => null) : null;
+          if (!Array.isArray(docsPresta)) throw new Error(`pièces illisibles (${dp.status})`);
+          const aValider = piecesAvantOuverture(
+            docsRequisPour(uqData.user_metadata?.nationalite, uqData.user_metadata?.metiers_list), docsPresta);
+          if (aValider.length > 0) {
+            console.log(`[enable_missions] ${profileId} : pièces à valider — ${aValider.map(d => `${d.type} (${d.raison})`).join(", ")}`);
+            return res.status(409).json({
+              error: `Pièces à valider avant d'ouvrir l'accès : ${aValider.map(d => `${d.label} (${d.raison})`).join(", ")}.`,
+            });
           }
         } catch (e) {
           // Ne jamais ouvrir l'accès « au bénéfice du doute » : si l'on ne peut
