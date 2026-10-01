@@ -769,7 +769,12 @@ async function handleEmailAction(req, res) {
   //  • une prestation affectée par la plateforme (CGPS art. 5.2) passe au
   //    candidat suivant au lieu d'être annulée et remboursée — le client n'a
   //    choisi personne, sa commande tient toujours.
-  const patchBody = action === "accept" ? { status: "assigned" } : { status: "refused", prestataire_id: null };
+  // Accepter depuis l'e-mail vaut signature du contrat : la mention figure dans
+  // l'e-mail, juste avant le bouton (_nouvelle_demande.js). L'horodatage est
+  // celui du serveur, comme dans l'application (décision d'Alexandre du 01/10/2026).
+  const patchBody = action === "accept"
+    ? { status: "assigned", contrat_presta_signe_at: new Date().toISOString() }
+    : { status: "refused", prestataire_id: null };
   const ecr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`, {
     method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" }, body: JSON.stringify(patchBody),
   });

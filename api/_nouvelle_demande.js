@@ -103,7 +103,7 @@ export async function prevenirNouvelleDemande(missionId, supabaseUrl, headers) {
           // Version texte : sans elle, l'email part en HTML seul, ce qui pèse
           // lourd dans le classement en spam. Les liens d'acceptation et de
           // refus y sont repris en clair pour rester utilisables.
-          text: `Nouvelle demande de prestation sur ALANE\n\n${sLabel} — ${sVille}\n${sDate}${sHdeb ? " à " + sHdeb : ""}\n${sHours} h${tarif ? " · " + tarif + "/h HT" : ""}\n${sAdresse ? sAdresse + "\n" : ""}\n${delai.phrase}\n\nAccepter : ${acceptUrl}\nRefuser : ${refuseUrl}\n\nL'équipe ALANE`,
+          text: `Nouvelle demande de prestation sur ALANE\n\n${sLabel} — ${sVille}\n${sDate}${sHdeb ? " à " + sHdeb : ""}\n${sHours} h${tarif ? " · " + tarif + "/h HT" : ""}\n${sAdresse ? sAdresse + "\n" : ""}\n${delai.phrase}\n\nEn cliquant sur « Accepter », vous signez électroniquement le contrat de prestation : vous vous engagez à réaliser la prestation dans les conditions ci-dessus, à respecter les délais et à vous conformer aux Conditions générales d'ALANE.\n\nAccepter : ${acceptUrl}\nRefuser : ${refuseUrl}\n\nL'équipe ALANE`,
           html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
             <h2 style="color:#A29BFE;margin:0 0 12px">Nouvelle demande de prestation 🔔</h2>
             <p>Bonjour ${esc(prestaName)},</p>
@@ -115,6 +115,10 @@ export async function prevenirNouvelleDemande(missionId, supabaseUrl, headers) {
               📍 ${sAdresse ? `${sAdresse}, ` : ""}${sVille}
             </div>
             <p style="margin:20px 0 8px">Répondez directement depuis cet email :</p>
+            <!-- Le clic sur « Accepter » vaut signature du contrat (décision
+                 d'Alexandre du 01/10/2026) : la mention doit précéder le bouton,
+                 comme le contrat précède la signature dans l'application. -->
+            <p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.75)">En cliquant sur « Accepter », vous signez électroniquement le contrat de prestation : vous vous engagez à réaliser la prestation dans les conditions ci-dessus, à respecter les délais et à vous conformer aux Conditions générales d'ALANE.</p>
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
               <td style="padding-right:8px"><a href="${acceptUrl}" style="display:block;text-align:center;background:#10D98F;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">✅ Accepter</a></td>
               <td style="padding-left:8px"><a href="${refuseUrl}" style="display:block;text-align:center;background:#F25E5E;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">❌ Refuser</a></td>

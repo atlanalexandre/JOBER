@@ -2681,8 +2681,13 @@ a sa colonne, `missions.fin_attestee_presta_at`. Les dates antérieures, qui ét
 attestations de fin, y ont été recopiées ; elles restent aussi dans `contrat_presta_signe_at`,
 où elles désignent donc la fin et non l'acceptation pour les prestations d'avant le 01/10/2026.
 
-**Reste ouvert** : l'acceptation par le bouton de l'e-mail, la candidature retenue sur une
-demande diffusée et la reprise par un remplaçant ne font signer aucun contrat au prestataire.
+**Bouton « Accepter » de l'e-mail** : il vaut signature (décision d'Alexandre du 01/10/2026).
+L'e-mail porte, juste avant le bouton, la mention « En cliquant sur « Accepter », vous signez
+électroniquement le contrat de prestation… » (`api/_nouvelle_demande.js`), et l'acceptation pose
+`contrat_presta_signe_at` à l'heure du serveur (`handleEmailAction`).
+
+**Reste ouvert** : la candidature retenue sur une demande diffusée et la reprise par un
+remplaçant ne font signer aucun contrat au prestataire.
 
 **Table `contracts` : fermée à l'écriture** (`2026-10-01_secu_contrats_ecrits_par_le_serveur.sql`).
 `ContractScreen` y écrivait une ligne en déclarant lui-même le **prestataire** signataire ;
