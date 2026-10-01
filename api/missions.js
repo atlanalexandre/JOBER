@@ -6091,10 +6091,18 @@ export default async function handler(req, res) {
       const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
 
       if (reponse === "refuser") {
-        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        // Résultat vérifié : une demande traitée entre-temps (acceptée par
+        // l'autre partie, annulée) ne doit pas être annoncée « refusée ».
+        const rRefus = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ statut: "refuse", refus_par: role, refus_motif: motif ? String(motif).slice(0, 500) : null }),
         });
+        const refusees = await rRefus.json().catch(() => null);
+        if (!rRefus.ok || !Array.isArray(refusees)) {
+          console.error(`[repondre_remplacement] refus non enregistré pour ${remplacement_id} (${rRefus.status})`);
+          return res.status(500).json({ error: "Votre refus n'a pas pu être enregistré. Réessayez." });
+        }
+        if (refusees.length === 0) return res.status(409).json({ error: "Cette demande vient d'être traitée" });
         // Le sortant reste titulaire : il doit le savoir sans ambiguïté, sinon il
         // croira être déchargé et ne se présentera pas.
         await notifier({
@@ -6147,14 +6155,27 @@ export default async function handler(req, res) {
       // Bascule. Le virement de fin de prestation lit prestataire_id : changer ce
       // champ suffit pour que le remplaçant soit payé de ce qu'il a réellement
       // fait, et facture en son nom.
-      const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}`, {
+      //
+      // Conditionnée à l'état vérifié juste au-dessus — toujours au sortant,
+      // toujours acceptée, pas démarrée — et le nombre de lignes est contrôlé.
+      // Un tableau VIDE passait pour un succès : une prestation annulée ou
+      // reprise entre-temps était annoncée « remplacement validé » aux trois
+      // parties sans que rien n'ait changé (audit « prestations », 01/10/2026).
+      const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}&status=eq.assigned&started_at=is.null`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ prestataire_id: dem.entrant_id }),
       });
-      const swapOk = Array.isArray(await swap.json().catch(() => [])) && swap.ok;
-      if (!swapOk) {
-        console.error(`[repondre_remplacement] bascule refusée sur ${dem.mission_id}`);
+      const basculees = await swap.json().catch(() => null);
+      if (!swap.ok || !Array.isArray(basculees)) {
+        console.error(`[repondre_remplacement] bascule refusée sur ${dem.mission_id} (${swap.status})`);
         return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
+      }
+      if (basculees.length === 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "expire" }),
+        }).catch(e => console.error("[repondre_remplacement] expiration non enregistrée :", e?.message));
+        return res.status(409).json({ error: "La prestation a changé d'état entre-temps : le remplacement ne peut plus être exécuté." });
       }
       await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
