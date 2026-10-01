@@ -2609,6 +2609,31 @@ acceptée déclenche un PaymentIntent — pour une fonctionnalité qui n'existe 
 **La leçon sur le contrôle lui-même** : filtrer sur `public` ne suffisait pas. Le relevé
 complet, sans filtre de rôle, est celui qui a tout montré — et c'est celui qu'il faut passer.
 
+### `missions` : lecture par les parties seules, aucune modification depuis le navigateur
+
+**Audit « sécurité », 01/10/2026** (`2026-10-01_secu_missions_lecture_parties_sans_modification.sql`,
+`e2e/54`). Deux défauts constatés en recette :
+
+- **Lecture publique des demandes ouvertes.** `missions_open_read`, accordée à `public`, laissait
+  lire toute demande `open` ou `needs_replacement` **sans compte**, avec la seule clé publique du
+  site — toutes colonnes : adresse et nom du client, description, montant, déclaration de tiers
+  (40 demandes lisibles en recette). Désormais `missions_lecture_parties` : **les parties
+  seulement** (`client_id` ou `prestataire_id` = l'appelant), comptes connectés. La place de
+  marché passe par `list_open` (qui masque l'adresse) et le compteur de l'accueil par
+  `/api/prestataires?action=demandes_ouvertes` ;
+- **Quinze colonnes encore modifiables** par le client et par le prestataire (droits par colonne
+  hérités de la correction du 17/08), dont `extra_hours_appliquees`, qui entre dans le calcul du
+  virement (`partHoraire()` de `api/_cloture.js`) : après une prolongation à un tarif supérieur,
+  le prestataire pouvait déclarer toutes les heures à ce tarif et être payé plus que ce
+  qu'ALANE avait encaissé. Aussi `recurrence`, `adresse`, `metier`, `sector`… La règle
+  `missions_update` est supprimée et `UPDATE`, `DELETE`, `TRUNCATE` sont retirés à `anon` et
+  `authenticated`. **Le navigateur ne fait plus que créer** une demande (`missions_insert`,
+  contrôlée par `missions_creation_guard`) **et lire les siennes**.
+
+L'écriture directe de la validation (`persistValidation`, `client-screens.jsx`) — seule
+écriture restante — était déjà refusée par `prevent_missions_field_tampering` : elle échoue
+désormais un cran plus tôt, sans rien changer à ce qui se passe.
+
 ### Quatre droits ouverts sur des gestes que l'application ne fait pas
 
 **Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,
@@ -2647,7 +2672,8 @@ celle-ci vise **la preuve et les dates**.
 La création n'est pas concernée — elle relève de l'INSERT. Un changement de date après
 réservation est une modification du contrat, et passe donc par le serveur.
 
-**Ce qui reste volontairement modifiable** : `validation_client` et `validation_prestataire`.
+**Ce qui reste volontairement modifiable** (situation du 17/08/2026, **close le 01/10/2026** : plus
+aucune colonne de `missions` n'est modifiable depuis le navigateur — voir plus haut) : `validation_client` et `validation_prestataire`.
 L'écran de validation les écrit directement, en même temps que les notes et commentaires ; les
 fermer casserait ce geste. Elles ne déplacent pas d'argent par elles-mêmes — c'est `complete`
 qui programme le versement, et elle refait ses propres contrôles. À reprendre le jour où cet

@@ -94,6 +94,27 @@ export default async function handler(req, res) {
   }
 
   // Route légère : juste le count des prestataires approuvés
+  // Nombre de demandes ouvertes, pour l'accueil client. L'écran le comptait
+  // directement dans `missions`, ce qui exigeait que la base laisse lire les
+  // demandes ouvertes d'autrui — à tout le monde, visiteurs sans compte
+  // compris, avec l'adresse et le nom du client (audit « sécurité »,
+  // 01/10/2026). Le serveur ne rend que le nombre.
+  if (req.query.action === "demandes_ouvertes") {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.open&select=id`,
+        { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
+      );
+      if (!r.ok) throw new Error(`comptage refusé (${r.status})`);
+      const plage = r.headers.get("content-range");
+      const count = plage ? parseInt(plage.split("/")[1], 10) : null;
+      return res.status(200).json({ count: Number.isFinite(count) ? count : null });
+    } catch (e) {
+      console.error("[prestataires/demandes_ouvertes] comptage impossible :", e.message);
+      return res.status(200).json({ count: null });
+    }
+  }
+
   if (req.query.action === "count") {
     try {
       const r = await fetch(
