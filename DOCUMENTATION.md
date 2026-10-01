@@ -2634,6 +2634,29 @@ L'écriture directe de la validation (`persistValidation`, `client-screens.jsx`)
 écriture restante — était déjà refusée par `prevent_missions_field_tampering` : elle échoue
 désormais un cran plus tôt, sans rien changer à ce qui se passe.
 
+### La signature du client n'était jamais enregistrée
+
+**Corrigé le 01/10/2026** (audit « sécurité », `e2e/55`). `contrat_client_signe_at` et
+`contrat_presta_signe_at` *sont* la signature (art. 11 du contrat, voir plus bas) — et la
+première n'était écrite par **personne** : 0 sur 884 prestations payées en recette. L'écran de
+réservation (`BookingScreen`) fait bien signer le contrat avant de laisser payer, mais
+l'horodatage restait dans le navigateur. Il est désormais transmis (`contratSigne` →
+`contrat_signe`) et la date est posée **par le serveur, à son heure**, au paiement
+(`assign_after_payment` et `affecter_tiers`), comme la renonciation au délai de rétractation.
+Une prestation payée sans cette mention est journalisée en erreur.
+
+`contrat_presta_signe_at`, lui, n'est posé qu'à la confirmation de fin de prestation
+(`validate_presta`) : le prestataire ne signe rien à l'acceptation. **Décision à prendre**
+(produit / juridique) : la preuve de l'engagement du prestataire à l'acceptation tient-elle à
+l'acceptation horodatée de la demande, ou faut-il une signature à ce moment ?
+
+**Table `contracts` : fermée à l'écriture** (`2026-10-01_secu_contrats_ecrits_par_le_serveur.sql`).
+`ContractScreen` y écrivait une ligne en déclarant lui-même le **prestataire** signataire ;
+l'écriture échouait toujours (colonne `hours` inexistante, erreur jamais lue — table vide), et la
+règle `contracts_client_creation` permettait à un client de fabriquer un contrat « signé » par
+n'importe qui. L'écriture est retirée de l'écran, la règle et les droits supprimés ; la lecture
+de ses contrats reste permise.
+
 ### Quatre droits ouverts sur des gestes que l'application ne fait pas
 
 **Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,

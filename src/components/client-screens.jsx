@@ -3821,7 +3821,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined, recurrence: (chaqueSemaine && !isUrgent && missionType === "single" && !chezTiers) ? "weekly" : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined, recurrence: (chaqueSemaine && !isUrgent && missionType === "single" && !chezTiers) ? "weekly" : undefined, contratSigne: !!clientContractSignedAt }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -5749,24 +5749,13 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     let mounted = true;
     (async ()=>{
       if (!mounted) return;
-      try {
-        const { data:{ user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from("contracts").insert({
-            mission_id: missionId || null,
-            contract_number: contractNum,
-            client_id: user.id,
-            prestataire_name: p.name,
-            prestataire_role: p.role || p.jobTitle,
-            hours: missionHours,
-            montant: totalAmount,
-            client_signed: true,
-            prestataire_signed: true,
-            client_signed_at: new Date().toISOString(),
-            prestataire_signed_at: new Date().toISOString(),
-          });
-        }
-      } catch (e) { console.error("[contrat] horodatage de signature non enregistré :", e.message); }
+      // L'écran écrivait ici une ligne dans `contracts`, en déclarant lui-même
+      // le PRESTATAIRE signataire. L'écriture échouait toujours — colonne
+      // `hours` inexistante, erreur jamais lue : la table était vide — et le
+      // droit qu'elle utilisait permettait à un client de fabriquer un contrat
+      // « signé » par n'importe qui (audit « sécurité », 01/10/2026). La
+      // signature du client est posée par le serveur au paiement
+      // (`contrat_client_signe_at`, api/missions.js).
       if (mounted) { setFinalised(true); onSign && onSign(); }
     })();
     return ()=>{ mounted=false; };

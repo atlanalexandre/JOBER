@@ -1085,6 +1085,9 @@ export default function App() {
   // Déclaration art. 10B de la réservation en cours : elle décide du mode
   // d'affectation après paiement, et ne doit pas se perdre entre les deux écrans.
   const [pendingTiersDeclaration, setPendingTiersDeclaration] = useState(null);
+  // Le client a signé le contrat de prestation dans l'écran de réservation : le
+  // serveur en pose la date (contrat_client_signe_at) au moment du paiement.
+  const [pendingContratSigne, setPendingContratSigne] = useState(false);
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -1896,6 +1899,7 @@ export default function App() {
           // réservation payante parce qu'elle n'a pas pu être écrite serait absurde.
           // Un échec est journalisé côté serveur, en erreur.
           setPendingTiersDeclaration(data?.tiersDeclaration || null);
+          setPendingContratSigne(data?.contratSigne === true);
           // Réponse « dans mon entreprise » : elle vaut déclaration et doit être
           // conservée. Sans elle, la détection ne saurait pas distinguer un client
           // multi-sites — qui commande légitimement ailleurs — d'un client silencieux.
@@ -1954,8 +1958,8 @@ export default function App() {
                 method:"POST",
                 headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
                 body: JSON.stringify(chezUnTiers
-                  ? { action:"affecter_tiers", mission_id:missionId, stripe_payment_intent:intentId||null, retractation_renoncee:true }
-                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, stripe_payment_intent:intentId||null, retractation_renoncee:true,
+                  ? { action:"affecter_tiers", mission_id:missionId, stripe_payment_intent:intentId||null, retractation_renoncee:true, contrat_signe:pendingContratSigne }
+                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, stripe_payment_intent:intentId||null, retractation_renoncee:true, contrat_signe:pendingContratSigne,
                       // Réservation issue d'une demande diffusée : le serveur la ferme.
                       diffusion_id: selectedProvider?.diffusionId || undefined }),
               });
