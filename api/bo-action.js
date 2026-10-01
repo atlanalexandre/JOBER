@@ -221,6 +221,8 @@ export default async function handler(req, res) {
         "frequence_besoins", "volume_horaire",
         // Divers
         "date_naissance", "bio",
+        // « Comment avez-vous connu ALANE ? » — un identifiant court, facultatif
+        "connu_par",
       ];
       const merged = (Array.isArray(profiles) ? profiles : []).map(p => {
         const u = authMap[p.id] || {};

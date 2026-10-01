@@ -769,4 +769,23 @@ export const FR_CITY_COORDS = {
   "amiens":[49.8941,2.2958],"limoges":[45.8315,1.2578],"metz":[49.1193,6.1757],"nancy":[48.6921,6.1844],
 };
 
+// « Comment avez-vous connu ALANE ? » — question facultative des deux
+// inscriptions (01/10/2026). Sans elle, impossible de savoir quel canal amène
+// quels prestataires : la propreté dominait les inscriptions sans qu'on puisse
+// dire pourquoi. La valeur (l'identifiant, quelques caractères) est rangée dans
+// `user_metadata.connu_par` — une valeur courte, comme l'exige CLAUDE.md §1.1.
+// Ajouter une entrée ne pose aucun problème ; en RENOMMER une fausserait les
+// comptes déjà faits : garder l'identifiant, changer seulement le libellé.
+export const SOURCES_CONNAISSANCE = [
+  { id:"proche",          label:"Un proche, un collègue" },
+  { id:"reseaux_sociaux", label:"Réseaux sociaux (TikTok, Instagram, Facebook…)" },
+  { id:"recherche",       label:"Recherche sur Internet" },
+  { id:"publicite",       label:"Une publicité" },
+  { id:"formation",       label:"École, centre de formation" },
+  { id:"evenement",       label:"Salon, événement" },
+  { id:"contact_alane",   label:"Contacté par ALANE" },
+  { id:"autre",           label:"Autre" },
+];
+export const LIBELLE_CONNAISSANCE = Object.fromEntries(SOURCES_CONNAISSANCE.map(s => [s.id, s.label]));
+
 export const SECTOR_LABELS = { proprete:"Propreté", logistique:"Logistique", hotellerie:"Hôtellerie", restauration:"Restauration", commercial:"Commercial", distribution:"Grande Distrib.", divers:"Divers" };

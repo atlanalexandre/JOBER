@@ -1070,7 +1070,7 @@ C'est le point le plus déroutant du projet, et la source de plusieurs pannes.
 
 | Emplacement | Contenu | Limite |
 |---|---|---|
-| `auth.users.user_metadata` | Infos saisies à l'inscription : téléphone, adresse, secteur, métier, tarif, disponibilités, compétences | **Encodé dans le jeton, ~16 Ko max** |
+| `auth.users.user_metadata` | Infos saisies à l'inscription : téléphone, adresse, secteur, métier, tarif, disponibilités, compétences, provenance (`connu_par`) | **Encodé dans le jeton, ~16 Ko max** |
 | `profiles.rib` | IBAN du prestataire | **Jamais dans `user_metadata`** — voir ci-dessous |
 | Table `profiles` | Rôle, statut, soldes, abonnement, CV (`cv`, depuis le 29/09/2026). `avatar_url` : ancienne photo de profil, plus lue ni écrite depuis le 30/09/2026 — la photo est la pièce `photo` du bucket | CV : 12 Ko |
 | Storage `Documents` | Les fichiers justificatifs | 10 Mo par fichier |
@@ -1661,6 +1661,20 @@ type dans la base** (`SELECT pg_typeof(id) FROM <table> LIMIT 1;`), jamais dans 
 ### Inscription et validation
 
 **Les deux rôles ne suivent pas le même chemin.** C'est une source de confusion fréquente.
+
+**« Comment avez-vous connu ALANE ? »** (01/10/2026). Question **facultative**, posée à la
+dernière étape des deux inscriptions, client et prestataire. La propreté dominait les
+inscriptions de prestataires sans qu'on puisse dire pourquoi : aucun écran ne demandait d'où
+venait la personne, donc aucun moyen de savoir quel canal amène quels métiers.
+
+La réponse est un identifiant court de `SOURCES_CONNAISSANCE` (`src/constants/data.js`),
+rangé dans `user_metadata.connu_par` — `null` si la personne ne répond pas. Le back-office le
+reçoit (liste blanche `META_EXPOSE` de `bo-action.js`) : il l'affiche dans la fiche (« A
+connu ALANE par ») et ajoute un filtre **📣 Provenance**, avec l'effectif de chaque canal, dans
+« Validation des comptes ». Croisé avec le filtre secteur, il répond à la question « d'où
+viennent mes cuisiniers ? ». Les comptes antérieurs apparaissent en « Provenance non
+renseignée ». Pour ajouter un canal : une ligne dans la liste ; pour en renommer un, changer le
+**libellé** seulement, jamais l'identifiant, qui ferait disparaître les réponses déjà données.
 
 ```
 CLIENT
