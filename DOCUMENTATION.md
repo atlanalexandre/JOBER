@@ -2663,7 +2663,7 @@ désormais un cran plus tôt, sans rien changer à ce qui se passe.
 ### La signature du client n'était jamais enregistrée
 
 **Corrigé le 01/10/2026** (audit « sécurité », `e2e/55`). `contrat_client_signe_at` et
-`contrat_presta_signe_at` *sont* la signature (art. 11 du contrat, voir plus bas) — et la
+`contrat_presta_signe_at` *sont* la signature (art. 4 du contrat de prestation depuis le 01/10/2026, ex-article 11 — voir plus bas) — et la
 première n'était écrite par **personne** : 0 sur 884 prestations payées en recette. L'écran de
 réservation (`BookingScreen`) fait bien signer le contrat avant de laisser payer, mais
 l'horodatage restait dans le navigateur. Il est désormais transmis (`contratSigne` →
@@ -2694,6 +2694,16 @@ l'acceptation. La reprise pose `contrat_presta_signe_at` ; le remplacement y ins
 l'accord du remplaçant (`accord_entrant_at`) à la bascule. La candidature simple (« Je suis
 disponible ») n'engage pas encore : le prestataire retenu reçoit ensuite une demande à accepter,
 où il signe comme pour toute acceptation.
+
+**Les contrats ne recopient plus les CGPS** (décision d'Alexandre du 01/10/2026). Le contrat de
+prestation affiché au client (`ContractScreen`) et celui de l'écran « Documents légaux »
+reprenaient des extraits des CGPS qui avaient divergé — confidentialité « pendant 2 ans »,
+prévenance « de 4 h », règlement amiable « sous 15 jours », recherche d'un remplaçant : rien de
+cela n'est dans les CGPS. Ils ne gardent que ce qui leur est propre (objet, montants, signature)
+et renvoient pour le reste aux articles des CGPS (`src/constants/cgps.js`), dont ils citent la
+version. L'article de signature du contrat de l'écran légal (désormais article 4) dit qui signe et
+quand : le client à la réservation, le prestataire à l'acceptation, depuis l'e-mail, ou en
+reprenant ou remplaçant une prestation.
 
 **Table `contracts` : fermée à l'écriture** (`2026-10-01_secu_contrats_ecrits_par_le_serveur.sql`).
 `ContractScreen` y écrivait une ligne en déclarant lui-même le **prestataire** signataire ;
@@ -2751,7 +2761,7 @@ celle-ci vise **la preuve et les dates**.
 | Colonne | Ce qu'elle permettait |
 |---|---|
 | `invoice_number` | Le numéro de facture, réécrivable par le client comme par le prestataire. `api/invoice.js` le dit lui-même : « numérotation continue, sans rupture ». C'est une obligation (art. 289 CGI), et le mandat de facturation qu'ALANE exerce repose entièrement sur cette séquence |
-| `contrat_client_signe_at` / `contrat_presta_signe_at` | **Ces deux dates *sont* la signature** — il n'y a rien d'autre. L'article 11 du contrat leur donne la valeur d'une signature manuscrite (eIDAS, art. 1366 C. civ.). Chaque partie pouvait effacer la sienne, ou inscrire celle de l'autre |
+| `contrat_client_signe_at` / `contrat_presta_signe_at` | **Ces deux dates *sont* la signature** — il n'y a rien d'autre. L'article 4 du contrat de prestation (article 11 avant le 01/10/2026) leur donne la valeur d'une signature manuscrite (eIDAS, art. 1366 C. civ.). Chaque partie pouvait effacer la sienne, ou inscrire celle de l'autre |
 | `date`, `date_debut`, `date_fin`, `heure_debut` | Tout en dépend : fenêtre de pointage, heures supplémentaires, délai de réclamation, échéance de versement. Déplacer la date d'une prestation réservée déplace toutes ces bornes d'un coup, sans que l'autre partie le sache |
 
 La création n'est pas concernée — elle relève de l'INSERT. Un changement de date après
@@ -3723,8 +3733,7 @@ demandes en attente sans le savoir. L'échec affiche désormais « Vos prestatio
   devient le délai réel — 48 h après la fin de la prestation, puis 2 à 7 jours ouvrés selon la
   banque (CGPS art. 7.2).
 
-Ces résumés restent des **copies** des CGPS dans un écran, ce que la règle de `CLAUDE.md`
-interdit : à remplacer un jour par un renvoi à `src/constants/cgps.js`.
+Ces résumés ont été remplacés le même jour par un renvoi aux CGPS (voir « Les contrats ne recopient plus les CGPS »).
 
 ### Back-office, onglet Support : suppression confirmée, envoi expliqué
 
