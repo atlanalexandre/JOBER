@@ -1702,6 +1702,9 @@ export function BOSupport() {
   };
 
   const deleteTicket = async (id) => {
+    // Suppression définitive, à côté de « Marquer résolu » : sans confirmation,
+    // un geste maladroit effaçait le message du client (comme pour les avis).
+    if (!await showConfirm("Supprimer ce ticket définitivement ? Le message du client sera perdu. Pour le classer, utilisez plutôt « Marquer résolu ».")) return;
     if (await appeler({ action:"delete_ticket", profileId:id }, id + "_del")) load();
   };
 
@@ -1766,6 +1769,11 @@ export function BOSupport() {
                   </button>
                 )}
               </div>
+              {/* Les boutons restent grisés tant que la case est vide : sans cette
+                  phrase, on croyait à une panne (constaté par Alexandre, 01/10/2026). */}
+              {!(reponses[t.id]||"").trim() && (
+                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:6 }}>Écrivez votre réponse dans la case pour activer l'envoi.</div>
+              )}
             </div>
           ) : (
             <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:10 }}>Ticket anonyme sans adresse : impossible de répondre.</div>
