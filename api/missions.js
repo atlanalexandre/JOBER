@@ -6276,22 +6276,19 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      // Une demande de remplacement encore ouverte n'a plus d'objet si le
-      // prestataire annule : la laisser en attente exposerait le client à
-      // accepter un remplaçant pour une prestation qui n'existe plus.
-      try {
-        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ statut: "annule" }),
-        });
-      } catch (e) {
-        console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
-      }
-
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours,started_at,validation_prestataire,date_debut,date_fin,actual_hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,status,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours,started_at,validation_prestataire,date_debut,date_fin,actual_hours`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non annulable" });
+
+      // Une demande pas encore acceptée se REFUSE, elle ne s'annule pas. Par
+      // « annuler », une prestation affectée par la plateforme était remboursée
+      // et close au lieu de passer au candidat suivant (CGPS art. 5.2) — audit
+      // « prestations », 01/10/2026. L'écran ne propose d'ailleurs l'annulation
+      // que sur les prestations acceptées.
+      if (mission.status === "pending_acceptance") {
+        return res.status(409).json({ code: "utiliser_refus", error: "Vous n'avez pas encore accepté cette demande : refusez-la plutôt que de l'annuler." });
+      }
 
       // ── UNE PRESTATION FAITE NE S'ANNULE PLUS ─────────────────────────
       //
@@ -6374,7 +6371,10 @@ export default async function handler(req, res) {
       // une écriture refusée laissait la prestation `assigned` au prestataire
       // qui vient d'annuler : elle se serait clôturée normalement, et il aurait
       // été payé pour une prestation qu'il n'a pas faite.
-      const rRempl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Conditionnée à « toujours la sienne, toujours acceptée » : une prestation
+      // reprise entre-temps (remplacement exécuté, intervention du back-office)
+      // n'est pas écrasée.
+      const rRempl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         // Payée : le client vient d'être intégralement remboursé (CGPS art. 8.2),
@@ -6396,6 +6396,21 @@ export default async function handler(req, res) {
           error: "Votre annulation n'a pas pu être enregistrée. Écrivez à direction@alane.fr : "
                + "la prestation vous est encore attribuée.",
         });
+      }
+
+      // Une demande de remplacement encore ouverte n'a plus d'objet : la laisser
+      // en attente exposerait le client à accepter un remplaçant pour une
+      // prestation qui n'existe plus. Fermée APRÈS l'annulation, et non plus
+      // avant toute vérification : n'importe quel compte pouvait alors fermer
+      // les demandes de remplacement d'une prestation qui n'était pas la sienne.
+      try {
+        const rf = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "annule" }),
+        });
+        if (!rf.ok && rf.status !== 404) console.error(`[presta_cancel] remplacements en attente non fermés (${rf.status}) — prestation ${mission_id}`);
+      } catch (e) {
+        console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
       }
 
       // Le client est intégralement remboursé (CGPS art. 8.2) : son cashback lui

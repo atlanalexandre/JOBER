@@ -3464,6 +3464,18 @@ clore une demande ouverte qui porte un `stripe_payment_intent`, et l'écran n'af
 « Annuler la prestation », qui rembourse selon la politique d'annulation. Les demandes ouvertes
 non payées et les prestations refusées (déjà remboursées) se clôturent comme avant.
 
+### Annulation par le prestataire : seulement la sienne, seulement acceptée
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/46`). Dans `presta_cancel` :
+
+- les demandes de remplacement en attente étaient fermées **avant** de vérifier que l'appelant
+  était le prestataire de la prestation — n'importe quel compte pouvait fermer celles d'une
+  prestation qui n'était pas la sienne. Elles le sont désormais après l'annulation réussie ;
+- une demande **pas encore acceptée** (`pending_acceptance`) pouvait être « annulée » : client
+  remboursé, prestation close, au lieu du refus qui, sur une prestation affectée par la
+  plateforme, passe au candidat suivant. Réponse 409 `utiliser_refus` ;
+- l'écriture finale est conditionnée à « toujours la sienne, toujours `assigned` ».
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
