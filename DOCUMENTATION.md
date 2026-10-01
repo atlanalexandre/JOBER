@@ -3476,6 +3476,15 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
   plateforme, passe au candidat suivant. Réponse 409 `utiliser_refus` ;
 - l'écriture finale est conditionnée à « toujours la sienne, toujours `assigned` ».
 
+### Remplacement : le changement de titulaire vérifie qu'il a eu lieu
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/47`). Dans `repondre_remplacement`, la
+bascule `prestataire_id` sortant → entrant comptait un tableau **vide** comme un succès : une
+prestation reprise ou annulée entre-temps était annoncée « remplacement validé » aux trois
+parties sans que rien n'ait changé. L'écriture est désormais conditionnée à « toujours au
+sortant, `assigned`, pas démarrée » ; aucune ligne modifiée → la demande passe `expire` et la
+réponse est 409. Le refus vérifie aussi son résultat (409 si la demande a été traitée entre-temps).
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
