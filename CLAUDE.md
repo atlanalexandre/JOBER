@@ -267,6 +267,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | Piège | Ce qu'il faut retenir |
 |---|---|
 | Bucket `Documents` | Majuscule obligatoire |
+| `date_debut` / `date_fin` | Des `timestamptz` : la base rend « 2026-09-30 00:00:00+00 ». Toujours `.slice(0, 10)` avant d'y ajouter `T00:00:00Z` — sinon la date est invalide (NaN), et l'écriture qui en dépend échoue. L'interruption d'une journée d'une série a échoué ainsi jusqu'au 01/10/2026 |
 | `heure_debut` | Heure **locale française**, Vercel tourne en **UTC**. Passer par `api/_temps.js`, jamais recopier la formule de décalage |
 | Table des prestations | C'est `missions`, il n'existe pas de table `prestations` |
 | Variables Vercel | Contiennent des espaces invisibles, toujours les nettoyer |

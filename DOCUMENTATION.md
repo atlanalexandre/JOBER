@@ -3425,6 +3425,24 @@ résultat. Aucune règle de `npm run coherence` ne les couvre — un contrôle q
 critère utile serait « écriture d'argent ou de statut dont le résultat est jeté », et il reste
 à écrire.
 
+### Interrompre une prestation en cours : trois garde-fous
+
+**Corrigé le 01/10/2026** (audit du domaine « prestations », vérifié en recette, `e2e/44`).
+`cancel_in_progress` rembourse au client les heures non travaillées. Trois défauts :
+
+1. **Une prestation pas encore commencée** pouvait être « interrompue » : celle de demain,
+   jamais pointée, était facturée comme si elle avait eu lieu en partie. L'action exige
+   désormais `started_at` et une date du jour comprise entre `date_debut` et `date_fin`.
+   Avant le démarrage, c'est l'annulation ordinaire, avec ses frais, qui s'applique.
+2. **Écourter la même journée deux fois** remboursait deux fois les mêmes heures. Le motif
+   enregistré porte « Journée du AAAA-MM-JJ écourtée » : une seconde demande pour la même
+   journée est refusée (409), sauf pour arrêter le reste de la série — sans recompter les
+   heures du jour. La clé d'idempotence Stripe inclut la date et le choix (`jour` / `fin`).
+3. **Écourter une journée d'une série échouait toujours** : `date_debut` et `date_fin` sont des
+   `timestamptz`, rendus « 2026-09-30 00:00:00+00 ». Le code y collait `T00:00:00Z`, d'où une
+   date invalide, des heures perdues à `null`, et un PATCH refusé après le remboursement. On ne
+   garde que les dix premiers caractères, côté serveur comme à l'écran.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

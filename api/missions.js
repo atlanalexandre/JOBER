@@ -3876,7 +3876,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3885,6 +3885,16 @@ export default async function handler(req, res) {
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "La prestation n'est pas en cours" });
       if (!mission.heure_debut) return res.status(400).json({ error: "Heure de début non définie sur cette prestation" });
+      // « En cours » veut dire DÉMARRÉE, et aujourd'hui dans ses dates. Rien ne
+      // le vérifiait : une prestation prévue demain, « interrompue » aujourd'hui
+      // après son heure de début, comptait des heures écoulées depuis cette
+      // heure-là — elle était close comme faite, et le prestataire payé pour un
+      // travail qui n'avait pas eu lieu (relecture du 01/10/2026). Une
+      // prestation qui n'a pas démarré s'annule (`cancel_client`), elle ne
+      // s'interrompt pas.
+      if (!mission.started_at) {
+        return res.status(409).json({ error: "La prestation n'a pas démarré : annulez-la plutôt que de l'interrompre." });
+      }
 
       // ── Ce qui a réellement été fait ────────────────────────────────────
       //
@@ -3904,6 +3914,15 @@ export default async function handler(req, res) {
       // La journée en cours part de l'heure de début D'AUJOURD'HUI, jamais de
       // la première date : sur une récurrente, elles diffèrent.
       const aujourdHui = dateDuJourFr();
+      const premierJourP = String(mission.date_debut || mission.date || "").slice(0, 10);
+      const dernierJourP = String(mission.date_fin || mission.date_debut || mission.date || "").slice(0, 10);
+      if (premierJourP && (aujourdHui < premierJourP || aujourdHui > dernierJourP)) {
+        return res.status(409).json({ error: "La prestation n'a pas lieu aujourd'hui : elle ne peut pas être interrompue maintenant." });
+      }
+      // La journée déjà écourtée ne l'est pas une seconde fois : chaque appel
+      // ajoutait de nouveau ses heures à `heures_perdues`, que le prestataire
+      // perdait à la clôture. Le motif écrit lors du premier appel en fait foi.
+      const dejaEcourtee = String(mission.cancellation_reason || "").includes(`Journée du ${aujourdHui} écourtée`);
       const debutDuJour = debutPrestationMs(aujourdHui, mission.heure_debut);
       const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour);
       const elapsedHours = elapsedMs / 3600000;
@@ -3911,7 +3930,8 @@ export default async function handler(req, res) {
       // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h), au bénéfice du
       // prestataire, et plafonné aux heures prévues pour la journée.
       const heuresDuJour = Math.min(Math.ceil(elapsedHours), totalHours);
-      const heuresPerduesDuJour = Math.max(0, totalHours - heuresDuJour);
+      // Déjà écourtée : ses heures non faites sont déjà comptées.
+      const heuresPerduesDuJour = dejaEcourtee ? 0 : Math.max(0, totalHours - heuresDuJour);
 
       // Journées ANTÉRIEURES à aujourd'hui, donc entièrement accomplies. Une
       // prestation d'une seule date n'en compte aucune.
@@ -3919,7 +3939,12 @@ export default async function handler(req, res) {
       const joursEcoules = (estRecurrente && premierJour)
         ? Math.max(0, Math.min(
             joursPrestation - 1,
-            Math.round((new Date(`${aujourdHui}T00:00:00Z`) - new Date(`${premierJour}T00:00:00Z`)) / 86400000)
+            // `premierJourP` : la date SEULE. `date_debut` est un horodatage
+            // (« 2026-09-30 00:00:00+00 ») : y recoller « T00:00:00Z » donnait une
+            // date illisible, NaN jours écoulés, des heures perdues vides que la
+            // base refusait — écourter une journée d'une série échouait toujours
+            // (constaté en recette le 01/10/2026).
+            Math.round((new Date(`${aujourdHui}T00:00:00Z`) - new Date(`${premierJourP}T00:00:00Z`)) / 86400000)
           ))
         : 0;
 
@@ -3932,6 +3957,9 @@ export default async function handler(req, res) {
       // ne doit pas annuler le jeudi et le vendredi sans qu'il l'ait demandé.
       // Sur une prestation d'une seule date, les deux reviennent au même.
       const annulerReste = !estRecurrente || req.body?.annuler_reste === true;
+      if (dejaEcourtee && !annulerReste) {
+        return res.status(409).json({ error: "Cette journée a déjà été écourtée." });
+      }
       const joursRestants = annulerReste ? 0 : Math.max(0, joursPrestation - joursEcoules - 1);
 
       const originalMontant = Number(mission.montant_total) || 0;
@@ -4008,7 +4036,11 @@ export default async function handler(req, res) {
             headers: {
               "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`,
               "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": `refund-cancel-inprogress-${mission_id}`,
+              // Une clé PAR JOUR et par issue : une série écourtée un lundi puis
+              // un mardi faisait réutiliser au mardi la clé du lundi, avec un
+              // autre montant — Stripe refusait, et le mardi ne pouvait plus
+              // être écourté.
+              "Idempotency-Key": `refund-cancel-inprogress-${mission_id}-${aujourdHui}-${annulerReste ? "fin" : "jour"}`,
             },
             body: new URLSearchParams({
               payment_intent: mission.stripe_payment_intent,
