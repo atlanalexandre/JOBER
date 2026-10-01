@@ -3690,6 +3690,14 @@ Il lit désormais la réponse (erreur affichée telle que le serveur la donne), 
 remplacement est retirée, et l'écran final dit ce qui se passe : montant de la prestation
 remboursé, frais de service dus, délai selon la banque.
 
+### Prestataire : un échec de chargement ne se fait plus passer pour une liste vide
+
+**Corrigé le 01/10/2026** (audit des écrans, `e2e/57`). `loadPending` (`presta-screens.jsx`)
+avalait l'échec de `my_missions` (`catch { /* ignore */ }`, réponse non vérifiée) : la liste
+restait vide et l'écran disait « Aucune prestation en cours » — le prestataire manquait des
+demandes en attente sans le savoir. L'échec affiche désormais « Vos prestations n'ont pas pu
+être chargées » avec un bouton « Réessayer », et l'état vide n'est plus montré dans ce cas.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
