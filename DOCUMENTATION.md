@@ -3504,7 +3504,9 @@ position du prestataire n'a pas à être diffusée la nuit entre deux journées.
 alimente ce calcul doit demander `date_debut,date_fin` — c'est fait pour la clôture, la
 validation automatique, la contestation, la relance, l'annulation par le prestataire et
 l'invitation à valider envoyée en fin de service (`notify_end`, qui recopiait son propre calcul
-sur le seul pointage et invitait le client à valider dès le premier soir).
+sur le seul pointage et invitait le client à valider dès le premier soir), ainsi que l'avis
+« prestation terminée » de la tâche planifiée. L'alerte « aucun pointage », elle, se déclenche
+toujours dès la fin du premier jour (`date_fin` y est neutralisée).
 
 `validate_presta` n'accepte plus non plus l'horodatage de signature envoyé par le navigateur
 (`contrat_presta_signe_at`) : c'est l'heure du serveur.
