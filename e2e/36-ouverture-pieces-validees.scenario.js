@@ -39,3 +39,18 @@ test("sans pièce d'identité ni assurance validée, l'accès ne s'ouvre pas —
   const ouverture = await bo("enable_missions", { profileId: p.id });
   expect(ouverture.statut, ouverture.texte.slice(0, 300)).toBe(200);
 });
+
+test("métier principal réglementé absent de la liste des métiers : la carte professionnelle est exigée", async () => {
+  // L'ouverture de l'accès ne lisait que `metiers_list` : un agent de sécurité dont
+  // c'était le métier PRINCIPAL, non repris dans la liste, passait sans carte CNAPS
+  // (relecture du 01/10/2026).
+  const p = await prestataireOperationnel();
+  expect((await bo("disable_missions", { profileId: p.id })).statut).toBe(200);
+  await sql(`update auth.users set raw_user_meta_data = raw_user_meta_data || '{"metier":"Agent de sécurité","secteur":"securite"}'::jsonb where id = '${p.id}'`);
+
+  const refus = await bo("enable_missions", { profileId: p.id });
+  expect(refus.statut, refus.texte.slice(0, 300)).toBe(409);
+  expect(refus.json.error).toContain("CNAPS");
+  const [prof] = await sql(`select missions_enabled from profiles where id = '${p.id}'`);
+  expect(prof.missions_enabled).toBe(false);
+});

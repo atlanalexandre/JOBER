@@ -138,7 +138,7 @@ describe("l'application côté serveur", () => {
   });
 
   it("n'ouvre pas l'accès au bénéfice du doute si la vérification échoue", () => {
-    const bloc = bo.slice(bo.indexOf("qualificationsPour(uqData"));
+    const bloc = bo.slice(bo.indexOf("qualificationsPour(metiersDeclares(uqData"));
     expect(bloc.slice(0, bloc.indexOf("majProfil"))).toContain("503");
   });
 });
@@ -185,7 +185,7 @@ describe("le courriel de validation du compte", () => {
   });
 
   it("énumère les pièces de CE prestataire, pas une liste générique", () => {
-    expect(bo).toContain("docsRequisPour(userData.user_metadata?.nationalite, userData.user_metadata?.metiers_list)");
+    expect(bo).toContain("docsRequisPour(userData.user_metadata?.nationalite, metiersDeclares(userData.user_metadata))");
     expect(mail).toContain("docsAttendusPresta.map");
   });
 
@@ -315,6 +315,25 @@ describe("justificatifsDe() — par lots", async () => {
   });
   it("verify_doc compte le métier principal ET la liste", () => {
     const src = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
-    expect(src).toContain("const metiersT = [uTData.user_metadata?.metier, ...(");
+    expect(src).toContain("const metiersT = metiersDeclares(uTData.user_metadata);");
+  });
+});
+
+// Relecture du 01/10/2026 : l'ouverture de l'accès lisait `metiers_list` seul.
+// Un métier principal réglementé absent de la liste n'était pas contrôlé.
+describe("metiersDeclares()", () => {
+  it("réunit le métier principal et la liste, sans doublon dans les titres exigés", async () => {
+    const { metiersDeclares, qualificationsPour } = await import("../../../api/_qualifications.js");
+    const meta = { metier: "Agent de sécurité", metiers_list: [{ sector: "hotellerie", metier: "Femme/Valet de chambre" }] };
+    const q = qualificationsPour(meta.metiers_list);
+    expect(q, "la liste seule oublie le principal").toEqual([]);
+    const tous = qualificationsPour(metiersDeclares(meta));
+    expect(tous.map(x => x.metiers)).toEqual([["Agent de sécurité"]]);
+    const doublon = qualificationsPour(metiersDeclares({ metier: "Agent de sécurité", metiers_list: [{ metier: "Agent de sécurité" }] }));
+    expect(doublon[0].metiers).toEqual(["Agent de sécurité"]);
+  });
+  it("l'ouverture de l'accès, la liste et les pièces exigées regardent l'union", () => {
+    const src = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(src).not.toMatch(/(qualificationsPour|docsRequisPour)\([^)]*metiers_list\)/);
   });
 });

@@ -1735,6 +1735,13 @@ sa ligne étant conservée ; une pièce périmée ne bloque qu'au seuil où le b
 suspendrait (`suspendable`, pièces de `EXPIRATION_BLOQUANTE`). La liste du back-office
 renvoie `pieces_a_valider` : le bouton est désactivé, la liste écrite au-dessus.
 
+**Les métiers lus sont le principal ET la liste** — `metiersDeclares()` de
+`api/_qualifications.js` (relecture du 01/10/2026). `enable_missions`, la liste du back-office,
+le courriel de validation, l'alerte « dossier complet » et l'écran Docs du prestataire ne
+lisaient que `metiers_list` : un agent de sécurité dont c'était le métier **principal**, non
+repris dans la liste (comptes anciens), recevait l'accès aux prestations **sans carte CNAPS**
+contrôlée — constaté en recette. La validation des justificatifs regardait déjà l'union.
+
 Le motif est contractuel : l'article 7.2 des CGPS annonce que le mandat d'encaissement est
 recueilli « préalablement à tout encaissement », et sans mandat de facturation `api/invoice.js`
 n'émet qu'une **attestation sans numéro**, pas une facture opposable à la comptabilité du
