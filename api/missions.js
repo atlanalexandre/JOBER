@@ -3595,7 +3595,13 @@ export default async function handler(req, res) {
         ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
         : 1;
       const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0) * nbJours;
-      const fraisDeduits = Math.round((missionAmount - partHoraire) * 100) / 100;
+      // Les frais se déduisent du PRIX, pas de ce que la carte a payé. Lu chez
+      // Stripe (montant_total vide), `missionAmount` est le montant de la carte,
+      // c'est-à-dire le prix MOINS le cashback : les frais retenus étaient
+      // minorés d'autant (relecture du 01/10/2026 — 1,98 € au lieu de 6,98 €
+      // avec 5 € de cashback, le défaut que `payeCarte` corrige juste au-dessus).
+      const prixTotal = Number(mission.montant_total) ? missionAmount : missionAmount + cashbackApplique;
+      const fraisDeduits = Math.round((prixTotal - partHoraire) * 100) / 100;
       // Garde-fou calibré sur la grille réelle, calculée par api/_montant.js —
       // et non sur un pourcentage du total : en urgence, les frais peuvent
       // représenter 40 % d'une petite prestation, et un plafond proportionnel
@@ -3611,9 +3617,9 @@ export default async function handler(req, res) {
         calculerFrais("range",  partHoraire, nbJours, bareme),
         calculerFrais("single", partHoraire, nbJours, bareme),
       ) + 0.01;
-      const fraisRetenus = (fraisDeduits > 0 && fraisDeduits <= fraisPlausiblesMax && fraisDeduits < missionAmount)
+      const fraisRetenus = (fraisDeduits > 0 && fraisDeduits <= fraisPlausiblesMax && fraisDeduits < prixTotal)
         ? fraisDeduits
-        : Math.min(FRAIS_DEFAUT, missionAmount);
+        : Math.min(FRAIS_DEFAUT, payeCarte);
 
       // Défaillance du prestataire : annulation sans aucun frais.
       //

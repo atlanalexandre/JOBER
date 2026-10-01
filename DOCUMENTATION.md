@@ -3752,6 +3752,11 @@ Trois règles gouvernent cette imputation, et il faut les trois :
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
   (`plafonnerRemboursement()`). Stripe refuse de rendre plus qu'il n'a prélevé, et ce refus
   arriverait APRÈS l'annulation de la prestation.
+- **Les frais retenus se calculent sur le PRIX**, jamais sur ce que la carte a payé. Quand
+  `montant_total` est vide, `cancel_client` relit le montant chez Stripe — celui de la carte,
+  cashback déduit — et en déduisait les frais : avec 5 € de cashback, il rendait 5 € de trop
+  (constaté en recette le 01/10/2026, 104,00 € rendus au lieu de 99,00 €). Le cashback est
+  rajouté avant le calcul.
 
 Les helpers **relisent eux-mêmes** les deux colonnes quand le `select` de l'appelant les a
 omises (`completerCashback`). Une douzaine de requêtes lisent `missions` pour rembourser :
