@@ -3076,8 +3076,15 @@ accepté et **annoncé son tarif**, le client n'a pas encore payé. Rien ne s'ap
    vendue au tarif d'un créneau réservé à l'avance ;
 3. le client voit le détail — heures, frais, total — et règle ;
 4. `confirmer_heures_supp` **vérifie le paiement auprès de Stripe** : statut `succeeded`,
-   `metadata.mission` égale à la prestation, montant reçu ≥ montant dû. Alors seulement `hours`
-   et `montant_total` bougent.
+   `metadata.mission` égale à la prestation, montant reçu ≥ montant dû — **et** (01/10/2026)
+   `metadata.type = "heures_supp"`, `metadata.client` égal à l'appelant, paiement différent de
+   celui de la réservation, `metadata.deja_appliquees` égal aux heures déjà ajoutées. Alors
+   seulement `hours` et `montant_total` bougent. Les quatre derniers contrôles manquaient : le
+   paiement de la **réservation** — même prestation, montant supérieur — réglait n'importe quelle
+   prolongation (constaté en recette : 4 h → 6 h sans rien payer), et celui d'une prolongation
+   précédente redevenait utilisable dès qu'une seconde l'avait remplacé. `deja_appliquees` est
+   inscrit par `stripe-intent` à la création du paiement ; un paiement plus ancien qui ne le porte
+   pas n'est admis que pour une première prolongation. Éprouvé par `e2e/43`.
 
 Se fier à ce que le navigateur affirme reviendrait à laisser le client s'accorder des heures
 gratuitement. Le montant du PaymentIntent est lui aussi calculé côté serveur, depuis la

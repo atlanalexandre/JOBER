@@ -107,6 +107,19 @@ export async function payerPrestation({ jetonClient, missionId, montant, prestat
     paymentIntent: pi, statutStripe: pj.status, centimesPreleves: pj.amount };
 }
 
+/** Confirme chez Stripe, avec une carte de test, un paiement créé par /api/stripe-intent. */
+export async function confirmerPaiement(clientSecret, carte = carteDeTest()) {
+  const pi = clientSecret.split("_secret_")[0];
+  const c = await http();
+  const pk = await pkStripe();
+  const conf = await avecReprise(() => c.post(`https://api.stripe.com/v1/payment_intents/${pi}/confirm`, {
+    headers: { Authorization: `Bearer ${pk}` },
+    form: { client_secret: clientSecret, payment_method: carte, return_url: `${RECETTE_URL}/dashboard` },
+  }), "confirmation Stripe");
+  const pj = await conf.json();
+  return { paymentIntent: pi, statut: pj.status, erreur: pj.error?.message || null };
+}
+
 /** Appel d'une fonction /api de la Preview. */
 export async function api(chemin, corps, jeton) {
   const c = await http();
