@@ -770,6 +770,16 @@ export default async function handler(req, res) {
       if (litiges.length) return res.status(409).json({ error: "Ce compte a une prestation en litige : tranchez-la avant de supprimer le compte." });
 
       const paiementCarte = (m) => /^pi_/.test(String(m.stripe_payment_intent || ""));
+      // Un paiement qui n'est ni une carte ni rien — l'ancien portefeuille
+      // (`wallet_…`, retiré le 23/09/2026) — ne se rembourse pas par Stripe.
+      // L'annuler sans recréditer le portefeuille faisait perdre la somme au
+      // client, à qui l'on annonçait pourtant un remboursement (relecture du
+      // 01/10/2026). On s'arrête : c'est à rembourser à la main.
+      const autrePaiement = enCours.find(m => m.stripe_payment_intent && !paiementCarte(m));
+      if (autrePaiement) {
+        return res.status(409).json({ error: `Prestation ${autrePaiement.id.slice(0, 8)} réglée par l'ancien portefeuille : `
+          + "à rembourser à la main (recréditer le solde du client) et annuler, avant de supprimer le compte. Rien n'a été supprimé." });
+      }
       for (const pm of enCours) {
         if (paiementCarte(pm)) {
           const rb = await rembourserDepuisLeBO(pm, ctx);
@@ -887,7 +897,14 @@ export default async function handler(req, res) {
       });
       // Les fichiers aussi : seules les fiches étaient effacées, et les pièces
       // d'identité restaient dans le stockage.
-      await effacerPieces(profileId, SUPABASE_URL, headers, ctx);
+      if (!await effacerPieces(profileId, SUPABASE_URL, headers, ctx)) {
+        // Supprimer le compte maintenant laisserait les pièces d'identité dans
+        // le stockage, sans fiche ni compte pour les retrouver — et l'écran
+        // dirait « supprimé ». Le compte reste : un nouvel essai les retrouve
+        // par le dossier `{id}/`.
+        return res.status(502).json({ error: "Les pièces du compte n'ont pas pu être effacées du stockage : "
+          + "le compte n'a pas été supprimé. Réessayez dans quelques minutes." });
+      }
 
       if (!await supprimerCompteAuth(profileId, SUPABASE_URL, headers, ctx)) {
         return res.status(500).json({ error: "Les données du compte ont été effacées, mais le compte lui-même n'a pas pu être supprimé. "
@@ -973,6 +990,13 @@ export default async function handler(req, res) {
       } else {
         for (const m of aVenir) {
           if (m.started_at) { enCoursDemarrees.push(m.id); continue; }
+          if (m.stripe_payment_intent && !/^pi_/.test(String(m.stripe_payment_intent))) {
+            // Ancien portefeuille (`wallet_…`) : Stripe ne le rembourse pas, et
+            // l'annuler sans recréditer le solde ferait perdre la somme au
+            // client, prévenu d'un « remboursement » (relecture du 01/10/2026).
+            echecs.push({ id: m.id, message: `Prestation ${m.id.slice(0, 8)} réglée par l'ancien portefeuille : à rembourser et annuler à la main.` });
+            continue;
+          }
           if (/^pi_/.test(String(m.stripe_payment_intent || ""))) {
             const rb = await rembourserDepuisLeBO(m, "bo-action/suspend");
             if (!rb.ok) { echecs.push({ id: m.id, message: rb.message }); continue; }
