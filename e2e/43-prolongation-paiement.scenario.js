@@ -6,7 +6,7 @@
 // sans que le client ait rien versé de plus.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, reservationPayee, api } from "./fabrique.js";
+import { prestataireOperationnel, client, reservationPayee, api, confirmerPaiement } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -24,4 +24,20 @@ test("le paiement de la réservation ne règle pas une prolongation", async () =
   const [l] = await sql(`select hours, extra_hours_status from missions where id = '${m.id}'`);
   expect(Number(l.hours), "aucune heure ajoutée").toBe(4);
   expect(l.extra_hours_status).toBe("accepte_presta");
+
+  // Le parcours légitime, lui, passe : un paiement DE PROLONGATION, réglé.
+  const intent = await api("/api/stripe-intent", { mode: "supplement", mission_id: m.id, currency: "eur" }, c.jeton);
+  expect(intent.statut, intent.texte.slice(0, 200)).toBe(200);
+  const pay = await confirmerPaiement(intent.json.clientSecret);
+  expect(pay.statut, pay.erreur || "").toBe("succeeded");
+  const bon = await api("/api/missions", { action: "confirmer_heures_supp", mission_id: m.id, payment_intent: pay.paymentIntent }, c.jeton);
+  expect(bon.statut, bon.texte.slice(0, 200)).toBe(200);
+  const [l2] = await sql(`select hours, extra_hours_status from missions where id = '${m.id}'`);
+  expect(Number(l2.hours), "les 2 h réglées sont ajoutées").toBe(6);
+  expect(l2.extra_hours_status).toBe("accepted");
+
+  // Ce même paiement ne règle pas une seconde prolongation.
+  await sql(`update missions set extra_hours_requested = 1, extra_hours_tarif = 13, extra_hours_status = 'accepte_presta' where id = '${m.id}'`);
+  const reutilise = await api("/api/missions", { action: "confirmer_heures_supp", mission_id: m.id, payment_intent: pay.paymentIntent }, c.jeton);
+  expect(reutilise.statut, reutilise.texte.slice(0, 200)).toBe(400);
 });
