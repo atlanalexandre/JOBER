@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
-import { Btn, Stars } from "./ui.jsx";
+import { Btn } from "./ui.jsx";
 import { formatMontant } from "../constants/plans.js";
 import { reductionCashback } from "../../api/_cashback.js";
 
@@ -1010,12 +1010,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 
 export function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
   const p = provider || {};
-  const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
+  const [step, setStep] = useState("policy"); // policy | done
   const [reason, setReason] = useState("");
-  const [chosen, setChosen] = useState(null);
   const [cancelling, setCancelling] = useState(false);
-  const { providers: allProviders } = _useProviders();
-  const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
+  const [erreurAnnulation, setErreurAnnulation] = useState("");
 
   if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestation introuvable.</div>;
 
@@ -1023,58 +1021,18 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
   const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
   const penalty = hoursLeft >= 24 ? 0 : 100;
-  const penaltyAmount = 0; // frais de service seulement, montant géré par l'admin
 
-  if(step==="replacement") return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <div style={{ background:`linear-gradient(135deg,${C.accent},#c0392b)`, padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>🔄 Remplaçant automatique</h2>
-        <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:0 }}>Prestataires disponibles sur votre créneau</p>
-      </div>
-      <div style={{ padding:"20px 18px" }}>
-        <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:13, color:C.text }}>
-          ALANE a trouvé <strong>{replacements.length} remplaçant{replacements.length>1?"s":""}</strong> disponible{replacements.length>1?"s":""} sur votre créneau
-        </div>
-        {replacements.length === 0 ? (
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize:44, marginBottom:12 }}>😔</div>
-            <div style={{ fontWeight:800, color:C.text, marginBottom:8 }}>Aucun remplaçant disponible</div>
-            <div style={{ color:C.textSub, fontSize:13, marginBottom:16 }}>Vous serez remboursé intégralement</div>
-            <Btn full variant="success" onClick={()=>setStep("done")}>Confirmer le remboursement</Btn>
-          </div>
-        ) : (
-          <>
-            {replacements.map(r => (
-              <div key={r.id} onClick={()=>setChosen(r)} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:11, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", cursor:"pointer", border:`2px solid ${chosen?.id===r.id?C.success:C.grayLight}`, transition:"border 0.2s" }}>
-                <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                  <div style={{ width:50, height:50, borderRadius:15, background:`${r.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>{r.avatar}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{r.name}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>{r.role}</div>
-                    <div style={{ display:"flex", gap:6, marginTop:3, alignItems:"center" }}><Stars rating={r.rating} size={12}/><span style={{ color:C.textSub, fontSize:11 }}>{r.rating} · {r.distance}</span></div>
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ color:C.violet, fontWeight:800, fontSize:13 }}>{r.hourlyRate}</div>
-                    {chosen?.id===r.id && <div style={{ color:C.success, fontSize:12, fontWeight:700, marginTop:4 }}>✓ Sélectionné</div>}
-                  </div>
-                </div>
-              </div>
-            ))}
-            <Btn full variant="success" disabled={!chosen} onClick={()=>setStep("done")} style={{ marginTop:8 }}>
-              ✓ Confirmer {chosen?.name || "le remplaçant"}
-            </Btn>
-          </>
-        )}
-      </div>
-    </div>
-  );
-
+  // L'étape « Remplaçant automatique » qui suivait l'annulation a été retirée
+  // (audit des écrans, 01/10/2026) : choisir un remplaçant n'appelait rien, mais
+  // l'écran annonçait « Remplaçant confirmé ! » — le client attendait quelqu'un
+  // sur une prestation annulée. Elle annonçait aussi un remboursement
+  // « intégral », alors que les frais de service sont retenus.
   if(step==="done") return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1a7a40)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
-      <div style={{ fontSize:72, marginBottom:20 }}>{chosen ? "🔄" : "💶"}</div>
-      <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 12px" }}>{chosen ? "Remplaçant confirmé !" : "Remboursement initié"}</h2>
-      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 28px" }}>
-        {chosen ? `${chosen.name} prendra en charge votre prestation.` : "Vous serez remboursé sous 3-5 jours ouvrés."}
+      <div style={{ fontSize:72, marginBottom:20 }}>💶</div>
+      <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 12px" }}>Prestation annulée</h2>
+      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:300, margin:"0 auto 28px" }}>
+        Le montant de la prestation vous est remboursé ; seuls les frais de service restent dus. Le remboursement apparaît sur votre compte selon les délais de votre banque.
       </p>
       <Btn full variant="secondary" onClick={()=>onNavigate("home")} style={{ color:C.success }}>Retour à l'accueil</Btn>
       <button onClick={()=>onNavigate("rating",p)} style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:12, padding:"11px 24px", color:"rgba(255,255,255,0.9)", cursor:"pointer", marginTop:10, fontSize:13, fontFamily:"inherit", width:"100%", fontWeight:600 }}>⭐ Noter {p.name}</button>
@@ -1112,33 +1070,44 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
           ))}
         </div>
 
+        {erreurAnnulation && (
+          <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, color:"#F25E5E", fontSize:13 }}>{erreurAnnulation}</div>
+        )}
         <div style={{ display:"flex", gap:10 }}>
           <Btn variant="secondary" onClick={onBack} style={{ flex:1, padding:"13px", fontSize:13 }}>Garder la prestation</Btn>
           <Btn variant="danger" disabled={!reason||cancelling} onClick={async()=>{
             setCancelling(true);
+            setErreurAnnulation("");
+            // Le résultat est LU : l'écran annonçait l'annulation même quand le
+            // serveur la refusait (prestataire ayant confirmé sa venue, prestation
+            // déjà terminée…), et même sans prestation à annuler.
             try {
               const { data: { session } } = await supabase.auth.getSession();
               const token = session?.access_token;
-              if (missionId && token) {
-                await fetch("/api/missions", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({
-                    action: "cancel_client",
-                    mission_id: missionId,
-                    reason,
-                    penalty,
-                  }),
-                });
-              }
-            } catch { /* ignore */ }
+              if (!missionId || !token) throw new Error("Prestation introuvable. Annulez-la depuis « Mes prestations ».");
+              const r = await fetch("/api/missions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  action: "cancel_client",
+                  mission_id: missionId,
+                  reason,
+                  penalty,
+                }),
+              });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j.error || "L'annulation n'a pas pu être enregistrée. Réessayez.");
+              setStep("done");
+            } catch (e) {
+              console.error("[annulation] refusée :", e?.message);
+              setErreurAnnulation(e?.message || "L'annulation n'a pas pu être enregistrée. Réessayez.");
+            }
             setCancelling(false);
-            setStep("replacement");
           }} style={{ flex:2, padding:"13px", fontSize:13 }}>
-            {cancelling ? "…" : `Annuler ${penalty>0?`(−${penaltyAmount} €)`:""}`}
+            {cancelling ? "…" : "Annuler la prestation"}
           </Btn>
         </div>
       </div>

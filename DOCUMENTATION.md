@@ -3671,6 +3671,25 @@ de ce qu'un refus déclenche — passage au candidat suivant ou remboursement
 qu'**une fois**, sur une demande non payée (`open` ou `pending_acceptance`), ce qui correspond au seul moment où l'écran
 l'envoie (juste après la création, `App.jsx`) ; la condition est aussi dans l'écriture.
 
+### L'écran secondaire d'annulation annonçait ce qui n'avait pas lieu
+
+**Corrigé le 01/10/2026** (audit des écrans). `CancellationScreen` (`src/components/payment.jsx`,
+adresse `/cancellation`, aussi présent dans l'onglet « Test » du back-office) — l'annulation
+courante passe, elle, par la fiche de la prestation (`handleCancel`, `client-screens.jsx`), qui
+lit déjà la réponse du serveur. Ce second écran :
+
+- **ne lisait pas la réponse** de `cancel_client` (`catch { /* ignore */ }`) et enchaînait comme
+  si l'annulation avait réussi, même refusée ou sans prestation à annuler ;
+- proposait ensuite un **« Remplaçant automatique »** : choisir un prestataire n'appelait rien,
+  mais l'écran affichait « Remplaçant confirmé ! X prendra en charge votre prestation » — sur une
+  prestation qui venait d'être annulée ;
+- annonçait sinon un remboursement **intégral** « sous 3-5 jours », alors que les frais de
+  service sont retenus.
+
+Il lit désormais la réponse (erreur affichée telle que le serveur la donne), l'étape de
+remplacement est retirée, et l'écran final dit ce qui se passe : montant de la prestation
+remboursé, frais de service dus, délai selon la banque.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
