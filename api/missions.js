@@ -2679,6 +2679,18 @@ export default async function handler(req, res) {
           + "— le délai de quatorze jours court toujours sur cette prestation.");
       }
 
+      // Signature du contrat de prestation par le client (art. 11 : elle vaut
+      // signature manuscrite). L'écran de réservation la recueille avant de
+      // laisser payer, mais son horodatage restait dans le navigateur :
+      // `contrat_client_signe_at` n'était écrit par personne — 0 sur 884
+      // prestations payées en recette (audit « sécurité », 01/10/2026). Posée
+      // ici par le serveur, à son heure, comme la renonciation ci-dessus.
+      if (stripe_payment_intent && payload.contrat_signe === true) {
+        patch.contrat_client_signe_at = new Date().toISOString();
+      } else if (stripe_payment_intent) {
+        console.error(`[assign_after_payment] signature du contrat NON transmise pour ${mission_id}`);
+      }
+
       // Filtre sur le statut : ne pas écraser une prestation traitée entre-temps
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
         method: "PATCH",
@@ -4851,6 +4863,18 @@ export default async function handler(req, res) {
       } else if (stripe_payment_intent) {
         console.error(`[affecter_tiers] renonciation à la rétractation NON recueillie sur ${mission_id} `
           + "— le délai de quatorze jours court toujours sur cette prestation.");
+      }
+
+      // Signature du contrat de prestation par le client (art. 11 : elle vaut
+      // signature manuscrite). L'écran de réservation la recueille avant de
+      // laisser payer, mais son horodatage restait dans le navigateur :
+      // `contrat_client_signe_at` n'était écrit par personne — 0 sur 884
+      // prestations payées en recette (audit « sécurité », 01/10/2026). Posée
+      // ici par le serveur, à son heure, comme la renonciation ci-dessus.
+      if (stripe_payment_intent && payload.contrat_signe === true) {
+        patch.contrat_client_signe_at = new Date().toISOString();
+      } else if (stripe_payment_intent) {
+        console.error(`[affecter_tiers] signature du contrat NON transmise pour ${mission_id}`);
       }
 
       if (!candidats.length) {

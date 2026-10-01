@@ -96,11 +96,12 @@ export async function payerPrestation({ jetonClient, missionId, montant, prestat
   // Même aiguillage que App.jsx : chez un tiers, la plateforme choisit le
   // prestataire (CGPS art. 5.2) et aucun n'est transmis.
   const affectation = await api("/api/missions", chezUnTiers
-    ? { action: "affecter_tiers", mission_id: missionId, stripe_payment_intent: pi, retractation_renoncee: true }
+    ? { action: "affecter_tiers", mission_id: missionId, stripe_payment_intent: pi, retractation_renoncee: true, contrat_signe: true }
     : {
       action: "assign_after_payment", mission_id: missionId, prestataire_id: prestataireId,
       acceptance_deadline: new Date(Date.now() + delaiMinutes * 60000).toISOString(),
-      stripe_payment_intent: pi, retractation_renoncee: true,
+      // Comme App.jsx : le contrat a été signé dans l'écran de réservation.
+      stripe_payment_intent: pi, retractation_renoncee: true, contrat_signe: true,
       ...(diffusionId ? { diffusion_id: diffusionId } : {}),
     }, jetonClient);
   return { etape: affectation.statut === 200 ? "ok" : "affectation", statut: affectation.statut, detail: affectation.texte.slice(0, 300), mode: affectation.json?.mode,
