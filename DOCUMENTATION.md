@@ -536,7 +536,11 @@ pas, sans en être prévenu. Chaque prestation `pending_acceptance`, `assigned` 
 `needs_replacement` **non démarrée** est désormais remboursée (`rembourserDepuisLeBO`,
 frais compris, cashback rendu), annulée, et son client prévenu. Une prestation **déjà
 démarrée** reste en place — il est à l'œuvre — et elle est signalée à l'administrateur, avec
-les éventuels échecs de remboursement ; le tout est consigné dans `bo_logs.details`.
+les éventuels échecs de remboursement ; le tout est consigné dans `bo_logs.details`. Une
+réservation réglée par l'**ancien portefeuille** (`wallet_…`) n'est jamais annulée d'office :
+Stripe ne la rembourse pas, et l'annuler faisait perdre la somme au client, à qui l'on
+annonçait un remboursement. Elle est signalée, à traiter à la main ; la suppression d'un
+compte qui en a une est refusée pour la même raison (relecture du 01/10/2026).
 
 **Les dates qui se déduisent sont calculées, les autres sont saisies.** Une attestation URSSAF
 vaut six mois à compter de son émission : la date se calcule. La période de garantie d'une
@@ -1479,7 +1483,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
-| `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche |
+| `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
 | `supprimerCompteAuth()` | la réponse n'était pas lue : la base refusait la suppression d'un prestataire ayant déjà travaillé, et l'écran disait « supprimé » |
 
 Le back-office, en plus : les prestations non terminées sont **remboursées puis annulées**

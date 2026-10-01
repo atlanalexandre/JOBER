@@ -994,7 +994,10 @@ export default async function handler(req, res) {
             await anonymiserPrestations(p.id, SUPABASE_URL, headers, "resiliation");
             await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${p.id}`, { method: "DELETE", headers })
               .catch(e => console.error(`[resiliation] candidatures de ${p.id} non effacées :`, e.message));
-            await effacerPieces(p.id, SUPABASE_URL, headers, "resiliation");
+            if (!await effacerPieces(p.id, SUPABASE_URL, headers, "resiliation")) {
+              console.error(`[resiliation] ${p.id} reportée : pièces non effacées du stockage — sera repris demain`);
+              continue;
+            }
             if (!await supprimerCompteAuth(p.id, SUPABASE_URL, headers, "resiliation")) {
               console.error(`[resiliation] compte ${p.id} NON supprimé — sera repris demain`);
               continue;
