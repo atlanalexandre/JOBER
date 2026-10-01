@@ -3720,6 +3720,14 @@ demandes en attente sans le savoir. L'échec affiche désormais « Vos prestatio
 Ces résumés restent des **copies** des CGPS dans un écran, ce que la règle de `CLAUDE.md`
 interdit : à remplacer un jour par un renvoi à `src/constants/cgps.js`.
 
+### Back-office, onglet Support : suppression confirmée, envoi expliqué
+
+**01/10/2026** (audit des écrans, `e2e/58`). « Supprimer » effaçait un ticket — et le message du
+client — en un geste, sans confirmation, juste à côté de « Marquer résolu » : il demande
+désormais confirmation, comme la suppression d'un avis. Et les boutons « Répondre » restaient
+grisés sans explication tant que la case était vide (signalé par Alexandre) : une phrase
+l'indique sous les boutons.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
