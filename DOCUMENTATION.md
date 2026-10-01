@@ -1517,6 +1517,14 @@ et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACT
 prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
 « Mes clients » du prestataire les ignore.
 
+**Confirmation de réservation par courriel** (`support.js`, `booking_confirm`) — relue en base
+depuis le 01/10/2026. Le destinataire et tout le contenu venaient de la requête : n'importe quel
+compte connecté pouvait faire envoyer un courriel aux couleurs d'ALANE, au texte de son choix, à
+l'adresse de son choix. Le navigateur n'envoie plus que `mission_id` ; la prestation doit
+appartenir à l'appelant, et le courriel part à l'adresse de son compte. Il ne promet plus un argent
+« en escrow, libéré après validation mutuelle » — faux depuis août —, et dit « demande
+transmise » tant que le prestataire n'a pas accepté. Éprouvé par `e2e/41`.
+
 **Formulaire de contact** — public, mais l'identité ne se déclare plus. `userId` était lu dans
 le corps de la requête et servait à relever la limite anti-spam de 3 à 20 messages par dix
 minutes, ainsi qu'à rattacher le ticket à un compte : inventer un identifiant suffisait pour
