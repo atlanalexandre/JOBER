@@ -2420,7 +2420,9 @@ export default async function handler(req, res) {
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&validation_prestataire=is.false`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
-        body: JSON.stringify({ validation_prestataire: true, contrat_presta_signe_at: new Date().toISOString() }),
+        // L'attestation de fin a sa propre colonne : `contrat_presta_signe_at` est la
+        // signature du CONTRAT, posée à l'acceptation (respond_mission).
+        body: JSON.stringify({ validation_prestataire: true, fin_attestee_presta_at: new Date().toISOString() }),
       });
       const validatedRows = await patchRes.json().catch(() => []);
       if (!Array.isArray(validatedRows) || validatedRows.length === 0) {
@@ -5332,6 +5334,14 @@ export default async function handler(req, res) {
       const patchBody = response === "accept"
         ? { status: "assigned" }
         : { status: "refused", prestataire_id: null };
+      // Signature du contrat de prestation par le prestataire : l'écran la
+      // recueille avant d'accepter, mais sa date restait dans le navigateur
+      // (01/10/2026). Posée ici par le serveur, à son heure.
+      if (response === "accept" && payload.contrat_signe === true) {
+        patchBody.contrat_presta_signe_at = new Date().toISOString();
+      } else if (response === "accept") {
+        console.error(`[respond_mission] signature du contrat NON transmise pour ${mission_id}`);
+      }
       const respondPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.pending_acceptance`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
