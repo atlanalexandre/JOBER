@@ -1517,6 +1517,16 @@ et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACT
 prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
 « Mes clients » du prestataire les ignore.
 
+**Retrouver un compte par son adresse : `utilisateurParEmail()`** (`api/_auth.js`, 01/10/2026).
+`/auth/v1/admin/users?email=…` **ne filtre pas** — le paramètre est ignoré, la réponse commence
+par le compte le plus récent — et trois endroits prenaient ce premier résultat pour le compte
+demandé. Constaté en recette : la **réinitialisation du mot de passe** (`reset-password.js`)
+changeait le mot de passe du **dernier inscrit**, pas celui du demandeur ; la demande de lien
+(`forgot-password.js`) trouvait toujours « un » compte ; la pénalité anti-recréation de
+l'inscription (`support.js`, `welcome`) tombait sur le dernier inscrit. La fonction parcourt la
+liste et compare l'adresse ; l'inscription, elle, prend simplement l'appelant, dont le jeton est
+vérifié. Éprouvé par `compte-par-email.test.js` et `e2e/42`.
+
 **Confirmation de réservation par courriel** (`support.js`, `booking_confirm`) — relue en base
 depuis le 01/10/2026. Le destinataire et tout le contenu venaient de la requête : n'importe quel
 compte connecté pouvait faire envoyer un courriel aux couleurs d'ALANE, au texte de son choix, à

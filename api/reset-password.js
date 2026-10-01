@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { utilisateurParEmail } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -46,27 +47,20 @@ export default async function handler(req, res) {
   }
 
   // Trouver l'utilisateur par email
+  // Le compte est retrouvé par son adresse EXACTE (api/_auth.js). La recherche
+  // `?email=` prenait le premier compte rendu — le plus récent, le paramètre
+  // n'étant pas un filtre : le mot de passe changé était celui du dernier
+  // inscrit, pas celui du demandeur (constaté en recette le 01/10/2026).
   let userId;
   try {
-    const userRes = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(email)}&page=1&per_page=1`,
-      { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
-    );
-    if (!userRes.ok) {
-      const err = await userRes.text();
-      console.error("[reset-password] user lookup failed:", userRes.status, err);
-      return res.status(500).json({ error: "Erreur lors de la recherche du compte" });
-    }
-    const data = await userRes.json();
-    const users = data?.users || [];
-    if (users.length === 0) return res.status(404).json({ error: "Compte introuvable" });
-    userId = users[0].id;
+    const compte = await utilisateurParEmail(email, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (!compte) return res.status(404).json({ error: "Compte introuvable" });
+    userId = compte.id;
   } catch (e) {
-    console.error("[reset-password] user lookup error:", e);
-    return res.status(500).json({ error: "Erreur serveur" });
+    console.error("[reset-password] recherche du compte impossible :", e.message);
+    return res.status(500).json({ error: "Erreur lors de la recherche du compte" });
   }
 
-  // Mettre à jour le mot de passe via l'API admin
   try {
     const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: "PUT",

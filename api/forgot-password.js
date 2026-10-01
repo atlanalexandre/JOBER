@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
 import crypto from "crypto";
+import { utilisateurParEmail } from "./_auth.js";
 import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
@@ -18,24 +19,18 @@ export default async function handler(req, res) {
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
+  // Le compte doit exister, à cette adresse EXACTE (api/_auth.js) : la recherche
+  // `?email=` ne filtrait pas, et trouvait toujours « un » compte.
   if (SUPABASE_URL && SERVICE_ROLE_KEY) {
     try {
-      const check = await fetch(
-        `${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(normalizedEmail)}&page=1&per_page=1`,
-        { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
-      );
-      if (check.ok) {
-        const data = await check.json();
-        const users = data?.users || [];
-        if (users.length === 0) {
-          // Email inexistant — répondre ok pour ne pas révéler l'existence du compte
-          return res.status(200).json({ ok: true });
-        }
-      }
+      const compte = await utilisateurParEmail(normalizedEmail, SUPABASE_URL, SERVICE_ROLE_KEY);
+      // Même réponse que si l'envoi avait lieu : on ne révèle pas qui a un compte.
+      if (!compte) return res.status(200).json({ ok: true });
     } catch (e) {
-      console.error("[forgot-password] user check error:", e);
+      console.error("[forgot-password] recherche du compte impossible :", e.message);
     }
   }
+
 
   // Générer token HMAC : emailB64.timestamp.hmac
   const timestamp   = Date.now();
