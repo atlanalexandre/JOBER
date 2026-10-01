@@ -2226,7 +2226,7 @@ export default async function handler(req, res) {
       // l'identifiant part directement dans une URL PostgREST.
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at,validation_prestataire,titre,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,started_at,validation_prestataire,titre,montant_total`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -2393,11 +2393,11 @@ export default async function handler(req, res) {
     if (action === "validate_presta") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id, contrat_presta_signe_at } = payload;
+      const { mission_id } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector,validation_prestataire,date,heure_debut,hours,ville`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector,validation_prestataire,date,date_debut,date_fin,heure_debut,hours,ville`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -2405,17 +2405,22 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "Prestation non assignée" });
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette prestation" });
       if (mission.date) {
-        // `heure_debut` est une heure locale française et Vercel tourne en UTC :
-        // la conversion vit dans _temps.js, on ne la recopie pas.
-        const missionStartUTC = new Date(debutPrestationMs(mission.date, mission.heure_debut));
-        const missionEndUTC = new Date(missionStartUTC.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
-        if (missionEndUTC > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une prestation qui n'est pas encore terminée" });
+        // Fin PRÉVUE de toute la prestation, dernier jour compris : sur une série,
+        // seul le premier jour comptait, et la fin se confirmait dès son soir —
+        // la validation automatique payait ensuite la série entière (audit
+        // « prestations », 01/10/2026). Un quart d'heure de tolérance, comme avant.
+        const finPrevueMs = finPrestationMs({ ...mission, started_at: null, actual_hours: null });
+        if (finPrevueMs !== null && finPrevueMs - 15 * 60000 > Date.now()) {
+          return res.status(400).json({ error: "Vous ne pouvez pas confirmer une prestation qui n'est pas encore terminée" });
+        }
       }
 
+      // L'horodatage de la confirmation est celui du SERVEUR. Il était repris du
+      // navigateur, qui pouvait y inscrire n'importe quelle date.
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&validation_prestataire=is.false`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
-        body: JSON.stringify({ validation_prestataire: true, contrat_presta_signe_at: contrat_presta_signe_at || new Date().toISOString() }),
+        body: JSON.stringify({ validation_prestataire: true, contrat_presta_signe_at: new Date().toISOString() }),
       });
       const validatedRows = await patchRes.json().catch(() => []);
       if (!Array.isArray(validatedRows) || validatedRows.length === 0) {

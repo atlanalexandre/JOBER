@@ -3485,6 +3485,31 @@ parties sans que rien n'ait changé. L'écriture est désormais conditionnée à
 sortant, `assigned`, pas démarrée » ; aucune ligne modifiée → la demande passe `expire` et la
 réponse est 409. Le refus vérifie aussi son résultat (409 si la demande a été traitée entre-temps).
 
+### Une série finit le dernier jour
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/49`). `finPrestationMs()` de
+`api/_temps.js` ne lisait que la première date : une prestation sur plusieurs jours « finissait »
+le soir de son **premier** jour. Conséquences, reproduites en recette :
+
+- le prestataire pouvait **confirmer la fin** d'une série dès le premier soir (`validate_presta`) ;
+- la **validation automatique** clôturait la série entière 24 h après le premier jour, et
+  programmait le virement complet — avant que le travail soit fait ;
+- le délai de contestation du client (48 h) se refermait pendant la série ;
+- la relance de validation partait dès le premier jour.
+
+La fonction rend désormais, pour une série, l'heure de début du **dernier** jour plus `hours`
+(la durée d'une journée) ; le pointage du premier jour n'y change rien. La fenêtre de partage de
+position, elle, reste celle d'une journée (`fenetrePartagePosition` neutralise `date_fin`) : la
+position du prestataire n'a pas à être diffusée la nuit entre deux journées. Une lecture qui
+alimente ce calcul doit demander `date_debut,date_fin` — c'est fait pour la clôture, la
+validation automatique, la contestation, la relance et l'annulation par le prestataire.
+
+`validate_presta` n'accepte plus non plus l'horodatage de signature envoyé par le navigateur
+(`contrat_presta_signe_at`) : c'est l'heure du serveur.
+
+**Reste connu** : deux lectures du back-office (liste des versements, `bo-action.js`) ne lisent
+pas l'horaire de la prestation ; l'échéance affichée y est « maintenant + 48 h ».
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

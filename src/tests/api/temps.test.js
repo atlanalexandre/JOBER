@@ -55,6 +55,18 @@ describe("finPrestationMs", () => {
     expect(finPrestationMs({ date: "2026-08-06", heure_debut: "14:00", hours: 3, actual_hours: 1.5 }))
       .toBe(AOUT_14H_UTC + 1.5 * 3600000);
   });
+  // Audit « prestations », 01/10/2026 : une série « finissait » le soir de son
+  // premier jour — fin confirmable, validation automatique et virement en avance.
+  it("une série finit le DERNIER jour, pointage du premier jour ou non", () => {
+    const serie = { date: "2026-08-06", date_debut: "2026-08-06 00:00:00+00", date_fin: "2026-08-08 00:00:00+00", heure_debut: "14:00", hours: 3 };
+    expect(finPrestationMs(serie)).toBe(AOUT_14H_UTC + 2 * 864e5 + 3 * 3600000);
+    expect(finPrestationMs({ ...serie, started_at: new Date(AOUT_14H_UTC).toISOString() }))
+      .toBe(AOUT_14H_UTC + 2 * 864e5 + 3 * 3600000);
+  });
+  it("une prestation d'un jour avec date_fin identique garde son calcul", () => {
+    expect(finPrestationMs({ date: "2026-08-06", date_fin: "2026-08-06 00:00:00+00", heure_debut: "14:00", hours: 3 }))
+      .toBe(AOUT_14H_UTC + 3 * 3600000);
+  });
 });
 
 describe("echeanceVersementMs", () => {
