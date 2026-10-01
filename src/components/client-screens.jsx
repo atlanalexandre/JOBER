@@ -7903,7 +7903,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
           )}
 
-          {selected.status === "open" && (
+          {/* Une demande payée ne se « clôture » pas : seule l'annulation la
+              rembourse (le serveur refuse la clôture, 01/10/2026). */}
+          {selected.status === "open" && !selected.stripe_payment_intent && (
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
               Clôturer la prestation
             </button>
