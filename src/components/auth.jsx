@@ -741,7 +741,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ width:36, height:36, borderRadius:10, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏛️</div>
             <div style={{ flex:1 }}>
               <div style={{ color:"#FFD250", fontWeight:700, fontSize:12, marginBottom:2 }}>Pas encore d'auto-entreprise ?</div>
-              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le Guichet unique de l'État →</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.4 }}>Créez votre auto-entreprise gratuitement, en ligne, sur le Guichet unique de l'État →</div>
             </div>
           </a>
 
