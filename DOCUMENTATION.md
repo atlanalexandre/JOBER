@@ -3624,7 +3624,10 @@ comprise**, et la rejoue. Les réessais et le bouton Relancer recevaient donc le
 pendant une journée, sans que Stripe tente rien. La clé change désormais d'une heure à l'autre
 (`cleVersement()`) ; contre le double paiement, `virementDejaEmis()` demande d'abord à Stripe si
 un virement non repris existe déjà pour la prestation (`metadata[mission_id]`, posé sur tous les
-virements) — il est alors inscrit, pas refait. Sans réponse de Stripe, rien n'est émis.
+virements) — il est alors inscrit, pas refait. **Si cette lecture échoue** (clé Stripe sans le
+droit « Transfers : Read », panne), le virement part avec l'**ancienne clé fixe**
+`payout-{mission}` : ni blocage ni double paiement, seulement le réessai retardé de 24 h d'avant,
+et une ligne d'erreur dans le journal qui le dit.
 
 L'écran **Versements** du backoffice (`BOVersements`) montre les versements en attente,
 retenus, échoués, et signale ceux dont l'échéance est dépassée de plus de six heures — le

@@ -27,7 +27,7 @@ export function cleVersement(missionId, nowMs = Date.now()) {
  * Un virement non repris existe-t-il déjà pour cette prestation ?
  *
  * @returns {Promise<{ok:true, id:string|null} | {ok:false, detail:string}>}
- *          `ok:false` : on ne SAIT pas — l'appelant ne doit pas émettre.
+ *          `ok:false` : on ne SAIT pas — l'appelant revient à la clé fixe.
  */
 export async function virementDejaEmis({ destination, missionId, stripeKey, pagesMax = 10 }) {
   let apres = null;
