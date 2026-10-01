@@ -61,4 +61,17 @@ describe("contestation bancaire", () => {
     await handler(requete(evenement), reponse());
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
   });
+
+  // Décision d'Alexandre du 01/10/2026 : une contestation reçue AVANT la clôture
+  // n'avait aucun versement à retenir, et le virement partait à la clôture.
+  it("pas encore clôturée : la retenue est inscrite, sans créer de versement", async () => {
+    const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: null, payout_amount: null });
+    await handler(requete(evenement), reponse());
+    const inscription = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+    expect(inscription.u).toContain("payout_status=is.null");
+    const corps = JSON.parse(inscription.corps);
+    expect(corps.payout_status, "pas de versement inventé").toBeUndefined();
+    expect(corps.payout_hold_reason).toBe("opposition_bancaire");
+    expect(Math.round((new Date(corps.payout_hold_until) - new Date(corps.payout_hold_at)) / 86400000)).toBe(90);
+  });
 });

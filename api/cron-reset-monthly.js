@@ -652,7 +652,7 @@ export default async function handler(req, res) {
           `${SUPABASE_URL}/rest/v1/missions`
           + `?payout_status=eq.pending&status=eq.completed`
           + `&payout_due_at=lte.${encodeURIComponent(maintenant)}`
-          + `&select=id,prestataire_id,payout_amount`
+          + `&select=id,prestataire_id,payout_amount,payout_hold_reason,payout_hold_until,metier,sector,date`
           + `&limit=200`,
           { headers }
         );
@@ -675,6 +675,34 @@ export default async function handler(req, res) {
           let bloquesPassagers = 0;
 
           for (const m of (Array.isArray(lots) ? lots : [])) {
+            // Retenue inscrite AVANT la clôture — opposition bancaire reçue
+            // quand il n'y avait pas encore de versement (api/stripe-webhook.js).
+            // Elle joue ici, au moment d'émettre : le versement passe en
+            // « retenu », le prestataire est prévenu, et le back-office la lève
+            // si la contestation est rejetée. Passé son terme, elle ne retient
+            // plus rien.
+            if (m.payout_hold_reason && m.payout_hold_until && new Date(m.payout_hold_until).getTime() > Date.now()) {
+              const ret = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+                body: JSON.stringify({ payout_status: "held" }),
+              });
+              const retenu = ret.ok ? await ret.json().catch(() => []) : [];
+              if (Array.isArray(retenu) && retenu.length) {
+                const finLe = new Date(m.payout_hold_until).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+                console.error(`[versements] ${m.id} RETENU à l'émission : ${m.payout_hold_reason} (jusqu'au ${finLe}).`);
+                await notifier({ user_id: m.prestataire_id, type: "system",
+                  title: "Versement suspendu",
+                  body: `Le versement de ${euros(m.payout_amount)} pour « ${m.metier || m.sector || "votre prestation"} » du ${m.date || "?"} est suspendu : `
+                    + "le client a formé une opposition bancaire sur son paiement (CGPS art. 7.4). "
+                    + `La retenue prend fin au plus tard le ${finLe}, et plus tôt si l'opposition est rejetée. `
+                    + "Vous pouvez la contester à direction@alane.fr.",
+                }, SUPABASE_URL, headers).catch(e => console.error(`[versements] retenue non notifiée ${m.id} :`, e.message));
+              } else {
+                console.error(`[versements] ${m.id} devait être retenu mais n'a pas pu l'être (${ret.status}) — non versé ce passage.`);
+              }
+              continue;
+            }
+
             // Verrou atomique : on passe en `processing` AVANT d'appeler Stripe.
             // Deux exécutions concurrentes du cron ne peuvent pas verser deux fois.
             const verrou = await fetch(

@@ -810,6 +810,27 @@ export default async function handler(req, res) {
           } else {
             console.error(`[dispute] versement de ${missionLitige.id} NON retenu (${rr.status}) — à retenir à la main depuis le back-office.`);
           }
+        } else if (missionLitige?.id && !missionLitige.payout_status) {
+          // ── Contestation AVANT la clôture (décision d'Alexandre du 01/10/2026)
+          //
+          // Il n'y a pas encore de versement à retenir : il n'existe qu'à la
+          // clôture. La retenue est donc INSCRITE maintenant (motif, date,
+          // terme), et c'est le traitement des versements — seul endroit d'où
+          // part un virement — qui la fait jouer au moment d'émettre, quelle
+          // que soit la façon dont la prestation a été clôturée. Sans cela, la
+          // banque reprenait l'argent au client et ALANE avait payé le
+          // prestataire.
+          const maintenant = new Date();
+          const jusqua = new Date(maintenant.getTime() + 90 * 86400000);
+          const ra = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&payout_status=is.null`,
+            { method: "PATCH", headers: { ...hdrsD, "Prefer": "return=representation" },
+              body: JSON.stringify({ payout_hold_reason: "opposition_bancaire",
+                payout_hold_at: maintenant.toISOString(), payout_hold_until: jusqua.toISOString() }) }
+          );
+          const inscrite = ra.ok ? await ra.json().catch(() => []) : [];
+          if (Array.isArray(inscrite) && inscrite.length) missionLitige.retenueInscrite = true;
+          else console.error(`[dispute] retenue NON inscrite sur ${missionLitige.id} (${ra.status}) — à retenir à la main à la clôture.`);
         }
 
         if (missionLitige?.client_id) {
@@ -867,7 +888,8 @@ export default async function handler(req, res) {
                 : missionLitige.retenu ? "Retenu automatiquement (90 jours au plus) — à lever dans Versements si la contestation est gagnée"
                 : missionLitige.payout_status === "transferred" ? "⚠️ DÉJÀ VERSÉ au prestataire"
                 : missionLitige.payout_status ? `« ${missionLitige.payout_status} » — non retenu, à vérifier`
-                : "Pas encore programmé : à retenir à la clôture de la prestation"}</td></tr>
+                : missionLitige.retenueInscrite ? "Pas encore programmé : sera retenu automatiquement à la clôture (90 jours au plus)"
+                : "⚠️ Pas encore programmé, et la retenue n'a pas pu être inscrite : à retenir à la main à la clôture"}</td></tr>
             </table>
             <p style="margin-top:16px"><a href="https://dashboard.stripe.com/disputes/${dispute.id}" style="color:#7C6FE0;font-weight:700">Gérer dans Stripe Dashboard →</a></p>
           </div>`,
