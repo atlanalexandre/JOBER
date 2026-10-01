@@ -921,8 +921,13 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(()=>{
     let mounted = true;
+    // Les demandes ouvertes de TOUS les clients : seul le serveur peut les
+    // compter, la base ne laissant plus lire celles d'autrui (01/10/2026).
+    const demandesOuvertes = fetch("/api/prestataires?action=demandes_ouvertes")
+      .then(r => r.ok ? r.json() : { count: null })
+      .catch(e => { console.error("[accueil] demandes ouvertes non comptées :", e?.message); return { count: null }; });
     Promise.all([
-      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","open"),
+      demandesOuvertes,
       supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","completed"),
     ]).then(([open, completed])=>{
       if (!mounted) return;
