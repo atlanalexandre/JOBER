@@ -301,7 +301,8 @@ ce fichier, toutes nées de pannes réelles : `catch` vides dans `/api` (y compr
 d'environnement non nettoyées, clé service role hors `/api`, appel Supabase dans
 `onAuthStateChange`, casse du bucket `Documents`, conversion de fuseau sur `heure_debut`,
 champ de diagnostic dans une réponse HTTP, script tiers dans le CSP, écran de rôle non
-classé, et jeton décodé sans vérification de signature.
+classé, et jeton décodé sans vérification de signature (y compris quand le décodage suit le
+découpage sur la ligne d'après — cas d'`upload-document` jusqu'au 01/10/2026).
 
 Il ne signale que ce qu'il peut prouver. **Un contrôle qui produit des faux positifs finit
 ignoré, et un garde-fou ignoré ne protège plus rien** : avant d'élargir une règle, vérifier
