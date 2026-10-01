@@ -3511,9 +3511,6 @@ toujours dès la fin du premier jour (`date_fin` y est neutralisée).
 `validate_presta` n'accepte plus non plus l'horodatage de signature envoyé par le navigateur
 (`contrat_presta_signe_at`) : c'est l'heure du serveur.
 
-**Reste connu** : deux lectures du back-office (liste des versements, `bo-action.js`) ne lisent
-pas l'horaire de la prestation ; l'échéance affichée y est « maintenant + 48 h ».
-
 ### Prolongation : pas de refus pendant le paiement, pas d'heures sur une prestation close
 
 **Corrigé le 01/10/2026** (audit « prestations », `e2e/48`). Deux trous dans les heures
@@ -3535,6 +3532,15 @@ atteignait. Elle avait ses propres règles : une prestation payée passait `need
 **en gardant l'argent du client** — contre la décision du 30/09/2026 (annuler et rembourser) —,
 sans vérifier que la fin avait été confirmée ni que la prestation était terminée. Elle répond
 désormais 410 ; le seul chemin est `presta_cancel`.
+
+### La déclaration d'intervention chez un tiers ne se réécrit pas
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/51`). `declarer_tiers` acceptait une
+nouvelle déclaration à tout moment, y compris après le paiement et l'affectation. Or elle décide
+de ce qu'un refus déclenche — passage au candidat suivant ou remboursement
+(`affecteeParLaPlateforme`) — et a valeur de preuve (CGPS art. 10B). Elle n'est plus acceptée
+qu'**une fois**, sur une demande `open` non payée, ce qui correspond au seul moment où l'écran
+l'envoie (juste après la création, `App.jsx`) ; la condition est aussi dans l'écriture.
 
 ### Dénouer un litige — proposition, opposition, accord
 
