@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
-import { SECTOR_LABELS, SECTORS, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
+import { SECTOR_LABELS, SECTORS, LIBELLE_CONNAISSANCE, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { REGIONS, regionDe } from "../constants/regions.js";
 import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
@@ -242,6 +242,9 @@ function BOComptes() {
   const [metierFilter, setMetierFilter]   = useState("all");
   const [villeFilter, setVilleFilter]     = useState("all");
   const [regionFilter, setRegionFilter]   = useState("all");
+  // Provenance déclarée à l'inscription (« Comment avez-vous connu ALANE ? »).
+  // Croisée avec le filtre secteur, elle dit quel canal amène quels métiers.
+  const [provenanceFilter, setProvenanceFilter] = useState("all");
   // Ordre de la liste : du plus récent (défaut) ou par nom, A → Z.
   const [tri, setTri]                     = useState("recent");
   const [actioning, setActioning] = useState(null);
@@ -593,7 +596,7 @@ function BOComptes() {
   // Les valeurs proposées viennent des comptes réellement présents : proposer
   // un secteur ou une ville sans personne dedans ne rend service à personne.
   const optionsFiltres = (() => {
-    const secteurs = new Map(), metiers = new Map(), villes = new Map(), regions = new Map();
+    const secteurs = new Map(), metiers = new Map(), villes = new Map(), regions = new Map(), provenances = new Map();
     for (const p of profiles) {
       // Région et ville valent pour les clients comme pour les prestataires ;
       // secteur et métier, pour les prestataires seulement.
@@ -601,6 +604,8 @@ function BOComptes() {
       const reg = regionDe(p) || "inconnue";
       regions.set(reg, (regions.get(reg) || 0) + 1);
       if (regionFilter !== "all" && reg !== regionFilter) continue;
+      const prov = p.connu_par || "inconnue";
+      provenances.set(prov, (provenances.get(prov) || 0) + 1);
       if (p.role === "prestataire") for (const { secteur, metier } of metiersDuProfil(p)) {
         if (secteur) secteurs.set(secteur, (secteurs.get(secteur) || 0) + 1);
         if (metier)  metiers.set(metier,  (metiers.get(metier)  || 0) + 1);
@@ -618,6 +623,9 @@ function BOComptes() {
       villes:   [...villes.entries()].map(([cle, v]) => [cle, v.libelle, v.n])
                   .sort((a, b) => a[1].localeCompare(b[1], "fr")),
       // Île-de-France en tête, les autres par ordre alphabétique, « non renseignée » en dernier.
+      // Du canal le plus fréquent au moins fréquent, « non renseignée » en dernier.
+      provenances: [...provenances.entries()]
+                  .sort((a, b) => (a[0] === "inconnue") - (b[0] === "inconnue") || b[1] - a[1]),
       regions:  [...regions.entries()]
                   .sort((a, b) => (a[0] === "idf" ? -1 : b[0] === "idf" ? 1 : a[0] === "inconnue" ? 1 : b[0] === "inconnue" ? -1
                     : (REGIONS[a[0]]?.libelle || "").localeCompare(REGIONS[b[0]]?.libelle || "", "fr"))),
@@ -633,6 +641,7 @@ function BOComptes() {
     if (metierFilter  !== "all" && !exerce.some(e => e.metier  === metierFilter))  return false;
     if (villeFilter   !== "all" && cleVille(p.ville) !== villeFilter)              return false;
     if (regionFilter  !== "all" && (regionDe(p) || "inconnue") !== regionFilter)   return false;
+    if (provenanceFilter !== "all" && (p.connu_par || "inconnue") !== provenanceFilter) return false;
 
     if (searchLow) {
       // Identité, coordonnées, localisation : comparaison littérale.
@@ -665,8 +674,8 @@ function BOComptes() {
     });
   };
 
-  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all";
-  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); };
+  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all" || provenanceFilter !== "all";
+  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); setProvenanceFilter("all"); };
 
   return (
     <div style={{ padding:"16px 18px" }}>
@@ -784,6 +793,8 @@ function BOComptes() {
             ] : []),
             ["📍", villeFilter, setVilleFilter, "Toutes les villes",
              optionsFiltres.villes.map(([cle, lib, n]) => [cle, `${lib} (${n})`])],
+            ["📣", provenanceFilter, setProvenanceFilter, "Toutes les provenances",
+             optionsFiltres.provenances.map(([id, n]) => [id, `${id === "inconnue" ? "Provenance non renseignée" : LIBELLE_CONNAISSANCE[id] || id} (${n})`])],
           ].map(([icone, valeur, setValeur, libelleTout, options]) => (
             <select key={libelleTout} value={valeur} onChange={e => setValeur(e.target.value)}
               disabled={options.length === 0}
@@ -1011,6 +1022,7 @@ function BOComptes() {
                     <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
                     <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
                     <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret || p.siret} />
+                    <InfoRow icon="📣" label="A connu ALANE par" value={p.connu_par ? (LIBELLE_CONNAISSANCE[p.connu_par] || p.connu_par) : null} />
                     {p.role === "prestataire" && p.date_naissance && (
                       <InfoRow icon="🎂" label="Naissance" value={(() => {
                         const dob = new Date(p.date_naissance);

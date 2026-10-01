@@ -31,6 +31,19 @@ test.describe("inscription client", () => {
     expect(p.meta, "user_metadata voyage dans chaque jeton : viser moins de 2 Ko (CLAUDE.md §1.1)").toBeLessThan(2048);
   });
 
+  // « Comment avez-vous connu ALANE ? » (01/10/2026) : facultatif, rangé dans
+  // user_metadata.connu_par, lu par le back-office.
+  test("la provenance choisie à l'inscription est enregistrée", async ({ page }) => {
+    const email = emailTest("client");
+    await remplirInscriptionClient(page, { email });
+    await page.locator("select").filter({ has: page.locator("option", { hasText: "Un proche, un collègue" }) })
+      .selectOption({ label: "Un proche, un collègue" });
+    await page.getByRole("button", { name: /Créer mon compte/ }).click();
+    await expect(page).not.toHaveURL(/\/auth\/signin/, { timeout: 30_000 });
+    const [u] = await sql(`select raw_user_meta_data->>'connu_par' connu from auth.users where email = '${email}'`);
+    expect(u?.connu).toBe("proche");
+  });
+
   // DOCUMENTATION.md §6 : « un client créé à l'instant peut réserver immédiatement ».
   // Ce test a trouvé que c'était faux du 30/07 au 23/09/2026 (migration
   // `inscription_client_validee_d_office`).

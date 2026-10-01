@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, SOURCES_CONNAISSANCE, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Input, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
@@ -147,6 +147,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   // consentement préalable ; un consentement noyé dans l'acceptation d'un
   // contrat n'en est pas un. La case est donc séparée, et décochée par défaut.
   const [accepteComms, setAccepteComms] = useState(false);
+  // Facultatif : identifiant de SOURCES_CONNAISSANCE, ou vide.
+  const [connuPar, setConnuPar] = useState("");
   const [showCgpsModal, setShowCgpsModal] = useState(false);
   const [acreEnabled, setAcreEnabled] = useState(false);
   const [showAcreInfo, setShowAcreInfo] = useState(false);
@@ -246,6 +248,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         // Lus par la base à la création du compte (handle_new_user), qui les
         // enregistre dans `profiles` même sans session.
         accepte_communications: accepteComms,
+        connu_par: connuPar || null,
         parrain: parrainMemorise(),
       }, emailRedirectTo: retourConfirmation() },
     });
@@ -874,6 +877,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
+          <Select label="Comment avez-vous connu ALANE ? (facultatif)"
+            options={SOURCES_CONNAISSANCE.map(o => o.label)}
+            value={SOURCES_CONNAISSANCE.find(o => o.id === connuPar)?.label || ""}
+            onChange={e => setConnuPar(SOURCES_CONNAISSANCE.find(o => o.label === e.target.value)?.id || "")} />
           <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
             <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
               {cgpsAccepted && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
@@ -984,6 +991,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   // consentement préalable ; un consentement noyé dans l'acceptation d'un
   // contrat n'en est pas un. La case est donc séparée, et décochée par défaut.
   const [accepteComms, setAccepteComms] = useState(false);
+  // Facultatif : identifiant de SOURCES_CONNAISSANCE, ou vide.
+  const [connuPar, setConnuPar] = useState("");
   const [showCgpsModal, setShowCgpsModal] = useState(false);
 
   const toggleSecteur = id => {
@@ -1047,6 +1056,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         // RGPD art. 5.1.c). Il se renseigne depuis le profil, une fois connecté.
         // Lus par la base à la création du compte (handle_new_user) :
         accepte_communications: accepteComms,
+        connu_par: connuPar || null,
         parrain: parrainMemorise(),
       }, emailRedirectTo: retourConfirmation() },
     });
@@ -1292,6 +1302,10 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
+          <Select label="Comment avez-vous connu ALANE ? (facultatif)"
+            options={SOURCES_CONNAISSANCE.map(o => o.label)}
+            value={SOURCES_CONNAISSANCE.find(o => o.id === connuPar)?.label || ""}
+            onChange={e => setConnuPar(SOURCES_CONNAISSANCE.find(o => o.label === e.target.value)?.id || "")} />
           {/* L'IBAN, facultatif pour un client (remboursement du cashback), ne se
               saisit plus à l'inscription : il se renseigne depuis le profil. */}
         </>}
