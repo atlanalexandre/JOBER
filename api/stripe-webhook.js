@@ -432,7 +432,7 @@ export default async function handler(req, res) {
           if (!parrainId) return;
 
           const pRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&select=plan_abonnement,subscription_end_date,referral_rewards_granted`,
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&select=plan_abonnement,subscription_end_date,referral_rewards_granted,stripe_customer_id,stripe_subscription_id`,
             { headers: hdrs }
           );
           const parrain = (await pRes.json().catch(() => []))[0];
@@ -453,6 +453,59 @@ export default async function handler(req, res) {
           const dejaAccordees = Number(parrain.referral_rewards_granted) || 0;
           if (duesTotal <= dejaAccordees) return;
 
+          // ── Parrain déjà ABONNÉ : un avoir chez Stripe (décision d'Alexandre du 01/10/2026)
+          //
+          // On ne faisait qu'avancer `subscription_end_date` en base : Stripe
+          // continuait de prélever le mois suivant, et le « mois offert » ne
+          // l'était pas. L'avoir — un mois de son abonnement, au prix réellement
+          // payé — vient en déduction de sa prochaine facture. La récompense est
+          // d'abord RÉSERVÉE (écriture conditionnelle : deux livraisons du
+          // webhook n'accordent pas deux mois), puis l'avoir est créé avec une
+          // clé d'idempotence propre à cette récompense.
+          const abonnePayant = !!(parrain.stripe_subscription_id && parrain.stripe_customer_id
+            && parrain.plan_abonnement && parrain.plan_abonnement !== "free");
+          if (abonnePayant) {
+            const reserve = await fetch(
+              `${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&referral_rewards_granted=eq.${dejaAccordees}`,
+              { method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
+                body: JSON.stringify({ referral_rewards_granted: duesTotal }) }
+            );
+            const reserveRows = await reserve.json().catch(() => []);
+            if (!reserve.ok || !Array.isArray(reserveRows) || reserveRows.length === 0) return; // déjà accordée par une autre livraison
+            const moisOfferts = duesTotal - dejaAccordees;
+            let avoirCentimes = 0;
+            try {
+              const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
+                { headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` } });
+              const sd = await sr.json().catch(() => ({}));
+              const prix = sd?.items?.data?.[0]?.price;
+              const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
+              avoirCentimes = Math.round((Number.isFinite(mensuel) ? mensuel : 0) * moisOfferts);
+              if (!(avoirCentimes > 0)) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
+              const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(parrain.stripe_customer_id)}/balance_transactions`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded",
+                  "Idempotency-Key": `parrainage-${parrainId}-${duesTotal}` },
+                body: new URLSearchParams({ amount: String(-avoirCentimes), currency: "eur",
+                  description: `Parrainage ALANE : ${moisOfferts} mois offert${moisOfferts > 1 ? "s" : ""}` }).toString(),
+              });
+              const ad = await ar.json().catch(() => ({}));
+              if (!ar.ok || !ad?.id) throw new Error(ad?.error?.message || `avoir refusé (${ar.status})`);
+            } catch (e) {
+              console.error(`[parrainage] AVOIR NON CRÉÉ pour ${parrainId} (${moisOfferts} mois, client Stripe ${parrain.stripe_customer_id}) : ${e.message} `
+                + "— récompense enregistrée : créer l'avoir à la main dans Stripe (Clients → le client → Solde → Ajuster).");
+              return;
+            }
+            await notifier({
+                user_id: parrainId, type: "system",
+                title: "🎁 1 mois offert — parrainage",
+                body: `Trois de vos filleuls sont désormais abonnés : un mois de votre abonnement vous est offert. `
+                    + `Un avoir de ${euros(avoirCentimes / 100)} sera déduit de votre prochain prélèvement.`,
+              }, SUPABASE_URL, hdrs).catch(e => console.error("[parrainage] notification non envoyée :", e?.message));
+            console.log(`[parrainage] avoir de ${avoirCentimes} c pour ${parrainId} — ${abonnes} filleuls abonnés, ${duesTotal} récompense(s) au total`);
+            return;
+          }
+
           // Jamais de déclassement : un parrain déjà Elite conservait autrefois son
           // plan écrasé en « premium », avec une date de fin à trente jours — sa
           // souscription réelle s'en trouvait tronquée. On prolonge, on ne remplace.
@@ -463,7 +516,8 @@ export default async function handler(req, res) {
             ? parrain.plan_abonnement
             : "premium";
 
-          const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}`, {
+          // Conditionnelle : deux livraisons du webhook n'offrent pas deux mois.
+          const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&referral_rewards_granted=eq.${dejaAccordees}`, {
             method: "PATCH",
             headers: { ...hdrs, "Prefer": "return=representation" },
             body: JSON.stringify({
