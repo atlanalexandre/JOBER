@@ -39,3 +39,10 @@ test("un type de pièce hors liste est refusé, même avec un vrai jeton", async
   const r = await appeler(p.jeton, { docType: "../autre-compte/cni", fileName: "x.jpg", mimeType: "image/jpeg" });
   expect(r.statut, r.texte.slice(0, 200)).toBe(400);
 });
+
+test("un vrai jeton et un type connu obtiennent toujours leur adresse d'envoi", async () => {
+  const p = await prestataireOperationnel();
+  const r = await appeler(p.jeton, { docType: "autre", fileName: "x.pdf", mimeType: "application/pdf" });
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.texte).toContain(`/Documents/${p.id}/autre`);
+});
