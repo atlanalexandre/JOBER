@@ -2114,7 +2114,18 @@ redéclencherait une.
 
 La récompense **prolonge** l'abonnement du parrain, elle ne le remplace jamais : elle écrivait
 `plan_abonnement: "premium"` avec une fin à trente jours, ce qui déclassait un parrain Elite et
-tronquait sa souscription en cours. `track_referral` ne fait plus que rattacher le filleul, une
+tronquait sa souscription en cours.
+
+**Parrain déjà abonné : un avoir chez Stripe** (décision d'Alexandre du 01/10/2026). Avancer
+`subscription_end_date` en base ne changeait rien à sa facturation : Stripe le prélevait le mois
+suivant, et le mois « offert » ne l'était pas. Le webhook crée désormais un **avoir** du prix d'un
+mois de son abonnement (prix annuel divisé par douze) sur son client Stripe
+(`balance_transactions`, montant négatif), déduit automatiquement de sa prochaine facture ; sa
+date de fin reste celle de Stripe. La récompense est **réservée d'abord** — écriture conditionnée
+à `referral_rewards_granted` — puis l'avoir créé avec la clé `parrainage-{parrain}-{n}` : deux
+livraisons du webhook n'offrent pas deux mois. Un avoir refusé est journalisé avec le chemin pour
+le créer à la main. Un parrain gratuit reçoit, comme avant, un mois de Premium.
+Éprouvé par `parrainage-avoir.test.js` (non éprouvable en recette : abonnement réel requis). `track_referral` ne fait plus que rattacher le filleul, une
 seule fois — le filtre `referred_by IS NULL` interdit de réattribuer un parrainage — et
 recalcule le compteur depuis la source au lieu de l'incrémenter.
 
