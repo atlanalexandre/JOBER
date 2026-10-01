@@ -2030,6 +2030,12 @@ tous, et les marque — mais **seulement si l'envoi a été accepté**, sans quo
 perdu en silence. `notify_signup` renseigne la colonne lui aussi quand il réussit : l'alerte
 immédiate est conservée quand elle fonctionne, et le balayage ne la redouble pas.
 
+Depuis le 01/10/2026 (audit « sécurité », `alerte-inscription.test.js`, `e2e/53`), la colonne
+sert aussi de **verrou** : un compte déjà signalé — client ou prestataire — ne déclenche plus
+d'alerte. Et l'alerte porte l'identité lue en base (`profiles.prenom`, `nom`, `role`) et
+l'adresse du compte connecté : elles venaient de la requête, si bien que n'importe quel compte
+pouvait faire envoyer à la direction, sans limite, des alertes au nom et à l'adresse de son choix.
+
 Colonne non modifiable depuis le navigateur : un compte qui l'inscrirait lui-même ne serait
 jamais signalé, donc jamais validé.
 
