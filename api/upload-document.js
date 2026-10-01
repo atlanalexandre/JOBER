@@ -23,6 +23,8 @@ export const config = {
 // part à son tour.
 
 
+const TYPES_PIECES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour"];
+
 export default async function handler(req) {
   // Trace de survie — voir le bandeau ci-dessus. `console.warn` et non `log` :
   // elle doit ressortir dans les journaux Vercel sans qu'on la cherche.
@@ -47,24 +49,32 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: 'Configuration manquante' }), { status: 500 });
     }
 
-    // Décoder le JWT localement — aucun appel réseau, atob disponible en Edge
+    // Le jeton est VÉRIFIÉ auprès de Supabase. Il était seulement décodé,
+    // signature ignorée : n'importe qui pouvait en fabriquer un au nom d'un
+    // prestataire, obtenir une adresse d'envoi vers ses pièces et les
+    // remplacer (audit « sécurité », 01/10/2026, e2e/56).
     let userId;
     try {
-      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(b64));
-      if (payload?.sub && payload?.exp * 1000 > Date.now() + 5000) {
-        userId = payload.sub;
-      }
-    } catch { /* continue */ }
+      const ru = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { 'apikey': SERVICE_ROLE_KEY, 'Authorization': `Bearer ${token}` },
+      });
+      const u = ru.ok ? await ru.json() : null;
+      userId = u?.id || null;
+    } catch (e) {
+      console.error('[upload-document] vérification du jeton impossible :', e?.message);
+    }
 
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Token expiré — reconnectez-vous.', expired: true }), { status: 401 });
+      return new Response(JSON.stringify({ error: 'Session expirée — reconnectez-vous.', expired: true }), { status: 401 });
     }
 
     const body = await req.json().catch(() => ({}));
-    const { docType, fileName, mimeType } = body;
-    if (!docType) {
-      return new Response(JSON.stringify({ error: 'docType requis' }), { status: 400 });
+    const { docType } = body;
+    // Le type devient un segment du chemin : hors de la liste, `../autre/cni`
+    // écrivait dans le dossier d'un autre compte. Même liste que la contrainte
+    // de la base et que api/notify-doc.js.
+    if (!TYPES_PIECES.includes(docType)) {
+      return new Response(JSON.stringify({ error: 'docType invalide' }), { status: 400 });
     }
 
     // Nom stable par (prestataire, type) : le remplacement écrase le fichier

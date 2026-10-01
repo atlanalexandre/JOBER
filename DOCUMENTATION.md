@@ -1162,10 +1162,21 @@ Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichie
 | Mécanisme | Fichiers | Principe |
 |---|---|---|
 | `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc`, `reparer-profil` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
-| Vérification inline équivalente | `save-document`, `update-profile`, `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js` |
+| Vérification inline équivalente | `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js`. **Corrigé le 01/10/2026** : cette ligne était fausse pour `upload-document`, qui *décodait* le jeton sans en vérifier la signature (voir plus bas) ; `save-document` et `update-profile`, encore cités, avaient été supprimés le 11/09/2026 |
 | Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
 | Lien de réinitialisation | `forgot-password` (public), `reset-password` (public) | Lien à usage unique signé par `api/_reinitialisation.js` — voir plus bas. Ces deux fonctions étaient rangées à tort dans la ligne précédente |
 | `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
+
+**`upload-document.js` (en sursis) : jeton vérifié, type de pièce borné** (audit « sécurité »,
+01/10/2026, `e2e/56`). Constaté en recette : la fonction **décodait** le jeton sans en vérifier
+la signature — un jeton fabriqué au nom d'un prestataire obtenait une adresse d'envoi vers sa
+carte d'identité, et remettait ses pièces « non vérifiées » ; et le type de pièce, segment du
+chemin, n'était pas borné : `../autre-compte/cni` donnait une adresse dans le dossier d'un autre
+compte. Le jeton est désormais vérifié auprès de Supabase (`/auth/v1/user`) et le type doit
+appartenir à la liste de la contrainte `documents.type`. La règle 10 de `npm run coherence` ne
+voyait pas ce cas (découpage et décodage sur deux lignes) : elle regarde maintenant les trois
+lignes qui suivent le découpage. La fonction reste en sursis — aucun écran ne l'appelle ; sa
+suppression attend la lecture des journaux Vercel (`[upload-document] APPELÉE`).
 
 **`api/reparer-profil.js` — l'inscription en deux temps, et son rattrapage** (31/08/2026).
 

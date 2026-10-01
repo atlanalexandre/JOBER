@@ -292,10 +292,17 @@ try {
 // deuxième partie du jeton passée à un décodeur base64 — pour ne pas crier sur
 // du code légitime.
 
+//
+// Le décodage peut suivre le découpage sur la ligne d'après : c'était le cas
+// d'api/upload-document.js (`split('.')[1]` puis `atob(b64)`), que la règle ne
+// voyait pas, et qui acceptait un jeton fabriqué (01/10/2026). On regarde donc
+// la ligne du découpage et les trois suivantes.
 for (const f of fichiers("api")) {
+  const lignes = lire(f).split("\n");
   parLigne(f, (texte, n) => {
+    const voisinage = lignes.slice(n - 1, n + 3).join("\n");
     const decodeCharge = /split\(["'`]\.["'`]\)\s*\[\s*1\s*\]/.test(texte)
-      && /base64|atob/i.test(texte);
+      && /base64|atob/i.test(voisinage);
     if (decodeCharge) {
       violation("§3.3 — jeton décodé sans vérification", f, n,
         "La charge utile d'un jeton est décodée sur place. Un jeton forgé serait accepté : "
