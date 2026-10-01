@@ -1,6 +1,6 @@
 import { resendBody } from "./_email.js";
-import crypto from "crypto";
 import { utilisateurParEmail } from "./_auth.js";
+import { secretReinitialisation, signerLien, demandeTropRapprochee } from "./_reinitialisation.js";
 import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
@@ -10,7 +10,8 @@ export default async function handler(req, res) {
   if (!email || typeof email !== "string") return res.status(400).json({ error: "Email requis" });
 
   const normalizedEmail = email.trim().toLowerCase();
-  const RESET_SECRET    = ((process.env.BO_SESSION_SECRET || "").replace(/\s/g, "") || "alane-reset-fallback").replace(/\s/g, "");
+  // Plus de secret public de repli : voir api/_reinitialisation.js.
+  const RESET_SECRET    = secretReinitialisation();
   const RESEND_KEY      = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM     = process.env.RESEND_FROM || "onboarding@resend.dev";
   const APP_URL         = appUrl();
@@ -19,26 +20,47 @@ export default async function handler(req, res) {
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
-  // Le compte doit exister, à cette adresse EXACTE (api/_auth.js) : la recherche
-  // `?email=` ne filtrait pas, et trouvait toujours « un » compte.
-  if (SUPABASE_URL && SERVICE_ROLE_KEY) {
-    try {
-      const compte = await utilisateurParEmail(normalizedEmail, SUPABASE_URL, SERVICE_ROLE_KEY);
-      // Même réponse que si l'envoi avait lieu : on ne révèle pas qui a un compte.
-      if (!compte) return res.status(200).json({ ok: true });
-    } catch (e) {
-      console.error("[forgot-password] recherche du compte impossible :", e.message);
-    }
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !RESET_SECRET) {
+    console.error("[forgot-password] configuration serveur incomplète — aucun lien envoyé");
+    return res.status(503).json({ error: "Service momentanément indisponible. Réessayez plus tard." });
   }
 
+  // Le compte doit exister, à cette adresse EXACTE (api/_auth.js) : la recherche
+  // `?email=` ne filtrait pas, et trouvait toujours « un » compte. Sans compte
+  // retrouvé, aucun lien : il ne pourrait être lié à l'état d'aucun compte.
+  let compte;
+  try {
+    compte = await utilisateurParEmail(normalizedEmail, SUPABASE_URL, SERVICE_ROLE_KEY);
+  } catch (e) {
+    console.error("[forgot-password] recherche du compte impossible :", e.message);
+    return res.status(503).json({ error: "Service momentanément indisponible. Réessayez plus tard." });
+  }
+  // Même réponse que si l'envoi avait lieu : on ne révèle pas qui a un compte —
+  // ni qu'une demande vient d'être faite.
+  if (!compte) return res.status(200).json({ ok: true });
+  if (demandeTropRapprochee(compte)) {
+    console.log(`[forgot-password] demande trop rapprochée pour ${compte.id} — aucun envoi`);
+    return res.status(200).json({ ok: true });
+  }
 
-  // Générer token HMAC : emailB64.timestamp.hmac
-  const timestamp   = Date.now();
-  const emailB64    = Buffer.from(normalizedEmail).toString("base64url");
-  const hmac        = crypto.createHmac("sha256", RESET_SECRET)
-    .update(`${normalizedEmail}:${timestamp}`)
-    .digest("hex");
-  const resetToken  = `${emailB64}.${timestamp}.${hmac}`;
+  // L'heure de la demande est notée AVANT de signer : cette écriture change
+  // `updated_at`, et c'est l'état qui en résulte qui doit signer le lien.
+  let etatCompte;
+  try {
+    const maj = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${compte.id}`, {
+      method: "PUT",
+      headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ app_metadata: { reinit_demandee_at: new Date().toISOString() } }),
+    });
+    const apres = await maj.json().catch(() => null);
+    if (!maj.ok || !apres?.updated_at) throw new Error(`mise à jour refusée (${maj.status})`);
+    etatCompte = apres.updated_at;
+  } catch (e) {
+    console.error(`[forgot-password] demande non enregistrée pour ${compte.id} :`, e.message);
+    return res.status(503).json({ error: "Service momentanément indisponible. Réessayez plus tard." });
+  }
+
+  const resetToken  = signerLien(RESET_SECRET, normalizedEmail, etatCompte);
   const resetUrl    = `${APP_URL}?reset_token=${resetToken}`;
 
 
