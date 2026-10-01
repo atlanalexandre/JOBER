@@ -1882,7 +1882,12 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   }, []);
   const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
   const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
-  const { providers } = useProviders();
+  // `chargement` : tant que le catalogue n'est pas arrivé, il n'y a « 0
+  // prestataire » nulle part. L'écran le disait pourtant, métier par métier —
+  // « 0 prestataire · Indisponible », et rien de cliquable —, pendant les deux
+  // secondes que prend le catalogue (1 600 Ko pour 1 200 prestataires en
+  // recette, le 01/10/2026). Un client pressé repartait.
+  const { providers, loading: chargement } = useProviders();
 
 
   // Les villes où ce secteur a des prestataires, avec leur effectif.
@@ -2026,7 +2031,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
         <div style={{ fontSize:40, marginBottom:8 }}>{s.icon}</div>
         <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>{s.label}</h2>
         <p style={{ color:"rgba(255,255,255,0.75)", fontSize:14, margin:0 }}>
-          {providers.filter(p=>p.sector===s.id).length} prestataires · {providers.filter(p=>p.sector===s.id&&p.available).length} disponibles · <strong>Prix HT</strong>
+          {chargement ? "Recherche des prestataires…" : `${providers.filter(p=>p.sector===s.id).length} prestataires · ${providers.filter(p=>p.sector===s.id&&p.available).length} disponibles`} · <strong>Prix HT</strong>
         </p>
       </div>
 
@@ -2056,7 +2061,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             <div key={i} onClick={()=>svc.availCount>0 && setSelectedJob(svc.name)} style={{
               background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:8,
               display:"flex", alignItems:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
-              cursor:svc.availCount>0?"pointer":"default", opacity:svc.count===0?0.5:1,
+              cursor:svc.availCount>0?"pointer":"default", opacity:svc.count===0&&!chargement?0.5:1,
               transition:"transform 0.15s",
               border:`1.5px solid ${urgentMode && svc.availCount>0 ? C.accent+"44" : "transparent"}`,
             }}
@@ -2068,11 +2073,11 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ display:"flex", gap:8, marginTop:3, alignItems:"center", flexWrap:"wrap" }}>
                   <span style={{ color:urgentMode?C.accent:C.violet, fontWeight:700, fontSize:12 }}>{svc.rate}</span>
                   {urgentMode && <span style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{formatMontant(svc.base)}</span>}
-                  <span style={{ color:C.textSub, fontSize:11 }}>· {svc.count} prestataire{svc.count>1?"s":""} ({svc.availCount} dispo)</span>
+                  {!chargement && <span style={{ color:C.textSub, fontSize:11 }}>· {svc.count} prestataire{svc.count>1?"s":""} ({svc.availCount} dispo)</span>}
                 </div>
               </div>
               <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
-                <Badge color={svc.availCount>0?C.success:C.gray} small>{svc.availCount>0?"Disponible":"Indisponible"}</Badge>
+                <Badge color={chargement?C.gray:svc.availCount>0?C.success:C.gray} small>{chargement?"Chargement…":svc.availCount>0?"Disponible":"Indisponible"}</Badge>
                 {svc.availCount>0 && <span style={{ fontSize:11, color:urgentMode?C.accent:C.violet, fontWeight:700 }}>Voir {svc.availCount} →</span>}
               </div>
             </div>
