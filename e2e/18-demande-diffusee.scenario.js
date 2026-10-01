@@ -244,11 +244,35 @@ test("reprise directe : refusée à moins de 30 minutes du début, possible malg
   await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${plusTard.id}'`);
   // Proposition « à l'ancienne », laissée en attente avant la mise en place de la reprise.
   await sql(`insert into candidatures (mission_id, prestataire_id, status) values ('${plusTard.id}', '${tardif.id}', 'pending')`);
-  const r = await api("/api/missions", { action: "candidater", mission_id: plusTard.id }, tardif.jeton);
+  const r = await api("/api/missions", { action: "candidater", mission_id: plusTard.id, contrat_signe: true }, tardif.jeton);
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
   expect(r.json.attribuee).toBe(true);
   expect((await etat(plusTard.id)).prestataire_id).toBe(tardif.id);
   // La proposition antérieure devient la trace de la reprise (elle restait « en attente »).
   const [trace] = await sql(`select status from candidatures where mission_id = '${plusTard.id}' and prestataire_id = '${tardif.id}'`);
   expect(trace?.status).toBe("accepted");
+});
+
+test("par l'écran : reprendre une prestation payée fait d'abord signer le contrat", async ({ browser }) => {
+  const initial = await prestataireOperationnel();
+  const preneur = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: initial, client: c, dansJours: 6 });
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${m.id}'`);
+
+  const page = await browser.newPage();
+  const fenetreGeo = page.getByText("Autoriser la géolocalisation", { exact: false });
+  await page.addLocatorHandler(fenetreGeo, () => page.getByRole("button", { name: "Annuler", exact: true }).click());
+  await page.addLocatorHandler(page.getByText("Passer le guide"), (l) => l.click());
+  await page.addLocatorHandler(page.getByText("Passer le tutoriel"), (l) => l.click());
+  await connexion(page, { espace: "prestataire", email: preneur.email });
+  await expect(page).toHaveURL(/\/provider\//, { timeout: 30_000 });
+  await page.getByRole("button", { name: /Je prends cette prestation/ }).first().click();
+  await expect(page.getByText("Contrat de prestation de service").first()).toBeVisible();
+  await page.locator("label").filter({ hasText: "J'ai lu et j'accepte" }).locator("div").first().click();
+  await page.getByRole("button", { name: /Signer électroniquement/ }).click();
+  await expect.poll(async () => (await etat(m.id)).prestataire_id, { timeout: 20_000 }).toBe(preneur.id);
+  const [l] = await sql(`select contrat_presta_signe_at from missions where id = '${m.id}'`);
+  expect(l.contrat_presta_signe_at, "signature datée").toBeTruthy();
+  await page.close();
 });
