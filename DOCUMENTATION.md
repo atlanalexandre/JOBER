@@ -1180,6 +1180,12 @@ jamais le rôle** : un compte sans rôle déclaré est journalisé, pas rangé d
 rattrapage immédiat de l'inscription, et à la connexion si le profil est introuvable. Un
 compte à moitié créé se répare donc tout seul à la première reconnexion.
 
+**« Introuvable », c'est un 404 — rien d'autre** (relecture du 01/10/2026). La connexion
+prenait **toute** réponse en échec de `get-profile` (502 passager, réseau) pour un profil
+absent : la réparation trouvait le profil intact, et l'écran annonçait « votre compte est en
+attente de validation » à un client validé, puis le déconnectait — constaté en recette. Une
+panne affiche désormais « Connexion impossible pour le moment. Réessayez dans un instant. »
+
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
 

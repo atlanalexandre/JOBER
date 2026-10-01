@@ -1428,9 +1428,19 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         });
         if (pRes.ok) {
           profile = await pRes.json();
+        } else if (pRes.status !== 404) {
+          // Une PANNE n'est pas une absence. Toute réponse autre que 404 était
+          // prise pour « profil introuvable » : l'écran lançait la réparation,
+          // qui trouvait le profil intact, et annonçait « votre compte est en
+          // attente de validation » à un client validé — puis le déconnectait
+          // (constaté en recette le 01/10/2026, sur un 502 passager).
+          throw new Error(`lecture du profil impossible (${pRes.status})`);
         }
-      } catch {
-        // fetch échoue → profile reste null → reconstruction depuis user_metadata ci-dessous
+      } catch (e) {
+        console.error("[connexion] profil illisible :", e.message);
+        setError("Connexion impossible pour le moment. Réessayez dans un instant.");
+        await supabase.auth.signOut();
+        return;
       }
 
       if (!profile) {
