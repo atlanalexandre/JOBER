@@ -1090,7 +1090,8 @@ recette le 30/09/2026 avec 1 017 prestataires actifs : le traitement des documen
 prestataires dont l'attestation URSSAF était vérifiée (1 076 attestations, 1 000 lues), et le
 catalogue n'en montrait que 995. Toute lecture qui doit être **complète** — un balayage, un
 catalogue, une recherche de candidats — passe par `lireTout()` de `api/_lignes.js`, qui lit page
-par page et lève si une page est refusée.
+par page et lève si une page est refusée — **ou si son garde-fou de 50 000 lignes est atteint** :
+elle rendait alors la partie lue comme si c'était tout (relecture du 01/10/2026).
 
 ### La RLS, en pratique
 
