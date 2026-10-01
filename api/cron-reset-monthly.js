@@ -2293,7 +2293,7 @@ ${(() => {
       let endNotifSent = 0;
       try {
         const enRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville,started_at`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,ville,started_at`,
           { headers }
         );
         const enMissions = await enRes.json().catch(() => []);
@@ -2304,8 +2304,13 @@ ${(() => {
             // démarrée. Sans started_at, le calcul se faisait sur l'horaire prévu :
             // le client recevait « prestation terminée, validez » alors que
             // personne n'avait déclaré s'être présenté.
+            //
+            // Fin calculée par _temps.js : sur une série, celle du DERNIER jour.
+            // Recopiée ici sur le seul pointage, elle annonçait « terminée,
+            // validez » dès le soir du premier jour (audit « prestations »).
             if (m.started_at) {
-              return nowMs >= new Date(m.started_at).getTime() + Number(m.hours || 1) * 3600000;
+              const finMs = finPrestationMs(m);
+              return finMs !== null && nowMs >= finMs;
             }
             return false;
           });
@@ -2317,7 +2322,9 @@ ${(() => {
           // quatre heures trop tard en été. Il passe désormais par _temps.js.
           const sansPointage = enMissions.filter(m => {
             if (m.started_at || !m.date) return false;
-            const finMs = finPrestationMs(m);
+            // L'absence de pointage se constate dès la fin du PREMIER jour :
+            // `date_fin`, désormais lue pour l'avis de fin, est neutralisée ici.
+            const finMs = finPrestationMs({ ...m, date_fin: null });
             return finMs !== null && nowMs >= finMs;
           });
           for (const m of ended) {
