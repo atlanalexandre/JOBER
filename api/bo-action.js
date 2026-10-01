@@ -4,7 +4,7 @@ import { esc, hashPii, emailHtml, sendEmail, euros } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
-import { qualificationsPour } from "./_qualifications.js";
+import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
@@ -270,7 +270,7 @@ export default async function handler(req, res) {
           cv: p.cv || meta.cv || null,
           cv_manques: p.role === "prestataire" ? manquesCv(p.cv || meta.cv) : [],
           pieces_a_valider: p.role === "prestataire" && tousDocs
-            ? piecesAvantOuverture(docsRequisPour(meta.nationalite, meta.metiers_list), docsParPresta.get(p.id) || [])
+            ? piecesAvantOuverture(docsRequisPour(meta.nationalite, metiersDeclares(meta)), docsParPresta.get(p.id) || [])
                 .map(d => `${d.label} (${d.raison})`)
             : [],
           metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, meta.metiers_list || [meta.metier].filter(Boolean)) : [],
@@ -413,7 +413,7 @@ export default async function handler(req, res) {
           // « Diplômes »). Une liste générique se lit en diagonale ; une liste
           // qui nomme ce qu'on attend de vous se lit.
           const tousDocsPresta = role === "prestataire"
-            ? docsRequisPour(userData.user_metadata?.nationalite, userData.user_metadata?.metiers_list)
+            ? docsRequisPour(userData.user_metadata?.nationalite, metiersDeclares(userData.user_metadata))
             : [];
           const docsAttendusPresta   = tousDocsPresta.filter(d => d.required);
           const docsFacultatifsPresta = tousDocsPresta.filter(d => !d.required);
@@ -507,7 +507,7 @@ export default async function handler(req, res) {
         try {
           const uq = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
           const uqData = uq.ok ? await uq.json().catch(() => null) : null;
-          const attendues = qualificationsPour(uqData?.user_metadata?.metiers_list);
+          const attendues = qualificationsPour(metiersDeclares(uqData?.user_metadata));
 
           // ── Le CV est obligatoire (décision d'Alexandre, 29/09/2026) ──────
           // Le client le consulte avant de réserver : un profil sans parcours
@@ -577,7 +577,7 @@ export default async function handler(req, res) {
           const docsPresta = dp.ok ? await dp.json().catch(() => null) : null;
           if (!Array.isArray(docsPresta)) throw new Error(`pièces illisibles (${dp.status})`);
           const aValider = piecesAvantOuverture(
-            docsRequisPour(uqData.user_metadata?.nationalite, uqData.user_metadata?.metiers_list), docsPresta);
+            docsRequisPour(uqData.user_metadata?.nationalite, metiersDeclares(uqData.user_metadata)), docsPresta);
           if (aValider.length > 0) {
             console.log(`[enable_missions] ${profileId} : pièces à valider — ${aValider.map(d => `${d.type} (${d.raison})`).join(", ")}`);
             return res.status(409).json({
@@ -1746,7 +1746,7 @@ export default async function handler(req, res) {
       try {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
         const uData = uRes.ok ? await uRes.json().catch(() => null) : null;
-        qualifs = qualificationsPour(uData?.user_metadata?.metiers_list);
+        qualifs = qualificationsPour(metiersDeclares(uData?.user_metadata));
       } catch (e) {
         console.error(`[list_docs] métiers de ${profileId} illisibles :`, e.message);
       }
@@ -1882,7 +1882,7 @@ export default async function handler(req, res) {
         // Métier principal ET liste : c'est l'union que regardent le catalogue et
         // la reprise. `metiers_list || [metier]` oubliait le principal dès que la
         // liste existait — une revalidation lui retirait alors son titre.
-        const metiersT = [uTData.user_metadata?.metier, ...(Array.isArray(uTData.user_metadata?.metiers_list) ? uTData.user_metadata.metiers_list : [])].filter(Boolean);
+        const metiersT = metiersDeclares(uTData.user_metadata);
         titresCouverts = qualificationsPour(metiersT).map(q => q.titre);
       }
 

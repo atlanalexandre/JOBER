@@ -5,7 +5,7 @@ import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
-import { titresNonCouverts } from "../../api/_qualifications.js";
+import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
@@ -2110,7 +2110,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   // Le compte dépend du prestataire : titre de séjour hors UE, justificatif de
   // qualification pour les métiers réglementés. Compter `DOCS_REQUIS` brut
   // annonçait « 7/7 déposés » à quelqu'un à qui il en manquait un.
-  const requis = docsRequisPour(meta.nationalite, meta.metiers_list).filter(d => d.required).length;
+  const requis = docsRequisPour(meta.nationalite, metiersDeclares(meta)).filter(d => d.required).length;
   const items = [
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
@@ -4117,7 +4117,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       // Même règle que dans l'inscription : le titre de séjour n'est réclamé
       // qu'aux ressortissants hors UE. Le lire depuis user_metadata évite un
       // aller-retour et suit la déclaration faite à l'inscription.
-      const attendus = docsRequisPour(u?.user_metadata?.nationalite, u?.user_metadata?.metiers_list);
+      const attendus = docsRequisPour(u?.user_metadata?.nationalite, metiersDeclares(u?.user_metadata));
       setDocsAttendus(attendus);
       const required = attendus.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
