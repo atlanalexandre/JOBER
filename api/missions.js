@@ -6683,7 +6683,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,metier,sector,date,hours,actual_hours,started_at,validation_prestataire,validation_client,last_validation_reminder_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,metier,sector,date,date_debut,date_fin,heure_debut,hours,actual_hours,started_at,validation_prestataire,validation_client,last_validation_reminder_at`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -6691,9 +6691,11 @@ export default async function handler(req, res) {
       if (m.status !== "assigned") return res.status(400).json({ error: "Prestation non en cours" });
       if (!m.started_at) return res.status(400).json({ error: "Prestation non démarrée" });
 
-      const effectiveHours = m.actual_hours ?? m.hours ?? 1;
-      const endMs = new Date(m.started_at).getTime() + Number(effectiveHours) * 3600000;
-      if (endMs > Date.now() + 30000) return res.status(400).json({ error: "Prestation pas encore terminée" });
+      // Même calcul que partout ailleurs (api/_temps.js) : sur une série, la fin
+      // est celle du dernier jour. Recopié ici sur le seul pointage, il invitait
+      // le client à « valider » dès le soir du premier jour.
+      const endMs = finPrestationMs(m);
+      if (endMs !== null && endMs > Date.now() + 30000) return res.status(400).json({ error: "Prestation pas encore terminée" });
 
       // Dedup : pas plus d'une notification toutes les 2h
       if (m.last_validation_reminder_at) {

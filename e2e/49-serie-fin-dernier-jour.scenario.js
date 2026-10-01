@@ -39,3 +39,10 @@ test("la validation automatique ne clôture pas une série en cours", async () =
   expect(l.status, "toujours en cours").toBe("assigned");
   expect(l.payout_status).toBeNull();
 });
+
+test("le client n'est pas invité à valider une série en cours", async () => {
+  const { p, m } = await serieEnCours();
+  await sql(`update missions set arrived_at = '${jour(-2)}T06:00:00Z' where id = '${m.id}'`);
+  const r = await api("/api/missions", { action: "notify_end", mission_id: m.id }, p.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(400);
+});

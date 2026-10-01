@@ -3502,7 +3502,9 @@ La fonction rend désormais, pour une série, l'heure de début du **dernier** j
 position, elle, reste celle d'une journée (`fenetrePartagePosition` neutralise `date_fin`) : la
 position du prestataire n'a pas à être diffusée la nuit entre deux journées. Une lecture qui
 alimente ce calcul doit demander `date_debut,date_fin` — c'est fait pour la clôture, la
-validation automatique, la contestation, la relance et l'annulation par le prestataire.
+validation automatique, la contestation, la relance, l'annulation par le prestataire et
+l'invitation à valider envoyée en fin de service (`notify_end`, qui recopiait son propre calcul
+sur le seul pointage et invitait le client à valider dès le premier soir).
 
 `validate_presta` n'accepte plus non plus l'horodatage de signature envoyé par le navigateur
 (`contrat_presta_signe_at`) : c'est l'heure du serveur.
