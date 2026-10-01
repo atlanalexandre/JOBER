@@ -4,14 +4,14 @@
 // le plus récent. La réinitialisation du mot de passe changeait donc celui du
 // DERNIER INSCRIT, et non celui du demandeur (constaté en recette).
 import { describe, it, expect, vi, afterEach } from "vitest";
-import crypto from "node:crypto";
 import { utilisateurParEmail } from "../../../api/_auth.js";
 import resetPassword from "../../../api/reset-password.js";
+import { secretReinitialisation, signerLien } from "../../../api/_reinitialisation.js";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 const RECENT = { id: "u-recent", email: "dernier.inscrit@exemple.fr" };
-const CIBLE  = { id: "u-cible", email: "Demandeur@Exemple.fr" };
+const CIBLE  = { id: "u-cible", email: "Demandeur@Exemple.fr", updated_at: "2026-10-01T10:00:00Z" };
 
 function annuaire(pages, ecrits = []) {
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
@@ -49,9 +49,7 @@ describe("reset-password", () => {
     vi.stubEnv("VITE_SUPABASE_URL", "https://b");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "k");
     const email = "demandeur@exemple.fr";
-    const t = Date.now();
-    const hmac = crypto.createHmac("sha256", "secret").update(`${email}:${t}`).digest("hex");
-    const jeton = `${Buffer.from(email).toString("base64url")}.${t}.${hmac}`;
+    const jeton = signerLien(secretReinitialisation({ BO_SESSION_SECRET: "secret" }), email, CIBLE.updated_at);
     const ecrits = annuaire([[RECENT, CIBLE]]);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const res = { statut: 0, status(s) { this.statut = s; return this; }, json() { return this; } };

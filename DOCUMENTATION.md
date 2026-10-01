@@ -1163,7 +1163,8 @@ Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichie
 |---|---|---|
 | `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc`, `reparer-profil` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
 | Vérification inline équivalente | `save-document`, `update-profile`, `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js` |
-| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund`, `reset-password`, `forgot-password` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
+| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
+| Lien de réinitialisation | `forgot-password` (public), `reset-password` (public) | Lien à usage unique signé par `api/_reinitialisation.js` — voir plus bas. Ces deux fonctions étaient rangées à tort dans la ligne précédente |
 | `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
 
 **`api/reparer-profil.js` — l'inscription en deux temps, et son rattrapage** (31/08/2026).
@@ -1526,6 +1527,23 @@ changeait le mot de passe du **dernier inscrit**, pas celui du demandeur ; la de
 l'inscription (`support.js`, `welcome`) tombait sur le dernier inscrit. La fonction parcourt la
 liste et compare l'adresse ; l'inscription, elle, prend simplement l'appelant, dont le jeton est
 vérifié. Éprouvé par `compte-par-email.test.js` et `e2e/42`.
+
+**Lien de réinitialisation du mot de passe : `api/_reinitialisation.js`** (audit « sécurité »,
+01/10/2026, `reinitialisation.test.js`, `e2e/52`). Trois défauts corrigés :
+
+- **secret public de repli** : sans `BO_SESSION_SECRET`, les liens étaient signés avec
+  « alane-reset-fallback », écrit en clair dans le dépôt — qui le lisait pouvait changer le mot
+  de passe de n'importe quel compte. Le secret est désormais dérivé (HMAC dédié) de
+  `BO_SESSION_SECRET`, ou à défaut de la clé service role ; sans aucune des deux, rien n'est
+  envoyé (503). La dérivation dédiée empêche aussi qu'une signature de session du back-office
+  serve de lien, ou l'inverse ;
+- **lien réutilisable une heure** : il est signé avec `updated_at` du compte, et vérifié contre
+  sa valeur actuelle. Supabase change cette date à chaque modification du compte — mot de passe,
+  connexion — : un lien qui a servi ne vaut plus (« Lien invalide ou déjà utilisé ») ;
+- **envois en rafale** : une demande au plus toutes les dix minutes par compte. L'heure est notée
+  dans `app_metadata.reinit_demandee_at` (écriture réservée au serveur, quelques octets), **avant**
+  la signature — c'est l'état qui en résulte qui signe le lien. Une demande trop rapprochée reçoit
+  la même réponse qu'une autre : on ne révèle ni l'existence du compte, ni la demande précédente.
 
 **Confirmation de réservation par courriel** (`support.js`, `booking_confirm`) — relue en base
 depuis le 01/10/2026. Le destinataire et tout le contenu venaient de la requête : n'importe quel
@@ -4096,7 +4114,7 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `ADMIN_EMAIL` | Destinataire des tickets support |
 | `BREVO_API_KEY` | SMS et emails de relance |
 | `BO_PASSWORD` | Accès au backoffice |
-| `BO_SESSION_SECRET` | Signature des sessions backoffice — doit être aléatoire |
+| `BO_SESSION_SECRET` | Signature des sessions backoffice, des boutons de l'e-mail au prestataire, et (par dérivation) des liens de réinitialisation du mot de passe — doit être aléatoire. Absente : les boutons de l'e-mail sont désactivés ; la réinitialisation dérive son secret de la clé service role |
 | `BO_ALLOWED_IPS` | Filtrage IP du backoffice (optionnel) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Notifications push |
 | `CRON_SECRET` | Protection des tâches planifiées |
