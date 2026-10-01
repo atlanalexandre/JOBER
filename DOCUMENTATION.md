@@ -3601,9 +3601,17 @@ art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` pas
 encore à venir (`pending` ou `failed`) en `held`, motif `opposition_bancaire`, quatre-vingt-dix
 jours au plus, et prévient le prestataire — les deux conditions de l'article. Sans cela, une
 contestation arrivée pendant les 48 h laissait partir le virement alors que la banque reprenait
-l'argent au client. Un versement déjà parti n'est pas touché, et une prestation pas encore close
-n'a pas de versement à retenir : l'alerte envoyée à l'administration dit, dans les trois cas, ce
-qu'il reste à faire. Si la contestation est gagnée, la retenue se lève depuis l'écran Versements.
+l'argent au client. Un versement déjà parti n'est pas touché. Si la contestation est gagnée, la
+retenue se lève depuis l'écran Versements.
+
+**Contestation reçue avant la clôture** (décision d'Alexandre du 01/10/2026) : il n'existe pas
+encore de versement à retenir. Le webhook **inscrit** la retenue (`payout_hold_reason`,
+`payout_hold_at`, `payout_hold_until`, `payout_status` laissé vide), et c'est le traitement des
+versements — seul endroit d'où part un virement — qui la fait jouer : à l'échéance, le versement
+passe en `held` au lieu d'être émis, et le prestataire est prévenu. Quelle que soit la clôture
+(client, validation automatique, « Valider de force », litige), aucune ne peut l'oublier. Passé
+son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
+`contestation-bancaire.test.js`.
 
 **Abonnement dont le renouvellement échoue** : retour au gratuit tout de suite, sans attendre la
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
