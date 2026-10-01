@@ -205,18 +205,24 @@ test("prestation déjà payée revenue en diffusion : le premier qui se propose 
   const cher = await api("/api/missions", { action: "candidater", mission_id: m.id }, tropCher.jeton);
   expect(cher.statut, "tarif réglé inférieur au sien").toBe(409);
 
-  const r = await api("/api/missions", { action: "candidater", mission_id: m.id }, preneur.jeton);
+  // La reprise attribue la prestation sur-le-champ : elle vaut acceptation, donc
+  // signature du contrat (décision d'Alexandre du 01/10/2026).
+  const sansSignature = await api("/api/missions", { action: "candidater", mission_id: m.id }, preneur.jeton);
+  expect(sansSignature.statut, "pas de reprise sans signer le contrat").toBe(400);
+  const r = await api("/api/missions", { action: "candidater", mission_id: m.id, contrat_signe: true }, preneur.jeton);
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
   expect(r.json.attribuee).toBe(true);
   const apres = await etat(m.id);
   expect(apres.status).toBe("assigned");
   expect(apres.prestataire_id).toBe(preneur.id);
+  const [sig] = await sql(`select contrat_presta_signe_at from missions where id = '${m.id}'`);
+  expect(sig.contrat_presta_signe_at, "signature du contrat datée à la reprise").toBeTruthy();
   const [trace] = await sql(`select status from candidatures where mission_id = '${m.id}' and prestataire_id = '${preneur.id}'`);
   expect(trace?.status, "trace horodatée du choix").toBe("accepted");
   const [n] = await sql(`select title from notifications where user_id = '${c.id}' and ref_id = '${m.id}' order by created_at desc limit 1`);
   expect(n?.title).toContain("Prestataire trouvé");
 
-  expect((await api("/api/missions", { action: "candidater", mission_id: m.id }, second.jeton)).statut, "déjà prise").toBe(409);
+  expect((await api("/api/missions", { action: "candidater", mission_id: m.id, contrat_signe: true }, second.jeton)).statut, "déjà prise").toBe(409);
 });
 
 test("reprise directe : refusée à moins de 30 minutes du début, possible malgré une proposition antérieure", async () => {
