@@ -2,7 +2,7 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
+import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
@@ -2817,116 +2817,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Ancien désistement du prestataire, retiré le 01/10/2026 (audit
+    // « prestations »). Aucun écran ne l'appelait, mais il restait ouvert à un
+    // appel direct, avec ses propres règles : une prestation payée passait
+    // « à remplacer » en gardant l'argent du client — contre la décision
+    // d'Alexandre du 30/09/2026 (annuler et rembourser) —, sans vérifier que la
+    // fin avait déjà été confirmée ni que la prestation était terminée. Le seul
+    // chemin est `presta_cancel`.
     if (action === "cancel_prestataire") {
-      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id } = payload;
-      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
-      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-
-      const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,heure_debut,hours,ville,stripe_payment_intent`,
-        { headers }
-      );
-      const mData = await mr.json();
-      const mission = Array.isArray(mData) && mData[0];
-      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
-      if (mission.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
-      if (mission.status !== "assigned") return res.status(400).json({ error: "Prestation non assignée" });
-
-      // Si déjà payée → needs_replacement (pas de re-paiement), sinon retour open
-      const newStatus = mission.stripe_payment_intent ? "needs_replacement" : "open";
-      // Le résultat de cette écriture n'était pas vérifié : un refus laissait la
-      // prestation assignée au prestataire qui venait pourtant de se désister, alors
-      // que son écran lui confirmait l'annulation. Le filtre sur le statut évite en
-      // outre d'écraser une prestation entre-temps annulée par le client.
-      const patchDesist = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ status: newStatus, prestataire_id: null, validation_prestataire: false }),
-      });
-      const desistRows = await patchDesist.json().catch(() => []);
-      if (!patchDesist.ok || !Array.isArray(desistRows) || desistRows.length === 0) {
-        console.error(`[cancel_prestataire] désistement refusé pour ${mission_id} : ${patchDesist.status}`);
-        return res.status(409).json({ error: "Ce désistement n'a pas pu être enregistré — la prestation a peut-être changé d'état. Rechargez la page." });
-      }
-
-      // Rejeter la candidature du prestataire désisté
-      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=eq.${caller.id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "rejected" }),
-      });
-
-      // Consommer un slot mensuel si annulation moins de 2h avant la mission
-      try {
-        const missionStartNaive = mission.date
-          ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}:00`)
-          : null;
-        const missionStartUTC = missionStartNaive
-          ? new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive))
-          : null;
-        const hoursUntilMission = missionStartUTC ? (missionStartUTC - new Date()) / 3600000 : 999;
-        if (hoursUntilMission < 2) {
-          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
-          const prData = await prRes.json();
-          const prProfile = Array.isArray(prData) && prData[0];
-          const cancelPlan = prProfile?.plan_abonnement || "free";
-          const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
-          const newCount = current + 1;
-          const planLimit = await limitePlanMensuelle(cancelPlan, caller.id, SUPABASE_URL, headers);
-          const patchBody = { missions_completed_month: newCount };
-          // Ne jamais marquer trial_exhausted pour un prestataire sur plan payant
-          if (newCount >= planLimit && cancelPlan === "free") patchBody.trial_exhausted = true;
-          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify(patchBody),
-          });
-        }
-      } catch (e) { console.error("[missions] remise à zéro du quota mensuel échouée :", e.message); }
-
-      // Notifier le client
-      if (mission.client_id) {
-        const clientTitle = mission.stripe_payment_intent
-          ? "Prestataire désisté — votre paiement est sécurisé 🔄"
-          : "Prestataire désisté — prestation réouverte 🔄";
-        const clientBody = mission.stripe_payment_intent
-          ? `Votre prestation "${mission.metier || mission.sector}" du ${mission.date} recherche un remplaçant. Votre paiement est conservé, aucune nouvelle facturation ne sera effectuée.`
-          : `Votre prestation "${mission.metier || mission.sector}" du ${mission.date} a été réouverte automatiquement. De nouveaux prestataires vont être notifiés.`;
-        await notifier({ user_id: mission.client_id, type: "mission", title: clientTitle, body: clientBody}, SUPABASE_URL, headers);
-      }
-
-      // Rediffuser aux prestataires approuvés du même secteur (sauf le désisté)
-      const prRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
-        { headers }
-      );
-      const prData = await prRes.json();
-      if (Array.isArray(prData)) {
-        const chunks = [];
-        for (let i = 0; i < prData.length; i += 20) chunks.push(prData.slice(i, i + 20));
-        for (const chunk of chunks) {
-          await Promise.all(chunk.map(async (p) => {
-            if (p.id === caller.id) return;
-            try {
-              const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
-              const ud = await ur.json();
-              const meta = ud.user_metadata || {};
-              const siens = secteursDuProfil(meta);
-              if (mission.sector && siens.length && !siens.includes(mission.sector)) return;
-              await notifier({
-                  user_id: p.id,
-                  type: "mission",
-                  title: "🔔 Prestation disponible — urgent !",
-                  body: `Prestation ${mission.metier || mission.sector || ""} le ${mission.date || ""} à ${mission.ville || ""} (${mission.hours || ""}h). Postulez maintenant !`,
-                }, SUPABASE_URL, headers);
-            } catch (e) { console.error("[missions] notification de prestation urgente non envoyée :", e.message); }
-          }));
-        }
-      }
-
-      return res.status(200).json({ success: true });
+      return res.status(410).json({ code: "utiliser_presta_cancel", error: "Cette action n'existe plus. Utilisez « Annuler » depuis votre espace." });
     }
 
     if (action === "close") {

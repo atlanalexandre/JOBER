@@ -3523,6 +3523,15 @@ supplémentaires :
   rallongeait ce qui était terminé. `confirmer_heures_supp` exige `status = assigned` ; sinon le
   complément est **remboursé** (clé `refund-heures-supp-{pi}`) et la réponse est 409.
 
+### Un seul chemin d'annulation pour le prestataire
+
+**Retiré le 01/10/2026** (audit « prestations », `e2e/50`). `api/missions.js` gardait une seconde
+action de désistement, `cancel_prestataire`, qu'aucun écran n'appelait mais qu'un appel direct
+atteignait. Elle avait ses propres règles : une prestation payée passait `needs_replacement`
+**en gardant l'argent du client** — contre la décision du 30/09/2026 (annuler et rembourser) —,
+sans vérifier que la fin avait été confirmée ni que la prestation était terminée. Elle répond
+désormais 410 ; le seul chemin est `presta_cancel`.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
