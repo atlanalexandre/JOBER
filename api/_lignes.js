@@ -26,7 +26,8 @@ export const PAGE = 1000;
  *                          est ajouté (`id.asc`) s'il manque : sans ordre stable,
  *                          deux pages peuvent se chevaucher ou laisser un trou.
  * @param {object} headers
- * @param {{ max?: number }} options  garde-fou contre une boucle sans fin
+ * @param {{ max?: number }} options  garde-fou contre une boucle sans fin : atteint,
+ *                          il LÈVE une erreur, jamais une lecture tronquée
  * @returns {Promise<Array>} lève une erreur si une page est refusée : une lecture
  *          partielle ne doit JAMAIS passer pour une lecture complète.
  */
@@ -45,6 +46,10 @@ export async function lireTout(url, headers, { max = 50000 } = {}) {
     lignes.push(...page);
     if (page.length < PAGE) return lignes;
   }
-  console.error(`[lireTout] plus de ${max} lignes — lecture arrêtée par sécurité : ${base.split("?")[0]}`);
-  return lignes;
+  // Le garde-fou est atteint : ce qui suit n'a pas été lu. Le RENDRE comme une
+  // lecture complète, c'était refaire à plus grande échelle la panne du
+  // 30/09/2026 — des lignes non lues traitées comme absentes, des prestataires
+  // en règle suspendus. On lève, comme pour une page refusée (relecture du
+  // 01/10/2026).
+  throw new Error(`plus de ${max} lignes — lecture arrêtée par sécurité, résultat incomplet : ${base.split("?")[0]}`);
 }

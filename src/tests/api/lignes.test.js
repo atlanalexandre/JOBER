@@ -43,4 +43,11 @@ describe("lireTout()", () => {
   it("refuse une URL qui porte déjà un limit", async () => {
     await expect(lireTout("https://b/rest/v1/x?select=id&limit=5000", {})).rejects.toThrow();
   });
+
+  it("plafond atteint : erreur, jamais une lecture tronquée présentée comme complète", async () => {
+    base(5000);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(lireTout("https://b/rest/v1/documents?select=id", {}, { max: 3000 }))
+      .rejects.toThrow(/résultat incomplet/);
+  });
 });
