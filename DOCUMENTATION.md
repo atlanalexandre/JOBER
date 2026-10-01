@@ -3618,6 +3618,17 @@ remet désormais le versement en `pending` pour le passage suivant ; tout autre 
 `failed`, et le bouton **Relancer** de l'écran Versements (`relancer_versement`) le remet en attente
 une fois la cause réglée.
 
+**Chaque essai a sa propre clé d'idempotence** (`api/_virement.js`, relecture du 01/10/2026).
+La clé était fixe, `payout-{mission}` : Stripe conserve 24 h la réponse d'une clé, **erreur
+comprise**, et la rejoue. Les réessais et le bouton Relancer recevaient donc le premier refus
+pendant une journée, sans que Stripe tente rien. La clé change désormais d'une heure à l'autre
+(`cleVersement()`) ; contre le double paiement, `virementDejaEmis()` demande d'abord à Stripe si
+un virement non repris existe déjà pour la prestation (`metadata[mission_id]`, posé sur tous les
+virements) — il est alors inscrit, pas refait. **Si cette lecture échoue** (clé Stripe sans le
+droit « Transfers : Read », panne), le virement part avec l'**ancienne clé fixe**
+`payout-{mission}` : ni blocage ni double paiement, seulement le réessai retardé de 24 h d'avant,
+et une ligne d'erreur dans le journal qui le dit.
+
 L'écran **Versements** du backoffice (`BOVersements`) montre les versements en attente,
 retenus, échoués, et signale ceux dont l'échéance est dépassée de plus de six heures — le
 symptôme d'un cron qui ne tourne plus.

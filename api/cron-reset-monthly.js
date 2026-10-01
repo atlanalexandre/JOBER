@@ -21,6 +21,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
+import { cleVersement, virementDejaEmis } from "./_virement.js";
 
 /**
  * Un refus de virement qui passera de lui-même : solde disponible
@@ -747,14 +748,36 @@ export default async function handler(req, res) {
                 continue;
               }
 
+              // Un virement existe-t-il déjà ? Réponse perdue lors d'un essai
+              // précédent, inscription échouée : il est retrouvé et inscrit, au
+              // lieu d'être émis une seconde fois. Sans réponse : ancienne clé fixe, ci-dessous.
+              const deja = await virementDejaEmis({ destination: pp.stripe_account_id, missionId: m.id, stripeKey: STRIPE_SK_V });
+              // Lecture impossible (clé Stripe sans le droit de lire les
+              // virements, panne) : on retombe sur l'ANCIENNE clé, fixe par
+              // prestation. Jamais pire qu'avant : pas de double virement (la clé
+              // fixe l'empêche), pas de blocage — seulement le réessai retardé de
+              // 24 h que cette clé impose. Et on le dit.
+              if (!deja.ok) {
+                console.error(`[versements] virements existants illisibles pour ${m.id} (${deja.detail}) — `
+                  + "clé fixe utilisée : un refus éventuel ne sera réessayé qu'après 24 h. "
+                  + "Vérifier que la clé Stripe peut lire les virements (Transfers : Read).");
+              }
+              if (deja.ok && deja.id) {
+                const inscritDeja = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "transferred", stripe_transfer_id: deja.id }, headers, `versements/virement ${deja.id} retrouvé`);
+                console.error(`[versements] ${deja.id} déjà émis pour ${m.id} — ${inscritDeja ? "inscrit" : "NON inscrit"}, aucun second virement.`);
+                continue;
+              }
+
               const tr = await fetch("https://api.stripe.com/v1/transfers", {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${STRIPE_SK_V}`,
                   "Content-Type": "application/x-www-form-urlencoded",
-                  // Une prestation ne peut donner lieu qu'à un seul virement, quel
-                  // que soit le nombre de passages du cron.
-                  "Idempotency-Key": `payout-${m.id}`,
+                  // Clé d'un ESSAI, pas de la prestation : une clé fixe faisait
+                  // rejouer par Stripe, 24 h durant, le refus du premier essai
+                  // (api/_virement.js). Le doublon est écarté juste au-dessus.
+                  "Idempotency-Key": deja.ok ? cleVersement(m.id) : `payout-${m.id}`,
                 },
                 body: new URLSearchParams({
                   amount: String(cents), currency: "eur", destination: pp.stripe_account_id,
