@@ -36,6 +36,8 @@ function simulerBase({ mission, ecritureRend }) {
     if (String(url).includes("/rest/v1/missions") && methode === "GET" && String(url).includes("status=eq.pending_acceptance")) return ok([mission]);
     if (String(url).includes("/rest/v1/missions") && methode === "PATCH" && String(url).includes("status=eq.pending_acceptance")) return ok(ecritureRend);
     if (String(url).includes("/rest/v1/missions") && methode === "PATCH") return ok([{ id: MISSION }]);
+    // Quota du plan (acceptation) : il reste des places.
+    if (String(url).includes("/rpc/check_prestataire_slot")) return ok(5);
     return ok([]);
   });
 }
@@ -87,5 +89,18 @@ describe("réponse par le lien de l'e-mail", () => {
     const iEcriture = appels.findIndex(a => a.methode === "PATCH" && a.url.includes("status=eq.pending_acceptance"));
     const iStripe = appels.findIndex(a => a.url.includes("api.stripe.com"));
     expect(iStripe).toBeGreaterThan(iEcriture);
+  });
+
+  it("accepter depuis l'e-mail date la signature du contrat, à l'heure du serveur", async () => {
+    const { default: handler } = await import("../../../api/missions.js");
+    simulerBase({ mission: { ...base, tiers_declaration: null }, ecritureRend: [{ id: MISSION }] });
+    const res = reponse();
+    const avant = Date.now();
+    await handler({ method: "GET", query: lien("accept"), headers: {} }, res);
+    expect(res.code).toBe(200);
+    const ecriture = appels.find(a => a.methode === "PATCH" && a.url.includes("status=eq.pending_acceptance"));
+    const corps = JSON.parse(ecriture.corps);
+    expect(corps.status).toBe("assigned");
+    expect(new Date(corps.contrat_presta_signe_at).getTime()).toBeGreaterThanOrEqual(avant);
   });
 });
