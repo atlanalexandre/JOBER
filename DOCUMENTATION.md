@@ -2686,8 +2686,14 @@ L'e-mail porte, juste avant le bouton, la mention « En cliquant sur « Accepter
 électroniquement le contrat de prestation… » (`api/_nouvelle_demande.js`), et l'acceptation pose
 `contrat_presta_signe_at` à l'heure du serveur (`handleEmailAction`).
 
-**Reste ouvert** : la candidature retenue sur une demande diffusée et la reprise par un
-remplaçant ne font signer aucun contrat au prestataire.
+**Reprise et remplacement** (décision d'Alexandre du 01/10/2026, `e2e/18`, `e2e/47`) : la
+**reprise directe** d'une prestation déjà payée (`candidater`, attribuée sur-le-champ) et
+l'**accord du remplaçant** (`repondre_remplacement`) exigent désormais la signature du contrat
+(`contrat_signe: true`, 400 `contrat_a_signer` sinon) — l'écran présente le même contrat qu'à
+l'acceptation. La reprise pose `contrat_presta_signe_at` ; le remplacement y inscrit l'heure de
+l'accord du remplaçant (`accord_entrant_at`) à la bascule. La candidature simple (« Je suis
+disponible ») n'engage pas encore : le prestataire retenu reçoit ensuite une demande à accepter,
+où il signe comme pour toute acceptation.
 
 **Table `contracts` : fermée à l'écriture** (`2026-10-01_secu_contrats_ecrits_par_le_serveur.sql`).
 `ContractScreen` y écrivait une ligne en déclarant lui-même le **prestataire** signataire ;

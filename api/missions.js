@@ -1042,11 +1042,19 @@ export default async function handler(req, res) {
         const conflit = await checkPrestaireConflict(caller.id, m.date, m.heure_debut, m.hours, SUPABASE_URL, headers, mission_id);
         if (conflit) return res.status(409).json({ error: "Vous avez déjà une prestation sur ce créneau." });
 
+        // La reprise attribue la prestation sur-le-champ : c'est l'acceptation,
+        // donc la signature du contrat (décision d'Alexandre du 01/10/2026).
+        // L'écran la fait signer avant d'envoyer `contrat_signe`.
+        if (payload.contrat_signe !== true) {
+          return res.status(400).json({ code: "contrat_a_signer", error: "Signez le contrat de prestation pour reprendre cette prestation." });
+        }
+
         // Écriture conditionnelle : si deux prestataires se proposent en même
         // temps, un seul l'emporte.
         const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.open&prestataire_id=is.null`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ status: "assigned", prestataire_id: caller.id, acceptance_deadline: null }),
+          body: JSON.stringify({ status: "assigned", prestataire_id: caller.id, acceptance_deadline: null,
+            contrat_presta_signe_at: new Date().toISOString() }),
         });
         const pris = await ar.json().catch(() => null);
         if (!ar.ok || !Array.isArray(pris)) {
@@ -6106,6 +6114,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, statut: "refuse" });
       }
 
+      // Le remplaçant qui accepte s'engage à exécuter la prestation : il signe
+      // le contrat, comme à toute acceptation (décision d'Alexandre du 01/10/2026).
+      if (role === "entrant" && payload.contrat_signe !== true) {
+        return res.status(400).json({ code: "contrat_a_signer", error: "Signez le contrat de prestation pour accepter ce remplacement." });
+      }
       // Accord : on pose le sien, puis on regarde si les deux sont réunis.
       const champ = role === "client" ? "accord_client_at" : "accord_entrant_at";
       const patch = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
@@ -6151,7 +6164,8 @@ export default async function handler(req, res) {
       // parties sans que rien n'ait changé (audit « prestations », 01/10/2026).
       const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}&status=eq.assigned&started_at=is.null`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ prestataire_id: dem.entrant_id }),
+        // La signature du contrat est celle du remplaçant, au moment de son accord.
+        body: JSON.stringify({ prestataire_id: dem.entrant_id, contrat_presta_signe_at: maj.accord_entrant_at || new Date().toISOString() }),
       });
       const basculees = await swap.json().catch(() => null);
       if (!swap.ok || !Array.isArray(basculees)) {

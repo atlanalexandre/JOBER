@@ -45,3 +45,24 @@ test("un remplacement normal s'exécute toujours", async () => {
   const [mm] = await sql(`select prestataire_id from missions where id = '${m.id}'`);
   expect(mm.prestataire_id).toBe(entrant.id);
 });
+
+test("le remplaçant signe le contrat en acceptant ; la signature passe sur la prestation", async () => {
+  const sortant = await prestataireOperationnel();
+  const entrant = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: sortant, client: c, heures: 4 });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept", contrat_signe: true }, sortant.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const [d] = await sql(`insert into mission_remplacements (mission_id, sortant_id, entrant_id, client_id, statut, accord_client_at)
+     values ('${m.id}', '${sortant.id}', '${entrant.id}', '${c.id}', 'en_attente', now()) returning id`);
+
+  const sans = await api("/api/missions", { action: "repondre_remplacement", remplacement_id: d.id, reponse: "accepter" }, entrant.jeton);
+  expect(sans.statut, "pas d'accord sans signer le contrat").toBe(400);
+  const r = await api("/api/missions", { action: "repondre_remplacement", remplacement_id: d.id, reponse: "accepter", contrat_signe: true }, entrant.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  expect(r.json.statut).toBe("accepte");
+  const [l] = await sql(`select m.prestataire_id, m.contrat_presta_signe_at, r.accord_entrant_at
+     from missions m join mission_remplacements r on r.mission_id = m.id where r.id = '${d.id}'`);
+  expect(l.prestataire_id).toBe(entrant.id);
+  expect(new Date(l.contrat_presta_signe_at).getTime(), "signature = accord du remplaçant").toBe(new Date(l.accord_entrant_at).getTime());
+});

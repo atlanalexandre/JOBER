@@ -3348,10 +3348,29 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 // voit la demande — la ville, jamais l'adresse — et se propose d'un clic ; le
 // client choisit parmi ceux qui se sont proposés, puis réserve et paie. Aucun
 // écran ne permettait de se proposer : ces demandes ne pouvaient pas aboutir.
+// Le contrat que le prestataire signe en s'engageant sur une prestation — même
+// texte qu'à l'acceptation d'une demande (ContractModal plus haut).
+function texteContratPrestation(m) {
+  return `CONTRAT DE PRESTATION DE SERVICE
+
+Prestation :
+Métier : ${m.metier || m.titre || m.sector || ""}
+Date : ${m.date || ""}
+Durée : ${m.hours || ""} heure(s)${m.tarif_horaire ? `
+Tarif horaire : ${formatMontant(m.tarif_horaire)}/h` : ""}
+
+En signant ce contrat, je m'engage à réaliser la prestation dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
+
+Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`;
+}
+
 export function DemandesOuvertes({ onRepris }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
   const [erreur, setErreur]     = useState(null);
+  // Reprise d'une prestation déjà payée : elle est attribuée sur-le-champ, le
+  // contrat se signe donc avant (décision d'Alexandre du 01/10/2026).
+  const [aSigner, setASigner]   = useState(null);
 
   const appel = async (corps) => {
     const { data: sd } = await supabase.auth.getSession();
@@ -3378,10 +3397,10 @@ export function DemandesOuvertes({ onRepris }) {
   };
   useEffect(() => { charger(); }, []);
 
-  const proposer = async (id) => {
+  const proposer = async (id, contratSigne = false) => {
     setEnCours(id);
     try {
-      const j = await appel({ action: "candidater", mission_id: id });
+      const j = await appel({ action: "candidater", mission_id: id, ...(contratSigne ? { contrat_signe: true } : {}) });
       // Prestation déjà payée par le client : elle est attribuée tout de suite.
       showToast(j.attribuee
         ? "La prestation est à vous : elle apparaît dans vos prestations à venir."
@@ -3400,6 +3419,14 @@ export function DemandesOuvertes({ onRepris }) {
   const jourFr = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long", timeZone:"Europe/Paris" });
   return (
     <div style={{ marginBottom:16 }}>
+      {aSigner && (
+        <ContractModal
+          title="Contrat de prestation de service"
+          contractText={texteContratPrestation(aSigner)}
+          onSign={async () => { const d = aSigner; setASigner(null); await proposer(d.id, true); }}
+          onClose={() => setASigner(null)}
+        />
+      )}
       <div style={{ color:C.text, fontWeight:800, fontSize:14, marginBottom:8 }}>📢 Demandes ouvertes ({demandes.length})</div>
       <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.5, marginBottom:10 }}>
         Des clients cherchent quelqu'un dans votre métier. Proposez-vous si vous êtes disponible : le client choisit,
@@ -3424,7 +3451,7 @@ export function DemandesOuvertes({ onRepris }) {
                 Déjà réservée et payée{d.tarif_horaire ? ` à ${formatMontant(d.tarif_horaire)}/h` : ""} — elle est à vous si vous la prenez.
               </div>
             )}
-            <button disabled={propose || enCours===d.id} onClick={()=>proposer(d.id)}
+            <button disabled={propose || enCours===d.id} onClick={()=> d.deja_payee ? setASigner(d) : proposer(d.id)}
               style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background: propose ? "rgba(255,255,255,0.08)" : C.success, color: propose ? C.textSub : "#fff", fontWeight:800, fontSize:12, cursor: propose ? "default" : "pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
               {enCours===d.id ? "…" : propose ? (d.ma_candidature === "rejected" ? "Le client a choisi quelqu'un d'autre" : "✓ Proposé — en attente du client") : d.deja_payee ? "✅ Je prends cette prestation" : "🙋 Je suis disponible"}
             </button>
@@ -3438,6 +3465,9 @@ export function DemandesOuvertes({ onRepris }) {
 export function RemplacementsProposes({ onRepondu }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
+  // Accepter de remplacer, c'est s'engager à exécuter la prestation : le
+  // contrat se signe avant (décision d'Alexandre du 01/10/2026).
+  const [aSigner, setASigner]   = useState(null);
 
   const charger = async () => {
     try {
@@ -3463,7 +3493,7 @@ export function RemplacementsProposes({ onRepondu }) {
       const r = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
-        body: JSON.stringify({ action: "repondre_remplacement", remplacement_id: id, reponse }),
+        body: JSON.stringify({ action: "repondre_remplacement", remplacement_id: id, reponse, ...(reponse === "accepter" ? { contrat_signe: true } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast(j.error || "Réponse non enregistrée."); setEnCours(null); return; }
@@ -3482,6 +3512,14 @@ export function RemplacementsProposes({ onRepondu }) {
 
   return (
     <div style={{ marginBottom:16 }}>
+      {aSigner && (
+        <ContractModal
+          title="Contrat de prestation de service"
+          contractText={texteContratPrestation(aSigner.mission || {})}
+          onSign={async () => { const d = aSigner; setASigner(null); await repondre(d.id, "accepter"); }}
+          onClose={() => setASigner(null)}
+        />
+      )}
       {demandes.map(d => {
         const m = d.mission || {};
         const quand = [m.date, m.heure_debut ? String(m.heure_debut).slice(0,5).replace(":","h") : null].filter(Boolean).join(" à ");
@@ -3503,7 +3541,7 @@ export function RemplacementsProposes({ onRepondu }) {
                 style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:C.textSub, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                 Décliner
               </button>
-              <button disabled={enCours===d.id} onClick={()=>repondre(d.id,"accepter")}
+              <button disabled={enCours===d.id} onClick={()=>setASigner(d)}
                 style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
                 {enCours===d.id ? "…" : "J'accepte de remplacer"}
               </button>
