@@ -5723,7 +5723,7 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
         + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
-        + `extra_hours_appliquees`,
+        + `extra_hours_appliquees,stripe_payment_intent`,
         { headers }
       );
       const mission = (await mr.json().catch(() => []))[0];
@@ -5764,6 +5764,22 @@ export default async function handler(req, res) {
       if (String(pi.metadata?.mission || "") !== String(mission_id)) {
         console.error(`[heures_supp] paiement ${pi.id} rattaché à une autre prestation que ${mission_id}`);
         return res.status(400).json({ error: "Ce paiement ne correspond pas à cette prestation." });
+      }
+      // …et être un paiement DE PROLONGATION, de CE client, pour CETTE
+      // prolongation. Seule la prestation était contrôlée : le paiement de la
+      // réservation elle-même — même `metadata[mission]` — réglait n'importe
+      // quelle prolongation, et celui d'une prolongation précédente redevenait
+      // utilisable dès qu'une seconde l'avait remplacé (relecture du 01/10/2026).
+      const dejaAppliquees = String(Number(mission.extra_hours_appliquees || 0));
+      const pourCetteProlongation = pi.metadata?.deja_appliquees !== undefined
+        ? pi.metadata.deja_appliquees === dejaAppliquees
+        // Paiement créé avant cette règle : admis seulement pour une première prolongation.
+        : dejaAppliquees === "0";
+      if (pi.metadata?.type !== "heures_supp" || String(pi.metadata?.client || "") !== String(caller.id)
+          || pi.id === mission.stripe_payment_intent || !pourCetteProlongation) {
+        console.error(`[heures_supp] paiement ${pi.id} refusé pour ${mission_id} : type ${pi.metadata?.type || "?"}, `
+          + `client ${pi.metadata?.client || "?"}, déjà appliquées ${pi.metadata?.deja_appliquees ?? "?"} / ${dejaAppliquees}`);
+        return res.status(400).json({ error: "Ce paiement ne correspond pas à cette prolongation." });
       }
       if (Number(pi.amount_received || 0) < devisC.centimes) {
         console.error(`[heures_supp] paiement ${pi.id} insuffisant : ${pi.amount_received} c reçus pour ${devisC.centimes} c dus`);

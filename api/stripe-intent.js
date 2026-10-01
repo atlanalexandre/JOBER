@@ -313,7 +313,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,stripe_payment_intent`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,stripe_payment_intent`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -381,6 +381,10 @@ export default async function handler(req, res) {
       "metadata[client]":      callerPi.id || "",
       "metadata[type]":        "heures_supp",
       "metadata[heures]":      String(mission.extra_hours_requested || ""),
+      // Les heures DÉJÀ ajoutées au moment de ce paiement. Une fois cette
+      // prolongation appliquée, elles changent : ce paiement ne peut plus servir
+      // à en régler une autre (relecture du 01/10/2026).
+      "metadata[deja_appliquees]": String(Number(mission.extra_hours_appliquees || 0)),
       description: `Heures supplémentaires — ${mission.extra_hours_requested} h`,
     };
     if (clientSupp) paramsS.customer = clientSupp;
