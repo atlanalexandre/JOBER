@@ -255,3 +255,34 @@ describe("verser_prestataire sur un litige ouvert avant validation", () => {
     expect(ecrits[0].payout_due_at).toBeTruthy();
   });
 });
+
+// Relecture du 01/10/2026 : un litige ouvert avant la validation, sur un décalage
+// d'horaire jamais arbitré, et tranché « verser » — le prestataire était payé des
+// heures réduites, et l'heure non faite n'était jamais rendue au client.
+describe("verser_prestataire avec un décalage jamais arbitré", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); delete process.env.STRIPE_SECRET_KEY; });
+  it("paie les heures faites, les écrit, et rend au client l'heure retirée", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    const ecrits = [], stripe = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+      const u = String(url);
+      if (u.includes("select=*")) {
+        return { ok: true, json: async () => [{ id: "m1", tarif_horaire: 13, hours: 8, montant_total: 110.98,
+          payout_amount: null, payout_due_at: null, delay_status: "pending", arrival_delay_minutes: 60,
+          stripe_payment_intent: "pi_123" }] };
+      }
+      if (u.includes("api.stripe.com")) { stripe.push({ u, body: String(opts.body || ""), cle: opts.headers?.["Idempotency-Key"] }); return { ok: true, json: async () => ({ id: "re_1", amount: 1300 }) }; }
+      if (opts.method === "PATCH") ecrits.push(JSON.parse(opts.body));
+      return { ok: true, json: async () => [{}], text: async () => "" };
+    }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const out = await executerResolution({ mission: { id: "m1" }, resolution: "verser_prestataire", supabaseUrl: "https://b", headers: {} });
+    expect(out.ok).toBe(true);
+    expect(ecrits[0].payout_amount, "7 h faites × 13 €").toBe(91);
+    expect(ecrits[0].actual_hours).toBe(7);
+    const remb = stripe.find(x => x.u.includes("/refunds"));
+    expect(remb, "l'heure retirée est rendue au client").toBeTruthy();
+    expect(remb.body).toContain("amount=1300");
+  });
+});

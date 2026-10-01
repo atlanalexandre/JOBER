@@ -2256,7 +2256,10 @@ rendu — l'heure non faite restait à ALANE et la facture la présentait comme 
 d'autant, pour que la clôture retrouve les frais d'origine ; la clôture d'un décalage non arbitré
 rembourse de même et inscrit les heures plafonnées dans `actual_hours`, que lit la facture du
 prestataire. Clé d'idempotence `refund-decalage-{id}` : un seul remboursement par prestation.
-Éprouvé par `e2e/29`.
+Éprouvé par `e2e/29`. **Cinq** chemins de clôture le font : la validation par le client, la
+validation automatique, « Valider de force », et — depuis la relecture du 01/10/2026 — le
+règlement d'un litige ouvert avant la validation par « verser au prestataire »
+(`executerResolution`), qui payait les heures réduites sans rien rendre (`e2e/34`).
 
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
