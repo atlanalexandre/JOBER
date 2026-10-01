@@ -724,7 +724,7 @@ async function handleEmailAction(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) { res.setHeader("Content-Type","text/html; charset=utf-8"); return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️")); }
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
-  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total`, { headers: hdrs });
+  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total,tarif_horaire,ville,adresse,tiers_declaration,prestataire_id`, { headers: hdrs });
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette prestation a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
 
@@ -736,10 +736,17 @@ async function handleEmailAction(req, res) {
       // Idem : l'expiration et son remboursement relèvent du cron.
       body: JSON.stringify({ prestataire_id: null }),
     }).catch(e => console.error("[missions] échec ignoré :", e?.message));
-    return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé. La prestation est de nouveau disponible pour d'autres prestataires.", "#F5A623", "⏱"));
+    return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé : la demande ne vous est plus adressée.", "#F5A623", "⏱"));
   }
 
   const missionLabel = mission.titre || mission.metier || "la prestation";
+
+  // Même quota que dans l'application : sans lui, le lien de l'e-mail permettait
+  // d'accepter au-delà de la limite du plan.
+  if (action === "accept") {
+    const quota = await quotaMensuelAtteint(prestaId, SUPABASE_URL, hdrs);
+    if (quota) return res.status(403).send(emailActionHtml("Limite atteinte", esc(quota.error), "#F5A623", "⚠️"));
+  }
 
   // Vérification conflit de créneau avant assignation
   if (action === "accept") {
@@ -753,15 +760,35 @@ async function handleEmailAction(req, res) {
     }
   }
 
-  // Même règle que dans l'application : un refus ne renvoie pas la prestation en
-  // « open » avec l'argent du client bloqué, il la clôt et déclenche son
-  // remboursement.
+  // Mêmes règles que dans l'application (respond_mission) :
+  //  • l'écriture est conditionnée à « toujours en attente, toujours adressée à
+  //    ce prestataire ». Elle était inconditionnelle, et le remboursement partait
+  //    AVANT : un refus cliqué pendant que la même demande était acceptée dans
+  //    l'application remboursait le client et annulait une prestation acceptée ;
+  //  • le remboursement ne part qu'APRÈS cette écriture réussie ;
+  //  • une prestation affectée par la plateforme (CGPS art. 5.2) passe au
+  //    candidat suivant au lieu d'être annulée et remboursée — le client n'a
+  //    choisi personne, sa commande tient toujours.
   const patchBody = action === "accept" ? { status: "assigned" } : { status: "refused", prestataire_id: null };
-  if (action !== "accept") {
+  const ecr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`, {
+    method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" }, body: JSON.stringify(patchBody),
+  });
+  const ecrites = await ecr.json().catch(() => null);
+  if (!ecr.ok) {
+    console.error(`[email-action] ${action} non enregistré pour ${missionId} (${ecr.status}) ${JSON.stringify(ecrites || {}).slice(0, 200)}`);
+    return res.status(500).send(emailActionHtml("Erreur", "Votre réponse n'a pas pu être enregistrée. Répondez depuis l'application.", "#F25E5E", "⚠️"));
+  }
+  if (!Array.isArray(ecrites) || ecrites.length === 0) {
+    return res.status(409).send(emailActionHtml("Déjà traité", "Cette prestation a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
+  }
+  let cascade = null;
+  if (action !== "accept" && affecteeParLaPlateforme(mission)) {
+    cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, hdrs);
+    console.log(`[email-action] refus sur prestation affectée ${missionId} → ${cascade.mode}`);
+  } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
     if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
   }
-  await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify(patchBody) });
 
   // L'offre de lancement se déclenche à la première prestation acceptée, quel
   // que soit le chemin — courriel, application, demande directe. Appelée à
@@ -774,8 +801,14 @@ async function handleEmailAction(req, res) {
 
   if (mission.client_id) {
     const isAccepted = action === "accept";
-    await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, ref_id: missionId }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
-    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
+    // Sur une prestation affectée par la plateforme, le client n'a désigné
+    // personne : on lui dit ce qui se passe réellement, comme dans l'application.
+    const titreRefus = cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
+    const corpsRefus = cascade
+      ? "Le prestataire pressenti n'est pas disponible. Nous sollicitons un autre professionnel — votre réservation et votre paiement sont conservés."
+      : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`;
+    await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : titreRefus, body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : corpsRefus, ref_id: missionId }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
+    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : titreRefus, body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : (cascade ? "Votre réservation est conservée." : `Le prestataire a décliné "${missionLabel}".`), url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
   }
 
   return res.status(200).send(emailActionHtml(
