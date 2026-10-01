@@ -28,6 +28,17 @@ test.describe("inscription prestataire", () => {
 
   // L'IBAN ne se saisit plus à l'inscription (24/09/2026) : il n'est ni dans le
   // jeton, ni dans le profil, et se renseigne ensuite — voir e2e/13.
+  // Le lien vers le Guichet unique, pour qui n'a pas encore de statut (01/10/2026).
+  test("l'étape du statut indique où devenir auto-entrepreneur", async ({ page }) => {
+    await remplirInscriptionPrestataire(page, { email: emailTest("presta") });
+    await page.getByText("Étape précédente").click();
+    await page.getByText("Étape précédente").click();
+    // Le Guichet unique : l'ancien portail URSSAF n'immatricule plus.
+    await expect(page.getByRole("link", { name: /Pas encore d'auto-entreprise \?/ }))
+      .toHaveAttribute("href", "https://procedures.inpi.fr/");
+    await expect(page.getByText(/Créez votre auto-entreprise gratuitement/)).toBeVisible();
+  });
+
   test("l'inscription ne dépose aucun IBAN, et surtout pas dans le jeton", async ({ page }) => {
     const email = emailTest("presta-iban");
     await remplirInscriptionPrestataire(page, { email });
