@@ -206,8 +206,33 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
   if (req.body?.action === "notify_signup") {
     const _signupCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
     if (!_signupCaller) return res.status(401).json({ error: "Non authentifié" });
-    const { prenom, nom, email, role } = req.body;
-    if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
+    // L'identité est lue en base, et l'adresse est celle du compte connecté.
+    // Elles venaient de la requête : n'importe quel compte pouvait faire
+    // envoyer à la direction, autant de fois qu'il le voulait, des alertes
+    // « nouvelle inscription » au nom et à l'adresse de son choix (audit
+    // « sécurité », 01/10/2026). Une seule alerte par compte : la date
+    // `alerte_inscription_at` sert de verrou, pour les deux rôles.
+    const SB_S  = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const KEY_S = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    let profilS;
+    try {
+      const pr = await fetch(`${SB_S}/rest/v1/profiles?id=eq.${_signupCaller.id}&select=prenom,nom,role,alerte_inscription_at`, {
+        headers: { "apikey": KEY_S, "Authorization": `Bearer ${KEY_S}` },
+      });
+      const pd = await pr.json().catch(() => null);
+      if (!pr.ok || !Array.isArray(pd)) throw new Error(`profil illisible (${pr.status})`);
+      profilS = pd[0] || null;
+    } catch (e) {
+      console.error(`[notify_signup] profil de ${_signupCaller.id} illisible :`, e.message);
+      return res.status(503).json({ error: "Réessayez dans un instant." });
+    }
+    if (profilS?.alerte_inscription_at) return res.status(200).json({ ok: true, deja: true });
+    const metaS = _signupCaller.user_metadata || {};
+    const prenom = profilS?.prenom || metaS.prenom || "";
+    const nom    = profilS?.nom    || metaS.nom    || "";
+    const role   = profilS?.role   || metaS.role   || "";
+    const email  = _signupCaller.email || "";
+    if (!email || !["prestataire", "client"].includes(role)) return res.status(400).json({ error: "Compte incomplet" });
 
     const notifDest = ADMIN_EMAIL || "direction@alane.fr";
     const roleLabel = role === "prestataire" ? "Prestataire" : "Client";
@@ -229,7 +254,7 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     // été accepté : sinon le balayage doit reprendre le dossier, c'est
     // précisément son rôle. Le résultat de sendEmail était ignoré, ce qui
     // rendait un refus de Resend invisible de bout en bout.
-    if (envoye === true && role === "prestataire") {
+    if (envoye === true) {
       const SB  = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
       const KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
       if (SB && KEY) {
