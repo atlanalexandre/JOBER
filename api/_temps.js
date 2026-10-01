@@ -91,6 +91,22 @@ export function debutPrestationMs(date, heureDebut) {
  */
 export function finPrestationMs(m) {
   if (!m) return null;
+  // Prestation sur plusieurs jours : elle finit le DERNIER jour, à l'heure de
+  // début plus la durée d'une journée (`hours` est la durée PAR JOUR).
+  //
+  // Jusqu'au 01/10/2026, seule la première date comptait : une série de cinq
+  // jours « finissait » le soir du premier. Le prestataire pouvait en confirmer
+  // la fin dès ce soir-là, la validation automatique la clôturait et la payait
+  // en entier 24 h plus tard, le délai de contestation se refermait pendant la
+  // série et le virement devenait émissible avant le travail (audit
+  // « prestations »). `date_debut` et `date_fin` sont des timestamptz : on n'en
+  // garde que le jour.
+  const premierJour = String(m.date || m.date_debut || "").slice(0, 10);
+  const dernierJour = String(m.date_fin || "").slice(0, 10);
+  if (premierJour && dernierJour && dernierJour > premierJour) {
+    const debutDernier = debutPrestationMs(dernierJour, m.heure_debut);
+    if (debutDernier !== null) return debutDernier + (Number(m.hours ?? 1) || 1) * 3600000;
+  }
   const dureeH = Number(m.actual_hours ?? m.hours ?? 1) || 1;
   const dureeMs = dureeH * 3600000;
   if (m.started_at) {
@@ -175,7 +191,10 @@ export const GRACE_POSITION_MS  = 60 * 60 * 1000;
  */
 export function fenetrePartagePosition(m, nowMs = Date.now()) {
   const debutMs = debutPrestationMs(m?.date, m?.heure_debut);
-  const finMs   = finPrestationMs(m);
+  // La fenêtre reste celle d'UNE journée, celle du premier jour : la fin de
+  // série l'ouvrirait aussi les nuits entre deux journées, et la position du
+  // prestataire n'a pas à être diffusée hors de ses heures de travail.
+  const finMs   = finPrestationMs(m ? { ...m, date_fin: null } : m);
   if (debutMs === null || finMs === null) {
     return { ouverte: false, debut: null, fin: null, raison: "horaire_inconnu" };
   }

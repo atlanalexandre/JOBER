@@ -1979,7 +1979,7 @@ ${(() => {
           // sa confirmation et que l'auto-validation tombe à 24 h. Le filtre en
           // JavaScript ci-dessous vérifie de toute façon que la prestation est
           // réellement terminée.
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
