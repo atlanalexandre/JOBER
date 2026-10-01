@@ -2668,6 +2668,23 @@ règle `contracts_client_creation` permettait à un client de fabriquer un contr
 n'importe qui. L'écriture est retirée de l'écran, la règle et les droits supprimés ; la lecture
 de ses contrats reste permise.
 
+### La garde des profils ne gardait rien
+
+**Audit « sécurité », 01/10/2026** (`2026-10-01_secu_profils_garde_role_du_jeton.sql`).
+`profiles_privileges_guard` exemptait les appels dont `current_user` vaut `service_role` ou
+`postgres` — or dans une fonction `SECURITY DEFINER`, `current_user` vaut **toujours** son
+propriétaire, `postgres` : la garde laissait tout passer. C'est le défaut déjà corrigé dans
+`missions_creation_guard`. Rien n'en profitait en pratique — les droits par colonne bornent ce
+que le navigateur modifie, et la création d'un profil par le navigateur échouait puisque
+`handle_new_user` le crée à l'inscription — mais une garde qu'on croit active est un piège. Elle
+lit désormais le rôle du **jeton** (`auth.role()`), et le navigateur perd le droit de **créer**
+un profil (règle `profiles_insert` et droits `INSERT` retirés : 49 colonnes y étaient
+inscriptibles, dont `plan_abonnement`, `missions_enabled`, `cashback_balance`). Aucun écran ne
+crée de profil ; la réparation passe par `/api/reparer-profil`, en service role.
+
+**Règle pour la suite** : dans une fonction `SECURITY DEFINER`, ne jamais tester `current_user`
+pour reconnaître l'appelant — lire `auth.role()`.
+
 ### Quatre droits ouverts sur des gestes que l'application ne fait pas
 
 **Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,
