@@ -1760,6 +1760,15 @@ user_metadata existait, il suffisait de sélectionner Elite en créant son compt
 999 prestations par mois, le badge et la première place dans les résultats — sans rien régler.
 `user_metadata.plan_souhaite` conserve désormais ce choix comme simple intention.
 
+**Le niveau d'abonnement est public, et c'est voulu** (décision d'Alexandre du 01/10/2026). Le
+catalogue (`/api/prestataires`) rend `plan_abonnement` et `trial_exhausted` à tout visiteur :
+les badges « ✓ Certifié » (Premium) et « 👑 Elite », le filtre « certifiés » et le classement
+en tête des abonnés en dépendent, et ce sont des avantages **vendus** aux prestataires
+(`src/constants/plans.js`). **Ne pas les retirer sans décision.** Risque signalé et accepté :
+« Certifié » pour un simple abonnement payant peut être lu comme une pratique commerciale
+trompeuse, et un classement influencé par un paiement doit être signalé aux clients
+(art. L.111-7 C. conso.) — aucune mention de ce type n'existe aujourd'hui.
+
 Seuls trois chemins accordent un plan payant : le webhook Stripe, la vérification directe de
 l'abonnement dans `refresh_plan`, et le forçage manuel depuis le backoffice.
 
