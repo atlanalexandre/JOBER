@@ -21,6 +21,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
+import { cleVersement, virementDejaEmis } from "./_virement.js";
 
 /**
  * Un refus de virement qui passera de lui-même : solde disponible
@@ -747,14 +748,27 @@ export default async function handler(req, res) {
                 continue;
               }
 
+              // Un virement existe-t-il déjà ? Réponse perdue lors d'un essai
+              // précédent, inscription échouée : il est retrouvé et inscrit, au
+              // lieu d'être émis une seconde fois. Sans réponse : on n'émet pas.
+              const deja = await virementDejaEmis({ destination: pp.stripe_account_id, missionId: m.id, stripeKey: STRIPE_SK_V });
+              if (!deja.ok) throw new Error(`virements existants illisibles — ${deja.detail}`);
+              if (deja.id) {
+                const inscritDeja = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`,
+                  { payout_status: "transferred", stripe_transfer_id: deja.id }, headers, `versements/virement ${deja.id} retrouvé`);
+                console.error(`[versements] ${deja.id} déjà émis pour ${m.id} — ${inscritDeja ? "inscrit" : "NON inscrit"}, aucun second virement.`);
+                continue;
+              }
+
               const tr = await fetch("https://api.stripe.com/v1/transfers", {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${STRIPE_SK_V}`,
                   "Content-Type": "application/x-www-form-urlencoded",
-                  // Une prestation ne peut donner lieu qu'à un seul virement, quel
-                  // que soit le nombre de passages du cron.
-                  "Idempotency-Key": `payout-${m.id}`,
+                  // Clé d'un ESSAI, pas de la prestation : une clé fixe faisait
+                  // rejouer par Stripe, 24 h durant, le refus du premier essai
+                  // (api/_virement.js). Le doublon est écarté juste au-dessus.
+                  "Idempotency-Key": cleVersement(m.id),
                 },
                 body: new URLSearchParams({
                   amount: String(cents), currency: "eur", destination: pp.stripe_account_id,
