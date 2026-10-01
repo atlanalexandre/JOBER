@@ -3454,6 +3454,16 @@ critère utile serait « écriture d'argent ou de statut dont le résultat est j
    date invalide, des heures perdues à `null`, et un PATCH refusé après le remboursement. On ne
    garde que les dix premiers caractères, côté serveur comme à l'écran.
 
+### « Clôturer » une demande ouverte : jamais si elle est payée
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/45`). Une prestation affectée par la
+plateforme que personne n'accepte repart en diffusion — statut `open` — **avec le paiement du
+client conservé**. Le bouton « Clôturer la prestation » (action `close`) la fermait sans rien
+rembourser : le client perdait son argent. Le serveur refuse désormais (409 `demande_payee`) de
+clore une demande ouverte qui porte un `stripe_payment_intent`, et l'écran n'affiche plus que
+« Annuler la prestation », qui rembourse selon la politique d'annulation. Les demandes ouvertes
+non payées et les prestations refusées (déjà remboursées) se clôturent comme avant.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

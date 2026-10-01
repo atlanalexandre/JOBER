@@ -2931,15 +2931,26 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status`, { headers });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,stripe_payment_intent`, { headers });
       const mData = await mRes.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission || mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (!["open", "rejected", "refused", "closed"].includes(mission.status)) {
         return res.status(400).json({ error: "Utilisez l'annulation pour clore une prestation en cours" });
       }
+      // Une demande ouverte peut être PAYÉE : une prestation affectée par la
+      // plateforme que personne n'a acceptée repart en diffusion avec le paiement
+      // conservé. La « clôturer » la fermait sans rien rembourser — le client
+      // perdait son argent (audit « prestations », 01/10/2026). Seule
+      // l'annulation rembourse : on y renvoie. Les refusées, elles, ont déjà été
+      // remboursées au refus.
+      if (mission.status === "open" && mission.stripe_payment_intent) {
+        return res.status(409).json({ code: "demande_payee", error: "Cette demande est payée : utilisez « Annuler la prestation », qui vous rembourse." });
+      }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,rejected,refused)`, {
+      // Le filtre reprend la condition ci-dessus : une demande ouverte payée
+      // entre la lecture et l'écriture n'est pas fermée.
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&or=(status.in.(rejected,refused),and(status.eq.open,stripe_payment_intent.is.null))`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify({ status: "closed" }),
