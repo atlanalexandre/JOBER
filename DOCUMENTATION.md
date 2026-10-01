@@ -2466,6 +2466,17 @@ SMS. C'était le navigateur qui déclenchait l'envoi, avec ses propres données 
 était le tarif de base même en urgence, et sur une prestation chez un tiers — où c'est la
 plateforme qui choisit — on tentait de prévenir le prestataire de l'écran au lieu du vrai.
 
+**La réponse par le bouton de l'e-mail suit les règles de l'application** (01/10/2026, audit
+« prestations », `src/tests/api/reponse-par-email.test.js`). `handleEmailAction` de
+`api/missions.js` avait ses propres règles : le remboursement partait **avant** une écriture
+inconditionnelle — un refus cliqué pendant que la même demande était acceptée dans l'application
+remboursait le client et annulait une prestation acceptée — et une prestation affectée par la
+plateforme était annulée et remboursée au lieu de passer au candidat suivant (CGPS art. 5.2).
+Désormais, comme `respond_mission` : écriture conditionnée à « toujours en attente, toujours
+adressée à ce prestataire », remboursement seulement après, cascade pour les prestations
+affectées, et quota du plan vérifié à l'acceptation. Ce parcours ne peut pas être rejoué en
+recette : les liens sont signés avec `BO_SESSION_SECRET`.
+
 **Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
 (`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
 l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du métier** : un
