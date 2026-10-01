@@ -3939,7 +3939,12 @@ export default async function handler(req, res) {
       const joursEcoules = (estRecurrente && premierJour)
         ? Math.max(0, Math.min(
             joursPrestation - 1,
-            Math.round((new Date(`${aujourdHui}T00:00:00Z`) - new Date(`${premierJour}T00:00:00Z`)) / 86400000)
+            // `premierJourP` : la date SEULE. `date_debut` est un horodatage
+            // (« 2026-09-30 00:00:00+00 ») : y recoller « T00:00:00Z » donnait une
+            // date illisible, NaN jours écoulés, des heures perdues vides que la
+            // base refusait — écourter une journée d'une série échouait toujours
+            // (constaté en recette le 01/10/2026).
+            Math.round((new Date(`${aujourdHui}T00:00:00Z`) - new Date(`${premierJourP}T00:00:00Z`)) / 86400000)
           ))
         : 0;
 

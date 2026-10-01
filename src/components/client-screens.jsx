@@ -7916,8 +7916,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             // « Interrompre » disparaissait dès le deuxième, et le client
             // n'avait plus aucun moyen d'arrêter quoi que ce soit.
             const heuresJournee = Number(selected.hours || 1);
-            const jourDeb = selected.date_debut || selected.date || null;
-            const jourFin = selected.date_fin   || selected.date || null;
+            // La date SEULE : `date_debut` et `date_fin` sont des horodatages
+            // (« 2026-09-30T00:00:00+00:00 »), et y recoller « T00:00:00Z » rendait
+            // la date illisible — montants affichés « NaN ».
+            const jourDeb = String(selected.date_debut || selected.date || "").slice(0, 10) || null;
+            const jourFin = String(selected.date_fin   || selected.date || "").slice(0, 10) || null;
             const aujourdHuiFr = new Intl.DateTimeFormat("fr-CA", {
               timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
             }).format(new Date());
