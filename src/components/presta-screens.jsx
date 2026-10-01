@@ -2571,7 +2571,8 @@ export function PMissionsTab({ onNavigate }) {
     const r = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "accept", presta_name: userName }),
+      // N'est appelée qu'après la signature du contrat (ContractModal, onSign).
+      body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "accept", presta_name: userName, contrat_signe: true }),
     });
     const data = await r.json();
     if (data.success) {
@@ -2711,7 +2712,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             const prestation = contractMission;
             setContractMission(null);
             const { data:{ session } } = await supabase.auth.getSession();
-            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
+            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id }) });
             if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); setValidatedSummary(prestation); }
             else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
           }}
@@ -3176,7 +3177,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         } else {
                           setValidatingMission(m.id);
                           const { data:{ session } } = await supabase.auth.getSession();
-                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); setValidatedSummary(m); }
                           else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
                           setValidatingMission(null);

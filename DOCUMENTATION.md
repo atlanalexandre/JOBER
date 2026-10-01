@@ -690,6 +690,12 @@ Ni l'une ni l'autre n'est modifiable depuis le navigateur.
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,
 `completed`, `closed`, `cancelled`, `disputed`, `rejected`, `refused`.
 
+`contrat_client_signe_at` et `contrat_presta_signe_at` sont les signatures du contrat de
+prestation, posées par le serveur : celle du client au paiement, celle du prestataire à
+l'acceptation (depuis le 01/10/2026 — voir §5 « La signature du client n'était jamais
+enregistrée »). `fin_attestee_presta_at` (ajoutée le 01/10/2026) est l'attestation de fin de
+prestation du prestataire (`validate_presta`).
+
 `retractation_renonciation_at` et `retractation_version` portent la preuve que le client a
 demandé l'exécution avant la fin du délai de rétractation et reconnu perdre son droit après
 exécution complète (CGPS art. 8.3). La version est enregistrée avec la date : sans elle, on
@@ -2656,10 +2662,18 @@ l'horodatage restait dans le navigateur. Il est désormais transmis (`contratSig
 (`assign_after_payment` et `affecter_tiers`), comme la renonciation au délai de rétractation.
 Une prestation payée sans cette mention est journalisée en erreur.
 
-`contrat_presta_signe_at`, lui, n'est posé qu'à la confirmation de fin de prestation
-(`validate_presta`) : le prestataire ne signe rien à l'acceptation. **Décision à prendre**
-(produit / juridique) : la preuve de l'engagement du prestataire à l'acceptation tient-elle à
-l'acceptation horodatée de la demande, ou faut-il une signature à ce moment ?
+**Côté prestataire, même défaut, corrigé le même jour**
+(`2026-10-01_signature_prestataire_a_l_acceptation.sql`). Le prestataire signe le contrat **en
+acceptant** (`ContractModal` de l'écran prestataire), mais la date restait dans le navigateur ;
+`contrat_presta_signe_at` recevait à la place l'**attestation de fin** posée par
+`validate_presta` — deux actes dans une seule case. Désormais `contrat_presta_signe_at` est posée
+par le serveur à l'acceptation (`respond_mission`, `contrat_signe: true`), et l'attestation de fin
+a sa colonne, `missions.fin_attestee_presta_at`. Les dates antérieures, qui étaient des
+attestations de fin, y ont été recopiées ; elles restent aussi dans `contrat_presta_signe_at`,
+où elles désignent donc la fin et non l'acceptation pour les prestations d'avant le 01/10/2026.
+
+**Reste ouvert** : l'acceptation par le bouton de l'e-mail, la candidature retenue sur une
+demande diffusée et la reprise par un remplaçant ne font signer aucun contrat au prestataire.
 
 **Table `contracts` : fermée à l'écriture** (`2026-10-01_secu_contrats_ecrits_par_le_serveur.sql`).
 `ContractScreen` y écrivait une ligne en déclarant lui-même le **prestataire** signataire ;
