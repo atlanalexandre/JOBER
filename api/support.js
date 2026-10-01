@@ -53,13 +53,11 @@ export default async function handler(req, res) {
           "Authorization": `Bearer ${SERVICE_KEY2}`,
           "Content-Type": "application/json",
         };
-        // Récupérer les métadonnées du compte qui vient d'être créé (phone + IBAN)
-        const usersRes = await fetch(
-          `${SUPABASE_URL2}/auth/v1/admin/users?email=${encodeURIComponent(email)}&per_page=1`,
-          { headers: svcHeaders }
-        );
-        const usersData = await usersRes.json();
-        const newUser = usersData?.users?.[0];
+        // Le compte qui vient d'être créé, c'est l'APPELANT, dont le jeton est
+        // vérifié. Il était cherché par l'adresse reçue dans la requête, via
+        // `?email=` — qui ne filtre pas et rend le compte le plus récent : la
+        // pénalité pouvait tomber sur quelqu'un d'autre (recette, 01/10/2026).
+        const newUser = _welcomeCaller;
         if (newUser) {
           const meta3 = newUser.user_metadata || {};
           const tel3   = meta3.telephone || null;
@@ -81,7 +79,7 @@ export default async function handler(req, res) {
           const iban3  = rib3 ? String(rib3).replace(/\s/g, "").toUpperCase() : null;
           const siret3 = meta3.kbis || null;
           const orFilters3 = [];
-          if (email)   orFilters3.push(`email_hash.eq.${hashPii(email)}`);
+          if (newUser.email) orFilters3.push(`email_hash.eq.${hashPii(newUser.email)}`);
           if (tel3)    orFilters3.push(`telephone_hash.eq.${hashPii(tel3)}`);
           if (iban3)   orFilters3.push(`iban_hash.eq.${hashPii(iban3)}`);
           if (siret3)  orFilters3.push(`siret_hash.eq.${hashPii(siret3)}`);
