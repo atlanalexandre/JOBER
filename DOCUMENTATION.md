@@ -3539,7 +3539,7 @@ désormais 410 ; le seul chemin est `presta_cancel`.
 nouvelle déclaration à tout moment, y compris après le paiement et l'affectation. Or elle décide
 de ce qu'un refus déclenche — passage au candidat suivant ou remboursement
 (`affecteeParLaPlateforme`) — et a valeur de preuve (CGPS art. 10B). Elle n'est plus acceptée
-qu'**une fois**, sur une demande `open` non payée, ce qui correspond au seul moment où l'écran
+qu'**une fois**, sur une demande non payée (`open` ou `pending_acceptance`), ce qui correspond au seul moment où l'écran
 l'envoie (juste après la création, `App.jsx`) ; la condition est aussi dans l'écriture.
 
 ### Dénouer un litige — proposition, opposition, accord

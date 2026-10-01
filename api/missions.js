@@ -4985,11 +4985,13 @@ export default async function handler(req, res) {
       // (passage au candidat suivant ou remboursement, affecteeParLaPlateforme)
       // et a valeur de preuve (CGPS art. 10B). La réécrire après coup, c'était
       // changer la règle en cours de partie (audit « prestations », 01/10/2026).
-      if (md.status !== "open" || md.stripe_payment_intent || md.tiers_declaration) {
+      // Une réservation directe est créée « pending_acceptance », une demande
+      // diffusée « open » : les deux, tant qu'aucun paiement n'est enregistré.
+      if (!["open", "pending_acceptance"].includes(md.status) || md.stripe_payment_intent || md.tiers_declaration) {
         return res.status(409).json({ error: "La déclaration se fait à la réservation, avant le paiement : elle ne peut plus être modifiée." });
       }
       // Même condition dans l'écriture : deux appels simultanés n'écrivent pas tous les deux.
-      const filtreDeclaration = `id=eq.${mission_id}&status=eq.open&stripe_payment_intent=is.null&tiers_declaration=is.null`;
+      const filtreDeclaration = `id=eq.${mission_id}&status=in.(open,pending_acceptance)&stripe_payment_intent=is.null&tiers_declaration=is.null`;
 
       // Champs bornés et normalisés : ce texte est destiné à être relu par un tiers,
       // il ne doit ni déborder ni contenir de contenu arbitraire.
