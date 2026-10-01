@@ -3698,6 +3698,28 @@ restait vide et l'écran disait « Aucune prestation en cours » — le prestata
 demandes en attente sans le savoir. L'échec affiche désormais « Vos prestations n'ont pas pu
 être chargées » avec un bouton « Réessayer », et l'état vide n'est plus montré dans ce cas.
 
+### Textes de l'application alignés sur ce qui se passe réellement
+
+**01/10/2026** (audit des écrans) :
+
+- **Prestation « à réassigner »** (`needs_replacement`, `client-screens.jsx`) : l'écran disait
+  « Vous avez été intégralement remboursé » et « le paiement est à refaire » quand un
+  prestataire se positionne. Faux sur les deux points : dans cet état le paiement est
+  **conservé** (`stripe-webhook.js`), et la prestation est annulée et intégralement remboursée à
+  son début si personne ne la reprend (tâche planifiée). Et personne ne peut s'y positionner :
+  `candidater` et `list_open` ne connaissent que les demandes `open`. Le texte dit désormais ce
+  qui se passe. Ce chemin est d'ailleurs **dormant** — le webhook ne reçoit pas l'événement.
+- **Deux résumés de l'annulation par le prestataire** (fenêtre « Politique d'annulation » du
+  contrat et article 7 du résumé des conditions) promettaient qu'« ALANE recherche un
+  prestataire remplaçant » : ni les CGPS (art. 8.2) ni le code (`presta_cancel` : annulation et
+  remboursement intégral, décision du 30/09/2026) ne le font. Alignés sur l'article 8.2.
+- **FAQ prestataire** : « versée sur votre IBAN après validation… sous 3 à 5 jours ouvrés »
+  devient le délai réel — 48 h après la fin de la prestation, puis 2 à 7 jours ouvrés selon la
+  banque (CGPS art. 7.2).
+
+Ces résumés restent des **copies** des CGPS dans un écran, ce que la règle de `CLAUDE.md`
+interdit : à remplacer un jour par un renvoi à `src/constants/cgps.js`.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
