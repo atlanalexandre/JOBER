@@ -38,6 +38,9 @@ test("urgence : le prix part du tarif du prestataire, le même de l'écran à la
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   await fermerBandeauCookies(page);
   await page.getByText("Hôtellerie").first().click();
+  // Le catalogue arrive en quelques secondes (1 200 prestataires en recette) :
+  // avant, chaque métier est « en chargement », et rien n'est cliquable.
+  await expect(page.getByText("Disponible", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   // La liste des métiers, en urgence : le prix part des tarifs réels des prestataires.
   // Elle annonçait le tarif par défaut du métier + surcoût (17,50 €) quand la

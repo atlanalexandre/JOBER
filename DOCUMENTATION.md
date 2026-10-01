@@ -1097,6 +1097,12 @@ catalogue, une recherche de candidats — passe par `lireTout()` de `api/_lignes
 par page et lève si une page est refusée — **ou si son garde-fou de 50 000 lignes est atteint** :
 elle rendait alors la partie lue comme si c'était tout (relecture du 01/10/2026).
 
+Conséquence à connaître : le catalogue complet pèse lourd — **1 600 Ko et environ deux
+secondes** pour 1 226 prestataires en recette (01/10/2026). L'écran d'un secteur affichait
+pendant ce temps « 0 prestataire · Indisponible » sur chaque métier, rien n'étant cliquable ; il
+affiche désormais « Chargement… » (`useProviders().loading`). Si le nombre réel de
+prestataires approche ce volume en production, alléger la réponse de `/api/prestataires`.
+
 ### La RLS, en pratique
 
 Chaque table a des règles décrivant qui peut lire et écrire quoi. Le principe général :
