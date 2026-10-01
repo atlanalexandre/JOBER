@@ -3510,6 +3510,19 @@ validation automatique, la contestation, la relance et l'annulation par le prest
 **Reste connu** : deux lectures du back-office (liste des versements, `bo-action.js`) ne lisent
 pas l'horaire de la prestation ; l'échéance affichée y est « maintenant + 48 h ».
 
+### Prolongation : pas de refus pendant le paiement, pas d'heures sur une prestation close
+
+**Corrigé le 01/10/2026** (audit « prestations », `e2e/48`). Deux trous dans les heures
+supplémentaires :
+
+- le prestataire pouvait **refuser** une prolongation qu'il avait déjà chiffrée
+  (`accepte_presta`), pendant que le client la réglait : le paiement, arrivé juste après, ne
+  s'appliquait plus — client débité, aucune heure en plus. Le refus n'est accepté que sur une
+  demande `pending` (409 sinon) ;
+- un paiement de prolongation confirmé **après la clôture** de la prestation (ou son annulation)
+  rallongeait ce qui était terminé. `confirmer_heures_supp` exige `status = assigned` ; sinon le
+  complément est **remboursé** (clé `refund-heures-supp-{pi}`) et la réponse est 409.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

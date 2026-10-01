@@ -5744,10 +5744,23 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
         }
       } else {
-        // Refus : effacer la demande
-        const refusEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
-          { extra_hours_status: "refused", extra_hours_requested: null }, headers, "heures_supp/refus");
-        if (!refusEcrit) return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
+        // Refus : effacer la demande — seulement si elle attend encore une
+        // réponse. Une fois le prix annoncé (« accepte_presta »), le client peut
+        // être en train de payer : un refus à ce moment effaçait la prolongation
+        // et le paiement, arrivé juste après, ne s'appliquait plus — client
+        // débité, aucune heure en plus (audit « prestations », 01/10/2026).
+        const rRefus = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.pending`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null }),
+        });
+        const refusees = await rRefus.json().catch(() => null);
+        if (!rRefus.ok || !Array.isArray(refusees)) {
+          console.error(`[heures_supp] refus non enregistré pour ${mission_id} (${rRefus.status})`);
+          return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
+        }
+        if (refusees.length === 0) {
+          return res.status(409).json({ error: "Aucune demande d'heures supplémentaires n'attend votre réponse : vous avez déjà répondu, et le client peut être en train de régler." });
+        }
       }
 
       // Notifier le client
@@ -5867,6 +5880,25 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Le montant réglé ne couvre pas la prolongation." });
       }
 
+      // Le paiement est vérifié, mais la prestation n'est plus en cours (close,
+      // annulée, en litige) entre la création du paiement et sa confirmation.
+      // Prolonger ce qui est terminé n'a pas de sens, et garder l'argent non
+      // plus : le complément est rendu.
+      if (mission.status !== "assigned") {
+        const rb = await fetch("https://api.stripe.com/v1/refunds", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded",
+                     "Idempotency-Key": `refund-heures-supp-${pi.id}` },
+          body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
+        }).catch(e => { console.error(`[heures_supp] remboursement ${pi.id} impossible :`, e.message); return null; });
+        const rbData = rb ? await rb.json().catch(() => ({})) : {};
+        if (!rbData.id) {
+          console.error(`[heures_supp] remboursement ${pi.id} à reprendre manuellement — prestation ${mission_id} (${mission.status}) : ${JSON.stringify(rbData).slice(0, 200)}`);
+          return res.status(500).json({ error: "Cette prestation n'est plus en cours. Votre paiement de prolongation n'a pas pu être remboursé automatiquement : écrivez à direction@alane.fr, nous le reprenons à la main." });
+        }
+        return res.status(409).json({ error: "Cette prestation n'est plus en cours : la prolongation n'est pas appliquée et votre paiement vous est remboursé." });
+      }
+
       const nouvellesHeures = Math.min(24, Number(mission.hours || 0) + extraH);
       const nouveauTotal    = Math.round((Number(mission.montant_total || 0) + devisC.total) * 100) / 100;
 
@@ -5874,7 +5906,7 @@ export default async function handler(req, res) {
       // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
       // ferme la même porte côté base.
       const up = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.accepte_presta`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.accepte_presta&status=eq.assigned`,
         { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({
             hours: nouvellesHeures,
