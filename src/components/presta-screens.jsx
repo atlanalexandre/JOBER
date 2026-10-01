@@ -2301,6 +2301,10 @@ export function PMissionsTab({ onNavigate }) {
   // habituel du prestataire.
   const [tarifSupp, setTarifSupp] = useState({});
   const [pendingMissions, setPendingMissions] = useState([]);
+  // Échec du chargement des demandes : il était avalé, et la liste vide disait
+  // « Aucune prestation en cours » — le prestataire manquait des demandes sans
+  // le savoir (audit des écrans, 01/10/2026).
+  const [erreurChargement, setErreurChargement] = useState(false);
   const [assignedMissions, setAssignedMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [renderTick, setRenderTick] = useState(0);
@@ -2428,6 +2432,7 @@ export function PMissionsTab({ onNavigate }) {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ action: "my_missions" }),
       });
+      if (!r.ok) throw new Error(`chargement refusé (${r.status})`);
       const data = await r.json();
       setPendingMissions(Array.isArray(data.pending)  ? data.pending.filter(m => m.status !== "cancelled")  : []);
       const assigned = Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : [];
@@ -2440,7 +2445,11 @@ export function PMissionsTab({ onNavigate }) {
       });
       setArrivedAtMap(prev => { const n = { ...prev, ...arrivedMap }; arrivedAtMapRef.current = n; return n; });
       setStartedAtMap(prev => ({ ...prev, ...startedMap }));
-    } catch { /* ignore */ }
+      setErreurChargement(false);
+    } catch (e) {
+      console.error("[mes prestations] chargement impossible :", e?.message);
+      setErreurChargement(true);
+    }
   };
 
   useEffect(() => {
@@ -3300,8 +3309,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         );
       })()}
 
-      {/* État vide */}
-      {assignedMissions.length === 0 && pendingMissions.length === 0 && (
+      {erreurChargement && (
+        <div style={{ background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:16, padding:"16px", marginBottom:16, textAlign:"center" }}>
+          <div style={{ color:"#F25E5E", fontSize:13, fontWeight:700, marginBottom:6 }}>Vos prestations n'ont pas pu être chargées</div>
+          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Des demandes peuvent vous attendre. Vérifiez votre connexion, puis réessayez.</div>
+          <button onClick={()=>loadPending()} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Réessayer</button>
+        </div>
+      )}
+
+      {/* État vide — jamais affiché quand le chargement a échoué : ce serait faux */}
+      {!erreurChargement && assignedMissions.length === 0 && pendingMissions.length === 0 && (
         <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🔔</div>
           <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune prestation en cours</div>
