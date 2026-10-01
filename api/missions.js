@@ -4975,10 +4975,23 @@ export default async function handler(req, res) {
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (!declaration || typeof declaration !== "object") return res.status(400).json({ error: "declaration requise" });
 
-      const mdRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id`, { headers });
+      const mdRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,stripe_payment_intent,tiers_declaration`, { headers });
       const md = (await mdRes.json().catch(() => []))[0];
       if (!md) return res.status(404).json({ error: "Prestation introuvable" });
       if (md.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      // La déclaration se fait UNE fois, à la création de la demande, avant le
+      // paiement — c'est le seul moment où l'écran l'envoie. Elle était
+      // réécrivable à tout moment : or elle décide de ce qu'un refus déclenche
+      // (passage au candidat suivant ou remboursement, affecteeParLaPlateforme)
+      // et a valeur de preuve (CGPS art. 10B). La réécrire après coup, c'était
+      // changer la règle en cours de partie (audit « prestations », 01/10/2026).
+      // Une réservation directe est créée « pending_acceptance », une demande
+      // diffusée « open » : les deux, tant qu'aucun paiement n'est enregistré.
+      if (!["open", "pending_acceptance"].includes(md.status) || md.stripe_payment_intent || md.tiers_declaration) {
+        return res.status(409).json({ error: "La déclaration se fait à la réservation, avant le paiement : elle ne peut plus être modifiée." });
+      }
+      // Même condition dans l'écriture : deux appels simultanés n'écrivent pas tous les deux.
+      const filtreDeclaration = `id=eq.${mission_id}&status=in.(open,pending_acceptance)&stripe_payment_intent=is.null&tiers_declaration=is.null`;
 
       // Champs bornés et normalisés : ce texte est destiné à être relu par un tiers,
       // il ne doit ni déborder ni contenir de contenu arbitraire.
@@ -4998,7 +5011,7 @@ export default async function handler(req, res) {
       // pour que la détection distingue un client multi-sites, qui commande
       // légitimement ailleurs, d'un client qui n'a jamais répondu.
       if (declaration.lieu === "etablissement_propre") {
-        const patchLieu = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        const patchLieu = await fetch(`${SUPABASE_URL}/rest/v1/missions?${filtreDeclaration}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ tiers_declaration: { lieu: "etablissement_propre", declare_le: new Date().toISOString() } }),
@@ -5017,7 +5030,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: `Déclaration incomplète : ${manquants.join(", ")}.` });
       }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?${filtreDeclaration}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ tiers_declaration: propre }),
