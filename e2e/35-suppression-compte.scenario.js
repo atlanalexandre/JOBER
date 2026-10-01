@@ -115,3 +115,20 @@ test("le back-office supprime un prestataire : son client est remboursé, la pre
   const [n] = await sql(`select count(*)::int as n from notifications where user_id = '${c.id}' and title like 'Prestation annulée%'`);
   expect(n.n, "le client est prévenu").toBe(1);
 });
+
+test("le back-office refuse de supprimer un compte qui a une réservation payée par l'ancien portefeuille", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const id = crypto.randomUUID();
+  await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, hours, heure_debut, tarif_horaire,
+             montant_total, adresse, ville, status, stripe_payment_intent)
+             values ('${id}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', current_date + 4, 8, '09:00', 13,
+             110.98, '10 rue de Rivoli', 'Paris', 'assigned', 'wallet_recette_${id.slice(0, 8)}')`);
+  await coordonneesPropres(p);
+  const r = await bo("delete", { profileId: p.id, reason: "Scénario de recette" });
+  expect(r.statut, r.texte.slice(0, 300)).toBe(409);
+  expect(r.json.error).toContain("ancien portefeuille");
+  expect(await compteExiste(p.id), "rien n'est supprimé").toBe(true);
+  const [l] = await sql(`select status from missions where id = '${id}'`);
+  expect(l.status).toBe("assigned");
+});

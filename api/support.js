@@ -458,7 +458,13 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ user_email: null, user_name: null, user_id: null }),
       });
-      await effacerPieces(userId, SUPABASE_URL, hdrs, "delete_account");
+      if (!await effacerPieces(userId, SUPABASE_URL, hdrs, "delete_account")) {
+        // Le compte n'est pas supprimé : sinon les pièces d'identité resteraient
+        // dans le stockage, introuvables, et l'écran dirait le contraire. Un
+        // nouvel essai les retrouve par le dossier du compte.
+        return res.status(503).json({ error: "Vos documents n'ont pas pu être effacés pour le moment : votre compte n'a pas été supprimé. "
+          + "Réessayez dans quelques minutes, ou écrivez à support@alane.fr." });
+      }
       // La réponse de la base est lue : elle refusait la suppression de tout
       // prestataire ayant déjà travaillé, et l'écran annonçait « supprimé ».
       if (!await supprimerCompteAuth(userId, SUPABASE_URL, hdrs, "delete_account")) {

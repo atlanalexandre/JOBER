@@ -31,6 +31,7 @@
 
 import { montantsDeCloture } from "./_cloture.js";
 import { plafonnerRemboursement, restituerCashback } from "./_cashback.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 export const DELAI_OPPOSITION_MS = 48 * 3600000;
 
@@ -136,9 +137,16 @@ export async function executerResolution({
     // n'ont jamais été fixés. On les fixe ici — la part du prestataire, calculée
     // comme à toute clôture, versée maintenant (le délai de réclamation est
     // purgé par le litige lui-même).
-    const { partPrestataire } = montantsDeCloture(mission);
+    const { partPrestataire, ajustementRetard } = montantsDeCloture(mission);
     const complement = {};
-    if (mission.payout_amount == null) complement.payout_amount = partPrestataire;
+    // Jamais clôturée : c'est ICI qu'elle se clôt. Même règle que les trois
+    // autres clôtures (api/_decalage.js) : un décalage d'horaire jamais arbitré
+    // ramène les heures à l'heure de fin prévue — et les heures retirées sont
+    // RENDUES au client. Sans cela, le prestataire était payé des heures
+    // réduites et la différence restait chez ALANE (relecture du 01/10/2026).
+    const premiereCloture = mission.payout_amount == null;
+    if (premiereCloture) complement.payout_amount = partPrestataire;
+    if (premiereCloture && ajustementRetard) complement.actual_hours = ajustementRetard.apres;
     if (!mission.payout_due_at) complement.payout_due_at = new Date().toISOString();
     if (mission.payout_amount == null && !(partPrestataire > 0)) {
       console.error(`[resolution] part du prestataire nulle ou incalculable sur ${mission.id} — versement à fixer à la main.`);
@@ -149,6 +157,14 @@ export async function executerResolution({
       const detail = await r.text().catch(() => "");
       console.error(`[resolution] versement non enregistré (${r.status}) pour ${mission.id} : ${detail.slice(0, 200)}`);
       return { ok: false, detail: "La prestation n'a pas pu être rouverte au versement." };
+    }
+    if (premiereCloture && ajustementRetard) {
+      // Clé d'idempotence de _decalage.js : une seconde exécution ne rembourse
+      // pas deux fois.
+      await rembourserHeuresRetirees({
+        mission, euros: valeurHeuresRetirees(mission, ajustementRetard.avant, ajustementRetard.apres),
+        supabaseUrl, headers, contexte: "resolution/verser/decalage",
+      });
     }
     return { ok: true, statut: "completed" };
   }

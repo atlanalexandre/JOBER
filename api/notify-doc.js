@@ -4,6 +4,7 @@ import { appUrl } from "./_url.js";
 import { docsRequisPour, piecesManquantes } from "./_documents.js";
 import { mandatsManquants } from "./_mandats.js";
 import { manquesCv } from "./_cv.js";
+import { metiersDeclares } from "./_qualifications.js";
 
 
 const DOC_LABELS = {
@@ -198,7 +199,7 @@ export default async function handler(req, res) {
   // de « il en manque » à « toutes déposées » : une fois par dossier, sans
   // colonne à tenir. Il dit aussi ce qui bloquera encore l'activation.
   if (avantDepot && profil && profil.status === "approved" && profil.missions_enabled !== true) {
-    const requis = docsRequisPour(caller.user_metadata?.nationalite, caller.user_metadata?.metiers_list).filter(d => d.required);
+    const requis = docsRequisPour(caller.user_metadata?.nationalite, metiersDeclares(caller.user_metadata)).filter(d => d.required);
     const manquaient = piecesManquantes(requis, avantDepot);
     // Relu APRÈS l'enregistrement, et non déduit de la lecture d'avant : deux
     // dépôts simultanés des deux dernières pièces voyaient chacun l'autre

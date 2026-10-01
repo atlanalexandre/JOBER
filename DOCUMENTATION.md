@@ -536,7 +536,11 @@ pas, sans en être prévenu. Chaque prestation `pending_acceptance`, `assigned` 
 `needs_replacement` **non démarrée** est désormais remboursée (`rembourserDepuisLeBO`,
 frais compris, cashback rendu), annulée, et son client prévenu. Une prestation **déjà
 démarrée** reste en place — il est à l'œuvre — et elle est signalée à l'administrateur, avec
-les éventuels échecs de remboursement ; le tout est consigné dans `bo_logs.details`.
+les éventuels échecs de remboursement ; le tout est consigné dans `bo_logs.details`. Une
+réservation réglée par l'**ancien portefeuille** (`wallet_…`) n'est jamais annulée d'office :
+Stripe ne la rembourse pas, et l'annuler faisait perdre la somme au client, à qui l'on
+annonçait un remboursement. Elle est signalée, à traiter à la main ; la suppression d'un
+compte qui en a une est refusée pour la même raison (relecture du 01/10/2026).
 
 **Les dates qui se déduisent sont calculées, les autres sont saisies.** Une attestation URSSAF
 vaut six mois à compter de son émission : la date se calcule. La période de garantie d'une
@@ -1090,7 +1094,14 @@ recette le 30/09/2026 avec 1 017 prestataires actifs : le traitement des documen
 prestataires dont l'attestation URSSAF était vérifiée (1 076 attestations, 1 000 lues), et le
 catalogue n'en montrait que 995. Toute lecture qui doit être **complète** — un balayage, un
 catalogue, une recherche de candidats — passe par `lireTout()` de `api/_lignes.js`, qui lit page
-par page et lève si une page est refusée.
+par page et lève si une page est refusée — **ou si son garde-fou de 50 000 lignes est atteint** :
+elle rendait alors la partie lue comme si c'était tout (relecture du 01/10/2026).
+
+Conséquence à connaître : le catalogue complet pèse lourd — **1 600 Ko et environ deux
+secondes** pour 1 226 prestataires en recette (01/10/2026). L'écran d'un secteur affichait
+pendant ce temps « 0 prestataire · Indisponible » sur chaque métier, rien n'étant cliquable ; il
+affiche désormais « Chargement… » (`useProviders().loading`). Si le nombre réel de
+prestataires approche ce volume en production, alléger la réponse de `/api/prestataires`.
 
 ### La RLS, en pratique
 
@@ -1179,6 +1190,12 @@ jamais le rôle** : un compte sans rôle déclaré est journalisé, pas rangé d
 `free` — et ne modifie jamais un profil existant. Elle est appelée à deux endroits : au
 rattrapage immédiat de l'inscription, et à la connexion si le profil est introuvable. Un
 compte à moitié créé se répare donc tout seul à la première reconnexion.
+
+**« Introuvable », c'est un 404 — rien d'autre** (relecture du 01/10/2026). La connexion
+prenait **toute** réponse en échec de `get-profile` (502 passager, réseau) pour un profil
+absent : la réparation trouvait le profil intact, et l'écran annonçait « votre compte est en
+attente de validation » à un client validé, puis le déconnectait — constaté en recette. Une
+panne affiche désormais « Connexion impossible pour le moment. Réessayez dans un instant. »
 
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
@@ -1478,7 +1495,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
-| `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche |
+| `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
 | `supprimerCompteAuth()` | la réponse n'était pas lue : la base refusait la suppression d'un prestataire ayant déjà travaillé, et l'écran disait « supprimé » |
 
 Le back-office, en plus : les prestations non terminées sont **remboursées puis annulées**
@@ -1729,6 +1746,13 @@ de régularisation ; une pièce d'identité purgée après vérification (CGPS 1
 sa ligne étant conservée ; une pièce périmée ne bloque qu'au seuil où le balayage de nuit
 suspendrait (`suspendable`, pièces de `EXPIRATION_BLOQUANTE`). La liste du back-office
 renvoie `pieces_a_valider` : le bouton est désactivé, la liste écrite au-dessus.
+
+**Les métiers lus sont le principal ET la liste** — `metiersDeclares()` de
+`api/_qualifications.js` (relecture du 01/10/2026). `enable_missions`, la liste du back-office,
+le courriel de validation, l'alerte « dossier complet » et l'écran Docs du prestataire ne
+lisaient que `metiers_list` : un agent de sécurité dont c'était le métier **principal**, non
+repris dans la liste (comptes anciens), recevait l'accès aux prestations **sans carte CNAPS**
+contrôlée — constaté en recette. La validation des justificatifs regardait déjà l'union.
 
 Le motif est contractuel : l'article 7.2 des CGPS annonce que le mandat d'encaissement est
 recueilli « préalablement à tout encaissement », et sans mandat de facturation `api/invoice.js`
@@ -2256,7 +2280,10 @@ rendu — l'heure non faite restait à ALANE et la facture la présentait comme 
 d'autant, pour que la clôture retrouve les frais d'origine ; la clôture d'un décalage non arbitré
 rembourse de même et inscrit les heures plafonnées dans `actual_hours`, que lit la facture du
 prestataire. Clé d'idempotence `refund-decalage-{id}` : un seul remboursement par prestation.
-Éprouvé par `e2e/29`.
+Éprouvé par `e2e/29`. **Cinq** chemins de clôture le font : la validation par le client, la
+validation automatique, « Valider de force », et — depuis la relecture du 01/10/2026 — le
+règlement d'un litige ouvert avant la validation par « verser au prestataire »
+(`executerResolution`), qui payait les heures réduites sans rien rendre (`e2e/34`).
 
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
@@ -3759,6 +3786,11 @@ Trois règles gouvernent cette imputation, et il faut les trois :
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
   (`plafonnerRemboursement()`). Stripe refuse de rendre plus qu'il n'a prélevé, et ce refus
   arriverait APRÈS l'annulation de la prestation.
+- **Les frais retenus se calculent sur le PRIX**, jamais sur ce que la carte a payé. Quand
+  `montant_total` est vide, `cancel_client` relit le montant chez Stripe — celui de la carte,
+  cashback déduit — et en déduisait les frais : avec 5 € de cashback, il rendait 5 € de trop
+  (constaté en recette le 01/10/2026, 104,00 € rendus au lieu de 99,00 €). Le cashback est
+  rajouté avant le calcul.
 
 Les helpers **relisent eux-mêmes** les deux colonnes quand le `select` de l'appelant les a
 omises (`completerCashback`). Une douzaine de requêtes lisent `missions` pour rembourser :

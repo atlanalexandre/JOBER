@@ -47,3 +47,25 @@ test("une prestation déjà démarrée reste en place, et elle est signalée", a
   expect(l.status).toBe("assigned");
   expect((await paiementStripe(m.paymentIntent)).rembourse).toBe(0);
 });
+
+test("ancienne réservation payée par portefeuille : laissée en place et signalée, pas annulée sans remboursement", async () => {
+  // Le portefeuille a été retiré le 23/09/2026, mais une réservation réglée avant
+  // peut encore exister. Stripe ne la rembourse pas : l'annuler faisait perdre la
+  // somme au client, prévenu d'un « remboursement » (relecture du 01/10/2026).
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const id = crypto.randomUUID();
+  await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, hours, heure_debut, tarif_horaire,
+             montant_total, adresse, ville, status, stripe_payment_intent)
+             values ('${id}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', current_date + 4, 8, '09:00', 13,
+             110.98, '10 rue de Rivoli', 'Paris', 'assigned', 'wallet_recette_${id.slice(0, 8)}')`);
+
+  const r = await bo("suspend", { profileId: p.id, reason: "Scénario de recette : suspension conservatoire" });
+  expect(r.statut, r.texte.slice(0, 300)).toBe(200);
+  expect(r.json.annulees).toBe(0);
+  expect(r.json.echecs.map(e => e.id)).toEqual([id]);
+  const [l] = await sql(`select status from missions where id = '${id}'`);
+  expect(l.status, "pas annulée tant qu'elle n'est pas remboursée").toBe("assigned");
+  const [n] = await sql(`select count(*)::int as n from notifications where user_id = '${c.id}' and ref_id = '${id}'`);
+  expect(n.n, "aucun « remboursement » annoncé à tort").toBe(0);
+});

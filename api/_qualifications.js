@@ -122,9 +122,11 @@ export function qualificationRequise(metier) {
  * @param {Array<string|{metier:string}>} metiers  `metiers_list` ou une liste de libellés
  */
 export function qualificationsPour(metiers) {
-  const libelles = (Array.isArray(metiers) ? metiers : [])
+  // Dédoublonnés : le métier principal figure souvent AUSSI dans la liste, et
+  // `metiersDeclares()` les réunit — « exigé pour « X », « X » » se lirait mal.
+  const libelles = [...new Set((Array.isArray(metiers) ? metiers : [])
     .map(m => (typeof m === "string" ? m : m?.metier))
-    .filter(Boolean);
+    .filter(Boolean))];
   const parTitre = new Map();
   for (const libelle of libelles) {
     const q = QUALIFICATIONS_OBLIGATOIRES[libelle];
@@ -203,4 +205,19 @@ export function peutExercer(metier, justificatif) {
 export function titresNonCouverts(metiers, justificatif) {
   return qualificationsPour(metiers).filter(q =>
     !(Array.isArray(justificatif?.titres_couverts) && justificatif.titres_couverts.includes(q.titre)));
+}
+
+/**
+ * Les métiers déclarés par un prestataire : le principal ET la liste.
+ *
+ * `metiers_list` seul oubliait le métier principal quand il n'y était pas
+ * repris (comptes anciens) : un agent de sécurité dont c'était le métier
+ * principal voyait l'accès aux prestations s'ouvrir sans que sa carte
+ * professionnelle soit contrôlée (relecture du 01/10/2026). Le catalogue, la
+ * reprise et la validation des justificatifs regardent déjà cette union.
+ *
+ * @param {object} meta  user_metadata du prestataire
+ */
+export function metiersDeclares(meta) {
+  return [meta?.metier, ...(Array.isArray(meta?.metiers_list) ? meta.metiers_list : [])].filter(Boolean);
 }

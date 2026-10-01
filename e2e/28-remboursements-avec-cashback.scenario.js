@@ -40,6 +40,20 @@ test("le client annule : la carte récupère ce qu'elle a payé moins les frais,
   expect(prix - (pi.rembourse + 500)).toBe(frais);
 });
 
+test("montant relu chez Stripe (montant_total vide) : les frais retenus restent ceux du prix", async () => {
+  // Sans montant en base, le serveur relit ce que la carte a payé — le prix
+  // MOINS le cashback — et en déduisait les frais : minorés de 5 € (relecture
+  // du 01/10/2026).
+  const { c, m, prix, partHoraire } = await prestationAvecCashback();
+  await sql(`update missions set montant_total = null where id = '${m.id}'`);
+  const r = await api("/api/missions", { action: "cancel_client", mission_id: m.id }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const pi = await paiementStripe(m.paymentIntent);
+  const frais = prix - partHoraire;
+  expect(pi.rembourse, "rendu à la carte : ce qu'elle a payé, moins les frais du prix").toBe(pi.preleve - frais);
+  expect(await soldeCashback(c.id), "le cashback revient").toBe(5);
+});
+
 test("le prestataire annule : remboursement intégral de la carte, et le cashback revient", async () => {
   const { p, c, m } = await prestationAvecCashback();
   const r = await api("/api/missions", { action: "presta_cancel", mission_id: m.id }, p.jeton);
