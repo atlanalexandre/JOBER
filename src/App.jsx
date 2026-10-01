@@ -1081,9 +1081,6 @@ export default function App() {
   const [paymentHours,setPaymentHours]=useState(8);
   const [paymentDate,setPaymentDate]=useState("");
   const [paymentDescription,setPaymentDescription]=useState("");
-  const [paymentAdresse,setPaymentAdresse]=useState("");
-  const [paymentVille,setPaymentVille]=useState("");
-  const [paymentStartTime,setPaymentStartTime]=useState("08:00");
   const [bookingError,setBookingError]=useState(null);
   // Déclaration art. 10B de la réservation en cours : elle décide du mode
   // d'affectation après paiement, et ne doit pas se perdre entre les deux écrans.
@@ -1448,9 +1445,6 @@ export default function App() {
         setPaymentHours(8);
         setPaymentDate("");
         setPaymentDescription("");
-        setPaymentAdresse("");
-        setPaymentVille("");
-        setPaymentStartTime("08:00");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         // Calculé hors du updater : appeler un setState dans le updater d'un
         // autre le ferait exécuter deux fois en mode strict.
@@ -1653,7 +1647,7 @@ export default function App() {
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); }
-    if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
+    if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); }
     // Le tableau de bord prestataire peut être ouvert sur un onglet précis :
     // `navigate("p_dashboard", { onglet:"docs" })`. Remis à null autrement, sans
     // quoi un retour ultérieur rouvrirait toujours le même onglet.
@@ -1751,10 +1745,7 @@ export default function App() {
                 setPaymentAmount(Number(m.montant_total) || draft.montant || 0);
                 setPaymentHours(m.hours || 8);
                 setPaymentDate(m.date || "");
-                setPaymentStartTime(m.heure_debut || "08:00");
                 setPaymentDescription(m.description || "");
-                setPaymentAdresse(m.adresse || "");
-                setPaymentVille(m.ville || "");
                 setScreen("stripe_pay");
               } catch(e) {
                 setBookingError(e?.message || "Reprise impossible — réessayez.");
@@ -1855,8 +1846,7 @@ export default function App() {
       {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={async(to,data)=>{
         if(to!=="stripe_pay") { navigate(to,data); return; }
         setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||"");
-        setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||"");
-        setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||"");
+        setPaymentDescription(data?.description||"");
         setPaymentRecurrence(data?.recurrence || null);
         // La prestation doit exister AVANT le paiement : /api/stripe-intent refuse
         // toute demande sans mission_id et recalcule le montant depuis la base,
@@ -1995,20 +1985,10 @@ export default function App() {
             const { data:sessionData } = await supabase.auth.getSession();
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({
-                action: "booking_confirm",
-                clientEmail: ud?.user?.email||null,
-                clientName: ud?.user?.user_metadata?.prenom||null,
-                prestaName: selectedProvider.name||null,
-                job: selectedProvider.jobTitle||selectedProvider.role||null,
-                date: paymentDate||null,
-                startTime: paymentStartTime||null,
-                hours: paymentHours||null,
-                adresse: paymentAdresse||null,
-                ville: paymentVille||null,
-                total: paymentAmount,
-              }),
-            }).catch(()=>{});
+              // Le serveur relit TOUT en base, et écrit à l'adresse du compte :
+              // seul l'identifiant de la prestation part d'ici (01/10/2026).
+              body: JSON.stringify({ action: "booking_confirm", mission_id: missionId }),
+            }).catch(e => console.error("[paiement] confirmation par e-mail non demandée :", e?.message));
           }
           setScreen("mission_pending");
         } catch(e) {

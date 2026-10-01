@@ -144,36 +144,63 @@ export default async function handler(req, res) {
 
   // ── booking_confirm: send booking confirmation email to client ────
   if (req.body?.action === "booking_confirm") {
-    const _bookingCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
-    if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
-    const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
-    // Sortie silencieuse historique : la confirmation n'était pas envoyée et rien
-    // ne le disait, ni au client ni dans les journaux. C'est le seul chemin qui
-    // explique une confirmation absente alors que l'email au prestataire part.
-    if (!clientEmail) {
-      console.error("[booking_confirm] aucune adresse client transmise — confirmation NON envoyée. caller:", _bookingCaller.id);
+    // ── Tout est relu en base (01/10/2026) ──────────────────────────────
+    //
+    // Le destinataire et TOUT le contenu venaient du corps de la requête :
+    // n'importe quel compte connecté pouvait faire envoyer, sous la marque
+    // ALANE, un courriel au texte de son choix à l'adresse de son choix. Le
+    // message promettait en outre un argent « sécurisé en escrow » et « libéré
+    // après validation mutuelle » — faux depuis août : le prestataire est payé
+    // 48 h après la fin, sans validation (CGPS 7.2). Seul l'identifiant de la
+    // prestation est désormais lu ; elle doit appartenir à l'appelant, et le
+    // courriel part à l'adresse de son compte.
+    const SB  = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    const appelant = await verifyUser(req, SB, KEY);
+    if (!appelant) return res.status(401).json({ error: "Non authentifié" });
+    const missionId = String(req.body.mission_id || "");
+    if (!/^[0-9a-f-]{36}$/i.test(missionId)) return res.status(400).json({ error: "mission_id invalide" });
+    const h = { "apikey": KEY, "Authorization": `Bearer ${KEY}` };
+    const mr = await fetch(`${SB}/rest/v1/missions?id=eq.${missionId}&select=client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,adresse,ville,montant_total,status`, { headers: h });
+    const m = (await mr.json().catch(() => null))?.[0];
+    if (!mr.ok || !m) return res.status(404).json({ error: "Prestation introuvable" });
+    if (m.client_id !== appelant.id) return res.status(403).json({ error: "Non autorisé" });
+    if (!appelant.email) {
+      console.error(`[booking_confirm] compte ${appelant.id} sans adresse — confirmation NON envoyée.`);
       return res.status(200).json({ ok: false, reason: "no email" });
     }
-    console.log("[booking_confirm] envoi de la confirmation au client (domaine:", String(clientEmail).split("@")[1] || "?", ")");
+    let prestaName = null;
+    if (m.prestataire_id) {
+      const pr = await fetch(`${SB}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=prenom,nom`, { headers: h });
+      const p = (await pr.json().catch(() => null))?.[0];
+      if (p) prestaName = [p.prenom, p.nom ? `${String(p.nom).charAt(0)}.` : ""].filter(Boolean).join(" ");
+    }
+    const clientName = appelant.user_metadata?.prenom || null;
+    // En attente d'acceptation, la réservation n'est pas « confirmée » : le
+    // prestataire peut encore refuser — et le client est alors remboursé.
+    const enAttente = m.status === "pending_acceptance";
+    const job = m.metier || m.sector || null;
+    const date = m.date_debut && m.date_fin && m.date_debut !== m.date_fin ? `du ${m.date_debut} au ${m.date_fin}` : (m.date || m.date_debut || null);
     const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:'DM Sans',system-ui,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.10);">
 <tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:32px 28px 24px;text-align:center;">
-<div style="font-size:42px;margin-bottom:10px;">✅</div>
-<h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">Réservation confirmée !</h1>
-<p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Votre prestation a bien été enregistrée</p></td></tr>
+<div style="font-size:42px;margin-bottom:10px;">${enAttente ? "📨" : "✅"}</div>
+<h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">${enAttente ? "Paiement reçu, demande transmise" : "Réservation confirmée !"}</h1>
+<p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">${enAttente ? "Votre prestataire doit encore l'accepter" : "Votre prestation a bien été enregistrée"}</p></td></tr>
 <tr><td style="padding:28px;">
-<p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName)||"cher client"}</strong>,</p>
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName) || "cher client"}</strong>,</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#162547;border-radius:14px;overflow:hidden;margin-bottom:24px;border:1px solid rgba(124,111,224,0.25);"><tr><td style="padding:18px 20px;">
 <p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la prestation</p>
-${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["🕐 Heure de début",esc(startTime)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["📍 Lieu",[esc(adresse),esc(ville)].filter(Boolean).join(", ")||"—"],["💶 Total bloqué",total?esc(euros(total)):"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
+${[["👤 Prestataire", esc(prestaName) || "À confirmer"], ["💼 Poste", esc(job) || "—"], ["📅 Date", esc(date) || "—"], ["🕐 Heure de début", esc(m.heure_debut ? String(m.heure_debut).slice(0, 5) : "") || "—"], ["⏱️ Durée", m.hours ? `${esc(String(m.hours))} h` : "—"], ["📍 Lieu", [esc(m.adresse), esc(m.ville)].filter(Boolean).join(", ") || "—"], ["💶 Total réglé", m.montant_total != null ? esc(euros(m.montant_total)) : "—"]].map(([l, v]) => `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
 </td></tr></table>
-<p style="color:#10D98F;font-size:13px;font-weight:600;margin:0 0 20px;">🔒 Votre argent est sécurisé en escrow et ne sera libéré qu'après validation mutuelle.</p>
+${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0 12px;">Si le prestataire ne peut pas l'accepter, vous êtes intégralement remboursé.</p>` : ""}
+<p style="color:#8B8FA8;font-size:13px;margin:0 0 20px;">Votre paiement est conservé par Stripe, notre prestataire de paiement, puis reversé au prestataire 48 h après la fin de la prestation, sauf réclamation de votre part dans ce délai.</p>
 <div style="text-align:center;margin-top:20px;"><a href='${appUrl()}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma prestation →</a></div>
 </td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${appUrl()}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
-    await sendEmail({ to: clientEmail, subject: `✅ Réservation confirmée — ${esc(job)||"Prestation"} · ALANE`, html: bookingHtml });
+    await sendEmail({ to: appelant.email, subject: `${enAttente ? "📨 Demande transmise" : "✅ Réservation confirmée"} — ${esc(job) || "Prestation"} · ALANE`, html: bookingHtml });
     return res.status(200).json({ ok: true });
   }
 
