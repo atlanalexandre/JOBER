@@ -471,7 +471,16 @@ export default async function handler(req, res) {
                 body: JSON.stringify({ referral_rewards_granted: duesTotal }) }
             );
             const reserveRows = await reserve.json().catch(() => []);
-            if (!reserve.ok || !Array.isArray(reserveRows) || reserveRows.length === 0) return; // déjà accordée par une autre livraison
+            // Refus de la base ≠ « déjà accordée » : seul un tableau vide veut dire
+            // qu'une autre livraison est passée. Un refus était avalé sans trace,
+            // et le mois offert perdu sans que personne le sache (relecture du
+            // 02/10/2026, CLAUDE.md §1.2).
+            if (!reserve.ok) {
+              console.error(`[parrainage] réservation de la récompense refusée pour ${parrainId} (${reserve.status}) : `
+                + `${JSON.stringify(reserveRows).slice(0, 200)} — mois offert NON accordé, à reprendre à la main.`);
+              return;
+            }
+            if (!Array.isArray(reserveRows) || reserveRows.length === 0) return; // déjà accordée par une autre livraison
             const moisOfferts = duesTotal - dejaAccordees;
             let avoirCentimes = 0;
             try {
