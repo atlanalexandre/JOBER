@@ -56,3 +56,24 @@ test("l'annulation d'une prestation acceptée fonctionne toujours", async () => 
   const [rp] = await sql(`select statut from mission_remplacements where id = '${d.id}'`);
   expect(rp.statut, "le remplacement n'a plus d'objet").toBe("annule");
 });
+
+// Relecture du 02/10/2026 : depuis que la fin d'une série est son dernier jour,
+// le prestataire pouvait annuler en plein milieu — client intégralement
+// remboursé des journées déjà faites, prestataire payé de rien.
+test("une série commencée ne s'annule pas en bloc", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: p, client: c, heures: 4 });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const jour = (d) => new Date(Date.now() + d * 864e5).toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+  await sql(`update missions set date = '${jour(-1)}', date_debut = '${jour(-1)}', date_fin = '${jour(3)}',
+             heure_debut = '23:30', started_at = now() - interval '24 hours' where id = '${m.id}'`);
+
+  const r = await api("/api/missions", { action: "presta_cancel", mission_id: m.id }, p.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(409);
+  expect(JSON.parse(r.texte).code).toBe("serie_commencee");
+  const [l] = await sql(`select status, prestataire_id from missions where id = '${m.id}'`);
+  expect(l.status, "ni annulée ni remboursée").toBe("assigned");
+  expect(l.prestataire_id).toBe(p.id);
+});

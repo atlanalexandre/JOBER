@@ -3637,11 +3637,20 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
 
 - les demandes de remplacement en attente étaient fermées **avant** de vérifier que l'appelant
   était le prestataire de la prestation — n'importe quel compte pouvait fermer celles d'une
-  prestation qui n'était pas la sienne. Elles le sont désormais après l'annulation réussie ;
+  prestation qui n'était pas la sienne. Elles le sont désormais **après** cette vérification et
+  **avant** le remboursement (relecture du 02/10/2026) : fermées après, elles laissaient l'accord
+  final du client basculer la prestation vers le remplaçant pendant l'appel à Stripe — client
+  remboursé, remplaçant payé sur un argent déjà rendu ;
 - une demande **pas encore acceptée** (`pending_acceptance`) pouvait être « annulée » : client
   remboursé, prestation close, au lieu du refus qui, sur une prestation affectée par la
   plateforme, passe au candidat suivant. Réponse 409 `utiliser_refus` ;
 - l'écriture finale est conditionnée à « toujours la sienne, toujours `assigned` ».
+- **une série commencée ne s'annule plus en bloc** (relecture du 02/10/2026, `e2e/46`). Depuis
+  que la fin d'une série est celle de son dernier jour, le refus « prestation terminée » ne jouait
+  plus qu'après la dernière journée : annuler au quatrième jour d'une série de cinq remboursait
+  intégralement le client des journées déjà faites, et le prestataire n'était payé de rien. Une
+  série dont la première journée est passée, ou déjà pointée, est refusée (409
+  `serie_commencee`) : elle se règle avec l'administration.
 
 ### Remplacement : le changement de titulaire vérifie qu'il a eu lieu
 
