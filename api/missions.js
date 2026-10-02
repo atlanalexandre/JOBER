@@ -6339,6 +6339,44 @@ export default async function handler(req, res) {
         });
       }
 
+      // ── UNE SÉRIE COMMENCÉE NE S'ANNULE PLUS EN BLOC ──────────────────
+      //
+      // Depuis que la fin d'une série est celle de son DERNIER jour (01/10/2026),
+      // le refus ci-dessus ne jouait plus qu'après la dernière journée : un
+      // prestataire pouvait annuler au quatrième jour d'une série de cinq, le
+      // client était intégralement remboursé — trois journées faites gratuites —
+      // et le prestataire n'était payé de rien. Avant, ce refus jouait dès la fin
+      // de la première journée. Une série commencée se règle avec la plateforme,
+      // pas par un remboursement intégral (relecture du 02/10/2026).
+      const premierJourSerie = String(mission.date_debut || mission.date || "").slice(0, 10);
+      if (nombreDeJours(mission) > 1 && (mission.started_at || (premierJourSerie && dateDuJourFr() > premierJourSerie))) {
+        return res.status(409).json({
+          code: "serie_commencee",
+          error: "Cette série a commencé : elle ne peut plus être annulée d'ici. "
+               + "Écrivez à direction@alane.fr — les journées déjà faites vous restent dues.",
+        });
+      }
+
+      // Une demande de remplacement encore ouverte n'a plus d'objet : la laisser
+      // en attente exposerait le client à accepter un remplaçant pour une
+      // prestation qui n'existe plus. Fermée APRÈS avoir vérifié que la
+      // prestation est bien celle de l'appelant (sinon n'importe quel compte
+      // fermait celles d'autrui), mais AVANT le remboursement : c'est ce qui
+      // empêche l'accord final du client de basculer la prestation vers le
+      // remplaçant pendant l'appel à Stripe. Fermée après, cette fenêtre restait
+      // ouverte : client remboursé, prestation pourtant attribuée au remplaçant,
+      // qui l'aurait faite et été payé sur un argent déjà rendu (relecture du
+      // 02/10/2026).
+      try {
+        const rf = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "annule" }),
+        });
+        if (!rf.ok && rf.status !== 404) console.error(`[presta_cancel] remplacements en attente non fermés (${rf.status}) — prestation ${mission_id}`);
+      } catch (e) {
+        console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
+      }
+
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
         const isWalletPaidPresta = mission.stripe_payment_intent.startsWith("wallet_");
@@ -6419,21 +6457,6 @@ export default async function handler(req, res) {
           error: "Votre annulation n'a pas pu être enregistrée. Écrivez à direction@alane.fr : "
                + "la prestation vous est encore attribuée.",
         });
-      }
-
-      // Une demande de remplacement encore ouverte n'a plus d'objet : la laisser
-      // en attente exposerait le client à accepter un remplaçant pour une
-      // prestation qui n'existe plus. Fermée APRÈS l'annulation, et non plus
-      // avant toute vérification : n'importe quel compte pouvait alors fermer
-      // les demandes de remplacement d'une prestation qui n'était pas la sienne.
-      try {
-        const rf = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ statut: "annule" }),
-        });
-        if (!rf.ok && rf.status !== 404) console.error(`[presta_cancel] remplacements en attente non fermés (${rf.status}) — prestation ${mission_id}`);
-      } catch (e) {
-        console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
       }
 
       // Le client est intégralement remboursé (CGPS art. 8.2) : son cashback lui
