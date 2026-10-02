@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { manquesCv, cvRempli, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../../api/_cv.js";
 import { metiersDeclares } from "../../../api/_qualifications.js";
-import { readFileSync } from "node:fs";
 
 // CV obligatoire, et confronté aux métiers déclarés (décision d'Alexandre, 29/09/2026).
 
