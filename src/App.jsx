@@ -1263,6 +1263,14 @@ export default function App() {
   },[]);
 
   // Tracking GPS prestataire — envoie la position toutes les 60s quand prestation assignée
+  const gpsDemande = useRef(false);
+  const [gpsConsenti, setGpsConsenti] = useState(false);
+  // Consentement déjà donné (mémorisé sur cet appareil) : valeur fixe, le suivi
+  // n'est pas relancé à chaque changement d'écran.
+  let gpsDejaConsenti = false;
+  try { gpsDejaConsenti = !!(supaUser && localStorage.getItem(`alane_gps_consent_${supaUser.id}`)); }
+  catch { /* stockage indisponible (navigation privée) : la question sera reposée */ }
+  const declencheurGps = (gpsConsenti || gpsDejaConsenti) ? "consenti" : screen;
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
@@ -1293,14 +1301,31 @@ export default function App() {
       iv = setInterval(sendPos, 30000);
       sendPos();
     };
+    let annule = false;
     if(hasConsent) {
       startGps();
-    } else {
-      showConfirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?")
-        .then(ok => { if(!ok) return; try { localStorage.setItem(consentKey, "1"); } catch(e) {} startGps(); });
+    } else if(!gpsDemande.current) {
+      // La question n'est posée que lorsqu'elle a un objet : une prestation
+      // acceptée. Elle arrivait dès la première connexion, avant toute
+      // prestation et par-dessus les deux fenêtres d'accueil — refusée sans
+      // réflexion (02/10/2026, décision d'Alexandre). Relue à chaque changement
+      // d'écran tant qu'elle n'a pas été posée : accepter une prestation la
+      // déclenche à l'écran suivant. Posée une seule fois par session.
+      supabase.from("missions").select("id")
+        .eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1)
+        .then(({ data, error }) => {
+          if(annule || gpsDemande.current) return;
+          if(error) { console.error("[gps] prestations acceptées illisibles :", error.message); return; }
+          if(!Array.isArray(data) || data.length === 0) return;
+          gpsDemande.current = true;
+          showConfirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?")
+            .then(ok => { if(!ok) return; try { localStorage.setItem(consentKey, "1"); } catch(e) {} setGpsConsenti(true); });
+        });
     }
-    return ()=>{ if(watchId!==null) navigator.geolocation.clearWatch(watchId); if(iv!==null) clearInterval(iv); };
-  },[supaUser, role]);
+    return ()=>{ annule = true; if(watchId!==null) navigator.geolocation.clearWatch(watchId); if(iv!==null) clearInterval(iv); };
+  // `declencheurGps` : l'écran tant que le consentement manque, une valeur fixe
+  // ensuite — le suivi déjà lancé n'est pas relancé à chaque navigation.
+  },[supaUser, role, declencheurGps]);
 
   // Poll messages non lus toutes les 10 secondes
   useEffect(()=>{
@@ -1686,12 +1711,16 @@ export default function App() {
           setTutorielForce(false);
           setTutorielRole(null);
           setShowOnboarding(false);
+          // Le guide des onglets prestataire attend ce signal pour s'ouvrir :
+          // une seule fenêtre à la fois (02/10/2026).
+          window.dispatchEvent(new Event("alane:accueil-termine"));
         }}
         onNavigate={(to,data)=>{
           if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
           setTutorielForce(false);
           setTutorielRole(null);
           setShowOnboarding(false);
+          window.dispatchEvent(new Event("alane:accueil-termine"));
           // `data` était ignoré : le bouton « Ouvrir l'onglet Docs » déposait
           // le prestataire sur le tableau de bord, onglet Prestations, à charge
           // pour lui de trouver le bon.

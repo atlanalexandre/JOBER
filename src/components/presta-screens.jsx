@@ -4042,9 +4042,18 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const m=u.user_metadata||{};
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
+      // Le guide des onglets vient APRÈS l'accueil (App.jsx), jamais par-dessus :
+      // un nouveau prestataire voyait les deux fenêtres empilées (02/10/2026,
+      // décision d'Alexandre). Accueil pas encore vu : le guide attend le signal
+      // « alane:accueil-termine », envoyé quand l'accueil se referme.
       const tourKey=`alane_presta_tour_done_${u.id}`;
-      let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch { /* ignore */ }
-      if(!prestaTourDone) setShowTour(true);
+      let prestaTourDone, accueilVu;
+      try { prestaTourDone = localStorage.getItem(tourKey); accueilVu = localStorage.getItem(`alane_onboarded_${u.id}`); }
+      catch { /* stockage indisponible (navigation privée) : le guide s'affiche, comme avant */ }
+      if(!prestaTourDone) {
+        if(accueilVu) setShowTour(true);
+        else window.addEventListener("alane:accueil-termine", () => setShowTour(true), { once:true });
+      }
       const token = session?.access_token || "";
       const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
         fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({})}).then(async r=>{

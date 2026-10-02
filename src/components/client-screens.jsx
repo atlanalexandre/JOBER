@@ -784,75 +784,6 @@ export function ResetPasswordScreen({ onDone, resetToken }) {
   );
 }
 
-export const TOUR_STEPS = [
-  {
-    icon:"👋",
-    title:"Bienvenue sur ALANE !",
-    desc:"ALANE vous met en relation avec des prestataires qualifiés dans de nombreux secteurs. Voici comment ça marche en 4 étapes.",
-    color:"#7C6FE0",
-  },
-  {
-    icon:"🗂️",
-    title:"1. Trouvez votre prestataire",
-    desc:"Parcourez les secteurs (Logistique, Restauration, Hôtellerie…), filtrez par disponibilité, tarif ou note, et consultez les profils.",
-    color:"#4FC3F7",
-  },
-  {
-    icon:"📅",
-    title:"2. Réservez & payez",
-    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la prestation n'est pas validée.",
-    color:"#F0B429",
-  },
-  {
-    icon:"⏳",
-    title:"3. Le prestataire confirme",
-    desc:"Il dispose d'un délai (1h si c'est aujourd'hui, 4h sinon) pour accepter ou refuser. Vous êtes notifié immédiatement de sa réponse.",
-    color:"#81C784",
-  },
-  {
-    icon:"✅",
-    title:"4. Validez la prestation",
-    desc:"Une fois la prestation terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
-    color:"#F06292",
-  },
-];
-
-export function ClientTour({ onDone }) {
-  const [step, setStep] = useState(0);
-  const s = TOUR_STEPS[step];
-  const isLast = step === TOUR_STEPS.length - 1;
-  return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
-      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
-        {/* Progress dots */}
-        <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
-          {TOUR_STEPS.map((_,i) => (
-            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.6)", transition:"all 0.3s" }} />
-          ))}
-        </div>
-        {/* Icon */}
-        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
-          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
-          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
-          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
-        </div>
-        {/* Actions */}
-        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
-          {step > 0 && (
-            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
-          )}
-          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
-            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
-          </button>
-        </div>
-        {/* Skip */}
-        {!isLast && (
-          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.6)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
@@ -871,7 +802,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
-  const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
   const { isDesktop } = useResponsive();
@@ -905,9 +835,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     supabase.auth.getUser().then(({ data })=>{
       const user = data?.user;
       if (!user || !mounted) return;
-      const tourKey = `alane_tour_done_${user.id}`;
-      let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
-      if (!tourDone) setShowTour(true);
+      // Le second tutoriel client (« Bienvenue sur ALANE ! ») s'ouvrait ici, par-dessus
+      // l'accueil d'App.jsx qui dit la même chose, en mieux (02/10/2026, décision
+      // d'Alexandre) : un nouveau client voyait deux fenêtres empilées. Retiré.
       supabase.from("profiles").select("prenom,cashback_balance,commandes_mois").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
@@ -993,12 +923,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   const violetLite = "#A29BFE";
 
-  const dismissTour = async () => {
-    setShowTour(false);
-    const { data } = await supabase.auth.getUser();
-    const user = data?.user;
-    if (user) { try { localStorage.setItem(`alane_tour_done_${user.id}`, "1"); } catch(e) {} }
-  };
 
   return (
     <div style={{
@@ -1035,7 +959,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           </button>
         </div>
       )}
-      {showTour && <ClientTour onDone={dismissTour} />}
 
       {/* ── Fenêtre prestations en cours ── */}
       {missionsInProgress.length > 0 && !inProgressDismissed && (

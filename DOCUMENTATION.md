@@ -4500,6 +4500,16 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
 `sansTutoriel()` de `e2e/16` les déclare vus et les ferme s'ils apparaissent (`addLocatorHandler`).
 
+**Une seule fenêtre à la fois à la première connexion** (02/10/2026, décision d'Alexandre,
+`e2e/59`). Trois fenêtres pouvaient s'empiler, et c'est ce qui bloquait `e2e/07` et `e2e/18` :
+
+| Fenêtre | Avant | Désormais |
+|---|---|---|
+| Accueil (`OnboardingScreen`, App.jsx) — clé `alane_onboarded_{id}` | s'ouvre au premier passage | inchangé : c'est le tutoriel de référence |
+| Second tutoriel client (`ClientTour`, « Bienvenue sur ALANE ! ») — `alane_tour_done_{id}` | par-dessus l'accueil, même contenu en moins juste | **supprimé** ; la clé n'est plus lue (elle reste effacée par `?tutoriel=reset`) |
+| Guide des onglets prestataire (`PrestaTour`) — `alane_presta_tour_done_{id}` | en même temps que l'accueil | **après** : il attend que l'accueil soit vu, ou le signal `alane:accueil-termine` qu'App.jsx émet en le refermant |
+| Demande de géolocalisation du prestataire — `alane_gps_consent_{id}` | dès la première connexion, sans prestation | seulement quand il a une prestation **acceptée** (`assigned`) ; relue à chaque changement d'écran tant qu'elle n'a pas été posée, une seule fois par session |
+
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
 déclenche la tâche planifiée par `tachePlanifiee()` (secret `RECETTE_CRON_SECRET`) — Vercel ne

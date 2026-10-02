@@ -25,6 +25,8 @@ export const CLES_PREMIERE_VISITE = [
   // effaçait tout sauf la clé qui marque le tutoriel client comme déjà vu, et
   // il ne se rejouait donc jamais. Une règle appliquée sur un chemin et pas sur
   // l'autre — le défaut récurrent de ce projet.
+  // Plus lue depuis le 02/10/2026 (second tutoriel client supprimé) : gardée
+  // pour que la réinitialisation nettoie les navigateurs qui la portent encore.
   "alane_tour_done",
 ];
 
