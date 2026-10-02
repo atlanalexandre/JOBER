@@ -33,7 +33,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(
 const evenement = { type: "checkout.session.completed", data: { object: {
   metadata: { user_id: "filleul", plan: "premium", billing: "monthly" }, subscription: "sub_filleul", customer: "cus_filleul" } } };
 
-function simuler({ parrain, reservationReussit = true }) {
+function simuler({ parrain, reservationReussit = true, reservationRefusee = false }) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url);
@@ -46,6 +46,7 @@ function simuler({ parrain, reservationReussit = true }) {
     if (u.includes("profiles?id=eq.parrain&select=")) return new Response(JSON.stringify([parrain]), { status: 200 });
     if (o.method === "HEAD") return new Response(null, { status: 200, headers: { "content-range": "0-2/3" } });
     if (u.includes("profiles?id=eq.parrain&referral_rewards_granted=eq.")) {
+      if (reservationRefusee) return new Response(JSON.stringify({ message: "panne" }), { status: 500 });
       return new Response(JSON.stringify(reservationReussit ? [{ id: "parrain" }] : []), { status: 200 });
     }
     if (o.method === "PATCH") return new Response(JSON.stringify([{ id: "x" }]), { status: 200 });
@@ -72,6 +73,14 @@ describe("parrainage : mois offert", () => {
       stripe_customer_id: "cus_parrain", stripe_subscription_id: "sub_parrain" }, reservationReussit: false });
     await handler(requete(evenement), reponse());
     expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
+  });
+
+  it("réservation refusée par la base : pas d'avoir, et le refus est journalisé (relecture du 02/10/2026)", async () => {
+    const appels = simuler({ parrain: { plan_abonnement: "premium", referral_rewards_granted: 0,
+      stripe_customer_id: "cus_parrain", stripe_subscription_id: "sub_parrain" }, reservationRefusee: true });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
+    expect(console.error.mock.calls.some(c => String(c[0]).includes("[parrainage] réservation de la récompense refusée"))).toBe(true);
   });
 
   it("parrain gratuit : un mois de Premium, comme avant, et pas d'avoir", async () => {
