@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { manquesCv, cvRempli, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../../api/_cv.js";
+import { metiersDeclares } from "../../../api/_qualifications.js";
+import { readFileSync } from "node:fs";
 
 // CV obligatoire, et confronté aux métiers déclarés (décision d'Alexandre, 29/09/2026).
 
@@ -39,6 +41,13 @@ describe("metiersSansExperience()", () => {
   it("signale le métier sans aucune expérience correspondante", () => {
     expect(metiersSansExperience(CV, ["Coursier / Livreur", "Agent de sécurité"])).toEqual(["Agent de sécurité"]);
     expect(metiersSansExperience({ experiences: [] }, ["Cariste"])).toEqual(["Cariste"]);
+  });
+
+  it("le back-office contrôle aussi le métier PRINCIPAL, absent de metiers_list (relecture du 02/10/2026)", () => {
+    const meta = { metier: "Cariste", metiers_list: [{ metier: "Coursier / Livreur" }] };
+    expect(metiersSansExperience(CV, metiersDeclares(meta))).toEqual(["Cariste"]);
+    const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(bo).toContain("metiersSansExperience(p.cv || meta.cv, metiersDeclares(meta))");
   });
 
   it("ne crie pas sur un mot générique : « agent » ne prouve rien", () => {

@@ -275,7 +275,7 @@ export default async function handler(req, res) {
             ? piecesAvantOuverture(docsRequisPour(meta.nationalite, metiersDeclares(meta)), docsParPresta.get(p.id) || [])
                 .map(d => `${d.label} (${d.raison})`)
             : [],
-          metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, meta.metiers_list || [meta.metier].filter(Boolean)) : [],
+          metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, metiersDeclares(meta)) : [],
         };
       });
       return res.status(200).json(merged);
