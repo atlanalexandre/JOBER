@@ -56,3 +56,39 @@ test("écourter la même journée deux fois : la seconde est refusée, les heure
   expect(Number(b.heures_perdues), "comptées une seule fois").toBe(Number(a.heures_perdues));
   expect(b.status).toBe("assigned");
 });
+
+// Relecture du 02/10/2026 : la condition des journées restantes était inversée.
+// Série de quatre jours (hier → après-demain), interrompue le deuxième.
+async function serieEnCours() {
+  const { c, m } = await prestationAcceptee();
+  const hier = paris(-1, 0), apresDemain = paris(2, 0), ilYa2h = paris(0, 2);
+  await sql(`update missions set date = '${hier.date}', date_debut = '${hier.date}', date_fin = '${apresDemain.date}',
+             heure_debut = '${ilYa2h.heure}', started_at = now() - interval '26 hours' where id = '${m.id}'`);
+  return { c, m };
+}
+
+test("série : « arrêter seulement aujourd'hui » ne rend que les heures du jour", async () => {
+  const { c, m } = await serieEnCours();
+  const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id, annuler_reste: false }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const [l] = await sql(`select status, heures_perdues from missions where id = '${m.id}'`);
+  expect(l.status, "la série continue demain").toBe("assigned");
+  // 6 h prévues aujourd'hui, environ 2 h faites : les deux journées suivantes,
+  // que le prestataire fera, ne sont NI remboursées NI retirées de sa part.
+  expect(Number(l.heures_perdues)).toBeGreaterThan(0);
+  expect(Number(l.heures_perdues), "pas les journées suivantes (2 × 6 h)").toBeLessThanOrEqual(6);
+});
+
+test("série : « tout arrêter » rend les journées suivantes, et le virement part 48 h après aujourd'hui", async () => {
+  const { c, m } = await serieEnCours();
+  const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id, annuler_reste: true }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const [l] = await sql(`select status, heures_perdues, payout_due_at from missions where id = '${m.id}'`);
+  expect(l.status).toBe("completed");
+  // Heures non faites aujourd'hui + les deux journées qui n'auront pas lieu.
+  expect(Number(l.heures_perdues), "les deux journées suivantes comptent").toBeGreaterThanOrEqual(12);
+  expect(Number(l.heures_perdues)).toBeLessThanOrEqual(18);
+  // Échéance : fin d'aujourd'hui + 48 h (≈ 2 jours), pas fin d'après-demain + 48 h (≈ 4 jours).
+  const dans = (new Date(l.payout_due_at).getTime() - Date.now()) / 864e5;
+  expect(dans, `virement dans ${dans.toFixed(1)} jours`).toBeLessThan(3);
+});
