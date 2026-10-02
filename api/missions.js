@@ -3935,7 +3935,15 @@ export default async function handler(req, res) {
       if (dejaEcourtee && !annulerReste) {
         return res.status(409).json({ error: "Cette journée a déjà été écourtée." });
       }
-      const joursRestants = annulerReste ? 0 : Math.max(0, joursPrestation - joursEcoules - 1);
+      // Journées FUTURES abandonnées : seulement quand le client arrête tout.
+      // La condition était inversée depuis le 07/09/2026 : « arrêter seulement
+      // aujourd'hui » remboursait toutes les journées suivantes — que le
+      // prestataire allait pourtant faire, et perdait à la clôture —, et
+      // « arrêter tout » n'en remboursait aucune, payant le prestataire pour des
+      // jours qu'il ne ferait pas. Masqué tant que l'interruption d'une série
+      // échouait toujours (date illisible, corrigée le 01/10/2026) ; relecture
+      // du 02/10/2026.
+      const joursRestants = annulerReste ? Math.max(0, joursPrestation - joursEcoules - 1) : 0;
 
       const originalMontant = Number(mission.montant_total) || 0;
 
@@ -4104,7 +4112,12 @@ export default async function handler(req, res) {
       // client garde ses quarante-huit heures pour signaler un problème, même
       // sur une prestation qu'il a lui-même interrompue.
       if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
-        const echeanceInterruption = new Date(echeanceVersementMs(mission)).toISOString();
+        // La prestation s'arrête AUJOURD'HUI : le délai de 48 h part de la fin de
+        // la journée en cours, pas de celle de la dernière journée prévue — qui
+        // n'aura pas lieu. Sans cette coupe, une série de dix jours arrêtée le
+        // deuxième faisait attendre au prestataire huit jours de plus un argent
+        // dû pour un travail fait (relecture du 02/10/2026).
+        const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
         const versementProgramme = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({

@@ -3595,7 +3595,7 @@ résultat. Aucune règle de `npm run coherence` ne les couvre — un contrôle q
 critère utile serait « écriture d'argent ou de statut dont le résultat est jeté », et il reste
 à écrire.
 
-### Interrompre une prestation en cours : trois garde-fous
+### Interrompre une prestation en cours : quatre garde-fous
 
 **Corrigé le 01/10/2026** (audit du domaine « prestations », vérifié en recette, `e2e/44`).
 `cancel_in_progress` rembourse au client les heures non travaillées. Trois défauts :
@@ -3612,6 +3612,14 @@ critère utile serait « écriture d'argent ou de statut dont le résultat est j
    `timestamptz`, rendus « 2026-09-30 00:00:00+00 ». Le code y collait `T00:00:00Z`, d'où une
    date invalide, des heures perdues à `null`, et un PATCH refusé après le remboursement. On ne
    garde que les dix premiers caractères, côté serveur comme à l'écran.
+4. **Les journées suivantes étaient comptées à l'envers** (relecture du 02/10/2026, `e2e/44`).
+   La condition, écrite le 07/09/2026, était inversée : « arrêter seulement aujourd'hui »
+   remboursait au client **toutes les journées suivantes**, que le prestataire faisait pourtant
+   et perdait à la clôture ; « tout arrêter » n'en remboursait **aucune**, et le prestataire
+   était payé pour des jours qui n'auraient pas lieu. Le défaut 3 le masquait : dès qu'il a été
+   corrigé, le 01/10, ce calcul est devenu actif. Seul « tout arrêter » compte désormais les
+   journées restantes. Et le virement de la part due part 48 h après la fin de **la journée en
+   cours**, non de la dernière journée prévue — qui n'aura pas lieu.
 
 ### « Clôturer » une demande ouverte : jamais si elle est payée
 
