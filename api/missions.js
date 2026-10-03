@@ -6175,6 +6175,25 @@ export default async function handler(req, res) {
       // Un tableau VIDE passait pour un succès : une prestation annulée ou
       // reprise entre-temps était annoncée « remplacement validé » aux trois
       // parties sans que rien n'ait changé (audit « prestations », 01/10/2026).
+      // La demande est d'abord RÉSERVÉE — écriture conditionnée à « toujours en
+      // attente ». Sans elle, une annulation du prestataire passée entre l'accord
+      // et la bascule (demande fermée, client remboursé) n'empêchait rien : la
+      // bascule confiait quand même la prestation au remplaçant, payé ensuite
+      // sur un argent déjà rendu, et réécrivait « accepte » par-dessus « annule »
+      // (relecture du 03/10/2026). De l'annulation et de l'accord, le premier
+      // qui écrit l'emporte.
+      const reserve = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ statut: "accepte" }),
+      });
+      const reservees = await reserve.json().catch(() => null);
+      if (!reserve.ok || !Array.isArray(reservees)) {
+        console.error(`[repondre_remplacement] réservation de la demande ${remplacement_id} refusée (${reserve.status})`);
+        return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
+      }
+      if (reservees.length === 0) {
+        return res.status(409).json({ error: "Cette demande de remplacement vient d'être annulée : la prestation reste au prestataire initial." });
+      }
       const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}&status=eq.assigned&started_at=is.null`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         // La signature du contrat est celle du remplaçant, au moment de son accord.
@@ -6183,6 +6202,11 @@ export default async function handler(req, res) {
       const basculees = await swap.json().catch(() => null);
       if (!swap.ok || !Array.isArray(basculees)) {
         console.error(`[repondre_remplacement] bascule refusée sur ${dem.mission_id} (${swap.status})`);
+        // La demande réservée redevient en attente : rien n'a été basculé.
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.accepte&execute_at=is.null`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "en_attente" }),
+        }).catch(e => console.error("[repondre_remplacement] demande non rouverte :", e?.message));
         return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
       }
       if (basculees.length === 0) {
@@ -6194,8 +6218,8 @@ export default async function handler(req, res) {
       }
       await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ statut: "accepte", execute_at: new Date().toISOString() }),
-      });
+        body: JSON.stringify({ execute_at: new Date().toISOString() }),
+      }).catch(e => console.error("[repondre_remplacement] date d'exécution non enregistrée :", e?.message));
 
       // Reprendre la prestation d'un confrère est bien accepter une prestation :
       // le remplaçant l'exécute et la facture en son nom. Ne pas déclencher son
@@ -6380,15 +6404,34 @@ export default async function handler(req, res) {
       // ouverte : client remboursé, prestation pourtant attribuée au remplaçant,
       // qui l'aurait faite et été payé sur un argent déjà rendu (relecture du
       // 02/10/2026).
+      // Les demandes ainsi fermées sont retenues : si l'annulation échoue AVANT
+      // le remboursement (Stripe absent ou refusé), elles sont rouvertes. Sinon
+      // le remplacement convenu disparaissait en silence alors que la prestation
+      // restait au prestataire (relecture du 03/10/2026).
+      let remplacementsFermes = [];
       try {
         const rf = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ statut: "annule" }),
         });
+        const fermes = await rf.json().catch(() => []);
         if (!rf.ok && rf.status !== 404) console.error(`[presta_cancel] remplacements en attente non fermés (${rf.status}) — prestation ${mission_id}`);
+        else if (Array.isArray(fermes)) remplacementsFermes = fermes.map(d => d.id).filter(Boolean);
       } catch (e) {
         console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
       }
+      const rouvrirRemplacements = async () => {
+        if (!remplacementsFermes.length) return;
+        try {
+          const ro = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=in.(${remplacementsFermes.join(",")})&statut=eq.annule`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ statut: "en_attente" }),
+          });
+          if (!ro.ok) console.error(`[presta_cancel] remplacements NON rouverts (${ro.status}) après échec — prestation ${mission_id} : ${remplacementsFermes.join(", ")}`);
+        } catch (e) {
+          console.error(`[presta_cancel] remplacements NON rouverts après échec — prestation ${mission_id} :`, e.message);
+        }
+      };
 
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
@@ -6412,6 +6455,7 @@ export default async function handler(req, res) {
           }
         } else {
           if (!(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")) {
+            await rouvrirRemplacements();
             return res.status(500).json({ error: "Stripe non configuré — la prestation n'a pas été annulée. Contactez le support." });
           }
           try {
@@ -6432,10 +6476,12 @@ export default async function handler(req, res) {
               console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour prestation ${mission_id}`);
             } else {
               console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+              await rouvrirRemplacements();
               return res.status(500).json({ error: "Le remboursement Stripe a échoué — la prestation n'a pas été annulée. Contactez le support." });
             }
           } catch (stripeErr) {
             console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
+            await rouvrirRemplacements();
             return res.status(500).json({ error: "Le remboursement Stripe a échoué — la prestation n'a pas été annulée. Contactez le support." });
           }
         }
