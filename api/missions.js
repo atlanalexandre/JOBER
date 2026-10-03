@@ -3511,6 +3511,19 @@ export default async function handler(req, res) {
           error: "Le prestataire a confirmé être intervenu. Si ce n'est pas le cas, signalez-le : notre équipe examine la situation et vous répond sous 72 h.",
         });
       }
+      // Une prestation COMMENCÉE ne s'annule plus : l'annulation rendait tout
+      // sauf les frais de service, et le prestataire n'était payé de rien pour
+      // les heures — ou les journées d'une série — déjà faites. L'écran ne
+      // propose d'ailleurs « Annuler » qu'avant le démarrage ; l'arrêt en cours
+      // passe par `cancel_in_progress`, qui paie ce qui a été fait (relecture du
+      // 03/10/2026).
+      if (mission.status === "assigned" && mission.started_at) {
+        return res.status(409).json({
+          code: "prestation_commencee",
+          error: "La prestation a commencé : pour l'arrêter, utilisez « Interrompre la prestation ». "
+               + "Les heures faites sont payées au prestataire, le reste vous est remboursé.",
+        });
+      }
 
       // Politique d'annulation : seuls les frais de service sont retenus si < 24h.
       // Ces frais varient — 4,90 € pour une prestation simple, 2,90 € par jour en
@@ -6361,12 +6374,17 @@ export default async function handler(req, res) {
       // et le prestataire n'était payé de rien. Avant, ce refus jouait dès la fin
       // de la première journée. Une série commencée se règle avec la plateforme,
       // pas par un remboursement intégral (relecture du 02/10/2026).
+      // Même règle pour une prestation d'UN jour déjà pointée : annulée à 14 h
+      // après un démarrage à 8 h, elle rendait tout au client et ne payait rien
+      // des six heures faites (relecture du 03/10/2026).
       const premierJourSerie = String(mission.date_debut || mission.date || "").slice(0, 10);
-      if (nombreDeJours(mission) > 1 && (mission.started_at || (premierJourSerie && dateDuJourFr() > premierJourSerie))) {
+      const serieEntamee = nombreDeJours(mission) > 1 && premierJourSerie && dateDuJourFr() > premierJourSerie;
+      if (mission.started_at || serieEntamee) {
         return res.status(409).json({
-          code: "serie_commencee",
-          error: "Cette série a commencé : elle ne peut plus être annulée d'ici. "
-               + "Écrivez à direction@alane.fr — les journées déjà faites vous restent dues.",
+          code: nombreDeJours(mission) > 1 ? "serie_commencee" : "prestation_commencee",
+          error: (nombreDeJours(mission) > 1 ? "Cette série a commencé" : "Cette prestation a commencé")
+               + " : elle ne peut plus être annulée d'ici. "
+               + "Écrivez à direction@alane.fr — ce que vous avez déjà fait vous reste dû.",
         });
       }
 
