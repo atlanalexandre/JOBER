@@ -92,3 +92,34 @@ test("série : « tout arrêter » rend les journées suivantes, et le virement 
   const dans = (new Date(l.payout_due_at).getTime() - Date.now()) / 864e5;
   expect(dans, `virement dans ${dans.toFixed(1)} jours`).toBeLessThan(3);
 });
+
+// Relecture du 03/10/2026 : interrompre la séance du jour d'une réservation
+// HEBDOMADAIRE arrêtait toute la série — la semaine suivante n'était jamais créée.
+test("réservation hebdomadaire : interrompre la séance du jour garde la semaine suivante", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: p, client: c, heures: 6, recurrence: "weekly" });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const auj = paris(0, 0), ilYa2h = paris(0, 2);
+  await sql(`update missions set date = '${auj.date}', date_debut = '${auj.date}', date_fin = '${auj.date}',
+             heure_debut = '${ilYa2h.heure}', started_at = now() - interval '2 hours' where id = '${m.id}'`);
+  const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const s = await sql(`select id, status from missions where parent_mission_id = '${m.id}'`);
+  expect(s.length, "la semaine suivante existe").toBe(1);
+});
+
+// Et après l'arrêt complet d'une série, le délai de contestation se ferme à
+// l'échéance du virement, pas 48 h après la dernière journée prévue.
+test("série arrêtée : pas de contestation après l'échéance du virement", async () => {
+  const { c, m } = await serieEnCours();
+  const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id, annuler_reste: true }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  // Le temps passe : l'échéance du virement est derrière nous.
+  await sql(`update missions set payout_due_at = now() - interval '1 hour' where id = '${m.id}'`);
+  const d = await api("/api/missions", { action: "dispute", mission_id: m.id, message: "contestation tardive de recette" }, c.jeton);
+  expect(d.statut, d.texte.slice(0, 200)).toBe(400);
+  const [l] = await sql(`select status from missions where id = '${m.id}'`);
+  expect(l.status).toBe("completed");
+});

@@ -3595,7 +3595,7 @@ résultat. Aucune règle de `npm run coherence` ne les couvre — un contrôle q
 critère utile serait « écriture d'argent ou de statut dont le résultat est jeté », et il reste
 à écrire.
 
-### Interrompre une prestation en cours : quatre garde-fous
+### Interrompre une prestation en cours : cinq garde-fous
 
 **Corrigé le 01/10/2026** (audit du domaine « prestations », vérifié en recette, `e2e/44`).
 `cancel_in_progress` rembourse au client les heures non travaillées. Trois défauts :
@@ -3620,6 +3620,13 @@ critère utile serait « écriture d'argent ou de statut dont le résultat est j
    corrigé, le 01/10, ce calcul est devenu actif. Seul « tout arrêter » compte désormais les
    journées restantes. Et le virement de la part due part 48 h après la fin de **la journée en
    cours**, non de la dernière journée prévue — qui n'aura pas lieu.
+5. **Deux suites manquaient** (relecture du 03/10/2026, `e2e/44`). Interrompre la séance du
+   jour d'une **réservation hebdomadaire** arrêtait toute la série : contrairement à `complete`,
+   à la validation automatique et au back-office, l'interruption ne programmait pas la semaine
+   suivante (`programmerOccurrenceSuivante`). C'est fait désormais ; pour arrêter la série, le
+   client annule la semaine suivante. Et après l'arrêt complet d'une série, la date de fin
+   prévue reste en base : l'action `dispute` laissait contester jusqu'à cette date + 48 h, sur
+   un argent déjà versé. La fenêtre se ferme maintenant au plus tard à `payout_due_at`.
 
 ### « Clôturer » une demande ouverte : jamais si elle est payée
 
