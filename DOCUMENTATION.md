@@ -4508,7 +4508,7 @@ l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rappor
 | Accueil (`OnboardingScreen`, App.jsx) — clé `alane_onboarded_{id}` | s'ouvre au premier passage | inchangé : c'est le tutoriel de référence |
 | Second tutoriel client (`ClientTour`, « Bienvenue sur ALANE ! ») — `alane_tour_done_{id}` | par-dessus l'accueil, même contenu en moins juste | **supprimé** ; la clé n'est plus lue (elle reste effacée par `?tutoriel=reset`) |
 | Guide des onglets prestataire (`PrestaTour`) — `alane_presta_tour_done_{id}` | en même temps que l'accueil | **après** : il attend que l'accueil soit vu, ou le signal `alane:accueil-termine` qu'App.jsx émet en le refermant |
-| Demande de géolocalisation du prestataire — `alane_gps_consent_{id}` | dès la première connexion, sans prestation | seulement quand il a une prestation **acceptée** (`assigned`) ; relue à chaque changement d'écran tant qu'elle n'a pas été posée, une seule fois par session |
+| Demande de géolocalisation du prestataire — `alane_gps_consent_{id}` | dès la première connexion, sans prestation | seulement quand il a une prestation **acceptée** (`assigned`), **et une fois l'accueil et le guide refermés** (signal `alane:guide-termine`, 03/10/2026) ; relue à chaque changement d'écran tant qu'elle n'a pas été posée, une seule fois par session. Le « oui » démarre le suivi même si le navigateur refuse de l'enregistrer (navigation privée, `e2e/61`) |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on

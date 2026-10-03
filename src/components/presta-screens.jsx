@@ -4227,6 +4227,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     const {data} = await supabase.auth.getUser();
     const u = data?.user;
     if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch { /* ignore */ } }
+    // App.jsx attend ce signal pour poser, s'il y a lieu, la question de la
+    // géolocalisation : jamais par-dessus le guide (03/10/2026).
+    window.dispatchEvent(new Event("alane:guide-termine"));
   };
 
   const dismissRecap = async () => {
