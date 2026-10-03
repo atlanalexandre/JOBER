@@ -3640,7 +3640,11 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
   prestation qui n'était pas la sienne. Elles le sont désormais **après** cette vérification et
   **avant** le remboursement (relecture du 02/10/2026) : fermées après, elles laissaient l'accord
   final du client basculer la prestation vers le remplaçant pendant l'appel à Stripe — client
-  remboursé, remplaçant payé sur un argent déjà rendu ;
+  remboursé, remplaçant payé sur un argent déjà rendu. Cela ne suffisait pas seul (relecture du
+  03/10/2026) : l'accord ne revérifiait pas la demande avant de basculer. Il la **réserve**
+  désormais d'abord (`en_attente` → `accepte`, écriture conditionnelle) : de l'annulation et de
+  l'accord, le premier qui écrit l'emporte. Et si l'annulation échoue avant le remboursement
+  (Stripe absent ou refusé), les demandes qu'elle avait fermées sont **rouvertes** (`e2e/47`) ;
 - une demande **pas encore acceptée** (`pending_acceptance`) pouvait être « annulée » : client
   remboursé, prestation close, au lieu du refus qui, sur une prestation affectée par la
   plateforme, passe au candidat suivant. Réponse 409 `utiliser_refus` ;
