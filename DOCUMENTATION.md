@@ -2462,6 +2462,16 @@ moindre euro ne bouge. Refuser là ne coûte rien au client. La règle et son ca
 cela été sortis de `api/missions.js` vers `api/_secteurs.js`, seul moyen que les deux chemins
 lisent la même chose plutôt que d'en recopier une troisième version.
 
+*Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
+rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
+l'application juste après, qui le fait. Un client qui fermait l'application à cet instant, ou
+une affectation en erreur, laissait une ligne aux mêmes marqueurs qu'un tunnel abandonné
+(`pending_acceptance`, sans prestataire ni paiement) : `cron-abandon` l'annulait deux heures
+plus tard, client débité sans prestation ni remboursement. Avant d'annuler, `cron-abandon`
+demande désormais à Stripe (recherche `metadata['mission']`) si un paiement a abouti ; s'il en
+trouve un, il le **rembourse**, annule et prévient le client. Sans réponse de Stripe, il
+n'annule pas et le journalise. Il traite 50 lignes par passage.
+
 *Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
 prestataire non activé, tarif incohérent, adresse hors zone — et les deux de
 `affecter_tiers` **remboursent intégralement et annulent la prestation**

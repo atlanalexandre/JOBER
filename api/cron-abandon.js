@@ -104,33 +104,97 @@ export default async function handler(req, res) {
   // Depuis que la prestation est créée AVANT le paiement (contrainte de
   // /api/stripe-intent, qui recalcule le montant depuis la base), un tunnel
   // abandonné laisse une ligne orpheline visible dans l'espace du client.
-  // Les trois conditions réunies n'existent que dans ce cas : au paiement
-  // réussi, prestataire_id et stripe_payment_intent sont toujours renseignés.
+  // On croyait que ces trois conditions réunies n'existaient que dans ce cas :
+  // c'est faux quand le paiement a abouti mais que l'affectation n'a pas eu lieu.
+  //
+  // AVANT d'annuler, on demande à Stripe si un paiement de réservation a abouti
+  // pour cette prestation (relecture du 04/10/2026). Le webhook ne rattache pas
+  // le paiement d'une réservation ordinaire — c'est l'application qui le fait,
+  // par `assign_after_payment`. Un client qui fermait l'application juste après
+  // avoir payé, ou une affectation en erreur, laissait donc une ligne aux mêmes
+  // marqueurs qu'un tunnel abandonné : elle était annulée deux heures plus tard,
+  // le client débité sans prestation ni remboursement. Un paiement retrouvé est
+  // désormais remboursé avant l'annulation, et le client prévenu.
   try {
     const purgeCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 h
-    const purgeRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/missions`
-      + `?status=eq.pending_acceptance`
-      + `&prestataire_id=is.null`
-      + `&stripe_payment_intent=is.null`
+    const filtre = `status=eq.pending_acceptance&prestataire_id=is.null&stripe_payment_intent=is.null`
       // Une semaine de série (seules à porter `parent_mission_id`) dans cet état
       // n'est pas un tunnel abandonné : c'est un prélèvement à l'issue inconnue,
-      // laissé en attente pour vérification. L'annuler ici effaçait en silence
-      // la seule trace d'une carte peut-être débitée (relecture du 30/09/2026).
-      + `&parent_mission_id=is.null`
-      + `&created_at=lt.${encodeURIComponent(purgeCutoff)}`,
-      {
-        method: "PATCH",
-        headers: { ...hdrs, "Prefer": "return=representation" },
-        // Annulation plutôt que suppression : si le paiement a abouti mais que
-        // l'affectation a échoué, la ligne porte les mêmes marqueurs qu'un tunnel
-        // abandonné. La supprimer effacerait la trace d'une prestation réglée.
+      // laissé en attente pour vérification (relecture du 30/09/2026).
+      + `&parent_mission_id=is.null`;
+    const candRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/missions?${filtre}&created_at=lt.${encodeURIComponent(purgeCutoff)}`
+      + `&select=id,client_id,titre,metier&order=created_at.asc&limit=50`,
+      { headers: hdrs });
+    const candidates = candRes.ok ? await candRes.json().catch(() => []) : [];
+    if (!candRes.ok) console.error(`[cron-abandon] prestations non finalisées illisibles (${candRes.status})`);
+    const cleStripe = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+    let annulees = 0, remboursees = 0;
+    for (const c of (Array.isArray(candidates) ? candidates : [])) {
+      // Annulation plutôt que suppression : la ligne garde la trace de ce qui
+      // s'est passé. Conditionnée aux mêmes marqueurs : une affectation arrivée
+      // entre-temps n'est pas écrasée.
+      const annuler = () => fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${c.id}&${filtre}`, {
+        method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
         body: JSON.stringify({ status: "cancelled" }),
+      }).then(r => r.ok ? r.json().catch(() => []) : []).catch(() => []);
+
+      if (!cleStripe) { if ((await annuler()).length) annulees++; continue; }
+
+      let payes;
+      try {
+        const q = encodeURIComponent(`metadata['mission']:'${c.id}'`);
+        const sr = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=10`,
+          { headers: { "Authorization": `Bearer ${cleStripe}` } });
+        const sd = await sr.json().catch(() => null);
+        if (!sr.ok || !Array.isArray(sd?.data)) throw new Error(`recherche refusée (${sr.status})`);
+        payes = sd.data.filter(pi => ["succeeded", "processing", "requires_capture"].includes(pi.status)
+          && pi?.metadata?.type !== "heures_supp");
+      } catch (e) {
+        // Sans réponse de Stripe, on n'annule pas : mieux vaut une réservation
+        // en attente quelques heures de plus qu'un paiement perdu.
+        console.error(`[cron-abandon] paiement de ${c.id} non vérifiable — annulation reportée :`, e.message);
+        continue;
       }
-    );
-    const purgees = purgeRes.ok ? await purgeRes.json().catch(() => []) : [];
-    if (Array.isArray(purgees) && purgees.length) {
-      console.log(`[cron-abandon] ${purgees.length} prestation(s) non finalisée(s) annulée(s)`);
+
+      if (payes.length === 0) { if ((await annuler()).length) annulees++; continue; }
+
+      // Payée, jamais affectée : on rembourse, puis on annule.
+      let toutRembourse = true;
+      for (const pi of payes) {
+        try {
+          const rr = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${cleStripe}`, "Content-Type": "application/x-www-form-urlencoded",
+              "Idempotency-Key": `refund-abandon-${c.id}-${pi.id}` },
+            body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
+          });
+          const rd = await rr.json().catch(() => null);
+          if (!rd?.id && rd?.error?.code !== "charge_already_refunded") {
+            toutRembourse = false;
+            console.error(`[cron-abandon] remboursement de ${pi.id} REFUSÉ pour ${c.id} :`, JSON.stringify(rd?.error || rd).slice(0, 200));
+          }
+        } catch (e) {
+          toutRembourse = false;
+          console.error(`[cron-abandon] remboursement de ${pi.id} impossible pour ${c.id} :`, e.message);
+        }
+      }
+      if (!toutRembourse) {
+        console.error(`[cron-abandon] ⚠️ prestation ${c.id} PAYÉE, non affectée, remboursement incomplet : laissée en l'état, à traiter à la main.`);
+        continue;
+      }
+      remboursees++;
+      if ((await annuler()).length) annulees++;
+      if (c.client_id) {
+        await notifier({
+          user_id: c.client_id, type: "mission",
+          title: "Réservation non finalisée — vous êtes remboursé",
+          body: `Votre paiement pour « ${c.titre || c.metier || "votre prestation"} » a bien été reçu, mais la réservation n'a pas pu être finalisée. Il vous a été intégralement remboursé. Vous pouvez réserver à nouveau.`,
+        }, SUPABASE_URL, hdrs).catch(e => console.error(`[cron-abandon] client ${c.client_id} non prévenu du remboursement :`, e?.message));
+      }
+    }
+    if (annulees || remboursees) {
+      console.log(`[cron-abandon] ${annulees} prestation(s) non finalisée(s) annulée(s), dont ${remboursees} payée(s) et remboursée(s)`);
     }
   } catch (e) {
     console.error("[cron-abandon] purge des prestations non payées échouée :", e.message);
