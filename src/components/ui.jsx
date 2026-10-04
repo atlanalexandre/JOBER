@@ -751,7 +751,60 @@ export function BlocPropositionResolution({ mission, onOppose, onAccepte, role }
 // envoyer l'adresse une fois le jeton obtenu. Si l'ouverture est quand même
 // refusée — bloqueur strict, mode restreint — on bascule sur l'onglet courant
 // plutôt que d'abandonner sans rien dire.
-export async function ouvrirFacture(missionId, { getSession, apiFetch }) {
+export function ouvrirFacture(missionId, { getSession, apiFetch }) {
+  return ouvrirDocumentFacture(
+    (token) => `/api/invoice?mission_id=${encodeURIComponent(missionId)}&token=${encodeURIComponent(token)}`,
+    { getSession, apiFetch, titre: "Préparation de la facture…" },
+  );
+}
+
+// Le mois en cours, en heure de Paris : le 1er à 0 h 30, un utilisateur en
+// France est déjà dans le nouveau mois, alors que l'horloge UTC ne l'est pas.
+export function moisEnCoursParis(maintenant = new Date()) {
+  const parties = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit" })
+    .formatToParts(maintenant);
+  const an = parties.find(p => p.type === "year")?.value;
+  const mois = parties.find(p => p.type === "month")?.value;
+  return `${an}-${mois}`;
+}
+
+// Toutes les factures d'un mois, dans un seul document imprimable. Même
+// précaution que `ouvrirFacture` : l'onglet s'ouvre dans le clic. Le jeton est
+// propre au mois (`generate_invoice_token` avec `{ mois }`) — un jeton de
+// facture unitaire ne l'ouvre pas.
+export function ouvrirFacturesDuMois(mois, { getSession, apiFetch }) {
+  return ouvrirDocumentFacture(
+    (token) => `/api/invoice?mois=${encodeURIComponent(mois)}&token=${encodeURIComponent(token)}`,
+    { getSession, apiFetch, titre: "Préparation de vos factures du mois…" },
+  );
+}
+
+// Le bouton « Toutes mes factures du mois », commun au client et au
+// prestataire : chacun ne reçoit que les factures où il figure — le serveur
+// filtre sur l'identité portée par le jeton, pas sur un paramètre du navigateur.
+export function BoutonFacturesDuMois({ getSession, style }) {
+  const mois = moisEnCoursParis();
+  const [an, m] = mois.split("-");
+  const libelle = new Date(Date.UTC(Number(an), Number(m) - 1, 15))
+    .toLocaleDateString("fr-FR", { month: "long", timeZone: "UTC" });
+  return (
+    <button
+      onClick={() => ouvrirFacturesDuMois(mois, {
+        getSession,
+        apiFetch: (jwt) => fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+          body: JSON.stringify({ action: "generate_invoice_token", mois }),
+        }).catch((e) => { console.error("[facture] jeton du mois :", e.message); return null; }),
+      })}
+      style={{ width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", ...style }}
+    >
+      🧾 Toutes mes factures {/^[aeiouy]/.test(libelle) ? `d'${libelle}` : `de ${libelle}`}
+    </button>
+  );
+}
+
+async function ouvrirDocumentFacture(construireUrl, { getSession, apiFetch, titre }) {
   // Ouvert AVANT toute attente : c'est tout l'intérêt.
   const onglet = window.open("", "_blank");
   if (onglet) {
@@ -760,7 +813,7 @@ export async function ouvrirFacture(missionId, { getSession, apiFetch }) {
         "<!doctype html><meta charset='utf-8'><title>Facture</title>"
         + "<body style=\"margin:0;display:flex;align-items:center;justify-content:center;"
         + "height:100vh;font-family:system-ui;background:#0A1628;color:#9BA0BA\">"
-        + "Préparation de la facture…</body>"
+        + titre + "</body>"
       );
     } catch (e) {
       // Certains navigateurs refusent l'écriture dans un onglet vierge.
@@ -783,7 +836,7 @@ export async function ouvrirFacture(missionId, { getSession, apiFetch }) {
     const d = r ? await r.json().catch(() => null) : null;
     if (!d?.token) return echec(d?.error || "La facture n'a pas pu être ouverte.");
 
-    const url = `/api/invoice?mission_id=${encodeURIComponent(missionId)}&token=${encodeURIComponent(d.token)}`;
+    const url = construireUrl(d.token);
     if (onglet) onglet.location.href = url;
     // Onglet refusé malgré tout : on ouvre dans la page courante. Le document
     // s'affiche, l'utilisateur revient avec le bouton « précédent ».

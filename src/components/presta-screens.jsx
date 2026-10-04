@@ -6,7 +6,7 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
 import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
-import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
@@ -4568,6 +4568,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos prestations passées (terminées, annulées, refusées) apparaîtront ici.</div>
             </div>
           ) : <>
+            {/* Toutes les factures du mois en un seul document, à imprimer ou
+                enregistrer en PDF — pour la déclaration de chiffre d'affaires. */}
+            {historyMissions.some(m => m.status === "completed" || m.invoice_number) && (
+              <BoutonFacturesDuMois
+                getSession={async () => (await supabase.auth.getSession()).data?.session?.access_token}
+                style={{ marginBottom:12 }}
+              />
+            )}
             {historyMissions.map(m => {
               const sector = SECTORS.find(s => s.id === m.sector);
               const amt = getAmtH(m);
@@ -4631,7 +4639,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     }
                     return null;
                   })()}
-                  {m.status === "completed" && (
+                  {(m.status === "completed" || m.invoice_number) && (
                     // La facture est celle du PRESTATAIRE au client : elle porte son
                     // nom, son SIRET et son numéro séquentiel, et c'est sur elle qu'il
                     // déclare son chiffre d'affaires. Le serveur l'autorisait déjà à

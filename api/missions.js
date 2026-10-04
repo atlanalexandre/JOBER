@@ -7140,7 +7140,22 @@ export default async function handler(req, res) {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
 
-      const { mission_id } = payload;
+      const { mission_id, mois } = payload;
+
+      // Lien vers TOUTES les factures d'un mois (04/10/2026). Il ne donne accès
+      // qu'aux factures de l'appelant : api/invoice.js filtre sur lui.
+      if (mois !== undefined) {
+        if (typeof mois !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mois)) {
+          return res.status(400).json({ error: "Mois invalide" });
+        }
+        const secretMois = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
+        if (!secretMois) return res.status(500).json({ error: "Configuration serveur manquante (BO_SESSION_SECRET)" });
+        const expMois = Math.floor(Date.now() / 1000) + 1800; // 30 min
+        const aSigner = `${caller.id}.mois-${mois}.${expMois}`;
+        const sigMois = crypto.createHmac("sha256", secretMois).update(aSigner).digest("hex");
+        return res.status(200).json({ token: `${aSigner}.${sigMois}`, exp: expMois });
+      }
+
       if (!mission_id || !/^[0-9a-f-]{36}$/i.test(mission_id)) {
         return res.status(400).json({ error: "mission_id invalide" });
       }

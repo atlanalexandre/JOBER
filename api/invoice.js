@@ -40,7 +40,12 @@ export default async function handler(req, res) {
     return res.status(500).send("<h1>Configuration serveur manquante</h1>");
   }
 
-  const { mission_id, token } = req.query;
+  const { mission_id, token, mois } = req.query;
+
+  // Toutes les factures d'un mois, dans un seul document (demande d'Alexandre du
+  // 04/10/2026) : client et prestataire les sortaient une par une, prestation
+  // par prestation. Le lien est signé pour ce mois et cet appelant seulement.
+  if (mois !== undefined) return facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleKey, boSecret });
 
   if (!mission_id || typeof mission_id !== "string" || !/^[0-9a-f-]{36}$/i.test(mission_id)) {
     return res.status(400).send("<h1>mission_id invalide</h1>");
@@ -78,6 +83,104 @@ export default async function handler(req, res) {
     return res.status(403).send("<h1>Accès interdit</h1>");
   }
 
+  const r = await produireFacture(mission, userId, { supabaseUrl, serviceRoleKey });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.status(r.statut).send(r.html);
+}
+
+const NOMS_MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const pageSimple = (titre, texte) => `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
+  + `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${escHtml(titre)}</title></head>`
+  + `<body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0"><h2>${escHtml(titre)}</h2>`
+  + `<p>${texte}</p><p><a href="/" style="color:#7C6FE0">Retourner à l'application</a></p></body></html>`;
+
+async function facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleKey, boSecret }) {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  if (typeof mois !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mois)) {
+    return res.status(400).send(pageSimple("Mois invalide", "Le mois demandé n'est pas lisible."));
+  }
+  const userId = verifyInvoiceToken(token, `mois-${mois}`, boSecret);
+  if (!userId) {
+    return res.status(401).send(pageSimple("Lien expiré ou invalide", "Le lien est valable 30 minutes : retournez à l'application pour en générer un nouveau."));
+  }
+  const [an, m] = mois.split("-").map(Number);
+  const debut = `${mois}-01`;
+  const fin = m === 12 ? `${an + 1}-01-01` : `${an}-${String(m + 1).padStart(2, "0")}-01`;
+  const libelleMois = `${NOMS_MOIS[m - 1]} ${an}`;
+
+  // Celles de l'appelant (client OU prestataire), réalisées ou déjà numérotées,
+  // dont la prestation a eu lieu dans le mois — la même règle que pour une
+  // facture seule.
+  const hdrs = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" };
+  const filtre = `and=(or(client_id.eq.${userId},prestataire_id.eq.${userId}),or(status.eq.completed,invoice_number.not.is.null))`
+    + `&date=gte.${debut}&date=lt.${fin}&order=date.asc,id.asc&limit=101`;
+  const lr = await fetch(`${supabaseUrl}/rest/v1/missions?${filtre}&select=*`, { headers: hdrs });
+  const liste = await lr.json().catch(() => null);
+  if (!lr.ok || !Array.isArray(liste)) {
+    console.error(`[invoice/mois] prestations de ${userId} illisibles pour ${mois} (${lr.status})`);
+    return res.status(500).send(pageSimple("Factures indisponibles", "Vos prestations n'ont pas pu être lues. Réessayez dans un instant."));
+  }
+  if (liste.length === 0) {
+    return res.status(200).send(pageSimple(`Aucune facture en ${libelleMois}`, "Aucune prestation réalisée ce mois-ci n'a donné lieu à une facture."));
+  }
+  const tronque = liste.length > 100;
+  const missions = liste.slice(0, 100);
+
+  // Par lots de quatre : chaque facture interroge la base plusieurs fois.
+  const rendus = [];
+  for (let i = 0; i < missions.length; i += 4) {
+    const lot = await Promise.all(missions.slice(i, i + 4).map(mi =>
+      produireFacture(mi, userId, { supabaseUrl, serviceRoleKey })
+        .catch(e => { console.error(`[invoice/mois] facture ${mi.id} :`, e.message); return { statut: 500, html: "" }; })));
+    rendus.push(...lot);
+  }
+  const reussies = rendus.filter(r => r.statut === 200 && r.html.includes('<div class="page">'));
+  const echecs = rendus.length - reussies.length;
+  if (echecs) console.error(`[invoice/mois] ${echecs} facture(s) non éditée(s) pour ${userId} en ${mois}`);
+  if (reussies.length === 0) {
+    return res.status(503).send(pageSimple("Factures indisponibles", "Aucune facture n'a pu être éditée. Réessayez dans un instant, ou ouvrez-les une à une depuis vos prestations."));
+  }
+
+  // Assemblage : l'en-tête et les styles de la première, puis le corps de
+  // chacune — sans ses boutons —, une par page à l'impression.
+  const premiere = reussies[0].html;
+  const tete = premiere.slice(0, premiere.indexOf("<body>")).replace("</style>",
+    "    .facture-du-mois { page-break-after: always; break-after: page; margin-bottom: 28px; }\n"
+    + "    .facture-du-mois:last-of-type { page-break-after: auto; break-after: auto; }\n"
+    + "    .bandeau-mois { max-width: 700px; margin: 0 auto 18px; color: #E8EAF0; font-family: inherit; }\n"
+    + "    @media print { .bandeau-mois { display: none !important; } }\n  </style>");
+  const script = premiere.slice(premiere.indexOf("<script>"), premiere.indexOf("</script>") + "</script>".length);
+  const corps = reussies.map(r => {
+    const a = r.html.indexOf('<div class="page">');
+    const b = r.html.indexOf('<button class="print-btn"', a);
+    return `<div class="facture-du-mois">${r.html.slice(a, b)}</div></div>`;
+  }).join("\n");
+  const avis = [
+    tronque ? "Seules les 100 premières factures du mois sont réunies ici ; ouvrez les suivantes depuis vos prestations." : "",
+    echecs ? `${echecs} facture(s) n'ont pas pu être éditées : ouvrez-les depuis la prestation concernée.` : "",
+  ].filter(Boolean).map(t => `<p style="color:#F0B429;font-size:13px">${escHtml(t)}</p>`).join("");
+
+  const html = `${tete}<body>
+  <div class="bandeau-mois">
+    <h2 style="margin:0 0 6px">Vos factures — ${escHtml(libelleMois)}</h2>
+    <p style="margin:0 0 12px;color:#9BA0BA;font-size:13px">${reussies.length} document(s), un par page à l'impression.</p>
+    ${avis}
+    <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Télécharger toutes en PDF</button>
+    <button class="retour-btn" onclick="retourApplication()">← Retour à l'application</button>
+  </div>
+  ${corps}
+  ${script}
+</body>
+</html>`;
+  return res.status(200).send(html);
+}
+
+// Le rendu d'UNE facture, partagé par la facture seule et par l'export du mois.
+// Renvoie { statut, html } au lieu d'écrire la réponse : l'export assemble
+// plusieurs factures dans un même document (04/10/2026).
+async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey }) {
+  const mission_id = mission.id;
+  const rendu = (statut, html) => ({ statut, html });
   // Une facture ne s'édite que pour une prestation RÉALISÉE (`completed`).
   // Rien ne le vérifiait : une prestation annulée, remboursée ou jamais
   // effectuée recevait un numéro de la séquence — définitif, puisque la
@@ -86,7 +189,7 @@ export default async function handler(req, res) {
   // Une facture déjà numérotée reste consultable : une facture émise ne
   // disparaît pas, elle s'annule par un avoir.
   if (mission.status !== "completed" && !mission.invoice_number) {
-    return res.status(409).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
+    return rendu(409, `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
       + `<h2>Pas de facture pour cette prestation</h2>`
       + `<p>Une facture n'est établie que pour une prestation réalisée. Celle-ci ne l'a pas été (annulée, remboursée ou en cours).</p>`
       + `<p><a href="/" style="color:#7C6FE0">Retourner à l'application</a></p></body></html>`);
@@ -257,7 +360,7 @@ export default async function handler(req, res) {
   if (!invoiceNum && mandatAccepte) {
     console.error(`[invoice] numéro indisponible pour ${mission_id} — édition refusée. `
       + "Vérifier le réglage platform_settings.invoice_sequence.");
-    return res.status(503).send(
+    return rendu(503, 
       `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
       + `<meta name="viewport" content="width=device-width, initial-scale=1"></head>`
       + `<body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
@@ -270,7 +373,10 @@ export default async function handler(req, res) {
     );
   }
   const today = new Date();
-  const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // Heure de Paris : Vercel tourne en UTC, et une facture émise à 0 h 30 le 1er
+  // portait sinon la date de la veille — donc du mois précédent.
+  const formatDateEmission = (d) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" });
+  let issueDate = formatDateEmission(today);
 
   const hours = Number(mission.actual_hours ?? mission.hours ?? 0);
   const tarifHoraire = Number(mission.tarif_horaire || 0);
@@ -363,6 +469,11 @@ export default async function handler(req, res) {
   }
 
   if (archive) {
+    // La date d'émission est celle de l'archive. Elle était recalculée à chaque
+    // affichage : une facture émise en août se disait « émise le » jour où on
+    // la rouvrait (constaté le 04/10/2026 en préparant l'export du mois).
+    const emiseLe = archive.emise_le ? new Date(archive.emise_le) : null;
+    if (emiseLe && !isNaN(emiseLe.getTime())) issueDate = formatDateEmission(emiseLe);
     // La facture est relue telle qu'elle a été émise. Les données vivantes ont
     // pu changer depuis — c'est précisément ce qu'on refuse de refléter.
     clientName     = archive.client?.nom          ?? clientName;
@@ -867,6 +978,6 @@ export default async function handler(req, res) {
 </body>
 </html>`;
 
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.status(200).send(html);
+  return rendu(200, html);
 }
+
