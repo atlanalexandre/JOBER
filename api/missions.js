@@ -2239,7 +2239,7 @@ export default async function handler(req, res) {
       // l'identifiant part directement dans une URL PostgREST.
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,started_at,validation_prestataire,titre,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,started_at,validation_prestataire,titre,montant_total,payout_due_at`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -2274,6 +2274,19 @@ export default async function handler(req, res) {
       // contestation ne doit pas se raccourcir parce que le prestataire a
       // déclaré moins d'heures que prévu.
       const finMs = finPrestationMs({ ...mission, actual_hours: null });
+      // Une échéance de virement déjà fixée ferme la fenêtre au plus tard ce
+      // jour-là. Après l'arrêt complet d'une série, la date de fin prévue reste
+      // en base : sans cette borne, le client pouvait contester jusqu'à la
+      // dernière journée prévue + 48 h, sur un argent déjà versé 48 h après
+      // l'arrêt (relecture du 03/10/2026).
+      const echeanceMs = mission.payout_due_at ? Date.parse(mission.payout_due_at) : NaN;
+      if (finMs && Number.isFinite(echeanceMs) && echeanceMs < finMs + 48 * 3600000 && Date.now() > echeanceMs) {
+        console.error(`[dispute] hors délai sur ${mission_id} : échéance du virement (${mission.payout_due_at}) passée`);
+        return res.status(400).json({
+          error: "Le délai de contestation de 48 h après la fin de la prestation est écoulé. "
+               + "Écrivez à direction@alane.fr si la situation le justifie.",
+        });
+      }
       if (finMs) {
         const depasseMs = Date.now() - (finMs + 48 * 3600000);
         if (depasseMs > 0) {
@@ -3511,6 +3524,19 @@ export default async function handler(req, res) {
           error: "Le prestataire a confirmé être intervenu. Si ce n'est pas le cas, signalez-le : notre équipe examine la situation et vous répond sous 72 h.",
         });
       }
+      // Une prestation COMMENCÉE ne s'annule plus : l'annulation rendait tout
+      // sauf les frais de service, et le prestataire n'était payé de rien pour
+      // les heures — ou les journées d'une série — déjà faites. L'écran ne
+      // propose d'ailleurs « Annuler » qu'avant le démarrage ; l'arrêt en cours
+      // passe par `cancel_in_progress`, qui paie ce qui a été fait (relecture du
+      // 03/10/2026).
+      if (mission.status === "assigned" && mission.started_at) {
+        return res.status(409).json({
+          code: "prestation_commencee",
+          error: "La prestation a commencé : pour l'arrêter, utilisez « Interrompre la prestation ». "
+               + "Les heures faites sont payées au prestataire, le reste vous est remboursé.",
+        });
+      }
 
       // Politique d'annulation : seuls les frais de service sont retenus si < 24h.
       // Ces frais varient — 4,90 € pour une prestation simple, 2,90 € par jour en
@@ -3851,7 +3877,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4138,6 +4164,28 @@ export default async function handler(req, res) {
           console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
             + `au ${echeanceInterruption} — prestation ${mission_id}`);
         }
+      }
+
+      // Réservation HEBDOMADAIRE : interrompre la séance du jour ne met pas fin
+      // à la série. La clôture par le client (`complete`), la validation
+      // automatique et le back-office programment tous la semaine suivante ;
+      // l'interruption ne le faisait pas, et la série s'arrêtait sans que
+      // personne en soit prévenu (relecture du 03/10/2026). Pour arrêter la
+      // série, le client annule la semaine suivante, comme toute réservation.
+      //
+      // Le client peut aussi demander l'arrêt de la série en même temps
+      // (`arreter_serie`, décision d'Alexandre du 04/10/2026) : la récurrence est
+      // alors retirée de cette séance, et aucune semaine suivante n'est créée —
+      // même effet que l'action `arreter_serie`, la séance interrompue étant la
+      // dernière de la série.
+      if (annulerReste && mission.recurrence && req.body?.arreter_serie === true) {
+        const arret = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+          { recurrence: null }, headers, `cancel_in_progress/arrêt de la série ${mission_id}`);
+        console.log(`[cancel_in_progress] série de ${mission_id} arrêtée à la demande du client${arret ? "" : " — ÉCRITURE REFUSÉE"}`);
+      } else if (annulerReste && mission.recurrence) {
+        const serie = await programmerOccurrenceSuivante(mission_id, SUPABASE_URL, headers)
+          .catch(e => { console.error(`[cancel_in_progress] série de ${mission_id} :`, e.message); return { mode: "echec" }; });
+        console.log(`[cancel_in_progress] série de ${mission_id} → ${serie.mode}${serie.mission_id ? ` (${serie.mission_id})` : ""}`);
       }
 
       // ── Ce qu'on annonce, dit une seule fois ──────────────────────────────
@@ -4923,6 +4971,12 @@ export default async function handler(req, res) {
             + `${diffRes.status} ${JSON.stringify(diffRows || {}).slice(0, 200)}`);
           return res.status(500).json({ error: "Votre paiement est bien reçu, mais la prestation n'a pas pu être diffusée. Contactez-nous : nous la traitons à la main." });
         }
+        // Le paiement est confirmé : le cashback accordé en réduction est prélevé
+        // ici, comme le fait `assign_after_payment`. Le webhook ne le fait pas
+        // pour ces réservations, faute de prestataire dans le paiement : le solde
+        // restait intact et se réutilisait à chaque réservation (relecture du
+        // 04/10/2026). Le drapeau `cashback_debite` rend tout second appel inerte.
+        await debiterCashback(diffRows[0], SUPABASE_URL, headers);
         console.log(`[affecter_tiers] aucun candidat pour ${mission_id} — diffusion`);
         return res.status(200).json({ success: true, mode: "diffusion", mission_id });
       }
@@ -4939,6 +4993,7 @@ export default async function handler(req, res) {
         console.error(`[affecter_tiers] affectation refusée pour ${mission_id} : ${patchRes.status}`);
         return res.status(500).json({ error: "Affectation impossible" });
       }
+      await debiterCashback(rows[0], SUPABASE_URL, headers);
       console.log(`[affecter_tiers] ${mission_id} → ${candidats[0]} (${candidats.length} candidat(s))`);
       await prevenirNouvelleDemande(mission_id, SUPABASE_URL, headers);
       return res.status(200).json({ success: true, mode: "affectation", mission_id });
@@ -6175,6 +6230,25 @@ export default async function handler(req, res) {
       // Un tableau VIDE passait pour un succès : une prestation annulée ou
       // reprise entre-temps était annoncée « remplacement validé » aux trois
       // parties sans que rien n'ait changé (audit « prestations », 01/10/2026).
+      // La demande est d'abord RÉSERVÉE — écriture conditionnée à « toujours en
+      // attente ». Sans elle, une annulation du prestataire passée entre l'accord
+      // et la bascule (demande fermée, client remboursé) n'empêchait rien : la
+      // bascule confiait quand même la prestation au remplaçant, payé ensuite
+      // sur un argent déjà rendu, et réécrivait « accepte » par-dessus « annule »
+      // (relecture du 03/10/2026). De l'annulation et de l'accord, le premier
+      // qui écrit l'emporte.
+      const reserve = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ statut: "accepte" }),
+      });
+      const reservees = await reserve.json().catch(() => null);
+      if (!reserve.ok || !Array.isArray(reservees)) {
+        console.error(`[repondre_remplacement] réservation de la demande ${remplacement_id} refusée (${reserve.status})`);
+        return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
+      }
+      if (reservees.length === 0) {
+        return res.status(409).json({ error: "Cette demande de remplacement vient d'être annulée : la prestation reste au prestataire initial." });
+      }
       const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}&status=eq.assigned&started_at=is.null`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         // La signature du contrat est celle du remplaçant, au moment de son accord.
@@ -6183,6 +6257,11 @@ export default async function handler(req, res) {
       const basculees = await swap.json().catch(() => null);
       if (!swap.ok || !Array.isArray(basculees)) {
         console.error(`[repondre_remplacement] bascule refusée sur ${dem.mission_id} (${swap.status})`);
+        // La demande réservée redevient en attente : rien n'a été basculé.
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.accepte&execute_at=is.null`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "en_attente" }),
+        }).catch(e => console.error("[repondre_remplacement] demande non rouverte :", e?.message));
         return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
       }
       if (basculees.length === 0) {
@@ -6194,8 +6273,8 @@ export default async function handler(req, res) {
       }
       await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ statut: "accepte", execute_at: new Date().toISOString() }),
-      });
+        body: JSON.stringify({ execute_at: new Date().toISOString() }),
+      }).catch(e => console.error("[repondre_remplacement] date d'exécution non enregistrée :", e?.message));
 
       // Reprendre la prestation d'un confrère est bien accepter une prestation :
       // le remplaçant l'exécute et la facture en son nom. Ne pas déclencher son
@@ -6361,12 +6440,17 @@ export default async function handler(req, res) {
       // et le prestataire n'était payé de rien. Avant, ce refus jouait dès la fin
       // de la première journée. Une série commencée se règle avec la plateforme,
       // pas par un remboursement intégral (relecture du 02/10/2026).
+      // Même règle pour une prestation d'UN jour déjà pointée : annulée à 14 h
+      // après un démarrage à 8 h, elle rendait tout au client et ne payait rien
+      // des six heures faites (relecture du 03/10/2026).
       const premierJourSerie = String(mission.date_debut || mission.date || "").slice(0, 10);
-      if (nombreDeJours(mission) > 1 && (mission.started_at || (premierJourSerie && dateDuJourFr() > premierJourSerie))) {
+      const serieEntamee = nombreDeJours(mission) > 1 && premierJourSerie && dateDuJourFr() > premierJourSerie;
+      if (mission.started_at || serieEntamee) {
         return res.status(409).json({
-          code: "serie_commencee",
-          error: "Cette série a commencé : elle ne peut plus être annulée d'ici. "
-               + "Écrivez à direction@alane.fr — les journées déjà faites vous restent dues.",
+          code: nombreDeJours(mission) > 1 ? "serie_commencee" : "prestation_commencee",
+          error: (nombreDeJours(mission) > 1 ? "Cette série a commencé" : "Cette prestation a commencé")
+               + " : elle ne peut plus être annulée d'ici. "
+               + "Écrivez à direction@alane.fr — ce que vous avez déjà fait vous reste dû.",
         });
       }
 
@@ -6380,15 +6464,34 @@ export default async function handler(req, res) {
       // ouverte : client remboursé, prestation pourtant attribuée au remplaçant,
       // qui l'aurait faite et été payé sur un argent déjà rendu (relecture du
       // 02/10/2026).
+      // Les demandes ainsi fermées sont retenues : si l'annulation échoue AVANT
+      // le remboursement (Stripe absent ou refusé), elles sont rouvertes. Sinon
+      // le remplacement convenu disparaissait en silence alors que la prestation
+      // restait au prestataire (relecture du 03/10/2026).
+      let remplacementsFermes = [];
       try {
         const rf = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ statut: "annule" }),
         });
+        const fermes = await rf.json().catch(() => []);
         if (!rf.ok && rf.status !== 404) console.error(`[presta_cancel] remplacements en attente non fermés (${rf.status}) — prestation ${mission_id}`);
+        else if (Array.isArray(fermes)) remplacementsFermes = fermes.map(d => d.id).filter(Boolean);
       } catch (e) {
         console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
       }
+      const rouvrirRemplacements = async () => {
+        if (!remplacementsFermes.length) return;
+        try {
+          const ro = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=in.(${remplacementsFermes.join(",")})&statut=eq.annule`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ statut: "en_attente" }),
+          });
+          if (!ro.ok) console.error(`[presta_cancel] remplacements NON rouverts (${ro.status}) après échec — prestation ${mission_id} : ${remplacementsFermes.join(", ")}`);
+        } catch (e) {
+          console.error(`[presta_cancel] remplacements NON rouverts après échec — prestation ${mission_id} :`, e.message);
+        }
+      };
 
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
@@ -6412,6 +6515,7 @@ export default async function handler(req, res) {
           }
         } else {
           if (!(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")) {
+            await rouvrirRemplacements();
             return res.status(500).json({ error: "Stripe non configuré — la prestation n'a pas été annulée. Contactez le support." });
           }
           try {
@@ -6432,10 +6536,12 @@ export default async function handler(req, res) {
               console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour prestation ${mission_id}`);
             } else {
               console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+              await rouvrirRemplacements();
               return res.status(500).json({ error: "Le remboursement Stripe a échoué — la prestation n'a pas été annulée. Contactez le support." });
             }
           } catch (stripeErr) {
             console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
+            await rouvrirRemplacements();
             return res.status(500).json({ error: "Le remboursement Stripe a échoué — la prestation n'a pas été annulée. Contactez le support." });
           }
         }

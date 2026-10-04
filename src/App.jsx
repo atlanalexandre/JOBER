@@ -1265,12 +1265,26 @@ export default function App() {
   // Tracking GPS prestataire — envoie la position toutes les 60s quand prestation assignée
   const gpsDemande = useRef(false);
   const [gpsConsenti, setGpsConsenti] = useState(false);
+  // La question attend aussi que l'accueil et le guide des onglets soient
+  // refermés : un prestataire qui a déjà une prestation acceptée à sa première
+  // connexion la voyait par-dessus le guide (relecture du 03/10/2026). Le guide
+  // émet « alane:guide-termine » en se fermant, ce qui relance la vérification.
+  const [guideFerme, setGuideFerme] = useState(0);
+  useEffect(()=>{
+    const surFermeture = () => setGuideFerme(n => n + 1);
+    window.addEventListener("alane:guide-termine", surFermeture);
+    return () => window.removeEventListener("alane:guide-termine", surFermeture);
+  },[]);
+  const tutorielsVus = (id) => {
+    try { return !!localStorage.getItem(`alane_onboarded_${id}`) && !!localStorage.getItem(`alane_presta_tour_done_${id}`); }
+    catch { return true; /* stockage illisible : on ne bloque pas la question */ }
+  };
   // Consentement déjà donné (mémorisé sur cet appareil) : valeur fixe, le suivi
   // n'est pas relancé à chaque changement d'écran.
   let gpsDejaConsenti = false;
   try { gpsDejaConsenti = !!(supaUser && localStorage.getItem(`alane_gps_consent_${supaUser.id}`)); }
   catch { /* stockage indisponible (navigation privée) : la question sera reposée */ }
-  const declencheurGps = (gpsConsenti || gpsDejaConsenti) ? "consenti" : screen;
+  const declencheurGps = (gpsConsenti || gpsDejaConsenti) ? "consenti" : `${screen}:${guideFerme}`;
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
@@ -1302,9 +1316,12 @@ export default function App() {
       sendPos();
     };
     let annule = false;
-    if(hasConsent) {
+    // `gpsConsenti` : le « oui » donné dans cette session. En navigation privée,
+    // le stockage local peut refuser l'écriture : sans ce relais, le suivi ne
+    // démarrait jamais après l'accord (relecture du 03/10/2026).
+    if(hasConsent || gpsConsenti) {
       startGps();
-    } else if(!gpsDemande.current) {
+    } else if(!gpsDemande.current && tutorielsVus(supaUser.id)) {
       // La question n'est posée que lorsqu'elle a un objet : une prestation
       // acceptée. Elle arrivait dès la première connexion, avant toute
       // prestation et par-dessus les deux fenêtres d'accueil — refusée sans
@@ -1325,7 +1342,7 @@ export default function App() {
     return ()=>{ annule = true; if(watchId!==null) navigator.geolocation.clearWatch(watchId); if(iv!==null) clearInterval(iv); };
   // `declencheurGps` : l'écran tant que le consentement manque, une valeur fixe
   // ensuite — le suivi déjà lancé n'est pas relancé à chaque navigation.
-  },[supaUser, role, declencheurGps]);
+  },[supaUser, role, declencheurGps, gpsConsenti]);
 
   // Poll messages non lus toutes les 10 secondes
   useEffect(()=>{

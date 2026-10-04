@@ -229,6 +229,12 @@ recevait donc 0, et le prestataire était payé pour des heures déjà rembours�
 `src/tests/api/cloture-heures-perdues.test.js` refuse désormais toute lecture qui alimente
 `montantsDeCloture()` sans cette colonne.
 
+**Pas de clôture sans paiement.** La validation par le client et « Valider de force » refusent
+une prestation sans paiement enregistré ; la validation automatique ne le vérifiait pas, et
+programmait le virement au prestataire — plus le cashback du client — sur une prestation
+qu'aucun client n'avait réglée (affectation manuelle d'une demande non payée). Elle la laisse
+désormais `assigned` et le journalise à chaque passage (relecture du 04/10/2026, `e2e/64`).
+
 Le jour en cours est déterminé par `dateDuJourFr()` (`api/_temps.js`) et non par
 `toISOString()` : Vercel tourne en UTC, et entre minuit et 2 h du matin en France la date UTC
 est encore celle de la veille — une interruption à 0 h 30 aurait compté une journée de plus
@@ -2462,6 +2468,14 @@ moindre euro ne bouge. Refuser là ne coûte rien au client. La règle et son ca
 cela été sortis de `api/missions.js` vers `api/_secteurs.js`, seul moyen que les deux chemins
 lisent la même chose plutôt que d'en recopier une troisième version.
 
+*Le double paiement* (relecture du 04/10/2026, `e2e/63`) : `/api/stripe-intent` refuse aussi
+(409 `deja_payee`) de créer un paiement de réservation pour une prestation dont le paiement a
+**abouti** — état relu chez Stripe (`succeeded`, `processing`, `requires_capture`), un paiement
+inabouti n'empêchant pas un nouvel essai. Revenu sur l'écran de paiement, le client pouvait
+payer deux fois ; le webhook du second paiement écrasait la trace du premier, jamais remboursé,
+et passait la prestation « acceptée » sans réponse du prestataire. Le complément d'heures, paiement
+distinct, n'est pas concerné.
+
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
 l'application juste après, qui le fait. Un client qui fermait l'application à cet instant, ou
@@ -3194,7 +3208,7 @@ vérifié juste à côté, fait autorité.
 | Clôture faute de prestataire | la prestation est **prise** (conditionnellement) **avant** le remboursement ; rouverte si celui-ci échoue | Reprise entre la lecture et le remboursement : prestataire payé, client déjà remboursé |
 | Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
 | Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
-| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js` |
+| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js`. **Un second bloc d'expiration, exécuté le 1er du mois, défaisait tout cela** (relecture du 04/10/2026, `e2e/62`) : il ne lisait pas le paiement, ne remboursait donc rien, passait la prestation « refusée » et écrivait « Votre paiement a été intégralement remboursé » — y compris pour celles que ce bloc-ci venait de remettre en attente. Il est retiré : l'expiration n'est plus traitée qu'ici |
 
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
@@ -3605,7 +3619,7 @@ résultat. Aucune règle de `npm run coherence` ne les couvre — un contrôle q
 critère utile serait « écriture d'argent ou de statut dont le résultat est jeté », et il reste
 à écrire.
 
-### Interrompre une prestation en cours : quatre garde-fous
+### Interrompre une prestation en cours : cinq garde-fous
 
 **Corrigé le 01/10/2026** (audit du domaine « prestations », vérifié en recette, `e2e/44`).
 `cancel_in_progress` rembourse au client les heures non travaillées. Trois défauts :
@@ -3630,6 +3644,15 @@ critère utile serait « écriture d'argent ou de statut dont le résultat est j
    corrigé, le 01/10, ce calcul est devenu actif. Seul « tout arrêter » compte désormais les
    journées restantes. Et le virement de la part due part 48 h après la fin de **la journée en
    cours**, non de la dernière journée prévue — qui n'aura pas lieu.
+5. **Deux suites manquaient** (relecture du 03/10/2026, `e2e/44`). Interrompre la séance du
+   jour d'une **réservation hebdomadaire** arrêtait toute la série : contrairement à `complete`,
+   à la validation automatique et au back-office, l'interruption ne programmait pas la semaine
+   suivante (`programmerOccurrenceSuivante`). C'est fait désormais, et **le client choisit**
+   (décision d'Alexandre du 04/10/2026) : par défaut la série continue ; la case « Arrêter aussi
+   les semaines suivantes » (`arreter_serie: true`) retire la récurrence de la séance interrompue,
+   et aucune semaine n'est plus créée ni prélevée. Et après l'arrêt complet d'une série, la date de fin
+   prévue reste en base : l'action `dispute` laissait contester jusqu'à cette date + 48 h, sur
+   un argent déjà versé. La fenêtre se ferme maintenant au plus tard à `payout_due_at`.
 
 ### « Clôturer » une demande ouverte : jamais si elle est payée
 
@@ -3650,7 +3673,11 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
   prestation qui n'était pas la sienne. Elles le sont désormais **après** cette vérification et
   **avant** le remboursement (relecture du 02/10/2026) : fermées après, elles laissaient l'accord
   final du client basculer la prestation vers le remplaçant pendant l'appel à Stripe — client
-  remboursé, remplaçant payé sur un argent déjà rendu ;
+  remboursé, remplaçant payé sur un argent déjà rendu. Cela ne suffisait pas seul (relecture du
+  03/10/2026) : l'accord ne revérifiait pas la demande avant de basculer. Il la **réserve**
+  désormais d'abord (`en_attente` → `accepte`, écriture conditionnelle) : de l'annulation et de
+  l'accord, le premier qui écrit l'emporte. Et si l'annulation échoue avant le remboursement
+  (Stripe absent ou refusé), les demandes qu'elle avait fermées sont **rouvertes** (`e2e/47`) ;
 - une demande **pas encore acceptée** (`pending_acceptance`) pouvait être « annulée » : client
   remboursé, prestation close, au lieu du refus qui, sur une prestation affectée par la
   plateforme, passe au candidat suivant. Réponse 409 `utiliser_refus` ;
@@ -3661,6 +3688,12 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
   intégralement le client des journées déjà faites, et le prestataire n'était payé de rien. Une
   série dont la première journée est passée, ou déjà pointée, est refusée (409
   `serie_commencee`) : elle se règle avec l'administration.
+- **une prestation commencée ne s'annule plus, quel que soit le nombre de jours, ni par le
+  prestataire ni par le client** (relecture du 03/10/2026, `e2e/60`). Une journée pointée à 8 h
+  et annulée à 14 h rendait tout au client et ne payait rien des six heures faites. Côté
+  prestataire : 409 `prestation_commencee`. Côté client (`cancel_client`), même refus : l'arrêt
+  en cours passe par `cancel_in_progress`, qui paie ce qui a été fait — l'écran ne proposait
+  « Annuler » qu'avant le démarrage, mais le serveur ne le vérifiait pas.
 
 ### Remplacement : le changement de titulaire vérifie qu'il a eu lieu
 
@@ -4185,8 +4218,10 @@ Trois règles gouvernent cette imputation, et il faut les trois :
   service constatés et le cashback de la prestation suivante — une remise commerciale d'ALANE
   serait devenue une baisse du prix de vente.
 - **Le solde est débité à la CONFIRMATION du paiement**, jamais à la création de l'intention —
-  `debiterCashback()`, appelé par `assign_after_payment` **et** par le webhook Stripe, le
-  drapeau `cashback_debite` rendant le second appel sans effet. Réserver puis restituer aurait
+  `debiterCashback()`, appelé par `assign_after_payment`, par `affecter_tiers` (réservation chez
+  un tiers — oublié jusqu'au 04/10/2026 : le webhook ne le fait pas faute de prestataire dans le
+  paiement, et le solde se réutilisait à chaque réservation, `e2e/20`) **et** par le webhook
+  Stripe, le drapeau `cashback_debite` rendant tout appel suivant sans effet. Réserver puis restituer aurait
   imposé une restitution sur une douzaine de chemins d'annulation : en oublier un aurait fait
   disparaître le cashback d'un client en silence.
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
@@ -4518,7 +4553,7 @@ l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rappor
 | Accueil (`OnboardingScreen`, App.jsx) — clé `alane_onboarded_{id}` | s'ouvre au premier passage | inchangé : c'est le tutoriel de référence |
 | Second tutoriel client (`ClientTour`, « Bienvenue sur ALANE ! ») — `alane_tour_done_{id}` | par-dessus l'accueil, même contenu en moins juste | **supprimé** ; la clé n'est plus lue (elle reste effacée par `?tutoriel=reset`) |
 | Guide des onglets prestataire (`PrestaTour`) — `alane_presta_tour_done_{id}` | en même temps que l'accueil | **après** : il attend que l'accueil soit vu, ou le signal `alane:accueil-termine` qu'App.jsx émet en le refermant |
-| Demande de géolocalisation du prestataire — `alane_gps_consent_{id}` | dès la première connexion, sans prestation | seulement quand il a une prestation **acceptée** (`assigned`) ; relue à chaque changement d'écran tant qu'elle n'a pas été posée, une seule fois par session |
+| Demande de géolocalisation du prestataire — `alane_gps_consent_{id}` | dès la première connexion, sans prestation | seulement quand il a une prestation **acceptée** (`assigned`), **et une fois l'accueil et le guide refermés** (signal `alane:guide-termine`, 03/10/2026) ; relue à chaque changement d'écran tant qu'elle n'a pas été posée, une seule fois par session. Le « oui » démarre le suivi même si le navigateur refuse de l'enregistrer (navigation privée, `e2e/61`) |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on

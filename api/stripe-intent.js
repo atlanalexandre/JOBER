@@ -334,6 +334,38 @@ export default async function handler(req, res) {
   if (!estComplement && !["open", "pending_acceptance"].includes(mission.status)) {
     return res.status(400).json({ error: "Un paiement ne peut être créé que pour une prestation ouverte ou en attente d'attribution" });
   }
+  // Une réservation DÉJÀ payée n'en accepte pas un second. `stripe_payment_intent`
+  // n'est écrit qu'après un paiement réussi (affectation ou webhook) : présent,
+  // il prouve que le client a déjà réglé. En revenant sur l'écran de paiement, il
+  // pouvait payer une seconde fois ; le webhook du second paiement écrasait alors
+  // la trace du premier, qui n'était plus jamais remboursé, et passait la
+  // prestation « acceptée » sans que le prestataire ait répondu (relecture du
+  // 04/10/2026). Le complément d'heures, lui, est un paiement distinct.
+  //
+  // L'état réel est demandé à Stripe : un paiement resté inabouti (carte
+  // refusée, abandonné) ne doit pas empêcher un nouvel essai.
+  if (!estComplement && mission.stripe_payment_intent) {
+    const piExistant = String(mission.stripe_payment_intent);
+    let dejaPayee = piExistant.startsWith("wallet_");
+    if (!dejaPayee) {
+      try {
+        const er = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(piExistant)}`, { headers: stripeHeaders });
+        const ed = await er.json().catch(() => null);
+        if (!er.ok) {
+          // Introuvable chez Stripe : il ne prouve aucun paiement, on laisse payer.
+          if (er.status !== 404) throw new Error(`lecture du paiement existant refusée (${er.status})`);
+        } else {
+          dejaPayee = ["succeeded", "processing", "requires_capture"].includes(ed?.status);
+        }
+      } catch (e) {
+        console.error(`[stripe-intent] paiement existant ${piExistant} illisible pour ${intentMissionId} :`, e.message);
+        return res.status(503).json({ error: "Vérification du paiement impossible pour le moment. Réessayez dans un instant." });
+      }
+    }
+    if (dejaPayee) {
+      return res.status(409).json({ code: "deja_payee", error: "Cette réservation est déjà payée. Retrouvez-la dans vos prestations." });
+    }
+  }
   // Le secteur doit être ouvert AVANT que le moindre euro ne bouge.
   //
   // Il ne l'était vérifié qu'après, dans `assign_after_payment`. Un client

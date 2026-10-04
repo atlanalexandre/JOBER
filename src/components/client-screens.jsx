@@ -6454,6 +6454,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // Le sort des journées suivantes, sur une prestation récurrente. Par défaut
   // on ne touche qu'à la journée en cours.
   const [annulerReste, setAnnulerReste] = useState(false);
+  // Réservation hebdomadaire : continuer les semaines suivantes (par défaut) ou
+  // arrêter aussi la série. Choix du client (décision d'Alexandre du 04/10/2026).
+  const [arreterSerie, setArreterSerie] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(null);
   const [disputeMsg, setDisputeMsg] = useState("");
   const [disputing, setDisputing] = useState(false);
@@ -7012,7 +7015,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // Interrompre : par défaut la JOURNÉE EN COURS seulement. Sur une prestation
   // récurrente, rentrer plus tôt un mercredi ne doit pas annuler le jeudi et le
   // vendredi ; le client choisit, et c'est ce choix qu'on transmet.
-  const handleStopInProgress = async (annulerReste = false) => {
+  const handleStopInProgress = async (annulerReste = false, arreterLaSerie = false) => {
     if (!selected) return;
     setStopping(true);
     try {
@@ -7021,7 +7024,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id, annuler_reste: annulerReste === true }),
+        body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id, annuler_reste: annulerReste === true, arreter_serie: arreterLaSerie === true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
@@ -7844,7 +7847,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
               {/* Prestation en cours : interrompre la journée, au prorata */}
               {selected.status === "assigned" && isStarted && !isEnded && dansLaPeriode && (
-                <button onClick={()=>{ setAnnulerReste(false); setShowStopConfirm(true); }} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                <button onClick={()=>{ setAnnulerReste(false); setArreterSerie(false); setShowStopConfirm(true); }} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ⏹ {recurrente ? "Interrompre la journée en cours" : "Interrompre la prestation en cours"}
                 </button>
               )}
@@ -7942,13 +7945,36 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       </div>
                     )}
 
+                    {/* Réservation HEBDOMADAIRE : interrompre la séance du jour ne dit
+                        rien des semaines suivantes. Le client choisit ; par défaut,
+                        la série continue, comme après une séance normale. */}
+                    {!recurrente && selected.recurrence && (
+                      <div style={{ marginBottom:18 }}>
+                        {[
+                          { valeur:false, titre:"Garder les semaines suivantes", detail:"La réservation hebdomadaire continue : la semaine prochaine est programmée et réglée comme d'habitude." },
+                          { valeur:true,  titre:"Arrêter aussi les semaines suivantes", detail:"Plus aucune semaine n'est programmée ni prélevée après celle-ci." },
+                        ].map(opt => (
+                          <button key={String(opt.valeur)} onClick={()=>setArreterSerie(opt.valeur)} style={{
+                            width:"100%", textAlign:"left", marginBottom:8, padding:"12px 14px", borderRadius:12, cursor:"pointer", fontFamily:"inherit",
+                            border: arreterSerie === opt.valeur ? "1px solid #7C6FE0" : "1px solid rgba(255,255,255,0.12)",
+                            background: arreterSerie === opt.valeur ? "rgba(124,111,224,0.15)" : "transparent",
+                          }}>
+                            <div style={{ color:"#fff", fontWeight:700, fontSize:13, marginBottom:3 }}>
+                              {arreterSerie === opt.valeur ? "◉" : "○"} {opt.titre}
+                            </div>
+                            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, lineHeight:1.45, paddingLeft:18 }}>{opt.detail}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textAlign:"center", marginBottom:18, lineHeight:1.5 }}>
                       Le prestataire est averti par email et SMS. Les heures non faites vous sont remboursées ;
                       les <strong style={{ color:"#F0B429" }}>frais de service restent acquis</strong>, ils couvrent la mise en relation déjà effectuée.
                     </div>
                     <div style={{ display:"flex", gap:10 }}>
                       <button onClick={()=>setShowStopConfirm(false)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Continuer</button>
-                      <button onClick={()=>handleStopInProgress(annulerReste)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      <button onClick={()=>handleStopInProgress(annulerReste, arreterSerie)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                         {stopping ? "Arrêt…" : (recurrente && !annulerReste ? "Écourter la journée" : "Interrompre")}
                       </button>
                     </div>

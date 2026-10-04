@@ -66,3 +66,27 @@ test("le remplaçant signe le contrat en acceptant ; la signature passe sur la p
   expect(l.prestataire_id).toBe(entrant.id);
   expect(new Date(l.contrat_presta_signe_at).getTime(), "signature = accord du remplaçant").toBe(new Date(l.accord_entrant_at).getTime());
 });
+
+// Relecture du 03/10/2026 : l'annulation du prestataire ferme les demandes de
+// remplacement AVANT le remboursement. Si celui-ci échoue, la prestation reste
+// au prestataire — la demande convenue ne doit pas avoir disparu en silence.
+test("annulation refusée par Stripe : la demande de remplacement reste ouverte", async () => {
+  const sortant = await prestataireOperationnel();
+  const entrant = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: sortant, client: c, heures: 4 });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, sortant.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const [d] = await sql(`insert into mission_remplacements (mission_id, sortant_id, entrant_id, client_id, statut, accord_entrant_at)
+     values ('${m.id}', '${sortant.id}', '${entrant.id}', '${c.id}', 'en_attente', now()) returning id`);
+  // Un paiement que Stripe ne connaît pas : le remboursement échoue.
+  await sql(`update missions set stripe_payment_intent = 'pi_inexistant_recette' where id = '${m.id}'`);
+
+  const r = await api("/api/missions", { action: "presta_cancel", mission_id: m.id }, sortant.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(500);
+  const [mm] = await sql(`select status, prestataire_id from missions where id = '${m.id}'`);
+  expect(mm.status, "rien n'a été annulé").toBe("assigned");
+  expect(mm.prestataire_id).toBe(sortant.id);
+  const [l] = await sql(`select statut from mission_remplacements where id = '${d.id}'`);
+  expect(l.statut, "la demande est rouverte").toBe("en_attente");
+});

@@ -258,7 +258,13 @@ test("par l'écran : reprendre une prestation payée fait d'abord signer le cont
   const preneur = await prestataireOperationnel();
   const c = await client();
   const m = await reservationPayee({ prestataire: initial, client: c, dansJours: 6 });
-  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null where id = '${m.id}'`);
+  // Une description UNIQUE : la recette garde les demandes des essais
+  // précédents, identiques à l'écran (même métier, même date, « Scénario de
+  // recette »). « .first() » prenait l'une d'elles, et l'essai attendait en vain
+  // sur la sienne (recette du 03/10/2026).
+  const repere = `Reprise ${Date.now()}`;
+  await sql(`update missions set status = 'open', prestataire_id = null, acceptance_deadline = null,
+             description = '${repere}' where id = '${m.id}'`);
 
   const page = await browser.newPage();
   const fenetreGeo = page.getByText("Autoriser la géolocalisation", { exact: false });
@@ -267,7 +273,8 @@ test("par l'écran : reprendre une prestation payée fait d'abord signer le cont
   await page.addLocatorHandler(page.getByText("Passer le tutoriel"), (l) => l.click());
   await connexion(page, { espace: "prestataire", email: preneur.email });
   await expect(page).toHaveURL(/\/provider\//, { timeout: 30_000 });
-  await page.getByRole("button", { name: /Je prends cette prestation/ }).first().click();
+  const carte = page.locator("div").filter({ hasText: repere }).filter({ has: page.getByRole("button", { name: /Je prends cette prestation/ }) }).last();
+  await carte.getByRole("button", { name: /Je prends cette prestation/ }).click();
   await expect(page.getByText("Contrat de prestation de service").first()).toBeVisible();
   await page.locator("label").filter({ hasText: "J'ai lu et j'accepte" }).locator("div").first().click();
   await page.getByRole("button", { name: /Signer électroniquement/ }).click();
