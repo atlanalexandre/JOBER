@@ -2164,6 +2164,17 @@ ${(() => {
                 console.log(`cron auto-validate: cashback already credited for mission ${m.id}, skipping`);
                 continue;
               }
+              // Sans paiement enregistré, pas de validation automatique : elle
+              // programmait le virement au prestataire et créditait le cashback du
+              // client sur une prestation qu'aucun client n'avait réglée — ALANE
+              // payait de sa poche. La validation par le client (`complete`) et le
+              // back-office (`force_complete_mission`) refusent déjà ce cas
+              // (relecture du 04/10/2026). Journalisé chaque passage : à régler à la main.
+              if (!m.stripe_payment_intent) {
+                console.error(`[cron auto-validate] prestation ${m.id} sans paiement enregistré : NON validée, `
+                  + "aucun versement programmé. À examiner au back-office.");
+                continue;
+              }
               // Montants calculés par api/_cloture.js, comme la validation par le
               // client. Ce chemin en tenait sa propre version : elle omettait le
               // nombre de jours (une prestation de cinq jours n'en payait qu'un),

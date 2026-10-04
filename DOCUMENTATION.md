@@ -229,6 +229,12 @@ recevait donc 0, et le prestataire était payé pour des heures déjà rembours�
 `src/tests/api/cloture-heures-perdues.test.js` refuse désormais toute lecture qui alimente
 `montantsDeCloture()` sans cette colonne.
 
+**Pas de clôture sans paiement.** La validation par le client et « Valider de force » refusent
+une prestation sans paiement enregistré ; la validation automatique ne le vérifiait pas, et
+programmait le virement au prestataire — plus le cashback du client — sur une prestation
+qu'aucun client n'avait réglée (affectation manuelle d'une demande non payée). Elle la laisse
+désormais `assigned` et le journalise à chaque passage (relecture du 04/10/2026, `e2e/64`).
+
 Le jour en cours est déterminé par `dateDuJourFr()` (`api/_temps.js`) et non par
 `toISOString()` : Vercel tourne en UTC, et entre minuit et 2 h du matin en France la date UTC
 est encore celle de la veille — une interruption à 0 h 30 aurait compté une journée de plus
