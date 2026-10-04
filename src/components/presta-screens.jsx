@@ -1873,7 +1873,7 @@ export function PrestaProfileEditScreen({ onBack }) {
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📄 Mon parcours</div>
           <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.5 }}>Obligatoire : les clients le consultent avant de réserver, et votre accès aux prestations n'est ouvert qu'une fois votre parcours renseigné.</div>
-          <AlerteCv cv={meta?.cv} metiers={meta?.metiers_list || [meta?.metier].filter(Boolean)} />
+          <AlerteCv cv={meta?.cv} metiers={metiersDeclares(meta)} />
           <CvEditor key={cvVersion} cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
 
@@ -2042,7 +2042,10 @@ export function AlerteTitresACompleter({ onNavigate }) {
       const { data: rows, error } = await supabase.from("documents")
         .select("verified,titres_couverts").eq("prestataire_id", u.id).eq("type", "diplomes");
       if (error) { console.error("[titres] justificatif illisible :", error.message); return; }
-      const metiers = u.user_metadata?.metiers_list || [u.user_metadata?.metier].filter(Boolean);
+      // Le métier principal compte même quand metiers_list est rempli : le
+      // back-office le contrôle (#972), le prestataire doit voir ce qu'on lui
+      // demande (relecture du 03/10/2026).
+      const metiers = metiersDeclares(u.user_metadata);
       setManquants(titresNonCouverts(metiers, (rows || [])[0] || null));
     });
   }, []);
