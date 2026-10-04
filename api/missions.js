@@ -538,7 +538,7 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
 // pour une affectation de la plateforme : le prestataire qu'il avait CHOISI
 // refusait, et un autre lui était imposé au lieu du remboursement (constaté en
 // recette le 25/09/2026, e2e/15).
-function affecteeParLaPlateforme(mission) {
+export function affecteeParLaPlateforme(mission) {
   const d = mission?.tiers_declaration;
   return !!d && d.lieu !== "etablissement_propre";
 }
@@ -635,7 +635,7 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 // visible et horodatée.
 //
 // Renvoie ce qui a été fait, pour que l'appelant journalise et notifie en conséquence.
-async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
+export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
   const dejaVus = [];
   if (mission.prestataire_id) dejaVus.push(mission.prestataire_id);
   try {

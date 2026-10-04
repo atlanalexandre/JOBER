@@ -16,6 +16,7 @@ import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
+import { affecteeParLaPlateforme, affecterCandidatSuivant } from "./missions.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
@@ -261,7 +262,7 @@ export default async function handler(req, res) {
         // 20 premières : un remboursement qui échoue à chaque fois revient en
         // attente, et restait en tête de file — il bloquait tous les suivants,
         // indéfiniment (relecture du 30/09/2026).
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total&order=acceptance_deadline.asc&limit=200`,
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tiers_declaration,sector,date,adresse,ville,tarif_horaire,heure_debut,hours&order=acceptance_deadline.asc&limit=200`,
         { headers }
       );
       const zombies = tirerAuHasard(await zRes.json().catch(() => []), 20);
@@ -271,6 +272,34 @@ export default async function handler(req, res) {
         // 19 prestations sur 40 en recette le 29/09/2026, jamais remboursées.
         let remboursesZ = 0, differesZ = 0;
         for (const z of zombies) {
+          // 0. Prestation affectée par la PLATEFORME (chez un tiers, CGPS art.
+          //    5.2) : le client n'a choisi personne, sa commande tient. Le silence
+          //    du prestataire fait passer au candidat suivant, comme dans
+          //    l'application (`acceptance_timeout`) — et non au remboursement,
+          //    qui annulait la commande alors que d'autres candidats existaient
+          //    (relecture du 04/10/2026). La prestation est d'abord PRISE
+          //    (toujours en attente, toujours expirée) : un prestataire qui
+          //    accepte à la dernière seconde n'est pas écrasé.
+          if (affecteeParLaPlateforme(z)) {
+            const prise = await ecrireVerifie(
+              `${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}`,
+              { acceptance_deadline: null }, headers, `cron/expiration ${z.id} (candidat suivant)`);
+            if (!prise) continue;
+            const cascade = await affecterCandidatSuivant(z, SUPABASE_URL, headers)
+              .catch(e => { console.error(`[cron/expiration] candidat suivant de ${z.id} :`, e.message); return { mode: "echec" }; });
+            console.log(`[cron/expiration] prestation affectée ${z.id} → ${cascade.mode}`);
+            if (cascade.mode !== "echec") {
+              if (z.client_id) {
+                await notifier({
+                  user_id: z.client_id, type: "mission", ref_id: z.id,
+                  title: "Recherche d'un autre prestataire 🔄",
+                  body: "Le prestataire pressenti n'a pas répondu à temps. Nous sollicitons un autre professionnel — votre réservation et votre paiement sont conservés.",
+                }, SUPABASE_URL, headers).catch(e => console.error(`[cron/expiration] client ${z.client_id} non prévenu :`, e?.message));
+              }
+              continue;
+            }
+            // Échec de la cascade : on retombe sur le remboursement ci-dessous.
+          }
           // 1. On PREND la prestation (écriture conditionnelle) avant de
           //    rembourser, comme la clôture ci-dessous.
           const prise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance`,
