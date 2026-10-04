@@ -3623,8 +3623,10 @@ critère utile serait « écriture d'argent ou de statut dont le résultat est j
 5. **Deux suites manquaient** (relecture du 03/10/2026, `e2e/44`). Interrompre la séance du
    jour d'une **réservation hebdomadaire** arrêtait toute la série : contrairement à `complete`,
    à la validation automatique et au back-office, l'interruption ne programmait pas la semaine
-   suivante (`programmerOccurrenceSuivante`). C'est fait désormais ; pour arrêter la série, le
-   client annule la semaine suivante. Et après l'arrêt complet d'une série, la date de fin
+   suivante (`programmerOccurrenceSuivante`). C'est fait désormais, et **le client choisit**
+   (décision d'Alexandre du 04/10/2026) : par défaut la série continue ; la case « Arrêter aussi
+   les semaines suivantes » (`arreter_serie: true`) retire la récurrence de la séance interrompue,
+   et aucune semaine n'est plus créée ni prélevée. Et après l'arrêt complet d'une série, la date de fin
    prévue reste en base : l'action `dispute` laissait contester jusqu'à cette date + 48 h, sur
    un argent déjà versé. La fenêtre se ferme maintenant au plus tard à `payout_due_at`.
 

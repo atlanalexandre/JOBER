@@ -123,3 +123,22 @@ test("série arrêtée : pas de contestation après l'échéance du virement", a
   const [l] = await sql(`select status from missions where id = '${m.id}'`);
   expect(l.status).toBe("completed");
 });
+
+// Décision d'Alexandre du 04/10/2026 : le client choisit. Il peut aussi arrêter
+// les semaines suivantes en interrompant la séance du jour.
+test("réservation hebdomadaire : interrompre en arrêtant la série ne crée pas de semaine suivante", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: p, client: c, heures: 6, recurrence: "weekly" });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const auj = paris(0, 0), ilYa2h = paris(0, 2);
+  await sql(`update missions set date = '${auj.date}', date_debut = '${auj.date}', date_fin = '${auj.date}',
+             heure_debut = '${ilYa2h.heure}', started_at = now() - interval '2 hours' where id = '${m.id}'`);
+  const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id, arreter_serie: true }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const s = await sql(`select id from missions where parent_mission_id = '${m.id}'`);
+  expect(s.length, "aucune semaine suivante").toBe(0);
+  const [l] = await sql(`select recurrence from missions where id = '${m.id}'`);
+  expect(l.recurrence, "la série est arrêtée").toBeNull();
+});

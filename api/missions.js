@@ -4159,7 +4159,17 @@ export default async function handler(req, res) {
       // l'interruption ne le faisait pas, et la série s'arrêtait sans que
       // personne en soit prévenu (relecture du 03/10/2026). Pour arrêter la
       // série, le client annule la semaine suivante, comme toute réservation.
-      if (annulerReste && mission.recurrence) {
+      //
+      // Le client peut aussi demander l'arrêt de la série en même temps
+      // (`arreter_serie`, décision d'Alexandre du 04/10/2026) : la récurrence est
+      // alors retirée de cette séance, et aucune semaine suivante n'est créée —
+      // même effet que l'action `arreter_serie`, la séance interrompue étant la
+      // dernière de la série.
+      if (annulerReste && mission.recurrence && req.body?.arreter_serie === true) {
+        const arret = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+          { recurrence: null }, headers, `cancel_in_progress/arrêt de la série ${mission_id}`);
+        console.log(`[cancel_in_progress] série de ${mission_id} arrêtée à la demande du client${arret ? "" : " — ÉCRITURE REFUSÉE"}`);
+      } else if (annulerReste && mission.recurrence) {
         const serie = await programmerOccurrenceSuivante(mission_id, SUPABASE_URL, headers)
           .catch(e => { console.error(`[cancel_in_progress] série de ${mission_id} :`, e.message); return { mode: "echec" }; });
         console.log(`[cancel_in_progress] série de ${mission_id} → ${serie.mode}${serie.mission_id ? ` (${serie.mission_id})` : ""}`);
