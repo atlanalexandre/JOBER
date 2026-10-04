@@ -65,9 +65,11 @@ export async function rembourserDepuisLeBO(m, contexte) {
       body: new URLSearchParams({ payment_intent: m.stripe_payment_intent, reason: "requested_by_customer" }).toString(),
     });
     const d = await r.json().catch(() => ({}));
-    if (r.ok && d?.id) return { ok: true, refundId: d.id, virementRepris };
     // Déjà entièrement remboursé (par un autre chemin) : l'état voulu est atteint.
-    if (d?.error?.code === "charge_already_refunded") return { ok: true, refundId: null, virementRepris };
+    if ((r.ok && d?.id) || d?.error?.code === "charge_already_refunded") {
+      const heuresSupp = await rembourserHeuresSupp(m.id, cle, contexte);
+      return { ok: true, refundId: d?.id || null, virementRepris, heuresSupp };
+    }
     return { ok: false, code: 502, message: messageErreurStripe(d.error, `${contexte}/remboursement`)
       + (virementRepris ? " Attention : le virement au prestataire a, lui, été repris." : "") };
   } catch (e) {
@@ -75,6 +77,59 @@ export async function rembourserDepuisLeBO(m, contexte) {
     return { ok: false, code: 502, message: "Le service de paiement ne répond pas : rien n'a été remboursé. Réessayez."
       + (virementRepris ? " Attention : le virement au prestataire a, lui, été repris." : "") };
   }
+}
+
+/**
+ * Rembourse les paiements d'HEURES SUPPLÉMENTAIRES d'une prestation.
+ *
+ * Une prolongation est un paiement distinct (`metadata[type]=heures_supp`), que
+ * seul `extra_hours_payment_intent` référence — et une seconde prolongation
+ * écrase la référence de la première. Le remboursement complet ne rendait que le
+ * paiement de la réservation : ALANE gardait le prix des heures ajoutées, alors
+ * que le virement au prestataire, qui les incluait, était repris (relecture du
+ * 04/10/2026). Ils sont retrouvés chez Stripe par la prestation, et chacun
+ * remboursé une seule fois (clé d'idempotence par paiement).
+ *
+ * Ne lève jamais : le remboursement principal a eu lieu. Un échec est journalisé
+ * et compté, pour que l'appelant le dise.
+ * @returns {Promise<{rembourses:number, echecs:number}>}
+ */
+export async function rembourserHeuresSupp(missionId, cle, contexte) {
+  const bilan = { rembourses: 0, echecs: 0 };
+  let paiements;
+  try {
+    const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND metadata['type']:'heures_supp'`);
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=20`,
+      { headers: { "Authorization": `Bearer ${cle}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche refusée (${r.status})`);
+    paiements = d.data.filter(pi => pi.status === "succeeded");
+  } catch (e) {
+    console.error(`[${contexte}] heures supplémentaires de ${missionId} NON vérifiées — à rembourser à la main s'il y en a :`, e.message);
+    bilan.echecs++;
+    return bilan;
+  }
+  for (const pi of paiements) {
+    try {
+      const r = await fetch("https://api.stripe.com/v1/refunds", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded",
+          "Idempotency-Key": `bo-refund-supp-${pi.id}` },
+        body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
+      });
+      const d = await r.json().catch(() => ({}));
+      if ((r.ok && d?.id) || d?.error?.code === "charge_already_refunded") bilan.rembourses++;
+      else {
+        bilan.echecs++;
+        console.error(`[${contexte}] heures supplémentaires ${pi.id} de ${missionId} NON remboursées :`, JSON.stringify(d?.error || d).slice(0, 200));
+      }
+    } catch (e) {
+      bilan.echecs++;
+      console.error(`[${contexte}] heures supplémentaires ${pi.id} de ${missionId} NON remboursées :`, e.message);
+    }
+  }
+  if (bilan.rembourses) console.log(`[${contexte}] ${bilan.rembourses} paiement(s) d'heures supplémentaires remboursé(s) sur ${missionId}`);
+  return bilan;
 }
 
 /**
