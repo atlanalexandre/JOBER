@@ -1616,7 +1616,12 @@ export default async function handler(req, res) {
           });
           const ir = await fetch("https://api.stripe.com/v1/payment_intents", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded",
+              // Un double clic sur la même candidature ne crée qu'UN paiement
+              // (relecture du 04/10/2026) : chaque appel en créait un nouveau, tous
+              // réglables. Le montant entre dans la clé : une prestation modifiée
+              // entre-temps obtient un nouveau paiement au bon prix.
+              "Idempotency-Key": `accept-${mission_id}-${candidature_id}-${amountCents}` },
             body: params.toString(),
           });
           const intent = await ir.json();
