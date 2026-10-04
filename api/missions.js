@@ -2239,7 +2239,7 @@ export default async function handler(req, res) {
       // l'identifiant part directement dans une URL PostgREST.
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,started_at,validation_prestataire,titre,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,date_debut,date_fin,heure_debut,hours,started_at,validation_prestataire,titre,montant_total,payout_due_at`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -2274,6 +2274,19 @@ export default async function handler(req, res) {
       // contestation ne doit pas se raccourcir parce que le prestataire a
       // déclaré moins d'heures que prévu.
       const finMs = finPrestationMs({ ...mission, actual_hours: null });
+      // Une échéance de virement déjà fixée ferme la fenêtre au plus tard ce
+      // jour-là. Après l'arrêt complet d'une série, la date de fin prévue reste
+      // en base : sans cette borne, le client pouvait contester jusqu'à la
+      // dernière journée prévue + 48 h, sur un argent déjà versé 48 h après
+      // l'arrêt (relecture du 03/10/2026).
+      const echeanceMs = mission.payout_due_at ? Date.parse(mission.payout_due_at) : NaN;
+      if (finMs && Number.isFinite(echeanceMs) && echeanceMs < finMs + 48 * 3600000 && Date.now() > echeanceMs) {
+        console.error(`[dispute] hors délai sur ${mission_id} : échéance du virement (${mission.payout_due_at}) passée`);
+        return res.status(400).json({
+          error: "Le délai de contestation de 48 h après la fin de la prestation est écoulé. "
+               + "Écrivez à direction@alane.fr si la situation le justifie.",
+        });
+      }
       if (finMs) {
         const depasseMs = Date.now() - (finMs + 48 * 3600000);
         if (depasseMs > 0) {
@@ -3864,7 +3877,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4151,6 +4164,28 @@ export default async function handler(req, res) {
           console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
             + `au ${echeanceInterruption} — prestation ${mission_id}`);
         }
+      }
+
+      // Réservation HEBDOMADAIRE : interrompre la séance du jour ne met pas fin
+      // à la série. La clôture par le client (`complete`), la validation
+      // automatique et le back-office programment tous la semaine suivante ;
+      // l'interruption ne le faisait pas, et la série s'arrêtait sans que
+      // personne en soit prévenu (relecture du 03/10/2026). Pour arrêter la
+      // série, le client annule la semaine suivante, comme toute réservation.
+      //
+      // Le client peut aussi demander l'arrêt de la série en même temps
+      // (`arreter_serie`, décision d'Alexandre du 04/10/2026) : la récurrence est
+      // alors retirée de cette séance, et aucune semaine suivante n'est créée —
+      // même effet que l'action `arreter_serie`, la séance interrompue étant la
+      // dernière de la série.
+      if (annulerReste && mission.recurrence && req.body?.arreter_serie === true) {
+        const arret = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
+          { recurrence: null }, headers, `cancel_in_progress/arrêt de la série ${mission_id}`);
+        console.log(`[cancel_in_progress] série de ${mission_id} arrêtée à la demande du client${arret ? "" : " — ÉCRITURE REFUSÉE"}`);
+      } else if (annulerReste && mission.recurrence) {
+        const serie = await programmerOccurrenceSuivante(mission_id, SUPABASE_URL, headers)
+          .catch(e => { console.error(`[cancel_in_progress] série de ${mission_id} :`, e.message); return { mode: "echec" }; });
+        console.log(`[cancel_in_progress] série de ${mission_id} → ${serie.mode}${serie.mission_id ? ` (${serie.mission_id})` : ""}`);
       }
 
       // ── Ce qu'on annonce, dit une seule fois ──────────────────────────────
