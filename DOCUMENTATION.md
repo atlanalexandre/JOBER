@@ -1406,7 +1406,7 @@ Le bouton prestataire n'apparaissait que pour `completed` : une prestation factu
 remboursée (`closed` avec `invoice_number`) restait sans accès pour lui, alors que le client
 la voyait. Aligné le 04/10/2026.
 
-**Toutes les factures du mois** (04/10/2026) — bouton « 🧾 Toutes mes factures de {mois} »
+**Toutes les factures du mois** (04/10/2026) — bouton « 🧾 Toutes mes factures de {mois} » (« d'octobre », « de mai »)
 en tête de la liste des prestations (client, onglets « Toutes » et « Terminées ») et de
 l'onglet Historique (prestataire). Il ouvre `/api/invoice?mois=AAAA-MM&token=…` : un seul
 document, une facture par page à l'impression, à enregistrer en PDF. Le jeton vient de

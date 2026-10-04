@@ -799,7 +799,7 @@ export function BoutonFacturesDuMois({ getSession, style }) {
       })}
       style={{ width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", ...style }}
     >
-      🧾 Toutes mes factures de {libelle}
+      🧾 Toutes mes factures {/^[aeiouy]/.test(libelle) ? `d'${libelle}` : `de ${libelle}`}
     </button>
   );
 }
