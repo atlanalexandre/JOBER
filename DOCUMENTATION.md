@@ -1396,6 +1396,29 @@ documents portant deux numéros pour une seule opération, ce qu'interdit l'arti
 de l'annexe II au CGI. Ne pas produire de document est rattrapable ; en produire un mal
 numéroté ne l'est pas.
 
+**Date d'émission** — celle de l'archive (`contenu.emise_le`), en heure de Paris. Elle était
+recalculée à chaque affichage jusqu'au 04/10/2026 : une facture émise en août se disait
+« émise le » jour où on la rouvrait. Sans archive (attestation sans numéro), c'est la date du jour.
+
+**Accès** — chaque prestation réalisée (ou déjà facturée) porte un bouton « Ma facture » /
+« Facture », côté client (détail de la prestation) comme côté prestataire (onglet Historique).
+Le bouton prestataire n'apparaissait que pour `completed` : une prestation facturée puis
+remboursée (`closed` avec `invoice_number`) restait sans accès pour lui, alors que le client
+la voyait. Aligné le 04/10/2026.
+
+**Toutes les factures du mois** (04/10/2026) — bouton « 🧾 Toutes mes factures de {mois} »
+en tête de la liste des prestations (client, onglets « Toutes » et « Terminées ») et de
+l'onglet Historique (prestataire). Il ouvre `/api/invoice?mois=AAAA-MM&token=…` : un seul
+document, une facture par page à l'impression, à enregistrer en PDF. Le jeton vient de
+`generate_invoice_token` avec `{ mois }` — signé `{user}.mois-{AAAA-MM}.{exp}`, 30 minutes —
+et n'ouvre que ce mois-là ; un jeton de facture seule ne l'ouvre pas, et inversement. Le
+serveur retient les prestations de l'appelant (client **ou** prestataire, lu dans le jeton,
+jamais dans un paramètre) réalisées ou déjà numérotées, dont la `date` tombe dans le mois.
+Chaque facture passe par le même rendu qu'une facture seule (`produireFacture`) : même
+numérotation, même archive. Plafond de 100 factures par document, signalé s'il est atteint.
+Le mois proposé est le mois en cours en heure de Paris (`moisEnCoursParis()` de `ui.jsx`).
+Essai : `e2e/68-factures-du-mois`.
+
 ### Le backoffice
 
 `admin.alane.fr` n'est **pas un déploiement séparé** : c'est la même application, le même

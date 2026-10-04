@@ -11,7 +11,7 @@ import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-c
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
-import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, checkIban } from "./ui.jsx";
+import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -8160,6 +8160,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
       <div style={{ padding:"14px 18px 0" }}>
         {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
+
+        {/* Toutes les factures du mois en un seul document — avant, il fallait
+            ouvrir chaque prestation pour en sortir les factures une à une. */}
+        {!loading && (tab === "all" || tab === "completed") && prestations.some(m => m.status === "completed" || m.invoice_number) && (
+          <BoutonFacturesDuMois
+            getSession={async () => (await supabase.auth.getSession()).data?.session?.access_token}
+            style={{ marginBottom:12 }}
+          />
+        )}
 
         {!loading && tab !== "prestataires" && filtered.filter(m => m.status !== "disputed").length === 0 && litigesEnCours.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"40px 24px", textAlign:"center", marginTop:8 }}>
