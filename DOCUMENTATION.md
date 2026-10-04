@@ -1549,7 +1549,11 @@ changeait le mot de passe du **dernier inscrit**, pas celui du demandeur ; la de
 (`forgot-password.js`) trouvait toujours « un » compte ; la pénalité anti-recréation de
 l'inscription (`support.js`, `welcome`) tombait sur le dernier inscrit. La fonction parcourt la
 liste et compare l'adresse ; l'inscription, elle, prend simplement l'appelant, dont le jeton est
-vérifié. Éprouvé par `compte-par-email.test.js` et `e2e/42`.
+vérifié. Éprouvé par `compte-par-email.test.js` et `e2e/42`. La **réaffectation d'une
+prestation au back-office** (`reassign_mission`) l'utilise aussi depuis le 04/10/2026 : elle lisait
+une seule page de 10 000 comptes et comparait l'adresse à la casse près — « Jean@… » saisi
+« jean@… » restait introuvable. Elle vérifie en outre que le compte trouvé est un prestataire
+approuvé, accès aux prestations ouvert : un compte client recevait la prestation (`e2e/67`).
 
 **Lien de réinitialisation du mot de passe : `api/_reinitialisation.js`** (audit « sécurité »,
 01/10/2026, `reinitialisation.test.js`, `e2e/52`). Trois défauts corrigés :

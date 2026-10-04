@@ -1,3 +1,4 @@
+import { utilisateurParEmail } from "./_auth.js";
 import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail, euros } from "./_email.js";
@@ -2791,11 +2792,28 @@ export default async function handler(req, res) {
       if (!["open", "pending_acceptance", "assigned", "needs_replacement"].includes(m.status)) {
         return res.status(409).json({ error: `Prestation « ${m.status} » : elle ne peut plus être réaffectée. Le client peut en réserver une nouvelle.` });
       }
-      // Trouver le nouveau prestataire par email
-      const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-      const authData = await authRes.json();
-      const newUser = (authData.users||[]).find(u => u.email === new_presta_email.trim());
+      // Trouver le nouveau prestataire par son e-mail — par `utilisateurParEmail`
+      // (CLAUDE.md §4) : la lecture d'une seule page de 10 000 comptes, comparée à
+      // la casse près, manquait « Jean@… » saisi « jean@… » et tout compte au-delà
+      // de la première page (relecture du 04/10/2026).
+      let newUser;
+      try {
+        newUser = await utilisateurParEmail(new_presta_email, SUPABASE_URL, SERVICE_ROLE_KEY);
+      } catch (e) {
+        console.error("[bo-action/reassign_mission] comptes illisibles :", e.message);
+        return res.status(502).json({ error: "Les comptes n'ont pas pu être lus. Rien n'a été réaffecté, réessayez." });
+      }
       if (!newUser) return res.status(404).json({ error: "Prestataire introuvable avec cet email" });
+      // Et ce compte doit être un prestataire en état d'intervenir : n'importe quel
+      // compte — client, prestataire refusé ou non activé — pouvait recevoir la
+      // prestation, puis être payé à la clôture.
+      const pfRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUser.id}&select=role,status,missions_enabled`, { headers });
+      const pf = (await pfRes.json().catch(() => null))?.[0];
+      if (!pfRes.ok || !pf) return res.status(502).json({ error: "Le profil de ce compte n'a pas pu être lu. Rien n'a été réaffecté." });
+      if (pf.role !== "prestataire") return res.status(409).json({ error: "Ce compte n'est pas un compte prestataire." });
+      if (pf.status !== "approved" || pf.missions_enabled !== true) {
+        return res.status(409).json({ error: "Ce prestataire n'a pas (ou plus) accès aux prestations : validez son dossier et ouvrez son accès avant de lui confier une prestation." });
+      }
       const old_presta = m.prestataire_id;
       if (!await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }, headers, "bo-action/reassign_mission")) {
         return res.status(500).json({ error: "La réaffectation n'a pas pu être enregistrée. Personne n'a été prévenu." });
