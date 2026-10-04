@@ -2708,6 +2708,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "manual_refund") {
+      let rb = null;
       const { mission_id, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
@@ -2718,7 +2719,7 @@ export default async function handler(req, res) {
       if (m.stripe_payment_intent) {
         // Virement déjà versé repris d'abord, anti-double clic, message en
         // français (api/_remboursement_bo.js).
-        const rb = await rembourserDepuisLeBO(m, "bo/manual_refund");
+        rb = await rembourserDepuisLeBO(m, "bo/manual_refund");
         if (!rb.ok) return res.status(rb.code).json({ error: rb.message });
         if (rb.virementRepris) m.payout_status = "held"; // repris : à annuler ci-dessous
         // Stripe ne rend que ce que la carte a payé : la part réglée en
@@ -2737,7 +2738,11 @@ export default async function handler(req, res) {
         await notifier({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/manual_refund] échec ignoré :", e?.message));
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"manual_refund", target_id:mission_id, details:{ reason } }) }).catch(e => console.error("[bo-action/manual_refund] échec ignoré :", e?.message));
-      return res.status(200).json({ success: true });
+      // Heures supplémentaires non remboursées : l'administrateur doit le savoir.
+      const avertissement = rb?.heuresSupp?.echecs
+        ? "Attention : un paiement d'heures supplémentaires n'a pas pu être remboursé. Voir le tableau de bord Stripe."
+        : undefined;
+      return res.status(200).json({ success: true, ...(avertissement ? { avertissement } : {}) });
     }
 
     if (action === "cancel_mission") {

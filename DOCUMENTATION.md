@@ -3298,6 +3298,16 @@ Si l'application échoue **après** le paiement, la réponse le dit — « votre
 enregistré mais la prolongation n'a pas pu être appliquée » — et l'incident part en erreur dans
 les journaux. Laisser croire à un règlement perdu serait pire que l'échec.
 
+**Un remboursement complet rend aussi les heures supplémentaires** (relecture du 04/10/2026,
+`src/tests/api/remboursement-heures-supp.test.js`). Le paiement d'une prolongation est distinct
+de celui de la réservation, et `extra_hours_payment_intent` ne garde que le dernier. Le
+remboursement complet du back-office (`rembourserDepuisLeBO` : « Rembourser », « Annuler avec
+remboursement », suspension d'un prestataire, suppression de compte, `stripe-refund`) ne rendait
+que la réservation : ALANE gardait le prix des heures ajoutées, alors que le virement qui les
+incluait était repris. `rembourserHeuresSupp()` retrouve désormais chez Stripe tous les paiements
+`metadata[type]=heures_supp` de la prestation et les rembourse un par un (clé
+`bo-refund-supp-{paiement}`) ; un échec est signalé à l'administrateur.
+
 ### Les heures supplémentaires se ferment 20 minutes après la fin
 
 **Demandé par Alexandre le 17/08/2026.** La demande n'était bornée par rien — ni à l'écran, ni

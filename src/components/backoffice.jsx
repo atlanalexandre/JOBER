@@ -4059,7 +4059,7 @@ export function BOMissions() {
                   setDisputing(m.id+"_manual");
                   const res = await boFetch({ action:"manual_refund", mission_id:m.id, reason });
                   const j = await res.json();
-                  setResult(r=>({...r,[m.id]:j.success?"💰 Remboursement initié":`❌ ${j.error||"Erreur"}`}));
+                  setResult(r=>({...r,[m.id]:j.success?(j.avertissement?`💰 Remboursement initié — ⚠️ ${j.avertissement}`:"💰 Remboursement initié"):`❌ ${j.error||"Erreur"}`}));
                   if (j.success) setMissions(ms=>ms.map(x=>x.id===m.id?{...x,status:"closed"}:x));
                   setDisputing(null);
                 }} disabled={!!disputing} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(242,94,94,0.25)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:disputing===m.id+"_manual"?0.5:1 }}>
