@@ -3651,6 +3651,12 @@ non payées et les prestations refusées (déjà remboursées) se clôturent com
   intégralement le client des journées déjà faites, et le prestataire n'était payé de rien. Une
   série dont la première journée est passée, ou déjà pointée, est refusée (409
   `serie_commencee`) : elle se règle avec l'administration.
+- **une prestation commencée ne s'annule plus, quel que soit le nombre de jours, ni par le
+  prestataire ni par le client** (relecture du 03/10/2026, `e2e/60`). Une journée pointée à 8 h
+  et annulée à 14 h rendait tout au client et ne payait rien des six heures faites. Côté
+  prestataire : 409 `prestation_commencee`. Côté client (`cancel_client`), même refus : l'arrêt
+  en cours passe par `cancel_in_progress`, qui paie ce qui a été fait — l'écran ne proposait
+  « Annuler » qu'avant le démarrage, mais le serveur ne le vérifiait pas.
 
 ### Remplacement : le changement de titulaire vérifie qu'il a eu lieu
 
