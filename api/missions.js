@@ -4923,6 +4923,12 @@ export default async function handler(req, res) {
             + `${diffRes.status} ${JSON.stringify(diffRows || {}).slice(0, 200)}`);
           return res.status(500).json({ error: "Votre paiement est bien reçu, mais la prestation n'a pas pu être diffusée. Contactez-nous : nous la traitons à la main." });
         }
+        // Le paiement est confirmé : le cashback accordé en réduction est prélevé
+        // ici, comme le fait `assign_after_payment`. Le webhook ne le fait pas
+        // pour ces réservations, faute de prestataire dans le paiement : le solde
+        // restait intact et se réutilisait à chaque réservation (relecture du
+        // 04/10/2026). Le drapeau `cashback_debite` rend tout second appel inerte.
+        await debiterCashback(diffRows[0], SUPABASE_URL, headers);
         console.log(`[affecter_tiers] aucun candidat pour ${mission_id} — diffusion`);
         return res.status(200).json({ success: true, mode: "diffusion", mission_id });
       }
@@ -4939,6 +4945,7 @@ export default async function handler(req, res) {
         console.error(`[affecter_tiers] affectation refusée pour ${mission_id} : ${patchRes.status}`);
         return res.status(500).json({ error: "Affectation impossible" });
       }
+      await debiterCashback(rows[0], SUPABASE_URL, headers);
       console.log(`[affecter_tiers] ${mission_id} → ${candidats[0]} (${candidats.length} candidat(s))`);
       await prevenirNouvelleDemande(mission_id, SUPABASE_URL, headers);
       return res.status(200).json({ success: true, mode: "affectation", mission_id });
