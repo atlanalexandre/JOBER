@@ -2412,36 +2412,13 @@ ${(() => {
     }
   }
 
-  // ── Expiration des missions pending_acceptance dont le délai est dépassé ──
-  // Appelé par tous les modes pour éviter les zombies
-  try {
-    const nowIso = new Date().toISOString();
-    const zRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre`,
-      { headers }
-    );
-    const zombies = await zRes.json().catch(() => []);
-    if (Array.isArray(zombies) && zombies.length > 0) {
-      await Promise.all(zombies.map(async zm => {
-        const rembOk = await rembourserPrestation(zm, SUPABASE_URL, headers);
-        if (!rembOk) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${zm.id}`);
-        // « refused » et non « open » : le client est remboursé, la prestation
-        // est donc close. La laisser ouverte avec son paiement remboursé
-        // permettrait à un prestataire de l'accepter sans contrepartie.
-        await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${zm.id}`,
-          { status: "refused", prestataire_id: null }, headers, `cron/expiration ${zm.id}`);
-        if (zm.client_id) {
-          await notifier({
-              user_id: zm.client_id, type: "mission",
-              title: "Prestataire non disponible ⏱️",
-              body: `Le prestataire n'a pas répondu à temps pour la prestation "${zm.titre || zm.metier || ""}".${rembOk ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
-            }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
-        }
-      }));
-      console.log(`cron: expired ${zombies.length} pending_acceptance missions`);
-    }
-  } catch (e) { console.error("cron zombie expiry error:", e); }
-
+  // L'expiration des demandes sans réponse est traitée UNE fois, en tête de ce
+  // fichier (« toutes routes »), avec remboursement vérifié et remise en attente
+  // si Stripe refuse. Un second bloc, ici, la reprenait le 1er du mois : il ne
+  // lisait pas le paiement, ne remboursait donc rien, passait la prestation en
+  // « refusée » et écrivait au client « Votre paiement a été intégralement
+  // remboursé » — y compris pour celles que le premier bloc venait de remettre
+  // en attente faute de remboursement (relecture du 04/10/2026). Retiré.
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
