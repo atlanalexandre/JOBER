@@ -2462,6 +2462,14 @@ moindre euro ne bouge. Refuser là ne coûte rien au client. La règle et son ca
 cela été sortis de `api/missions.js` vers `api/_secteurs.js`, seul moyen que les deux chemins
 lisent la même chose plutôt que d'en recopier une troisième version.
 
+*Le double paiement* (relecture du 04/10/2026, `e2e/63`) : `/api/stripe-intent` refuse aussi
+(409 `deja_payee`) de créer un paiement de réservation pour une prestation dont le paiement a
+**abouti** — état relu chez Stripe (`succeeded`, `processing`, `requires_capture`), un paiement
+inabouti n'empêchant pas un nouvel essai. Revenu sur l'écran de paiement, le client pouvait
+payer deux fois ; le webhook du second paiement écrasait la trace du premier, jamais remboursé,
+et passait la prestation « acceptée » sans réponse du prestataire. Le complément d'heures, paiement
+distinct, n'est pas concerné.
+
 *Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
 prestataire non activé, tarif incohérent, adresse hors zone — et les deux de
 `affecter_tiers` **remboursent intégralement et annulent la prestation**
