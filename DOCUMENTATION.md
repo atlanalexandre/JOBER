@@ -1612,7 +1612,11 @@ ne porte aucun prestataire dans son paiement (il n'est rattaché qu'après) ; ce
 alors en `assigned` **sans prestataire**, et l'affectation de l'application, arrivant ensuite,
 était refusée comme « déjà traitée ». `patchApresPaiement()` n'écrit plus rien dans ce cas.
 **Avant d'abonner `payment_intent.succeeded`, relire ce chemin en entier** : il débite aussi le
-cashback et ignore les paiements de série (`metadata[type] = serie`).
+cashback et ignore les paiements de série (`metadata[type] = serie`). Depuis le 04/10/2026, il **rembourse un
+paiement en double** : si la prestation est déjà réglée par un autre paiement, celui qui arrive
+est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu d'être ignoré.
+Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
+est le refus de `/api/stripe-intent` (409 `deja_payee`).
 
 ### Les contraintes de la base peuvent être en retard sur le code
 

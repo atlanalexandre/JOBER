@@ -27,6 +27,38 @@ export function patchApresPaiement(intentId, prestataireId, prestataireRetenu) {
   return null;
 }
 
+// Un paiement abouti pour une prestation que RÈGLE DÉJÀ un autre paiement est un
+// doublon : il est remboursé (clé d'idempotence propre à ce paiement). Une
+// prestation illisible, ou portant ce même paiement, ne déclenche rien.
+async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent,status`, { headers });
+    const rows = await r.json().catch(() => null);
+    const m = Array.isArray(rows) && rows[0];
+    if (!r.ok || !m) {
+      console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible (${r.status}) — doublon éventuel NON vérifié.`);
+      return;
+    }
+    if (!m.stripe_payment_intent || m.stripe_payment_intent === intent.id) {
+      console.log(`[stripe-webhook] ${intent.id} : prestation ${missionId} déjà traitée par ce paiement — rien à faire.`);
+      return;
+    }
+    const rr = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `refund-doublon-${intent.id}` },
+      body: new URLSearchParams({ payment_intent: intent.id, reason: "duplicate" }).toString(),
+    });
+    const rd = await rr.json().catch(() => null);
+    if (rd?.id || rd?.error?.code === "charge_already_refunded") {
+      console.error(`[stripe-webhook] DOUBLON ${intent.id} remboursé : prestation ${missionId} déjà réglée par ${m.stripe_payment_intent}.`);
+    } else {
+      console.error(`[stripe-webhook] ⚠️ DOUBLON ${intent.id} NON remboursé (prestation ${missionId}, réglée par ${m.stripe_payment_intent}) :`, JSON.stringify(rd?.error || rd).slice(0, 200));
+    }
+  } catch (e) {
+    console.error(`[stripe-webhook] doublon ${intent.id} non traité :`, e.message);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -281,7 +313,11 @@ export default async function handler(req, res) {
       }
       const patchedRows = await missionPatch.json().catch(() => []);
       if (!Array.isArray(patchedRows) || patchedRows.length === 0) {
-        console.log("[stripe-webhook] mission already processed (0 rows updated) — skipping secondary effects", intent.id);
+        // Déjà traitée — par CE paiement (livraison répétée : rien à faire) ou
+        // par un AUTRE (deux candidatures acceptées, deux onglets) : ce second
+        // paiement n'est alors rattaché à rien, et l'argent restait encaissé
+        // sans contrepartie (relecture du 04/10/2026). Il est remboursé.
+        await rembourserDoublon(missionId, intent, SUPABASE_URL, headers, STRIPE_SECRET_KEY);
         return res.status(200).json({ received: true });
       }
 
