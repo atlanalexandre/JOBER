@@ -118,3 +118,21 @@ test("prestation déjà démarrée : un remboursement ne rend pas le cashback", 
   const [ligne] = await sql(`select cashback_debite from missions where id = '${m.id}'`);
   expect(ligne.cashback_debite, "toujours marqué consommé").toBe(true);
 });
+
+// Relecture du 04/10/2026 : chez un tiers, la plateforme affecte la prestation
+// (`affecter_tiers`), et ce chemin ne débitait jamais le cashback — le webhook non
+// plus, faute de prestataire dans le paiement. La réduction se réutilisait à
+// chaque réservation.
+test("chez un tiers : le cashback accordé est bien débité", async () => {
+  await prestataireOperationnel();
+  const c = await client({ professionnel: true });
+  await sql(`update profiles set cashback_balance = 5 where id = '${c.id}'`);
+  const m = await reservationPayee({ prestataire: null, client: c, utiliserCashback: true, declaration: {
+    beneficiaire: "Hôtel du Parc (recette)", service_vendu: "Remise en état de chambres",
+    perimetre: "Chambres du 2e étage", livrable: "Chambres prêtes", organisateur: "Le prestataire organise seul son travail" } });
+  const [ligne] = await sql(`select cashback_applique, cashback_debite from missions where id = '${m.id}'`);
+  expect(Number(ligne.cashback_applique)).toBe(5);
+  expect(ligne.cashback_debite, "débité à l'affectation").toBe(true);
+  const [prof] = await sql(`select cashback_balance from profiles where id = '${c.id}'`);
+  expect(Number(prof.cashback_balance), "le solde a servi une fois, il n'en reste rien").toBe(0);
+});

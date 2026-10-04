@@ -4194,8 +4194,10 @@ Trois règles gouvernent cette imputation, et il faut les trois :
   service constatés et le cashback de la prestation suivante — une remise commerciale d'ALANE
   serait devenue une baisse du prix de vente.
 - **Le solde est débité à la CONFIRMATION du paiement**, jamais à la création de l'intention —
-  `debiterCashback()`, appelé par `assign_after_payment` **et** par le webhook Stripe, le
-  drapeau `cashback_debite` rendant le second appel sans effet. Réserver puis restituer aurait
+  `debiterCashback()`, appelé par `assign_after_payment`, par `affecter_tiers` (réservation chez
+  un tiers — oublié jusqu'au 04/10/2026 : le webhook ne le fait pas faute de prestataire dans le
+  paiement, et le solde se réutilisait à chaque réservation, `e2e/20`) **et** par le webhook
+  Stripe, le drapeau `cashback_debite` rendant tout appel suivant sans effet. Réserver puis restituer aurait
   imposé une restitution sur une douzaine de chemins d'annulation : en oublier un aurait fait
   disparaître le cashback d'un client en silence.
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
