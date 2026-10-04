@@ -4231,7 +4231,10 @@ Trois règles gouvernent cette imputation, et il faut les trois :
   `debiterCashback()`, appelé par `assign_after_payment`, par `affecter_tiers` (réservation chez
   un tiers — oublié jusqu'au 04/10/2026 : le webhook ne le fait pas faute de prestataire dans le
   paiement, et le solde se réutilisait à chaque réservation, `e2e/20`) **et** par le webhook
-  Stripe, le drapeau `cashback_debite` rendant tout appel suivant sans effet. Réserver puis restituer aurait
+  Stripe, le drapeau `cashback_debite` rendant tout appel suivant sans effet. Ce drapeau est désormais posé **avant**
+  le débit, par une écriture conditionnée à « pas encore débitée » (relecture du 04/10/2026) :
+  posé après, le webhook et `assign_after_payment` arrivés ensemble débitaient chacun la
+  réduction. Toute sortie sans débit le rend. Réserver puis restituer aurait
   imposé une restitution sur une douzaine de chemins d'annulation : en oublier un aurait fait
   disparaître le cashback d'un client en silence.
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`

@@ -184,6 +184,30 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     return { debite: 0, ok: true };
   }
 
+  // La prestation est d'abord RÉSERVÉE pour le débit : écriture conditionnée à
+  // « pas encore débitée ». Le drapeau n'était posé qu'APRÈS le débit du solde :
+  // le webhook et `assign_after_payment`, arrivés à moins d'une seconde
+  // d'intervalle, lisaient tous deux « pas débitée » et débitaient chacun la
+  // réduction — le client la perdait deux fois (relecture du 04/10/2026). Le
+  // second appel trouve désormais la prestation déjà prise et s'arrête. Toute
+  // sortie sans débit rend la réservation.
+  const prise = await fetch(
+    `${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&or=(cashback_debite.is.null,cashback_debite.eq.false)`,
+    { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" }, body: JSON.stringify({ cashback_debite: true }) }
+  ).catch(e => { console.error(`[cashback] réservation du débit impossible sur ${mission.id} :`, e.message); return null; });
+  const prises = prise ? await prise.json().catch(() => null) : null;
+  if (!prise || !prise.ok || !Array.isArray(prises)) {
+    console.error(`[cashback] réservation du débit refusée sur ${mission.id} (${prise?.status}) — débit non tenté.`);
+    return { debite: 0, ok: false };
+  }
+  if (prises.length === 0) return { debite: 0, ok: true }; // déjà débité par l'autre chemin
+  const rendre = async () => {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify({ cashback_debite: false }),
+    }).catch(e => { console.error(`[cashback] réservation non rendue sur ${mission.id} :`, e.message); return null; });
+    if (r && !r.ok) console.error(`[cashback] réservation non rendue sur ${mission.id} (${r.status}) : la prestation paraît débitée sans l'être.`);
+  };
+
   try {
     const pr = await fetch(
       `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=cashback_balance`,
@@ -197,6 +221,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     // refusait le remboursement APRÈS l'annulation (relecture du 29/09/2026).
     if (!pr.ok || !Array.isArray(pd) || !pd[0]) {
       console.error(`[cashback] solde illisible (${pr.status}) — débit non tenté sur ${mission.id}.`);
+      await rendre();
       return { debite: 0, ok: false };
     }
     const solde = Number(pd[0].cashback_balance || 0);
@@ -211,6 +236,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
       // Rien à débiter : la prestation n'est PAS marquée débitée, pour qu'aucune
       // restitution ne rende un cashback jamais pris. `cashback_applique` reste
       // ce que la carte n'a pas payé : c'est lui qui borne les remboursements.
+      await rendre();
       return { debite: 0, ok: true };
     }
 
@@ -230,6 +256,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     if (!up.ok || !Array.isArray(upData) || upData.length === 0) {
       console.error(`[cashback] débit de ${debit.toFixed(2)} € refusé sur ${mission.id}`
         + ` — solde modifié entre la lecture et l'écriture. Non consommé.`);
+      await rendre();
       return { debite: 0, ok: false };
     }
 
@@ -238,6 +265,7 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     return { debite: debit, ok: true };
   } catch (e) {
     console.error(`[cashback] débit impossible sur ${mission?.id} :`, e.message);
+    await rendre();
     return { debite: 0, ok: false };
   }
 }
