@@ -32,7 +32,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(
 const evenement = { type: "payment_intent.succeeded", data: { object: {
   id: "pi_second", amount: 11098, metadata: { mission: "m1", candidature_id: "c1", prestataire_id: "p1" } } } };
 
-function simuler({ paiementEnBase }) {
+function simuler({ paiementEnBase, statut = "assigned" }) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url);
@@ -42,7 +42,7 @@ function simuler({ paiementEnBase }) {
     if (u.includes("/profiles?")) return new Response(JSON.stringify([{ id: "p1", status: "approved", missions_enabled: true }]), { status: 200 });
     if (o.method === "PATCH" && u.includes("/missions?id=eq.m1")) return new Response("[]", { status: 200 }); // déjà traitée
     if (u.includes("/missions?id=eq.m1&select=stripe_payment_intent,status")) {
-      return new Response(JSON.stringify([{ stripe_payment_intent: paiementEnBase, status: "assigned" }]), { status: 200 });
+      return new Response(JSON.stringify([{ stripe_payment_intent: paiementEnBase, status: statut }]), { status: 200 });
     }
     if (u.endsWith("/v1/refunds")) return new Response(JSON.stringify({ id: "re_1" }), { status: 200 });
     return new Response("[]", { status: 200 });
@@ -64,6 +64,22 @@ describe("webhook : paiement en double", () => {
 
   it("prestation réglée par CE paiement (livraison répétée) : rien n'est remboursé", async () => {
     const appels = simuler({ paiementEnBase: "pi_second" });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.u.endsWith("/v1/refunds"))).toBe(false);
+  });
+
+  it("prestation ANNULÉE avant le paiement, sans paiement rattaché : il est remboursé", async () => {
+    const appels = simuler({ paiementEnBase: null, statut: "cancelled" });
+    const r = reponse();
+    await handler(requete(evenement), r);
+    expect(r.statut).toBe(200);
+    const remb = appels.find(a => a.u.endsWith("/v1/refunds"));
+    expect(remb, "un remboursement est émis").toBeTruthy();
+    expect(remb.cle).toBe("refund-doublon-pi_second");
+  });
+
+  it("prestation encore vivante sans paiement rattaché : on n'y touche pas", async () => {
+    const appels = simuler({ paiementEnBase: null, statut: "assigned" });
     await handler(requete(evenement), reponse());
     expect(appels.some(a => a.u.endsWith("/v1/refunds"))).toBe(false);
   });
