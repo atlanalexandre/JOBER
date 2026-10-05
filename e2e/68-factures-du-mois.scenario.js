@@ -81,3 +81,30 @@ test("une facture déjà émise garde sa date d'émission", async () => {
   const mois = await ouvrir(MOIS, await jetonDuMois(c.jeton));
   expect(mois.texte).toContain("Émise le 16/08/2026");
 });
+
+test("plusieurs jours et factures à numéroter : toutes dans le document, aucune en échec", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const mois = "2026-07";
+  const ids = [];
+  // Cinq prestations d'un jour, encore sans numéro : en parallèle, elles se
+  // disputaient le compteur et l'une échouait.
+  for (let j = 10; j < 15; j++) {
+    const id = crypto.randomUUID(); ids.push(id);
+    await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, hours, heure_debut, tarif_horaire, montant_total, adresse, ville, status)
+               values ('${id}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', '${mois}-${j}', 8, '09:00', 13, 110.98, '10 rue de Rivoli', 'Paris', 'completed')`);
+  }
+  // Une prestation de plusieurs jours : `date` est nulle, seule `date_debut` la situe.
+  const multi = crypto.randomUUID(); ids.push(multi);
+  await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, date_debut, date_fin, hours, heure_debut, tarif_horaire, montant_total, adresse, ville, status)
+             values ('${multi}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', null, '${mois}-20', '${mois}-22', 8, '09:00', 13, 332.94, '10 rue de Rivoli', 'Paris', 'completed')`);
+
+  const doc = await ouvrir(mois, await jetonDuMois(c.jeton, mois));
+  expect(doc.statut, doc.texte.slice(0, 300)).toBe(200);
+  expect(doc.texte).not.toContain("n'ont pas pu être éditées");
+  expect(nbFactures(doc.texte)).toBe(6);
+
+  const nums = await sql(`select invoice_number from missions where id in ('${ids.join("','")}')`);
+  const distincts = new Set(nums.map(n => n.invoice_number).filter(Boolean));
+  expect(distincts.size, "six numéros distincts").toBe(6);
+});

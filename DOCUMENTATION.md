@@ -1416,6 +1416,9 @@ serveur retient les prestations de l'appelant (client **ou** prestataire, lu dan
 jamais dans un paramètre) réalisées ou déjà numérotées, dont la `date` tombe dans le mois.
 Chaque facture passe par le même rendu qu'une facture seule (`produireFacture`) : même
 numérotation, même archive. Plafond de 100 factures par document, signalé s'il est atteint.
+Une prestation de plusieurs jours a une `date` NULLE : le filtre teste aussi `date_debut`
+(sans quoi elle manquait au document, 05/10/2026). Les factures encore sans numéro sont rendues
+**une par une** : en parallèle, elles se disputaient le compteur et l'une échouait par lot.
 Le mois proposé est le mois en cours en heure de Paris (`moisEnCoursParis()` de `ui.jsx`).
 Essai : `e2e/68-factures-du-mois`.
 
