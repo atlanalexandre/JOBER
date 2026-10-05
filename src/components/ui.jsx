@@ -783,25 +783,51 @@ export function ouvrirFacturesDuMois(mois, { getSession, apiFetch }) {
 // prestataire : chacun ne reçoit que les factures où il figure — le serveur
 // filtre sur l'identité portée par le jeton, pas sur un paramètre du navigateur.
 export function BoutonFacturesDuMois({ getSession, style }) {
-  const mois = moisEnCoursParis();
-  const [an, m] = mois.split("-");
-  const libelle = new Date(Date.UTC(Number(an), Number(m) - 1, 15))
-    .toLocaleDateString("fr-FR", { month: "long", timeZone: "UTC" });
+  // Le mois en cours par défaut, et les douze précédents au choix : le 2
+  // novembre, c'est octobre qu'un prestataire déclare (demande d'Alexandre du
+  // 05/10/2026 — le bouton ne proposait que le mois en cours).
+  const choix = moisProposes();
+  const [mois, setMois] = useState(choix[0].valeur);
+  const libelle = choix.find(c => c.valeur === mois)?.court || "";
   return (
-    <button
-      onClick={() => ouvrirFacturesDuMois(mois, {
-        getSession,
-        apiFetch: (jwt) => fetch("/api/missions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
-          body: JSON.stringify({ action: "generate_invoice_token", mois }),
-        }).catch((e) => { console.error("[facture] jeton du mois :", e.message); return null; }),
-      })}
-      style={{ width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", ...style }}
-    >
-      🧾 Toutes mes factures {/^[aeiouy]/.test(libelle) ? `d'${libelle}` : `de ${libelle}`}
-    </button>
+    <div style={{ display:"flex", gap:8, ...style }}>
+      <select
+        aria-label="Mois des factures"
+        value={mois}
+        onChange={(e) => setMois(e.target.value)}
+        style={{ flex:"0 0 auto", maxWidth:"44%", padding:"10px 8px", borderRadius:12, border:`1px solid ${C.violet}55`, background:"#111D35", color:C.text, fontSize:13, fontFamily:"inherit", cursor:"pointer" }}
+      >
+        {choix.map(c => <option key={c.valeur} value={c.valeur}>{c.long}</option>)}
+      </select>
+      <button
+        onClick={() => ouvrirFacturesDuMois(mois, {
+          getSession,
+          apiFetch: (jwt) => fetch("/api/missions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+            body: JSON.stringify({ action: "generate_invoice_token", mois }),
+          }).catch((e) => { console.error("[facture] jeton du mois :", e.message); return null; }),
+        })}
+        style={{ flex:1, minWidth:0, padding:"11px", borderRadius:12, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}
+      >
+        🧾 Mes factures {/^[aeiouy]/.test(libelle) ? `d'${libelle}` : `de ${libelle}`}
+      </button>
+    </div>
   );
+}
+
+// Le mois en cours (heure de Paris) et les douze précédents, du plus récent au
+// plus ancien : { valeur: "2026-10", long: "octobre 2026", court: "octobre" }.
+export function moisProposes(maintenant = new Date(), nombre = 13) {
+  const [an, m] = moisEnCoursParis(maintenant).split("-").map(Number);
+  const liste = [];
+  for (let i = 0; i < nombre; i++) {
+    const d = new Date(Date.UTC(an, m - 1 - i, 15));
+    const valeur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const court = d.toLocaleDateString("fr-FR", { month: "long", timeZone: "UTC" });
+    liste.push({ valeur, court, long: `${court} ${d.getUTCFullYear()}` });
+  }
+  return liste;
 }
 
 async function ouvrirDocumentFacture(construireUrl, { getSession, apiFetch, titre }) {
