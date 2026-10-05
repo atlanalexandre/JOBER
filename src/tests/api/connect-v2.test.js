@@ -15,7 +15,7 @@ describe("création du compte de virement en v2", () => {
   it("l'équivalent d'un compte Express qui reçoit des virements", () => {
     const c = corpsCompteV2({ profil: { prenom: "Sam", nom: "Recette" }, email: "sam@x.fr" });
     expect(c.dashboard).toBe("express");
-    expect(c.defaults.responsibilities).toEqual({ fees_collector: "application_express", losses_collector: "stripe" });
+    expect(c.defaults.responsibilities).toEqual({ fees_collector: "application", losses_collector: "application" });
     expect(c.configuration).toEqual({ recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } });
     expect(c.identity).toEqual({ country: "FR", entity_type: "individual", individual: { given_name: "Sam", surname: "Recette", email: "sam@x.fr" } });
     expect(c.defaults.currency).toBe("eur");

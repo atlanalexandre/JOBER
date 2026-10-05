@@ -37,11 +37,13 @@
 // Stripe Accelerate. Correspondance avec l'ancien compte « Express », d'après
 // la spécification officielle (stripe/openapi, version 2026-09-30.endive) :
 //   • `dashboard: "express"`                    — même tableau de bord Stripe ;
-//   • `fees_collector: "application_express"`   — même règle de frais qu'Express ;
-//   • `losses_collector: "stripe"`              — Stripe couvre les soldes négatifs
-//                                                 (« Managed Risk ») : Stripe refuse
-//                                                 « application » pour cette plateforme
-//                                                 (constaté en mode test le 05/10/2026) ;
+//   • `fees_collector` et `losses_collector` : `"application"` — la seule valeur
+//     que Stripe accepte pour un compte qui ne fait que RECEVOIR des virements
+//     (configuration `recipient` seule ; message de Stripe en mode test, le
+//     05/10/2026). ⚠️ Le compte Stripe d'ALANE refuse pour l'instant que la
+//     plateforme porte les pertes (« set losses_collector to stripe ») : la
+//     création échoue tant que ce réglage n'est pas levé côté Stripe — question
+//     posée à l'équipe Stripe Accelerate. Ne pas fusionner avant ;
 //   • configuration `recipient`, capacité `stripe_balance.stripe_transfers`
 //     — l'équivalent de `capabilities[transfers]` : le compte REÇOIT des
 //     virements (`POST /v1/transfers`, inchangé : les identifiants `acct_…`
