@@ -1645,6 +1645,13 @@ est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu
 Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
 est le refus de `/api/stripe-intent` (409 `deja_payee`).
 
+**Accepter une candidature n'attribue jamais sans paiement** (05/10/2026). L'action `accept`
+crée un paiement Stripe avec la clé `accept-{prestation}-{candidature}-{montant}` (04/10/2026).
+Quand Stripe ne rendait pas de paiement — erreur, ou double clic : le second appel, même clé,
+reçoit « requête en cours » (409) —, le code retombait sur l'affectation et la prestation
+passait `assigned` sans rien d'encaissé. Il répond désormais 409 (« déjà en cours ») ou 502.
+L'affectation directe ne subsiste que sans clé Stripe configurée. Essai : `e2e/69`.
+
 ### Les contraintes de la base peuvent être en retard sur le code
 
 **Constaté le 18/08/2026**, sur un prestataire qui ne pouvait pas accepter une

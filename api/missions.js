@@ -1639,6 +1639,18 @@ export default async function handler(req, res) {
             }
             return res.status(200).json({ payment_required: true, client_secret: intent.client_secret, amount: amountCents / 100 });
           }
+          // Pas de paiement créé : on S'ARRÊTE. Le code retombait sinon sur
+          // l'affectation ci-dessous — prestation attribuée, rien encaissé. La
+          // clé d'idempotence rend ce cas courant : un double clic envoie deux
+          // fois la même clé, et Stripe répond au second « requête en cours »
+          // (409) sans paiement (relecture du 05/10/2026).
+          console.error(`[accept] paiement non créé pour ${mission_id} (${ir.status}) :`,
+            JSON.stringify(intent?.error || intent).slice(0, 200));
+          return res.status(ir.status === 409 ? 409 : 502).json({
+            error: ir.status === 409
+              ? "Votre acceptation est déjà en cours de traitement — patientez un instant."
+              : "Impossible de créer le paiement Stripe — réessayez",
+          });
         } catch (stripeErr) {
           console.error("[accept] Stripe PaymentIntent creation failed:", stripeErr.message);
           return res.status(500).json({ error: "Impossible de créer le paiement Stripe — réessayez" });
