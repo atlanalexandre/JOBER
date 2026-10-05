@@ -795,6 +795,15 @@ async function handleEmailAction(req, res) {
   if (action !== "accept" && affecteeParLaPlateforme(mission)) {
     cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, hdrs);
     console.log(`[email-action] refus sur prestation affectée ${missionId} → ${cascade.mode}`);
+    // Ni candidat suivant ni diffusion n'ont pu être écrits : la prestation est
+    // déjà « refusée » (écriture ci-dessus). Elle restait ainsi, payée, sans
+    // personne et sans remboursement (relecture du 05/10/2026). On rembourse,
+    // comme un refus ordinaire.
+    if (cascade.mode === "echec") {
+      cascade = null;
+      const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
+      if (!rembEchec.ok) console.error(`[refus-email] cascade en échec ET remboursement impossible — prestation ${missionId} à rembourser à la main`);
+    }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
     if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
@@ -5467,6 +5476,14 @@ export default async function handler(req, res) {
       if (response !== "accept" && affecteeParLaPlateforme(mission)) {
         cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
         console.log(`[respond_mission] refus sur prestation affectée ${mission_id} → ${cascade.mode}`);
+        // Cascade en échec : la prestation, déjà « refusée », restait payée sans
+        // personne ni remboursement (relecture du 05/10/2026). On rembourse,
+        // comme un refus ordinaire.
+        if (cascade.mode === "echec") {
+          cascade = null;
+          rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
+          if (!rembRefus.ok) console.error(`[respond_mission] cascade en échec ET remboursement impossible — prestation ${mission_id} à rembourser à la main`);
+        }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
         if (!rembRefus.ok) console.error(`[respond_mission] remboursement à reprendre manuellement — prestation ${mission_id}`);
