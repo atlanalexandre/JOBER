@@ -2525,7 +2525,12 @@ une affectation en erreur, laissait une ligne aux mêmes marqueurs qu'un tunnel 
 plus tard, client débité sans prestation ni remboursement. Avant d'annuler, `cron-abandon`
 demande désormais à Stripe (recherche `metadata['mission']`) si un paiement a abouti ; s'il en
 trouve un, il le **rembourse**, annule et prévient le client. Sans réponse de Stripe, il
-n'annule pas et le journalise. Il traite 50 lignes par passage.
+n'annule pas et le journalise. Il traite 50 lignes par passage, **tirées au hasard parmi les 200
+plus anciennes** (`tirerAuHasard()`, 05/10/2026) : celles laissées en l'état (Stripe muet,
+remboursement incomplet) restaient en tête et pouvaient bloquer toutes les suivantes. Une
+annulation refusée est journalisée — elle était avalée — et le message « vous êtes remboursé »
+n'est envoyé qu'une fois l'annulation faite ; sinon la ligne est reprise au passage suivant, le
+remboursement (idempotent) n'y repartant pas.
 
 *Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
 prestataire non activé, tarif incohérent, adresse hors zone — et les deux de

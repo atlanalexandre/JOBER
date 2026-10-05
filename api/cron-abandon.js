@@ -2,6 +2,7 @@ import { resendBody } from "./_email.js";
 import { sendWebPush, notifier } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 import { appUrl } from "./_url.js";
+import { tirerAuHasard } from "./_lots.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
 // Pour chaque brouillon > 30 min non encore notifié :
@@ -124,9 +125,14 @@ export default async function handler(req, res) {
       + `&parent_mission_id=is.null`;
     const candRes = await fetch(
       `${SUPABASE_URL}/rest/v1/missions?${filtre}&created_at=lt.${encodeURIComponent(purgeCutoff)}`
-      + `&select=id,client_id,titre,metier&order=created_at.asc&limit=50`,
+      + `&select=id,client_id,titre,metier&order=created_at.asc&limit=200`,
       { headers: hdrs });
-    const candidates = candRes.ok ? await candRes.json().catch(() => []) : [];
+    // 50 tirées AU HASARD parmi les 200 plus anciennes, et non les 50
+    // premières : celles qu'on laisse en l'état (Stripe muet, remboursement
+    // incomplet) restaient en tête de file et pouvaient bloquer toutes les
+    // suivantes — le défaut corrigé le 30/09 dans cron-reset-monthly
+    // (relecture du 05/10/2026).
+    const candidates = tirerAuHasard(candRes.ok ? await candRes.json().catch(() => []) : [], 50);
     if (!candRes.ok) console.error(`[cron-abandon] prestations non finalisées illisibles (${candRes.status})`);
     const cleStripe = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
     let annulees = 0, remboursees = 0;
@@ -134,10 +140,27 @@ export default async function handler(req, res) {
       // Annulation plutôt que suppression : la ligne garde la trace de ce qui
       // s'est passé. Conditionnée aux mêmes marqueurs : une affectation arrivée
       // entre-temps n'est pas écrasée.
-      const annuler = () => fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${c.id}&${filtre}`, {
-        method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
-        body: JSON.stringify({ status: "cancelled" }),
-      }).then(r => r.ok ? r.json().catch(() => []) : []).catch(() => []);
+      // Un refus était avalé sans trace (règle 1.2), y compris juste après un
+      // remboursement : le client lisait « vous êtes remboursé » d'une
+      // réservation restée en attente (relecture du 05/10/2026). Il est
+      // désormais journalisé, et le message ne part qu'une fois l'annulation faite.
+      const annuler = async () => {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${c.id}&${filtre}`, {
+            method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
+            body: JSON.stringify({ status: "cancelled" }),
+          });
+          if (!r.ok) {
+            console.error(`[cron-abandon] annulation de ${c.id} refusée (${r.status}) :`, (await r.text().catch(() => "")).slice(0, 200));
+            return [];
+          }
+          const lignes = await r.json().catch(() => null);
+          return Array.isArray(lignes) ? lignes : [];
+        } catch (e) {
+          console.error(`[cron-abandon] annulation de ${c.id} impossible :`, e.message);
+          return [];
+        }
+      };
 
       if (!cleStripe) { if ((await annuler()).length) annulees++; continue; }
 
@@ -184,7 +207,14 @@ export default async function handler(req, res) {
         continue;
       }
       remboursees++;
-      if ((await annuler()).length) annulees++;
+      // Annulation refusée : la ligne revient au prochain passage — le
+      // remboursement, idempotent, n'y repart pas — et le client n'est prévenu
+      // qu'une fois, quand elle aboutit.
+      if (!(await annuler()).length) {
+        console.error(`[cron-abandon] prestation ${c.id} remboursée mais NON annulée — reprise au prochain passage.`);
+        continue;
+      }
+      annulees++;
       if (c.client_id) {
         await notifier({
           user_id: c.client_id, type: "mission",
