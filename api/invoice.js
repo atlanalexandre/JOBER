@@ -112,8 +112,13 @@ async function facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleK
   // dont la prestation a eu lieu dans le mois — la même règle que pour une
   // facture seule.
   const hdrs = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" };
-  const filtre = `and=(or(client_id.eq.${userId},prestataire_id.eq.${userId}),or(status.eq.completed,invoice_number.not.is.null))`
-    + `&date=gte.${debut}&date=lt.${fin}&order=date.asc,id.asc&limit=101`;
+  // `date` est NULLE sur une prestation de plusieurs jours, qui porte
+  // `date_debut` : un filtre sur `date` seule l'écartait du document, sans le
+  // dire (relecture du 05/10/2026). Même parade que la clôture automatique.
+  const filtre = `and=(or(client_id.eq.${userId},prestataire_id.eq.${userId}),`
+    + `or(status.eq.completed,invoice_number.not.is.null),`
+    + `or(and(date.gte.${debut},date.lt.${fin}),and(date.is.null,date_debut.gte.${debut},date_debut.lt.${fin})))`
+    + `&order=date.asc.nullslast,date_debut.asc,id.asc&limit=101`;
   const lr = await fetch(`${supabaseUrl}/rest/v1/missions?${filtre}&select=*`, { headers: hdrs });
   const liste = await lr.json().catch(() => null);
   if (!lr.ok || !Array.isArray(liste)) {
@@ -126,14 +131,22 @@ async function facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleK
   const tronque = liste.length > 100;
   const missions = liste.slice(0, 100);
 
-  // Par lots de quatre : chaque facture interroge la base plusieurs fois.
-  const rendus = [];
-  for (let i = 0; i < missions.length; i += 4) {
-    const lot = await Promise.all(missions.slice(i, i + 4).map(mi =>
-      produireFacture(mi, userId, { supabaseUrl, serviceRoleKey })
-        .catch(e => { console.error(`[invoice/mois] facture ${mi.id} :`, e.message); return { statut: 500, html: "" }; })));
-    rendus.push(...lot);
+  // Les factures déjà numérotées, par lots de quatre : chaque facture interroge
+  // la base plusieurs fois. Celles qui attendent leur numéro, UNE PAR UNE : en
+  // parallèle, elles se disputaient le compteur (trois tentatives chacune), et
+  // dans chaque lot l'une échouait presque à coup sûr — sans compter un ordre
+  // de numérotation livré au hasard (relecture du 05/10/2026).
+  const rendre = (mi) => produireFacture(mi, userId, { supabaseUrl, serviceRoleKey })
+    .catch(e => { console.error(`[invoice/mois] facture ${mi.id} :`, e.message); return { statut: 500, html: "" }; });
+  const parId = new Map();
+  const numerotees = missions.filter(mi => mi.invoice_number);
+  for (let i = 0; i < numerotees.length; i += 4) {
+    const lot = numerotees.slice(i, i + 4);
+    const r = await Promise.all(lot.map(rendre));
+    lot.forEach((mi, k) => parId.set(mi.id, r[k]));
   }
+  for (const mi of missions.filter(mi => !mi.invoice_number)) parId.set(mi.id, await rendre(mi));
+  const rendus = missions.map(mi => parId.get(mi.id));
   const reussies = rendus.filter(r => r.statut === 200 && r.html.includes('<div class="page">'));
   const echecs = rendus.length - reussies.length;
   if (echecs) console.error(`[invoice/mois] ${echecs} facture(s) non éditée(s) pour ${userId} en ${mois}`);
