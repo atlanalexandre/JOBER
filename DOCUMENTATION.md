@@ -4265,7 +4265,10 @@ Trois règles gouvernent cette imputation, et il faut les trois :
   Stripe, le drapeau `cashback_debite` rendant tout appel suivant sans effet. Ce drapeau est désormais posé **avant**
   le débit, par une écriture conditionnée à « pas encore débitée » (relecture du 04/10/2026) :
   posé après, le webhook et `assign_after_payment` arrivés ensemble débitaient chacun la
-  réduction. Toute sortie sans débit le rend. Réserver puis restituer aurait
+  réduction. Toute sortie sans débit le rend. Le second appel trouvant la prestation prise
+  s'arrête pour de bon : le débit du solde (compare-and-swap) est donc **réessayé jusqu'à trois
+  fois**, relecture comprise — un crédit arrivé entre la lecture et l'écriture laissait sinon le
+  solde intact pour toujours (05/10/2026). Réserver puis restituer aurait
   imposé une restitution sur une douzaine de chemins d'annulation : en oublier un aurait fait
   disparaître le cashback d'un client en silence.
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`

@@ -209,55 +209,64 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
   };
 
   try {
-    const pr = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=cashback_balance`,
-      { headers }
-    );
-    const pd = await pr.json().catch(() => null);
-    // Solde illisible : on ne débite ni ne marque rien — le second appel
-    // (webhook) réessaiera. Lu comme 0, il faisait réécrire `cashback_applique`
-    // à 0 alors que la carte avait payé le prix réduit : le plafond de
-    // remboursement dépassait alors ce que la carte avait supporté, et Stripe
-    // refusait le remboursement APRÈS l'annulation (relecture du 29/09/2026).
-    if (!pr.ok || !Array.isArray(pd) || !pd[0]) {
-      console.error(`[cashback] solde illisible (${pr.status}) — débit non tenté sur ${mission.id}.`);
-      await rendre();
-      return { debite: 0, ok: false };
-    }
-    const solde = Number(pd[0].cashback_balance || 0);
-
-    // Plafonné au solde réel : voir la course décrite en tête de fichier.
-    const debit = Math.min(prevu, Math.max(0, solde));
-    if (debit < prevu) {
-      console.error(`[cashback] solde insuffisant sur ${mission.id} : ${prevu.toFixed(2)} € promis,`
-        + ` ${solde.toFixed(2)} € disponibles. La réduction est honorée, l'écart est à la charge d'ALANE.`);
-    }
-    if (!(debit > 0)) {
-      // Rien à débiter : la prestation n'est PAS marquée débitée, pour qu'aucune
-      // restitution ne rende un cashback jamais pris. `cashback_applique` reste
-      // ce que la carte n'a pas payé : c'est lui qui borne les remboursements.
-      await rendre();
-      return { debite: 0, ok: true };
-    }
-
-    const nouveau = Math.round((solde - debit) * 100) / 100;
-    // Compare-and-swap sur le solde lu : un crédit concurrent — le cashback
-    // d'une autre prestation validée entre-temps — ferait échouer le filtre
-    // plutôt que d'écraser sa valeur.
-    const up = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&cashback_balance=eq.${solde}`,
-      {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ cashback_balance: nouveau }),
+    // Jusqu'à trois tentatives : la prestation est réservée, et l'autre chemin
+    // (webhook ou `assign_after_payment`), qui la trouve prise, s'arrête pour de
+    // bon. Un compare-and-swap manqué une seule fois — un autre cashback crédité
+    // entre la lecture et l'écriture — laissait donc le solde intact pour
+    // toujours, la réduction consommée sans être débitée (relecture du 05/10/2026).
+    let debit = 0, nouveau = 0;
+    for (let essai = 1; ; essai++) {
+      const pr = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=cashback_balance`,
+        { headers }
+      );
+      const pd = await pr.json().catch(() => null);
+      // Solde illisible : on ne débite ni ne marque rien. Lu comme 0, il faisait
+      // réécrire `cashback_applique` à 0 alors que la carte avait payé le prix
+      // réduit : le plafond de remboursement dépassait alors ce que la carte
+      // avait supporté, et Stripe refusait le remboursement APRÈS l'annulation
+      // (relecture du 29/09/2026).
+      if (!pr.ok || !Array.isArray(pd) || !pd[0]) {
+        console.error(`[cashback] solde illisible (${pr.status}) — débit non tenté sur ${mission.id}.`);
+        await rendre();
+        return { debite: 0, ok: false };
       }
-    );
-    const upData = await up.json().catch(() => []);
-    if (!up.ok || !Array.isArray(upData) || upData.length === 0) {
-      console.error(`[cashback] débit de ${debit.toFixed(2)} € refusé sur ${mission.id}`
-        + ` — solde modifié entre la lecture et l'écriture. Non consommé.`);
-      await rendre();
-      return { debite: 0, ok: false };
+      const solde = Number(pd[0].cashback_balance || 0);
+
+      // Plafonné au solde réel : voir la course décrite en tête de fichier.
+      debit = Math.min(prevu, Math.max(0, solde));
+      if (debit < prevu) {
+        console.error(`[cashback] solde insuffisant sur ${mission.id} : ${prevu.toFixed(2)} € promis,`
+          + ` ${solde.toFixed(2)} € disponibles. La réduction est honorée, l'écart est à la charge d'ALANE.`);
+      }
+      if (!(debit > 0)) {
+        // Rien à débiter : la prestation n'est PAS marquée débitée, pour qu'aucune
+        // restitution ne rende un cashback jamais pris. `cashback_applique` reste
+        // ce que la carte n'a pas payé : c'est lui qui borne les remboursements.
+        await rendre();
+        return { debite: 0, ok: true };
+      }
+
+      nouveau = Math.round((solde - debit) * 100) / 100;
+      // Compare-and-swap sur le solde lu : un crédit concurrent — le cashback
+      // d'une autre prestation validée entre-temps — fait échouer le filtre
+      // plutôt que d'écraser sa valeur. On relit alors, et on recommence.
+      const up = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&cashback_balance=eq.${solde}`,
+        {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ cashback_balance: nouveau }),
+        }
+      );
+      const upData = await up.json().catch(() => []);
+      if (up.ok && Array.isArray(upData) && upData.length > 0) break;
+      if (!up.ok || essai >= 3) {
+        console.error(`[cashback] débit de ${debit.toFixed(2)} € refusé sur ${mission.id}`
+          + ` (${up.status}, essai ${essai}) — solde modifié entre la lecture et l'écriture. Non consommé.`);
+        await rendre();
+        return { debite: 0, ok: false };
+      }
     }
 
     await marquerDebite(mission, supabaseUrl, headers, debit);
