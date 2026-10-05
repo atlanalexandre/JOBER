@@ -1,6 +1,7 @@
 import { notifier } from "./_push.js";
 import { resendBody, euros } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
+import { rafraichirStatutCompte } from "./_connect.js";
 export const config = { api: { bodyParser: false } };
 
 async function getRawBody(req) {
@@ -100,10 +101,16 @@ export default async function handler(req, res) {
     if (!tsStr || !v1Matches.length) return res.status(400).json({ error: "Signature invalide" });
     if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
     const payload  = `${tsStr}.${rawBody.toString()}`;
-    const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
-    const expectedBuf = Buffer.from(expected, "hex");
-    const valid = v1Matches.some(v1 => {
-      try { return expectedBuf.length === v1.length / 2 && crypto.default.timingSafeEqual(expectedBuf, Buffer.from(v1, "hex")); } catch { return false; }
+    // Deux secrets possibles : celui du webhook historique (événements v1) et,
+    // depuis le passage à Connect v2 (05/10/2026), celui de la destination
+    // d'événements v2 — Stripe en signe chacune avec son propre secret.
+    // `STRIPE_WEBHOOK_SECRET_V2` est facultatif : absent, seul le premier vaut.
+    const secrets = [STRIPE_WEBHOOK_SECRET, (process.env.STRIPE_WEBHOOK_SECRET_V2 || "").replace(/\s/g, "")].filter(Boolean);
+    const valid = secrets.some(secret => {
+      const expectedBuf = Buffer.from(crypto.default.createHmac("sha256", secret).update(payload).digest("hex"), "hex");
+      return v1Matches.some(v1 => {
+        try { return expectedBuf.length === v1.length / 2 && crypto.default.timingSafeEqual(expectedBuf, Buffer.from(v1, "hex")); } catch { return false; }
+      });
     });
     if (!valid) return res.status(400).json({ error: "Signature invalide" });
   } catch { return res.status(400).json({ error: "Erreur signature" }); }
@@ -111,6 +118,26 @@ export default async function handler(req, res) {
   let event;
   try { event = JSON.parse(rawBody.toString()); }
   catch { return res.status(400).json({ error: "JSON invalide" }); }
+
+  // ── Événements Connect v2 (« légers ») ───────────────────────────────
+  // Ils ne portent que l'identifiant de l'objet concerné, pas son état : on
+  // relit donc le compte chez Stripe, et l'on n'y croit rien d'autre. Toute
+  // évolution d'un compte (capacité de virement, exigences) déclenche la
+  // relecture — c'est l'équivalent v2 de `account.updated`.
+  if (event?.object === "v2.core.event") {
+    const compteId = event.related_object?.id;
+    if (typeof event.type === "string" && event.type.startsWith("v2.core.account")
+        && typeof compteId === "string" && compteId.startsWith("acct_") && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const statut = await rafraichirStatutCompte({
+        compteId, statutConnu: undefined, stripeKey: STRIPE_SECRET_KEY, supabaseUrl: SUPABASE_URL,
+        headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      });
+      console.log(`[stripe-webhook] ${event.type} → compte ${compteId} : ${statut || "état non relu"}`);
+      // État non relu : 500, pour que Stripe renvoie l'événement plus tard.
+      if (!statut) return res.status(500).json({ error: "Compte non relu" });
+    }
+    return res.status(200).json({ received: true });
+  }
 
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object;
