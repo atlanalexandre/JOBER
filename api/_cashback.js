@@ -184,6 +184,16 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     return { debite: 0, ok: true };
   }
 
+  // D'abord la fonction de la base, qui réserve, débite et note en UNE
+  // transaction (migration 2026-10-05_cashback_debit_atomique). Les trois
+  // écritures ci-dessous sont séparées : une coupure entre la réservation et le
+  // débit laissait la prestation « débitée » sans débit — et une annulation
+  // rendait ensuite un cashback jamais pris (relecture du 05/10/2026).
+  // Fonction absente (migration non passée) ou en erreur : le chemin
+  // ci-dessous, inchangé. Les deux respectent le même drapeau sous verrou.
+  const atomique = await debiterParLaBase(mission, prevu, supabaseUrl, headers);
+  if (atomique) return atomique;
+
   // La prestation est d'abord RÉSERVÉE pour le débit : écriture conditionnée à
   // « pas encore débitée ». Le drapeau n'était posé qu'APRÈS le débit du solde :
   // le webhook et `assign_after_payment`, arrivés à moins d'une seconde
@@ -276,6 +286,55 @@ export async function debiterCashback(missionBrute, supabaseUrl, headers) {
     console.error(`[cashback] débit impossible sur ${mission?.id} :`, e.message);
     await rendre();
     return { debite: 0, ok: false };
+  }
+}
+
+// Le débit par `debiter_cashback_mission`. Renvoie le résultat, ou null pour
+// laisser le chemin en trois écritures prendre le relais.
+async function debiterParLaBase(mission, prevu, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/rpc/debiter_cashback_mission`, {
+      method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_mission_id: mission.id }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      // 404 / PGRST202 : migration non passée — attendu tant qu'elle ne l'est pas.
+      if (r.status === 404 || txt.includes("PGRST202")) {
+        console.warn("[cashback] debiter_cashback_mission absente — débit en trois écritures."
+          + " Passer la migration 2026-10-05_cashback_debit_atomique.sql.");
+      } else {
+        console.error(`[cashback] debiter_cashback_mission en erreur (${r.status}) sur ${mission.id} — débit en trois écritures :`, txt.slice(0, 200));
+      }
+      return null;
+    }
+    const lignes = await r.json().catch(() => null);
+    const l = Array.isArray(lignes) ? lignes[0] : lignes;
+    if (!l?.etat) {
+      console.error(`[cashback] réponse illisible de debiter_cashback_mission sur ${mission.id} — débit en trois écritures.`);
+      return null;
+    }
+    const debit = Number(l.debite || 0);
+    if (l.etat === "debite") {
+      if (debit < prevu) {
+        console.error(`[cashback] solde insuffisant sur ${mission.id} : ${prevu.toFixed(2)} € promis,`
+          + ` ${debit.toFixed(2)} € débités. La réduction est honorée, l'écart est à la charge d'ALANE.`);
+      }
+      console.log(`[cashback] ${debit.toFixed(2)} € consommés sur ${mission.id}, solde ${Number(l.solde).toFixed(2)} €`);
+      return { debite: debit, ok: true };
+    }
+    if (l.etat === "solde_nul") {
+      console.error(`[cashback] solde insuffisant sur ${mission.id} : ${prevu.toFixed(2)} € promis, rien de disponible.`
+        + " La réduction est honorée, l'écart est à la charge d'ALANE.");
+    }
+    if (l.etat === "profil_introuvable" || l.etat === "introuvable") {
+      console.error(`[cashback] ${l.etat} pour ${mission.id} — rien débité.`);
+      return { debite: 0, ok: false };
+    }
+    return { debite: 0, ok: true }; // deja_debite, rien, solde_nul
+  } catch (e) {
+    console.error(`[cashback] debiter_cashback_mission injoignable sur ${mission.id} — débit en trois écritures :`, e.message);
+    return null;
   }
 }
 
