@@ -56,6 +56,10 @@ test("montant relu chez Stripe (montant_total vide) : les frais retenus restent 
 
 test("le prestataire annule : remboursement intégral de la carte, et le cashback revient", async () => {
   const { p, c, m } = await prestationAvecCashback();
+  // Une demande pas encore acceptée se refuse, elle ne s'annule pas (01/10/2026) :
+  // le prestataire accepte d'abord, puis annule.
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept", contrat_signe: true }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
   const r = await api("/api/missions", { action: "presta_cancel", mission_id: m.id }, p.jeton);
   expect(r.statut, r.texte.slice(0, 200)).toBe(200);
 
