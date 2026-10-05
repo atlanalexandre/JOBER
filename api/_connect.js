@@ -75,7 +75,7 @@ export function corpsCompteV2({ profil, email }) {
     defaults: {
       currency: "eur",
       locales: ["fr-FR"],
-      responsibilities: { fees_collector: "application_express", losses_collector: "stripe" },
+      responsibilities: { fees_collector: "application", losses_collector: "application" },
     },
     include: ["configuration.recipient", "requirements"],
   };
