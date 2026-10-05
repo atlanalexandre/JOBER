@@ -968,7 +968,7 @@ Quatre procédures stockées sont appelées depuis le code, et n'existent donc q
   rendait ensuite un cashback jamais pris. Absente ou en erreur, le code garde l'ancien
   chemin (même drapeau, pas de double débit). `service_role` uniquement. Renvoie `etat`
   (`debite`, `deja_debite`, `rien`, `solde_nul`, `introuvable`, `profil_introuvable`),
-  `debite`, `solde`. Appliquée sur la recette le 05/10/2026.
+  `debite`, `solde`. Appliquée sur la recette puis en production le 05/10/2026.
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
