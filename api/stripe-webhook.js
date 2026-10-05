@@ -27,9 +27,10 @@ export function patchApresPaiement(intentId, prestataireId, prestataireRetenu) {
   return null;
 }
 
-// Un paiement abouti pour une prestation que RÈGLE DÉJÀ un autre paiement est un
-// doublon : il est remboursé (clé d'idempotence propre à ce paiement). Une
-// prestation illisible, ou portant ce même paiement, ne déclenche rien.
+// Un paiement abouti pour une prestation que RÈGLE DÉJÀ un autre paiement, ou
+// qui a été annulée ou refusée avant lui, est remboursé (clé d'idempotence
+// propre à ce paiement). Une prestation illisible, ou portant ce même paiement,
+// ne déclenche rien.
 async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent,status`, { headers });
@@ -39,8 +40,18 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
       console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible (${r.status}) — doublon éventuel NON vérifié.`);
       return;
     }
-    if (!m.stripe_payment_intent || m.stripe_payment_intent === intent.id) {
+    if (m.stripe_payment_intent === intent.id) {
       console.log(`[stripe-webhook] ${intent.id} : prestation ${missionId} déjà traitée par ce paiement — rien à faire.`);
+      return;
+    }
+    // Aucun paiement rattaché : ce n'est un doublon que si la prestation est
+    // ANNULÉE ou REFUSÉE — le paiement a abouti après sa fermeture, et rien ne le
+    // rendait : le journal disait « rien à faire » (relecture du 05/10/2026).
+    // Sur une prestation encore vivante, ce paiement peut être le sien : on n'y
+    // touche pas.
+    const fermee = ["cancelled", "refused", "rejected"].includes(m.status);
+    if (!m.stripe_payment_intent && !fermee) {
+      console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} (${m.status}) sans paiement rattaché, non mise à jour — à vérifier.`);
       return;
     }
     const rr = await fetch("https://api.stripe.com/v1/refunds", {
@@ -50,7 +61,8 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
     });
     const rd = await rr.json().catch(() => null);
     if (rd?.id || rd?.error?.code === "charge_already_refunded") {
-      console.error(`[stripe-webhook] DOUBLON ${intent.id} remboursé : prestation ${missionId} déjà réglée par ${m.stripe_payment_intent}.`);
+      console.error(`[stripe-webhook] DOUBLON ${intent.id} remboursé : prestation ${missionId} `
+        + (m.stripe_payment_intent ? `déjà réglée par ${m.stripe_payment_intent}.` : `fermée (${m.status}) avant le paiement.`));
     } else {
       console.error(`[stripe-webhook] ⚠️ DOUBLON ${intent.id} NON remboursé (prestation ${missionId}, réglée par ${m.stripe_payment_intent}) :`, JSON.stringify(rd?.error || rd).slice(0, 200));
     }
