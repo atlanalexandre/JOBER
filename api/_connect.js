@@ -38,8 +38,10 @@
 // la spécification officielle (stripe/openapi, version 2026-09-30.endive) :
 //   • `dashboard: "express"`                    — même tableau de bord Stripe ;
 //   • `fees_collector: "application_express"`   — même règle de frais qu'Express ;
-//   • `losses_collector: "application"`         — ALANE couvre les soldes négatifs,
-//                                                 comme avec Express ;
+//   • `losses_collector: "stripe"`              — Stripe couvre les soldes négatifs
+//                                                 (« Managed Risk ») : Stripe refuse
+//                                                 « application » pour cette plateforme
+//                                                 (constaté en mode test le 05/10/2026) ;
 //   • configuration `recipient`, capacité `stripe_balance.stripe_transfers`
 //     — l'équivalent de `capabilities[transfers]` : le compte REÇOIT des
 //     virements (`POST /v1/transfers`, inchangé : les identifiants `acct_…`
@@ -73,7 +75,7 @@ export function corpsCompteV2({ profil, email }) {
     defaults: {
       currency: "eur",
       locales: ["fr-FR"],
-      responsibilities: { fees_collector: "application_express", losses_collector: "application" },
+      responsibilities: { fees_collector: "application_express", losses_collector: "stripe" },
     },
     include: ["configuration.recipient", "requirements"],
   };
