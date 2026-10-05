@@ -952,7 +952,7 @@ recharge soit créditée deux fois. Lisible par le seul service role. Avant elle
 entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
 justifié, ni rapproché des encaissements Stripe.
 
-Trois procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
+Quatre procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
 - `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
@@ -961,6 +961,14 @@ Trois procédures stockées sont appelées depuis le code, et n'existent donc qu
   `CREATE OR REPLACE` les conserve) : n'importe qui pouvait créditer n'importe quel compte
   jusqu'au 23/09/2026. Toute migration qui recrée une fonction `SECURITY DEFINER` refait
   son `REVOKE` — voir `2026-09-23_secu_fermer_increment_cashback.sql`.
+- `debiter_cashback_mission(p_mission_id)` — **réserve, débite et note** le cashback consommé
+  par une prestation, en une transaction sous verrou de ligne (`2026-10-05_cashback_debit_atomique.sql`).
+  `debiterCashback()` l'appelle d'abord ; en trois écritures séparées, une coupure entre la
+  réservation et le débit laissait la prestation « débitée » sans débit, et une annulation
+  rendait ensuite un cashback jamais pris. Absente ou en erreur, le code garde l'ancien
+  chemin (même drapeau, pas de double débit). `service_role` uniquement. Renvoie `etat`
+  (`debite`, `deja_debite`, `rien`, `solde_nul`, `introuvable`, `profil_introuvable`),
+  `debite`, `solde`. Appliquée sur la recette le 05/10/2026.
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
