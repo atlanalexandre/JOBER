@@ -1406,7 +1406,7 @@ Le bouton prestataire n'apparaissait que pour `completed` : une prestation factu
 remboursée (`closed` avec `invoice_number`) restait sans accès pour lui, alors que le client
 la voyait. Aligné le 04/10/2026.
 
-**Toutes les factures du mois** (04/10/2026) — bouton « 🧾 Toutes mes factures de {mois} » (« d'octobre », « de mai »)
+**Toutes les factures du mois** (04/10/2026) — menu du mois et bouton « 🧾 Mes factures de {mois} » (« d'octobre », « de mai »)
 en tête de la liste des prestations (client, onglets « Toutes » et « Terminées ») et de
 l'onglet Historique (prestataire). Il ouvre `/api/invoice?mois=AAAA-MM&token=…` : un seul
 document, une facture par page à l'impression, à enregistrer en PDF. Le jeton vient de
@@ -1419,7 +1419,9 @@ numérotation, même archive. Plafond de 100 factures par document, signalé s'i
 Une prestation de plusieurs jours a une `date` NULLE : le filtre teste aussi `date_debut`
 (sans quoi elle manquait au document, 05/10/2026). Les factures encore sans numéro sont rendues
 **une par une** : en parallèle, elles se disputaient le compteur et l'une échouait par lot.
-Le mois proposé est le mois en cours en heure de Paris (`moisEnCoursParis()` de `ui.jsx`).
+Un menu propose le mois en cours (heure de Paris, `moisEnCoursParis()` de `ui.jsx`) et les douze
+précédents (`moisProposes()`, 05/10/2026 — le 2 novembre, c'est octobre qu'un prestataire déclare) ;
+le serveur accepte n'importe quel mois, et ne rend que les factures de l'appelant.
 Essai : `e2e/68-factures-du-mois`.
 
 ### Le backoffice
