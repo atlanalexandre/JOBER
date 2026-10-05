@@ -35,3 +35,22 @@ test("le premier prestataire ne répond pas : la commande passe au suivant, sans
   const s = await paiementStripe(m.paymentIntent);
   expect(s.rembourse, "le paiement est conservé").toBe(0);
 });
+
+test("l'heure de début est passée : plus de candidat suivant, le client est remboursé", async () => {
+  await prestataireOperationnel();
+  await prestataireOperationnel();
+  const c = await client({ professionnel: true });
+  const m = await reservationPayee({ prestataire: null, client: c, declaration: DECLARATION_TIERS });
+  expect(m.mode).toBe("affectation");
+  // La prestation devait commencer hier : solliciter quelqu'un d'autre n'a plus de sens
+  // (relecture du 05/10/2026 — chaque passage relançait la cascade).
+  await sql(`update missions set acceptance_deadline = now() - interval '5 minutes',
+             date = (now() at time zone 'Europe/Paris')::date - 1 where id = '${m.id}'`);
+
+  const r = await tachePlanifiee();
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+
+  const [l] = await sql(`select status from missions where id = '${m.id}'`);
+  expect(l.status).toBe("refused");
+  await expect.poll(async () => (await paiementStripe(m.paymentIntent)).rembourse, { timeout: 30_000 }).toBeGreaterThan(0);
+});

@@ -651,8 +651,13 @@ export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
 
   const suivants = await candidatsPourMission(mission, supabaseUrl, headers, dejaVus);
   if (!suivants.length) {
-    await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`,
+    // Résultat VÉRIFIÉ : il était ignoré, et la tâche planifiée — qui vide
+    // l'échéance avant d'appeler cette fonction — laissait alors la prestation
+    // en attente, sans échéance, au prestataire muet : plus aucune requête ne la
+    // revoyait (relecture du 05/10/2026). Un échec rend la main à l'appelant.
+    const bascule = await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`,
       { status: "open", prestataire_id: null, acceptance_deadline: null }, headers, "cascade/bascule en diffusion");
+    if (!bascule) return { mode: "echec", prestataire_id: null };
     return { mode: "diffusion", prestataire_id: null };
   }
 

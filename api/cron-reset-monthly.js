@@ -262,7 +262,7 @@ export default async function handler(req, res) {
         // 20 premières : un remboursement qui échoue à chaque fois revient en
         // attente, et restait en tête de file — il bloquait tous les suivants,
         // indéfiniment (relecture du 30/09/2026).
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tiers_declaration,sector,date,adresse,ville,tarif_horaire,heure_debut,hours&order=acceptance_deadline.asc&limit=200`,
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tiers_declaration,sector,date,date_debut,adresse,ville,tarif_horaire,heure_debut,hours&order=acceptance_deadline.asc&limit=200`,
         { headers }
       );
       const zombies = tirerAuHasard(await zRes.json().catch(() => []), 20);
@@ -280,7 +280,13 @@ export default async function handler(req, res) {
           //    (relecture du 04/10/2026). La prestation est d'abord PRISE
           //    (toujours en attente, toujours expirée) : un prestataire qui
           //    accepte à la dernière seconde n'est pas écrasé.
-          if (affecteeParLaPlateforme(z)) {
+          // Une fois l'heure de début passée, solliciter un autre prestataire
+          // n'a plus de sens : chaque passage relançait la cascade avec une
+          // échéance neuve, et le remboursement attendait l'épuisement des
+          // candidats (relecture du 05/10/2026). On rembourse.
+          const debutZ = debutPrestationMs(String(z.date || z.date_debut || "").slice(0, 10), z.heure_debut);
+          const encoreTemps = !Number.isFinite(debutZ) || debutZ > Date.now();
+          if (affecteeParLaPlateforme(z) && encoreTemps) {
             const prise = await ecrireVerifie(
               `${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}`,
               { acceptance_deadline: null }, headers, `cron/expiration ${z.id} (candidat suivant)`);
