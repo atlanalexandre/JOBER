@@ -6,6 +6,9 @@ import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { libelleConstat } from "../../api/_localisation.js";
+
+// Fiches de comptes rendues par tranche dans la liste du back-office.
+const PAR_PAGE_COMPTES = 100;
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // La recette tourne sur les adresses Vercel (*.vercel.app) ou en local ; la
@@ -313,6 +316,11 @@ function BOComptes() {
   const [contactResult, setContactResult] = useState(null);
   const [docModal, setDocModal] = useState(null); // { profileId, name }
   const [search, setSearch] = useState("");
+  // Affichage par tranches : les 4 770 fiches de la recette, rendues d'un coup,
+  // figeaient l'écran plusieurs secondes (06/10/2026). Filtres et recherche
+  // portent toujours sur TOUS les comptes ; seul le rendu est découpé. La
+  // tranche revient à 100 à chaque changement de critère (effet plus bas).
+  const [nbAffiches, setNbAffiches] = useState(PAR_PAGE_COMPTES);
   const [cashbackAdj, setCashbackAdj] = useState({});
   const [cashbackSaving, setCashbackSaving] = useState(null);
   const [planRepairSaving, setPlanRepairSaving] = useState(null);
@@ -632,6 +640,10 @@ function BOComptes() {
     };
   })();
 
+  // Nouvelle recherche, nouveau filtre : on repart des 100 premiers.
+  useEffect(() => { setNbAffiches(PAR_PAGE_COMPTES); },
+    [filter, roleFilter, search, secteurFilter, metierFilter, villeFilter, regionFilter, provenanceFilter, tri]);
+
   const filtered = profiles.filter(p => {
     if (filter !== "all" && p.status !== filter) return false;
     if (roleFilter !== "all" && p.role !== roleFilter) return false;
@@ -845,7 +857,7 @@ function BOComptes() {
             </div>
           )}
         </div>
-      ) : trier(filtered).map(p => (
+      ) : trier(filtered).slice(0, nbAffiches).map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
             <div style={{ flex:1, minWidth:0 }}>
@@ -1443,6 +1455,18 @@ function BOComptes() {
           </div>
         </div>
       ))}
+      {!loading && filtered.length > nbAffiches && (
+        <div style={{ textAlign:"center", margin:"6px 0 16px" }}>
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8 }}>
+            {nbAffiches} affichés sur {filtered.length} — la recherche et les filtres portent sur tous les comptes.
+          </div>
+          <button onClick={() => setNbAffiches(n => n + PAR_PAGE_COMPTES)} style={{ padding:"9px 18px", borderRadius:10,
+            border:`1px solid ${C.violet}`, background:`${C.violet}22`, color:C.violet, fontSize:12,
+            cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>
+            Afficher {Math.min(PAR_PAGE_COMPTES, filtered.length - nbAffiches)} de plus
+          </button>
+        </div>
+      )}
 
       {/* ── Modal prévisualisation document ── */}
       {previewDoc && (

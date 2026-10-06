@@ -1443,6 +1443,12 @@ bundle. `App.jsx` bascule sur l'écran `bo_login` quand `window.location.hostnam
 `www.alane.fr/admin` ouvre donc la même page de connexion. La sécurité réelle est
 **entièrement côté serveur**.
 
+**La liste des comptes s'affiche par tranches de 100** (`PAR_PAGE_COMPTES`, 06/10/2026). Les
+4 770 fiches de la recette, rendues d'un coup, figeaient l'écran (≈ 5 Mo, 6,8 s de réponse puis
+le rendu). La recherche et tous les filtres portent toujours sur l'ensemble des comptes ; seul
+l'affichage est découpé, avec un bouton « Afficher 100 de plus » et le compte « N affichés sur M ».
+La tranche revient à 100 à chaque changement de critère.
+
 **Authentification** — `bo-verify-pin` valide le mot de passe (`BO_PASSWORD`, comparaison
 `timingSafeEqual`, 10 tentatives / 5 min / IP persistées dans `bo_rate_limits`) et rend un
 jeton `ts.nonce.HMAC`. `bo-action` le vérifie **une seule fois, avant tout aiguillage** :
