@@ -1550,9 +1550,19 @@ export default async function handler(req, res) {
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre,date,heure_debut,date_debut,date_fin`, { headers });
-      const mCheckData = await mCheckRes.json();
-      const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
-      if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      const mCheckData = await mCheckRes.json().catch(() => null);
+      // Prestation illisible ou introuvable : on S'ARRÊTE. Tout ce qui suit était
+      // conditionné à `missionCheck &&` — le contrôle du propriétaire, le
+      // paiement existant, la création du paiement — et une lecture en échec
+      // menait droit à l'affectation : prestation attribuée sans paiement, et
+      // sans vérifier que l'appelant en est le client (relecture du 06/10/2026).
+      if (!mCheckRes.ok || !Array.isArray(mCheckData)) {
+        console.error(`[accept] prestation ${mission_id} illisible (${mCheckRes.status}) — acceptation refusée.`);
+        return res.status(503).json({ error: "La prestation n'a pas pu être lue — réessayez dans un instant." });
+      }
+      const missionCheck = mCheckData[0];
+      if (!missionCheck) return res.status(404).json({ error: "Prestation introuvable" });
+      if (missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       // Refus si déjà assignée : évite la création de double PaymentIntent en cas de requêtes concurrentes
       if (missionCheck && ["assigned","completed","closed","cancelled"].includes(missionCheck.status)) {
         return res.status(409).json({ error: "La prestation a déjà été assignée ou fermée" });
