@@ -53,6 +53,9 @@ test("une prestation ponctuelle voit la série en cours ce jour-là", async () =
 
 test("le prestataire ne peut pas accepter une série qui chevauche une prestation acceptée", async () => {
   const p = await prestataireOperationnel();
+  // Premium : le plan gratuit plafonne à deux prestations par mois, et ce
+  // plafond répondrait avant le contrôle du créneau.
+  await sql(`update profiles set plan_abonnement = 'premium', subscription_end_date = now() + interval '30 days' where id = '${p.id}'`);
   await priseLe(p, 6);
   const b = await client();
   const m = await reservationPayee({ prestataire: p, client: b, dansJours: 5, heure: "09:00", heures: 4 });
