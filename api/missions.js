@@ -66,6 +66,7 @@ import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { joursCouverts, conflitDeCreneau, filtrePeriode } from "./_creneaux.js";
 import { rembourserAjoutsNonFaits } from "./_remboursement_bo.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
@@ -114,26 +115,35 @@ const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
 
 // Détection de conflit de créneau pour un prestataire
-// Retourne la mission conflictuelle ou null si pas de conflit
-async function checkPrestaireConflict(prestataire_id, missionDate, heureDebut, hours, supabaseUrl, headers, excludeMissionId = null) {
-  if (!missionDate || !heureDebut) return null;
-  const [h, m] = heureDebut.split(":").map(Number);
-  const startMin = h * 60 + (m || 0);
-  const endMin   = startMin + Math.ceil(Number(hours || 1) * 60);
-  let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&date=eq.${encodeURIComponent(missionDate)}&status=in.(assigned,pending_acceptance)&select=id,heure_debut,hours,metier`;
-  if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
+// Retourne la mission conflictuelle ou null si pas de conflit.
+//
+// Journée par journée (06/10/2026, `api/_creneaux.js`) : une prestation de
+// plusieurs jours était comparée sur son seul premier jour. `mission` est la
+// prestation à placer ; si sa période n'a pas été lue par l'appelant, elle est
+// relue ici.
+async function checkPrestaireConflict(prestataire_id, mission, supabaseUrl, headers, excludeMissionId = null) {
+  if (!mission?.heure_debut || !(mission?.date || mission?.date_debut)) return null;
   try {
+    let m = mission;
+    if (m.date_fin === undefined && excludeMissionId) {
+      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${excludeMissionId}&select=date,date_debut,date_fin,heure_debut,hours`, { headers });
+      const l = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(l) && l[0]) m = { ...mission, date_debut: l[0].date_debut, date_fin: l[0].date_fin };
+      else console.error(`[missions] période de ${excludeMissionId} illisible (${r.status}) — conflit vérifié sur le premier jour seul.`);
+    }
+    const jours = joursCouverts(m);
+    if (!jours.length) return null;
+    let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)`
+      + `&${filtrePeriode(jours[0], jours[jours.length - 1])}&select=id,date,date_debut,date_fin,heure_debut,hours,metier`;
+    if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
     const res = await fetch(url, { headers });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[missions] conflit de créneau non vérifié pour ${prestataire_id} (${res.status}).`);
+      return null;
+    }
     const existing = await res.json().catch(() => []);
     if (!Array.isArray(existing)) return null;
-    for (const em of existing) {
-      if (!em.heure_debut) continue;
-      const [eh, em2] = em.heure_debut.split(":").map(Number);
-      const eStart = eh * 60 + (em2 || 0);
-      const eEnd   = eStart + Math.ceil(Number(em.hours || 1) * 60);
-      if (startMin < eEnd && eStart < endMin) return em;
-    }
+    return conflitDeCreneau(m, existing);
   } catch (e) { console.error("[missions] conflit de créneau non vérifié :", e.message); }
   return null;
 }
@@ -796,7 +806,7 @@ async function handleEmailAction(req, res) {
 
   // Vérification conflit de créneau avant assignation
   if (action === "accept") {
-    const conflict = await checkPrestaireConflict(prestaId, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, hdrs, missionId);
+    const conflict = await checkPrestaireConflict(prestaId, mission, SUPABASE_URL, hdrs, missionId);
     if (conflict) {
       return res.status(409).send(emailActionHtml(
         "Créneau indisponible",
@@ -1096,7 +1106,7 @@ export default async function handler(req, res) {
         }
         const quota = await quotaMensuelAtteint(caller.id, SUPABASE_URL, headers);
         if (quota) return res.status(403).json(quota);
-        const conflit = await checkPrestaireConflict(caller.id, m.date, m.heure_debut, m.hours, SUPABASE_URL, headers, mission_id);
+        const conflit = await checkPrestaireConflict(caller.id, m, SUPABASE_URL, headers, mission_id);
         if (conflit) return res.status(409).json({ error: "Vous avez déjà une prestation sur ce créneau." });
 
         // La reprise attribue la prestation sur-le-champ : c'est l'acceptation,
@@ -1613,7 +1623,7 @@ export default async function handler(req, res) {
 
       // Vérification conflit de créneau pour le prestataire avant de lancer le paiement
       if (verified_prestataire_id && missionCheck) {
-        const conflict = await checkPrestaireConflict(verified_prestataire_id, missionCheck.date, missionCheck.heure_debut, missionCheck.hours, SUPABASE_URL, headers, mission_id);
+        const conflict = await checkPrestaireConflict(verified_prestataire_id, missionCheck, SUPABASE_URL, headers, mission_id);
         if (conflict) {
           return res.status(409).json({ error: `Ce prestataire a déjà une prestation assignée sur ce créneau (${missionCheck.date} ${missionCheck.heure_debut || ""}). Choisissez un autre prestataire.` });
         }
@@ -3526,6 +3536,30 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: "Identité du prestataire illisible." });
       }
       return res.status(200).json({ prenom: prof.prenom || "", nom: prof.nom || "" });
+    }
+
+    // ── Le prestataire est-il libre sur ce créneau ? ───────────────────
+    //
+    // Appelé par l'écran de réservation AVANT le contrat et le paiement
+    // (06/10/2026). L'écran interrogeait lui-même la base, mais la sécurité
+    // de lecture ne lui montre que les prestations du client connecté : un
+    // prestataire déjà réservé par quelqu'un d'autre paraissait libre. Le
+    // conflit n'apparaissait qu'à l'acceptation, une fois le client débité.
+    // Ne répond que « libre » ou le jour pris, rien de la prestation en cause.
+    if (action === "verifier_creneau") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { prestataire_id, date, date_fin, heure_debut, hours } = payload;
+      const jourValide = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+      if (!isUuid(prestataire_id) || !jourValide(date) || (date_fin != null && !jourValide(date_fin))
+          || typeof heure_debut !== "string" || !/^\d{1,2}:\d{2}$/.test(heure_debut)) {
+        return res.status(400).json({ error: "Créneau invalide." });
+      }
+      const demande = { date, date_debut: date, date_fin: date_fin || null, heure_debut, hours: Number(hours) || 1 };
+      const conflit = await checkPrestaireConflict(prestataire_id, demande, SUPABASE_URL, headers);
+      if (!conflit) return res.status(200).json({ libre: true });
+      const pris = new Set(joursCouverts(conflit));
+      return res.status(200).json({ libre: false, jour: joursCouverts(demande).find(j => pris.has(j)) || date });
     }
 
     if (action === "get_position") {
@@ -5517,7 +5551,7 @@ export default async function handler(req, res) {
 
       // Vérification conflit de créneau — bloquer l'acceptation si le prestataire a déjà une mission ce jour/heure
       if (response === "accept") {
-        const conflict = await checkPrestaireConflict(caller.id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+        const conflict = await checkPrestaireConflict(caller.id, mission, SUPABASE_URL, headers, mission_id);
         if (conflict) {
           return res.status(409).json({ error: `Vous avez déjà une prestation assignée sur ce créneau (${mission.date} ${mission.heure_debut || ""}). Vous ne pouvez pas accepter deux prestations simultanées.` });
         }
@@ -6203,7 +6237,7 @@ export default async function handler(req, res) {
       // plutôt que de laisser le sortant proposer quelqu'un qui sera refusé.
       const libres = [];
       for (const id of ids.slice(0, 30)) {
-        const conflit = await checkPrestaireConflict(id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+        const conflit = await checkPrestaireConflict(id, mission, SUPABASE_URL, headers, mission_id);
         if (!conflit) libres.push(id);
         if (libres.length >= 12) break;
       }
@@ -6260,7 +6294,7 @@ export default async function handler(req, res) {
       if (!eligibles.includes(remplacant_id)) {
         return res.status(400).json({ error: "Ce professionnel ne remplit pas les critères de la prestation (métier, secteur, tarif, disponibilité ou zone)." });
       }
-      const conflit = await checkPrestaireConflict(remplacant_id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+      const conflit = await checkPrestaireConflict(remplacant_id, mission, SUPABASE_URL, headers, mission_id);
       if (conflit) return res.status(409).json({ error: "Ce professionnel a déjà une prestation sur ce créneau." });
 
       const insRes = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements`, {
@@ -6406,7 +6440,7 @@ export default async function handler(req, res) {
         });
         return res.status(409).json({ error: "La prestation a changé d'état entre-temps : le remplacement ne peut plus être exécuté." });
       }
-      const conflitFinal = await checkPrestaireConflict(dem.entrant_id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, dem.mission_id);
+      const conflitFinal = await checkPrestaireConflict(dem.entrant_id, mission, SUPABASE_URL, headers, dem.mission_id);
       if (conflitFinal) {
         await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
