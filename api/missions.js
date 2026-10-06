@@ -10,7 +10,7 @@ import { calculerFrais, lireFraisService } from "./_montant.js";
 import { verifierPaiementReservation, delaiReponseMinutes } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
-  detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits } from "./_heures_supp.js";
+  detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits, dureeMaxDesJournees } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -5799,7 +5799,7 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at,heures_ajoutees_dernier_jour`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at,heures_ajoutees_dernier_jour,heures_ajoutees_detail`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -5831,8 +5831,12 @@ export default async function handler(req, res) {
         }
       }
 
-      // Cap à 24h total pour éviter des prestations aberrantes
-      const currentHours = Number(mission.hours || 0);
+      // Cap à 24h total pour éviter des prestations aberrantes. Sur plusieurs
+      // jours, sur la journée visée la plus chargée, heures déjà ajoutées
+      // comprises.
+      const currentHours = portee
+        ? dureeMaxDesJournees(mission, journeesCouvertes(mission, portee.portee, portee.jours, portee.journee))
+        : Number(mission.hours || 0);
       if (currentHours + eh > 24) {
         return res.status(400).json({ error: `Durée totale dépasserait 24h (actuel ${currentHours}h + ${eh}h demandé)` });
       }
@@ -5913,7 +5917,7 @@ export default async function handler(req, res) {
       if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
       // Vérifier que le prestataire est bien assigné à cette mission
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date_debut,date_fin,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date,date_debut,date_fin,heure_debut,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee,heures_ajoutees_detail`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -5939,7 +5943,13 @@ export default async function handler(req, res) {
         if (!tarifSuppValide(tarif)) {
           return res.status(400).json({ error: `Tarif horaire invalide (entre ${TARIF_SUPP_MIN} et ${TARIF_SUPP_MAX} €).` });
         }
-        if (Number(mission.hours || 0) + extraH > 24) {
+        // Même plafond qu'à la demande : la journée visée la plus chargée.
+        const enCoursR = porteeDemande(mission, "jour");
+        const dureeVisee = Number(mission.extra_hours_jours) > 0
+          ? dureeMaxDesJournees(mission, journeesCouvertes(mission, mission.extra_hours_portee,
+              Number(mission.extra_hours_jours), enCoursR.ok ? enCoursR.journee : dateDuJourFr()))
+          : Number(mission.hours || 0);
+        if (dureeVisee + extraH > 24) {
           return res.status(400).json({ error: "La durée totale dépasserait 24 h." });
         }
 

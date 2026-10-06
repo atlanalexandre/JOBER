@@ -3505,7 +3505,9 @@ tenu à part :
 | `heures_ajoutees_detail` | `[{ jour, heures, tarif, paiement }]`, une ligne par journée couverte |
 
 Toutes fermées à l'écriture depuis le navigateur. Les cumuls se recalculent depuis le détail
-(`cumulsAjouts()`).
+(`cumulsAjouts()`). Le plafond de 24 h se juge sur la journée visée la plus chargée, heures déjà
+ajoutées comprises (`dureeMaxDesJournees()`), à la demande comme à l'acceptation : `hours` seul
+laissait des demandes successives le même jour dépasser 24 h.
 
 **Arrêter une série rend les heures ajoutées qui ne seront pas faites.** À l'interruption
 (`cancel_in_progress`), `ajoutsNonFaits()` relève, dans le détail, les heures des journées

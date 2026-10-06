@@ -186,3 +186,22 @@ describe("arrêter une série rend les heures ajoutées qui ne seront pas faites
     expect(ajoutsNonFaits(SERIE, { ...base, heuresFaites: 1, annulerReste: true }).valeur).toBe(0);
   });
 });
+
+import { dureeMaxDesJournees } from "../../../api/_heures_supp.js";
+
+describe("le plafond de 24 h se juge sur la journée, ajouts compris", () => {
+  const m = { ...SERIE, hours: 10, heures_ajoutees_detail: [
+    { jour: "2026-10-14", heures: 8, tarif: 20, paiement: "pi_a" },
+    { jour: "2026-10-15", heures: 2, tarif: 20, paiement: "pi_b" },
+  ] };
+  it("le mercredi compte déjà 18 h : 8 h de plus dépasseraient 24 h", () => {
+    expect(dureeMaxDesJournees(m, ["2026-10-14"])).toBe(18);
+    expect(dureeMaxDesJournees(m, ["2026-10-14"]) + 8 > 24).toBe(true);
+  });
+  it("une modification de commande se juge sur la journée la plus chargée", () => {
+    expect(dureeMaxDesJournees(m, ["2026-10-15", "2026-10-16"])).toBe(12);
+  });
+  it("sans ajout, la durée prévue", () => {
+    expect(dureeMaxDesJournees(SERIE, ["2026-10-14"])).toBe(4);
+  });
+});
