@@ -2,7 +2,7 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
-import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
+import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
@@ -5721,7 +5721,7 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,heure_debut,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -5730,10 +5730,14 @@ export default async function handler(req, res) {
       // pouvait prolonger une prestation terminée depuis des heures — et
       // l'acceptation rallonge `hours`, donc le montant dû, donc le versement,
       // sur des heures que personne n'a travaillées.
-      const fenetreSupp = fenetreHeuresSupp(finPrestationMs(mission));
+      // Premier jour seulement : voir `finPremierJourMs` (06/10/2026).
+      const fenetreSupp = fenetreHeuresSupp(finPremierJourMs(mission));
       if (!fenetreSupp.ouverte) {
         return res.status(400).json({
-          error: "La prestation est terminée depuis plus de 20 minutes : les heures supplémentaires "
+          error: (mission.date_fin && String(mission.date_fin).slice(0, 10) > String(mission.date || mission.date_debut || "").slice(0, 10))
+            ? "Sur une prestation de plusieurs jours, les heures supplémentaires se demandent le premier jour : "
+              + "elles s'appliquent à chaque journée. Réservez une nouvelle prestation pour un besoin ponctuel."
+            : "La prestation est terminée depuis plus de 20 minutes : les heures supplémentaires "
                + "ne peuvent plus être demandées. Réservez une nouvelle prestation.",
         });
       }

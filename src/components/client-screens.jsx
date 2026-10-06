@@ -13,8 +13,8 @@ import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
 import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
-import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
-import { fenetreHeuresSupp } from "../../api/_temps.js";
+import { etatAccueil, debutMs } from "../lib/accueil.js";
+import { fenetreHeuresSupp, finPremierJourMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { libelleConstat } from "../../api/_localisation.js";
 import { StripePaymentScreen } from "./payment.jsx";
@@ -4048,7 +4048,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
             rien : elle restait proposée sur une prestation terminée depuis des
             heures, alors que l'accepter rallonge la durée facturée. */}
         {step >= 1 && step < 3
-          && fenetreHeuresSupp(finMs({ ...(contractMissionData || {}), started_at: startedAtTrack })).ouverte && (
+          && fenetreHeuresSupp(finPremierJourMs({ ...(contractMissionData || {}), started_at: startedAtTrack })).ouverte && (
           <div style={{ marginBottom:16 }}>
             {extraHoursStatus === "pending" ? (
               <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
@@ -7561,7 +7561,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             );
           })()}
           {selected.status === "assigned" && (selected.started_at || selected.arrived_at) && !completedResult
-            && fenetreHeuresSupp(finMs(selected)).ouverte && (
+            && fenetreHeuresSupp(finPremierJourMs(selected)).ouverte && (
             <div style={{ marginTop:12 }}>
               {selected.extra_hours_status === "pending" ? (
                 <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>

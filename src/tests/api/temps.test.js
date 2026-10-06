@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr, texteDelaiReponse } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -395,5 +395,24 @@ describe("texteDelaiReponse", () => {
   });
   it("échéance inconnue : aucune durée inventée", () => {
     expect(texteDelaiReponse(null).phrase).not.toMatch(/\d/);
+  });
+});
+
+// Heures supplémentaires (06/10/2026) : elles se demandent le PREMIER jour, et
+// une prestation de plusieurs jours sans `date` n'a plus de fenêtre infinie.
+describe("finPremierJourMs", () => {
+  it("prestation d'un jour : la fin prévue", () => {
+    expect(finPremierJourMs({ date: "2026-08-06", heure_debut: "14:00", hours: 2 })).toBe(AOUT_14H_UTC + 2 * 3600e3);
+  });
+  it("plusieurs jours, date nulle : la fin du PREMIER jour, pas une fenêtre infinie", () => {
+    const m = { date: null, date_debut: "2026-08-06 00:00:00+00", date_fin: "2026-08-10 00:00:00+00", heure_debut: "14:00", hours: 2 };
+    expect(finPremierJourMs(m)).toBe(AOUT_14H_UTC + 2 * 3600e3);
+    const apres = fenetreHeuresSupp(finPremierJourMs(m), AOUT_14H_UTC + 5 * 864e5);
+    expect(apres.horaireInconnu).toBe(false);
+    expect(apres.ouverte).toBe(false);
+  });
+  it("le démarrage pointé fait foi, comme pour la fin d'une prestation", () => {
+    const debut = AOUT_14H_UTC + 3600e3;
+    expect(finPremierJourMs({ date: "2026-08-06", heure_debut: "14:00", hours: 2, started_at: new Date(debut).toISOString() })).toBe(debut + 2 * 3600e3);
   });
 });
