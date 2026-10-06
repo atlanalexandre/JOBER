@@ -955,7 +955,9 @@ que celle par défaut sur `actual_hours`, les colonnes `extra_hours_*`, les heur
 (`montant_heures_ajoutees`, `heures_ajoutees_*`), `heures_perdues`, le versement
 (`payout_*`, `stripe_transfer_id`), `invoice_number` et le cashback. Relevé avant (CLAUDE.md
 1.6) : les deux créations de l'application n'envoient aucune de ces colonnes. **Appliquée en
-recette le 06/10/2026** — `e2e/12` et `e2e/70`.
+recette le 06/10/2026** — `e2e/12` et `e2e/70`. **Appliquée en production le 06/10/2026** par
+Alexandre (éditeur SQL), vérifiée le même jour : six colonnes, quatre contraintes, garde à jour,
+un déclencheur.
 
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
@@ -3431,7 +3433,8 @@ laisse le temps de se décider pendant que le prestataire est encore là ; au-de
 une prolongation, c'est une nouvelle prestation, et elle se réserve.
 
 **Sur une prestation de plusieurs jours : une heure supplémentaire vaut pour UNE journée**
-(décision d'Alexandre du 06/10/2026, migration `2026-10-06_heures_supp_par_journee.sql`). La
+(décision d'Alexandre du 06/10/2026, migration `2026-10-06_heures_supp_par_journee.sql`,
+appliquée en recette puis en production le 06/10/2026). La
 version du matin même — prolongation possible le premier jour seulement, facturée sur toutes les
 journées (`finPremierJourMs()`) — est remplacée. Avant elle, une heure demandée le dernier jour
 d'une série de cinq était facturée cinq fois, journées faites comprises.
