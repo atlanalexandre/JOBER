@@ -635,7 +635,46 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 // visible et horodatée.
 //
 // Renvoie ce qui a été fait, pour que l'appelant journalise et notifie en conséquence.
+// Après une cascade en échec, la prestation doit être toujours « refusée »
+// pour être remboursée. `echec` revient aussi quand l'écriture de la bascule a
+// abouti mais que sa réponse s'est perdue : la prestation est alors déjà
+// rediffusée, et la rembourser ferait travailler un prestataire pour rien
+// (relecture du 06/10/2026). Lecture impossible : on ne rembourse pas, et on
+// le dit.
+async function toujoursRefusee(missionId, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=status&limit=1`, { headers });
+    const l = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(l) && l[0]) return l[0].status === "refused";
+    console.error(`[cascade] statut de ${missionId} illisible (${r.status}) — remboursement NON fait, à vérifier.`);
+  } catch (e) {
+    console.error(`[cascade] statut de ${missionId} illisible — remboursement NON fait, à vérifier :`, e.message);
+  }
+  return false;
+}
+
 export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
+  // L'heure de début est passée : solliciter quelqu'un d'autre n'a plus de
+  // sens. La borne n'existait que dans la tâche planifiée ; un refus dans
+  // l'application ou par e-mail relançait la cascade avec une échéance neuve,
+  // pour une prestation déjà commencée (relecture du 06/10/2026). On rend
+  // « echec » sans rien écrire : chaque appelant sait alors rembourser.
+  let horaire = mission;
+  if (!(mission.date || mission.date_debut)) {
+    try {
+      const rh = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&select=date,date_debut,heure_debut&limit=1`, { headers });
+      const lh = await rh.json().catch(() => null);
+      if (rh.ok && Array.isArray(lh) && lh[0]) horaire = { ...mission, ...lh[0] };
+    } catch (e) {
+      console.error(`[cascade] horaire de ${mission.id} illisible :`, e.message);
+    }
+  }
+  const debut = debutPrestationMs(horaire.date || horaire.date_debut, horaire.heure_debut);
+  if (Number.isFinite(debut) && debut <= Date.now()) {
+    console.log(`[cascade] ${mission.id} : heure de début passée — pas de candidat suivant.`);
+    return { mode: "echec", prestataire_id: null, raison: "heure_passee" };
+  }
+
   const dejaVus = [];
   if (mission.prestataire_id) dejaVus.push(mission.prestataire_id);
   try {
@@ -799,7 +838,9 @@ async function handleEmailAction(req, res) {
     // déjà « refusée » (écriture ci-dessus). Elle restait ainsi, payée, sans
     // personne et sans remboursement (relecture du 05/10/2026). On rembourse,
     // comme un refus ordinaire.
-    if (cascade.mode === "echec") {
+    if (cascade.mode === "echec" && !(await toujoursRefusee(missionId, SUPABASE_URL, hdrs))) {
+      console.error(`[refus-email] cascade en échec mais prestation ${missionId} plus « refusée » — pas de remboursement, à vérifier.`);
+    } else if (cascade.mode === "echec") {
       cascade = null;
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
       if (!rembEchec.ok) console.error(`[refus-email] cascade en échec ET remboursement impossible — prestation ${missionId} à rembourser à la main`);
@@ -5479,7 +5520,9 @@ export default async function handler(req, res) {
         // Cascade en échec : la prestation, déjà « refusée », restait payée sans
         // personne ni remboursement (relecture du 05/10/2026). On rembourse,
         // comme un refus ordinaire.
-        if (cascade.mode === "echec") {
+        if (cascade.mode === "echec" && !(await toujoursRefusee(mission_id, SUPABASE_URL, headers))) {
+          console.error(`[respond_mission] cascade en échec mais prestation ${mission_id} plus « refusée » — pas de remboursement, à vérifier.`);
+        } else if (cascade.mode === "echec") {
           cascade = null;
           rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
           if (!rembRefus.ok) console.error(`[respond_mission] cascade en échec ET remboursement impossible — prestation ${mission_id} à rembourser à la main`);
