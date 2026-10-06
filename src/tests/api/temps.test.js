@@ -39,6 +39,12 @@ describe("debutPrestationMs", () => {
     expect(debutPrestationMs(null, "14:00")).toBeNull();
     expect(debutPrestationMs("pas-une-date", "14:00")).toBeNull();
   });
+  // `date_debut` est un timestamptz : la base rend « 2026-08-06 00:00:00+00 ».
+  // Passé tel quel, il donnait un début inconnu (relecture du 06/10/2026).
+  it("accepte une date_debut horodatée telle que la base la rend", () => {
+    expect(debutPrestationMs("2026-08-06 00:00:00+00", "14:00")).toBe(AOUT_14H_UTC);
+    expect(debutPrestationMs("2026-08-06T00:00:00+00:00", "14:00")).toBe(AOUT_14H_UTC);
+  });
 });
 
 describe("finPrestationMs", () => {
