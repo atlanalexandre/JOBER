@@ -182,7 +182,18 @@ export default async function handler(req, res) {
 
       if (payes.length === 0) { if ((await annuler()).length) annulees++; continue; }
 
-      // Payée, jamais affectée : on rembourse, puis on annule.
+      // Payée, jamais affectée : on ANNULE d'abord, puis on rembourse.
+      // L'ordre inverse laissait une fenêtre : une affectation arrivée entre le
+      // remboursement et l'annulation donnait une prestation attribuée dont le
+      // paiement venait d'être rendu — et l'annulation, ne trouvant plus la
+      // ligne, se croyait simplement « à reprendre » (relecture du 06/10/2026).
+      // L'annulation conditionnelle PREND la ligne : si elle ne trouve rien, la
+      // prestation a été affectée entre-temps, son paiement sert, on n'y touche
+      // pas. Même schéma que l'expiration et la clôture de cron-reset-monthly.
+      if (!(await annuler()).length) {
+        console.log(`[cron-abandon] ${c.id} affectée ou traitée entre-temps — paiement conservé, rien à rembourser.`);
+        continue;
+      }
       let toutRembourse = true;
       for (const pi of payes) {
         try {
@@ -203,17 +214,24 @@ export default async function handler(req, res) {
         }
       }
       if (!toutRembourse) {
-        console.error(`[cron-abandon] ⚠️ prestation ${c.id} PAYÉE, non affectée, remboursement incomplet : laissée en l'état, à traiter à la main.`);
+        // Remise en attente : la ligne retrouve les marqueurs du filtre et sera
+        // reprise au prochain passage. Échec de la remise : à traiter à la main.
+        let remise = null;
+        try {
+          remise = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${c.id}&status=eq.cancelled`, {
+            method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
+            body: JSON.stringify({ status: "pending_acceptance" }),
+          });
+        } catch (e) {
+          console.error(`[cron-abandon] remise en attente de ${c.id} impossible :`, e.message);
+        }
+        const remis = remise?.ok ? await remise.json().catch(() => []) : [];
+        console.error(`[cron-abandon] ⚠️ prestation ${c.id} PAYÉE, remboursement incomplet : `
+          + (Array.isArray(remis) && remis.length ? "remise en attente, reprise au prochain passage."
+            : "ANNULÉE SANS REMBOURSEMENT COMPLET et non remise en attente — à traiter à la main."));
         continue;
       }
       remboursees++;
-      // Annulation refusée : la ligne revient au prochain passage — le
-      // remboursement, idempotent, n'y repart pas — et le client n'est prévenu
-      // qu'une fois, quand elle aboutit.
-      if (!(await annuler()).length) {
-        console.error(`[cron-abandon] prestation ${c.id} remboursée mais NON annulée — reprise au prochain passage.`);
-        continue;
-      }
       annulees++;
       if (c.client_id) {
         await notifier({

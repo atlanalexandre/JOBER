@@ -50,7 +50,10 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
     // rendait : le journal disait « rien à faire » (relecture du 05/10/2026).
     // Sur une prestation encore vivante, ce paiement peut être le sien : on n'y
     // touche pas.
-    const fermee = ["cancelled", "refused", "rejected"].includes(m.status);
+    // `closed` aussi : la tâche planifiée clôt ainsi une demande restée sans
+    // prestataire et sans paiement (relecture du 06/10/2026). Une prestation
+    // `closed` après un litige porte, elle, son paiement : elle n'entre pas ici.
+    const fermee = ["cancelled", "refused", "rejected", "closed"].includes(m.status);
     if (!m.stripe_payment_intent && !fermee) {
       console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} (${m.status}) sans paiement rattaché, non mise à jour — à vérifier.`);
       return;

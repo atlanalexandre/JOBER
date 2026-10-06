@@ -10,7 +10,7 @@ const CLIENT = "33333333-3333-4333-8333-333333333333";
 const PRESTA = "44444444-4444-4444-8444-444444444444";
 const json = (v, status = 200) => Promise.resolve(new Response(JSON.stringify(v), { status }));
 
-function simuler(reponseStripe) {
+function simuler(reponseStripe, lectureMission = null) {
   const affectations = [];
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url);
@@ -19,6 +19,7 @@ function simuler(reponseStripe) {
     if (u.includes("select=status") && !u.includes("missions")) return json([{ status: "approved" }]);
     if (u.includes("/candidatures?id=eq.") && m === "GET") return json([{ id: CAND, prestataire_id: PRESTA }]);
     if (u.includes("/profiles?id=eq.") && u.includes("plan_abonnement")) return json([{ plan_abonnement: "elite", missions_completed_month: 0 }]);
+    if (u.includes(`/missions?id=eq.${M}&select=`) && lectureMission) return lectureMission();
     if (u.includes(`/missions?id=eq.${M}&select=`)) return json([{ client_id: CLIENT, status: "open", tarif_horaire: 13, hours: 8, date: "2026-10-12", heure_debut: "09:00", stripe_payment_intent: null }]);
     if (u.includes("api.stripe.com/v1/payment_intents") && m === "POST") return reponseStripe();
     if (u.includes("/missions?id=eq.") && m === "PATCH") { affectations.push(JSON.parse(o.body)); return json([{ id: M, prestataire_id: PRESTA }]); }
@@ -67,6 +68,24 @@ describe("accepter une candidature", () => {
     const r = await accepter();
     expect(r.statut).toBe(200);
     expect(r.corps.client_secret).toBe("pi_1_secret");
+    expect(affectations.some(a => a.status === "assigned")).toBe(false);
+  });
+
+  // Relecture du 06/10/2026 : une lecture de la prestation en échec menait à
+  // l'affectation, sans paiement ni contrôle du propriétaire.
+  it("prestation illisible : 503, rien n'est attribué ni payé", async () => {
+    let paiements = 0;
+    const affectations = simuler(() => { paiements++; return json({ id: "pi_1", client_secret: "s" }); }, () => json({ message: "erreur" }, 500));
+    const r = await accepter();
+    expect(r.statut).toBe(503);
+    expect(paiements).toBe(0);
+    expect(affectations.some(a => a.status === "assigned")).toBe(false);
+  });
+
+  it("prestation introuvable : 404, rien n'est attribué", async () => {
+    const affectations = simuler(() => json({ id: "pi_1", client_secret: "s" }), () => json([]));
+    const r = await accepter();
+    expect(r.statut).toBe(404);
     expect(affectations.some(a => a.status === "assigned")).toBe(false);
   });
 });

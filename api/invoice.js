@@ -118,7 +118,7 @@ async function facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleK
   const filtre = `and=(or(client_id.eq.${userId},prestataire_id.eq.${userId}),`
     + `or(status.eq.completed,invoice_number.not.is.null),`
     + `or(and(date.gte.${debut},date.lt.${fin}),and(date.is.null,date_debut.gte.${debut},date_debut.lt.${fin})))`
-    + `&order=date.asc.nullslast,date_debut.asc,id.asc&limit=101`;
+    + `&order=id.asc&limit=501`;
   const lr = await fetch(`${supabaseUrl}/rest/v1/missions?${filtre}&select=*`, { headers: hdrs });
   const liste = await lr.json().catch(() => null);
   if (!lr.ok || !Array.isArray(liste)) {
@@ -128,6 +128,17 @@ async function facturesDuMois(req, res, { mois, token, supabaseUrl, serviceRoleK
   if (liste.length === 0) {
     return res.status(200).send(pageSimple(`Aucune facture en ${libelleMois}`, "Aucune prestation réalisée ce mois-ci n'a donné lieu à une facture."));
   }
+  // Tri par JOUR de prestation, quel que soit le champ qui le porte : `date`,
+  // ou `date_debut` pour une prestation de plusieurs jours (date nulle).
+  // PostgREST ne sait pas trier sur l'un OU l'autre : `date.asc.nullslast`
+  // rejetait toutes les prestations de plusieurs jours en fin de liste — elles
+  // recevaient leur numéro après celles de la fin du mois, et le plafond les
+  // écartait en premier (relecture du 06/10/2026).
+  liste.sort((a, b) => {
+    const ja = String(a.date || a.date_debut || "").slice(0, 10);
+    const jb = String(b.date || b.date_debut || "").slice(0, 10);
+    return ja < jb ? -1 : ja > jb ? 1 : String(a.id).localeCompare(String(b.id));
+  });
   const tronque = liste.length > 100;
   const missions = liste.slice(0, 100);
 

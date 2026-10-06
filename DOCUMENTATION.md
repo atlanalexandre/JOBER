@@ -968,7 +968,7 @@ Quatre procédures stockées sont appelées depuis le code, et n'existent donc q
   rendait ensuite un cashback jamais pris. Absente ou en erreur, le code garde l'ancien
   chemin (même drapeau, pas de double débit). `service_role` uniquement. Renvoie `etat`
   (`debite`, `deja_debite`, `rien`, `solde_nul`, `introuvable`, `profil_introuvable`),
-  `debite`, `solde`. Appliquée sur la recette le 05/10/2026.
+  `debite`, `solde`. Appliquée sur la recette puis en production le 05/10/2026.
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
@@ -1171,7 +1171,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
-| `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
+| `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 
 ### Comment l'appelant est vérifié
@@ -1427,6 +1427,9 @@ numérotation, même archive. Plafond de 100 factures par document, signalé s'i
 Une prestation de plusieurs jours a une `date` NULLE : le filtre teste aussi `date_debut`
 (sans quoi elle manquait au document, 05/10/2026). Les factures encore sans numéro sont rendues
 **une par une** : en parallèle, elles se disputaient le compteur et l'une échouait par lot.
+Le tri par jour se fait dans le code (`date`, à défaut `date_debut`) : `date.asc.nullslast` rejetait
+les prestations de plusieurs jours en fin de liste — numérotées après celles de la fin du mois, et
+écartées en premier par le plafond (06/10/2026).
 Un menu propose le mois en cours (heure de Paris, `moisEnCoursParis()` de `ui.jsx`) et les douze
 précédents (`moisProposes()`, 05/10/2026 — le 2 novembre, c'est octobre qu'un prestataire déclare) ;
 le serveur accepte n'importe quel mois, et ne rend que les factures de l'appelant.
@@ -1661,8 +1664,8 @@ alors en `assigned` **sans prestataire**, et l'affectation de l'application, arr
 cashback et ignore les paiements de série (`metadata[type] = serie`). Depuis le 04/10/2026, il **rembourse un
 paiement en double** : si la prestation est déjà réglée par un autre paiement, celui qui arrive
 est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu d'être ignoré.
-Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée ou
-refusée** sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
+Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée,
+refusée ou clôturée** (`closed` ajouté le 06/10/2026 : c'est l'état d'une demande close sans prestataire ni paiement) sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
 vivante sans paiement rattaché, il ne touche à rien et le journalise.
 Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
 est le refus de `/api/stripe-intent` (409 `deja_payee`).
@@ -1672,7 +1675,7 @@ crée un paiement Stripe avec la clé `accept-{prestation}-{candidature}-{montan
 Quand Stripe ne rendait pas de paiement — erreur, ou double clic : le second appel, même clé,
 reçoit « requête en cours » (409) —, le code retombait sur l'affectation et la prestation
 passait `assigned` sans rien d'encaissé. Il répond désormais 409 (« déjà en cours ») ou 502.
-L'affectation directe ne subsiste que sans clé Stripe configurée. Essai : `e2e/69`.
+L'affectation directe ne subsiste que sans clé Stripe configurée. Essai : `e2e/69`. Une prestation **illisible ou introuvable** arrête aussi l'action (503 / 404, 06/10/2026) : tout le reste était conditionné à sa lecture, et un échec menait à l'affectation sans paiement ni contrôle du propriétaire.
 
 ### Les contraintes de la base peuvent être en retard sur le code
 
@@ -2566,8 +2569,11 @@ n'annule pas et le journalise. Il traite 50 lignes par passage, **tirées au has
 plus anciennes** (`tirerAuHasard()`, 05/10/2026) : celles laissées en l'état (Stripe muet,
 remboursement incomplet) restaient en tête et pouvaient bloquer toutes les suivantes. Une
 annulation refusée est journalisée — elle était avalée — et le message « vous êtes remboursé »
-n'est envoyé qu'une fois l'annulation faite ; sinon la ligne est reprise au passage suivant, le
-remboursement (idempotent) n'y repartant pas.
+n'est envoyé qu'une fois l'annulation faite. **Depuis le 06/10/2026, l'annulation précède le
+remboursement** : elle est conditionnelle et PREND la ligne ; si elle ne trouve rien, la prestation a
+été affectée entre-temps et son paiement est conservé. Dans l'ordre inverse, une affectation arrivée
+entre les deux donnait une prestation attribuée dont le paiement venait d'être rendu. Un remboursement
+incomplet remet la ligne en attente pour le passage suivant.
 
 *Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
 prestataire non activé, tarif incohérent, adresse hors zone — et les deux de
@@ -3291,7 +3297,7 @@ vérifié juste à côté, fait autorité.
 | Clôture faute de prestataire | la prestation est **prise** (conditionnellement) **avant** le remboursement ; rouverte si celui-ci échoue | Reprise entre la lecture et le remboursement : prestataire payé, client déjà remboursé |
 | Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
 | Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
-| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js`. **Un second bloc d'expiration, exécuté le 1er du mois, défaisait tout cela** (relecture du 04/10/2026, `e2e/62`) : il ne lisait pas le paiement, ne remboursait donc rien, passait la prestation « refusée » et écrivait « Votre paiement a été intégralement remboursé » — y compris pour celles que ce bloc-ci venait de remettre en attente. Il est retiré : l'expiration n'est plus traitée qu'ici. **Une prestation affectée par la plateforme** (chez un tiers, CGPS art. 5.2) passe au candidat suivant au lieu d'être remboursée, comme dans l'application (`acceptance_timeout`) : la tâche planifiée appelle la même `affecterCandidatSuivant()`, exportée de `missions.js`, après avoir pris la prestation (toujours en attente, toujours expirée) ; le remboursement ne joue qu'en cas d'échec (relecture du 04/10/2026, `e2e/66`). **Bornée** le 05/10/2026 : une fois l'heure de début passée, plus de candidat suivant — remboursement ; et la bascule en diffusion de `affecterCandidatSuivant()` est vérifiée (ignorée, un échec laissait la prestation en attente sans échéance, invisible de toutes les requêtes). Sur un **refus** du prestataire (application ou e-mail), une cascade en échec rembourse désormais le client comme un refus ordinaire : la prestation, déjà « refusée », restait payée sans personne (05/10/2026). `acceptance_timeout` n'écrit rien avant la cascade : en cas d'échec, la prestation reste expirée et la tâche planifiée la reprend |
+| Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js`. **Un second bloc d'expiration, exécuté le 1er du mois, défaisait tout cela** (relecture du 04/10/2026, `e2e/62`) : il ne lisait pas le paiement, ne remboursait donc rien, passait la prestation « refusée » et écrivait « Votre paiement a été intégralement remboursé » — y compris pour celles que ce bloc-ci venait de remettre en attente. Il est retiré : l'expiration n'est plus traitée qu'ici. **Une prestation affectée par la plateforme** (chez un tiers, CGPS art. 5.2) passe au candidat suivant au lieu d'être remboursée, comme dans l'application (`acceptance_timeout`) : la tâche planifiée appelle la même `affecterCandidatSuivant()`, exportée de `missions.js`, après avoir pris la prestation (toujours en attente, toujours expirée) ; le remboursement ne joue qu'en cas d'échec (relecture du 04/10/2026, `e2e/66`). **Bornée** le 05/10/2026 : une fois l'heure de début passée, plus de candidat suivant — remboursement ; et la bascule en diffusion de `affecterCandidatSuivant()` est vérifiée (ignorée, un échec laissait la prestation en attente sans échéance, invisible de toutes les requêtes). Sur un **refus** du prestataire (application ou e-mail), une cascade en échec rembourse désormais le client comme un refus ordinaire : la prestation, déjà « refusée », restait payée sans personne (05/10/2026). `acceptance_timeout` n'écrit rien avant la cascade : en cas d'échec, la prestation reste expirée et la tâche planifiée la reprend. Depuis le 06/10/2026, la borne de l'heure de début est **dans** `affecterCandidatSuivant()` (elle rend `echec`, raison `heure_passee`, sans rien écrire) et vaut donc pour tous les appelants ; et un remboursement après `echec` exige que la prestation soit **toujours « refusée »** (`toujoursRefusee()`) : `echec` revient aussi quand la bascule en diffusion a abouti mais que sa réponse s'est perdue |
 
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
