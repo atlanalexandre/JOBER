@@ -8,7 +8,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, P
 import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
-import { prixHeuresSupp } from "../../api/_heures_supp.js";
+import { prixHeuresSupp, joursFactures } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 
@@ -2929,9 +2929,18 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {/* Demande d'heures supplémentaires en attente */}
                 {m.extra_hours_status === "pending" && m.extra_hours_requested > 0 && (
                   <div style={{ background:"rgba(124,111,224,0.1)", border:`1px solid ${C.violet}44`, borderRadius:12, padding:"14px", marginBottom:10 }}>
-                    <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>⏱ Demande de prolongation</div>
+                    {/* Sur plusieurs jours (06/10/2026), la demande porte sur la
+                        journée en cours, ou — modification de la commande —
+                        sur chacune des journées pas encore commencées. */}
+                    <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>
+                      {m.extra_hours_portee === "commande" ? "✏️ Modification de la commande" : "⏱ Demande de prolongation"}
+                    </div>
                     <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>
-                      Le client souhaite prolonger la prestation de <strong style={{ color:C.text }}>{m.extra_hours_requested}h supplémentaire{m.extra_hours_requested > 1 ? "s" : ""}</strong>.
+                      {m.extra_hours_portee === "commande" ? (
+                        <>Le client souhaite ajouter <strong style={{ color:C.text }}>{m.extra_hours_requested}h</strong> à chacune des <strong style={{ color:C.text }}>{joursFactures(m, nombreDeJours(m))} journée(s)</strong> qui n'ont pas encore commencé.</>
+                      ) : (
+                        <>Le client souhaite prolonger {m.extra_hours_portee === "jour" ? "la journée en cours" : "la prestation"} de <strong style={{ color:C.text }}>{m.extra_hours_requested}h supplémentaire{m.extra_hours_requested > 1 ? "s" : ""}</strong>.</>
+                      )}
                     </div>
 
                     {/* Le tarif de la prolongation est le vôtre.
@@ -2966,7 +2975,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         représente 85 €. Même fonction que le serveur. */}
                     {(() => {
                       const tarifSaisi = Number(tarifSupp[m.id] ?? m.tarif_horaire);
-                      const d = prixHeuresSupp(m.extra_hours_requested, tarifSaisi, nombreDeJours(m));
+                      const d = prixHeuresSupp(m.extra_hours_requested, tarifSaisi, joursFactures(m, nombreDeJours(m)));
                       const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
                       return d.partPrestataire > 0 ? (
                         <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:12, color:C.text, lineHeight:1.6 }}>
@@ -2987,7 +2996,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         const { data: sd } = await supabase.auth.getSession();
                         const token = sd?.session?.access_token;
                         const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"refuse" }) });
-                        if (r.ok) setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"refused", extra_hours_requested:null} : x));
+                        if (r.ok) setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"refused", extra_hours_requested:null, extra_hours_portee:null, extra_hours_jours:null} : x));
                         else {
                           // Le refus échouait sans un mot : la demande restait
                           // affichée, et le prestataire pouvait la croire traitée.

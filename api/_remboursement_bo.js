@@ -141,3 +141,46 @@ export async function rembourserHeuresSupp(missionId, cle, contexte) {
 export function versementAAnnuler(m) {
   return ["pending", "held", "failed"].includes(m?.payout_status);
 }
+
+/**
+ * Rend au client les heures ajoutées qui ne seront pas faites — sur le
+ * paiement de prolongation qui les avait réglées (06/10/2026).
+ *
+ * `parPaiement` : { pi_… : euros }, tel que le calcule `ajoutsNonFaits()`.
+ * Chaque remboursement est plafonné à ce qui reste remboursable sur son
+ * paiement. La clé d'idempotence (`suffixe` : le jour et l'issue) fait qu'un
+ * nouvel essai ne rembourse pas deux fois.
+ *
+ * Retourne { ok, centimes } — ok à false au premier échec : l'appelant
+ * n'enregistre alors pas l'interruption.
+ */
+export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contexte) {
+  let centimes = 0;
+  for (const [pi, euros] of Object.entries(parPaiement || {})) {
+    const voulu = Math.round(Number(euros) * 100);
+    if (!(voulu > 0)) continue;
+    try {
+      const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(pi)}?expand[]=latest_charge`,
+        { headers: { "Authorization": `Bearer ${cle}` } });
+      const p = await r.json().catch(() => null);
+      if (!r.ok || !p?.id) throw new Error(`paiement illisible (${r.status})`);
+      const reste = Math.max(0, (Number(p.amount_received) || 0) - (Number(p.latest_charge?.amount_refunded) || 0));
+      const montant = Math.min(voulu, reste);
+      if (montant < voulu) console.warn(`[${contexte}] ${pi} : ${voulu} c voulus, ${reste} c encore remboursables.`);
+      if (montant <= 0) continue;
+      const rf = await fetch("https://api.stripe.com/v1/refunds", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded",
+          "Idempotency-Key": `refund-ajout-${pi}-${suffixe}` },
+        body: new URLSearchParams({ payment_intent: pi, amount: String(montant), reason: "requested_by_customer" }).toString(),
+      });
+      const d = await rf.json().catch(() => ({}));
+      if (!rf.ok || !d?.id) throw new Error(JSON.stringify(d?.error || d).slice(0, 200));
+      centimes += montant;
+    } catch (e) {
+      console.error(`[${contexte}] heures ajoutées NON remboursées sur ${pi} :`, e.message);
+      return { ok: false, centimes };
+    }
+  }
+  return { ok: true, centimes };
+}

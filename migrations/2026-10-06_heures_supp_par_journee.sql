@@ -26,7 +26,12 @@
 --   • heures_ajoutees_total       — heures ajoutées, toutes journées (cumul) ;
 --   • heures_ajoutees_dernier_jour — heures ajoutées au DERNIER jour : elles
 --                            reculent la fin de la prestation, donc l'échéance
---                            du versement.
+--                            du versement ;
+--   • heures_ajoutees_detail — le détail, journée par journée :
+--                            [{ "jour", "heures", "tarif", "paiement" }]. Une
+--                            série arrêtée en cours de route rend au client les
+--                            heures ajoutées aux journées qui n'auront pas lieu,
+--                            sur le paiement qui les avait réglées.
 --
 -- COMPATIBILITÉ : colonnes facultatives ou à zéro par défaut. L'ancien code les
 -- ignore et continue de fonctionner ; une prestation d'un seul jour garde le
@@ -38,7 +43,8 @@ ALTER TABLE public.missions
   ADD COLUMN IF NOT EXISTS extra_hours_jours integer,
   ADD COLUMN IF NOT EXISTS montant_heures_ajoutees numeric NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS heures_ajoutees_total numeric NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS heures_ajoutees_dernier_jour numeric NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS heures_ajoutees_dernier_jour numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS heures_ajoutees_detail jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 DO $$
 BEGIN
@@ -54,15 +60,20 @@ BEGIN
     ALTER TABLE public.missions ADD CONSTRAINT missions_heures_ajoutees_positives
       CHECK (montant_heures_ajoutees >= 0 AND heures_ajoutees_total >= 0 AND heures_ajoutees_dernier_jour >= 0);
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'missions_heures_ajoutees_detail_check') THEN
+    ALTER TABLE public.missions ADD CONSTRAINT missions_heures_ajoutees_detail_check
+      CHECK (jsonb_typeof(heures_ajoutees_detail) = 'array');
+  END IF;
 END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- VÉRIFICATION — doit renvoyer les cinq colonnes.
+-- VÉRIFICATION — doit renvoyer les six colonnes.
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- SELECT column_name, data_type, column_default FROM information_schema.columns
 --  WHERE table_name = 'missions' AND column_name IN ('extra_hours_portee','extra_hours_jours',
---    'montant_heures_ajoutees','heures_ajoutees_total','heures_ajoutees_dernier_jour');
+--    'montant_heures_ajoutees','heures_ajoutees_total','heures_ajoutees_dernier_jour',
+--    'heures_ajoutees_detail');
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SÉCURITÉ — ce que le navigateur ne peut pas poser à la création
@@ -138,6 +149,7 @@ BEGIN
      OR COALESCE(NEW.montant_heures_ajoutees, 0) <> 0
      OR COALESCE(NEW.heures_ajoutees_total, 0) <> 0
      OR COALESCE(NEW.heures_ajoutees_dernier_jour, 0) <> 0
+     OR COALESCE(NEW.heures_ajoutees_detail, '[]'::jsonb) <> '[]'::jsonb
      OR COALESCE(NEW.heures_perdues, 0) <> 0 THEN
     RAISE EXCEPTION 'Les heures effectuées et ajoutées sont fixées par le serveur.';
   END IF;

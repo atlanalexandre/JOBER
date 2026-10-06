@@ -15,7 +15,7 @@ import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, Launch
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp, finPremierJourMs } from "../../api/_temps.js";
-import { prixHeuresSupp } from "../../api/_heures_supp.js";
+import { prixHeuresSupp, surPlusieursJours, porteeDemande } from "../../api/_heures_supp.js";
 import { libelleConstat } from "../../api/_localisation.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
@@ -3811,6 +3811,11 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   // Pointage réel du démarrage : il fixe la fin, donc la fermeture de la
   // fenêtre des heures supplémentaires.
   const [startedAtTrack, setStartedAtTrack] = useState(null);
+  // L'horaire prévu de la prestation : sur plusieurs jours, il dit quelle
+  // journée est en cours (heures supplémentaires) et lesquelles n'ont pas
+  // commencé (modification de la commande).
+  const [planTrack, setPlanTrack] = useState(null);
+  const [extraHoursPortee, setExtraHoursPortee] = useState("jour"); // "jour" | "commande"
   const [showTrackingCancel, setShowTrackingCancel] = useState(false);
   const [trackingCancelling, setTrackingCancelling] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
@@ -3870,8 +3875,9 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status,extra_hours_status,arrived_at,started_at").eq("id",resolvedMissionId).single();
+      const { data } = await supabase.from("missions").select("status,extra_hours_status,extra_hours_portee,arrived_at,started_at,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,heures_ajoutees_dernier_jour").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
+      setPlanTrack(data);
       if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="closed"||data.status==="cancelled"||data.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
       else if(data.started_at || data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
@@ -4046,44 +4052,93 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         {/* Heures supplémentaires — dès que le prestataire est sur place, et
             jusqu'à vingt minutes après la fin. La demande n'était bornée par
             rien : elle restait proposée sur une prestation terminée depuis des
-            heures, alors que l'accepter rallonge la durée facturée. */}
-        {step >= 1 && step < 3
-          && fenetreHeuresSupp(finPremierJourMs({ ...(contractMissionData || {}), started_at: startedAtTrack })).ouverte && (
-          <div style={{ marginBottom:16 }}>
-            {extraHoursStatus === "pending" ? (
-              <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold, boxShadow:`0 0 8px ${C.accentGold}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
-                <div>
-                  <div style={{ fontWeight:700, color:C.accentGold, fontSize:13 }}>⏱ Demande en attente…</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>En attente de la confirmation du prestataire</div>
+            heures, alors que l'accepter rallonge la durée facturée.
+
+            Sur plusieurs jours (06/10/2026), deux demandes distinctes : des
+            heures supplémentaires pour la JOURNÉE EN COURS, ou la
+            modification de la commande pour les journées PAS ENCORE
+            COMMENCÉES. Le même calcul que le serveur (`porteeDemande`). */}
+        {(() => {
+          const planSuivi = { ...(planTrack || contractMissionData || {}), started_at: startedAtTrack };
+          const multiJours = !!planTrack && surPlusieursJours(planSuivi);
+          const suppOuverte = step >= 1 && step < 3 && (multiJours
+            ? porteeDemande(planSuivi, "jour").ok
+            : fenetreHeuresSupp(finPremierJourMs(planSuivi)).ouverte);
+          const commandeOuverte = multiJours && step < 3 && porteeDemande(planSuivi, "commande").ok;
+          if (!suppOuverte && !commandeOuverte) return null;
+          const estCommande = planTrack?.extra_hours_portee === "commande";
+          const ouvrir = (portee) => { setExtraHoursPortee(portee); setExtraHoursModal(true); };
+          const boutons = (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {suppOuverte && (
+                <button onClick={()=>ouvrir("jour")} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.accentGold}55`, background:`${C.accentGold}10`, color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  ⏱ {multiJours ? "Heures supplémentaires aujourd'hui" : "Demander des heures supplémentaires"}
+                </button>
+              )}
+              {commandeOuverte && (
+                <button onClick={()=>ouvrir("commande")} style={{ width:"100%", padding:"13px", borderRadius:r, border:"1px solid rgba(124,111,224,0.35)", background:"rgba(124,111,224,0.08)", color:C.violet, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  ✏️ Modifier la commande (journées à venir)
+                </button>
+              )}
+            </div>
+          );
+          return (
+            <div style={{ marginBottom:16 }}>
+              {extraHoursStatus === "pending" ? (
+                <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold, boxShadow:`0 0 8px ${C.accentGold}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                  <div>
+                    <div style={{ fontWeight:700, color:C.accentGold, fontSize:13 }}>{estCommande ? "✏️ Modification en attente…" : "⏱ Demande en attente…"}</div>
+                    <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>En attente de la confirmation du prestataire</div>
+                  </div>
                 </div>
-              </div>
-            ) : extraHoursStatus === "accepted" ? (
-              <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"12px 16px", fontSize:13, color:C.success, fontWeight:700 }}>
-                ✅ Heures supplémentaires acceptées par le prestataire
-              </div>
-            ) : extraHoursStatus === "refused" ? (
-              <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"12px 16px", fontSize:13, color:"#F25E5E" }}>
-                ❌ Le prestataire n'a pas pu accepter la prolongation
-                <button onClick={()=>{ setExtraHoursStatus(null); setExtraHoursModal(true); }} style={{ display:"block", marginTop:6, background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Faire une nouvelle demande →</button>
-              </div>
-            ) : (
-              <button onClick={()=>setExtraHoursModal(true)} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.accentGold}55`, background:`${C.accentGold}10`, color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                ⏱ Demander des heures supplémentaires
-              </button>
-            )}
-          </div>
-        )}
+              ) : extraHoursStatus === "accepte_presta" ? (
+                <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"12px 16px", fontSize:13, color:C.text, lineHeight:1.6 }}>
+                  ✅ Le prestataire a accepté. Réglez le montant depuis <strong>Mes réservations</strong> pour confirmer.
+                </div>
+              ) : extraHoursStatus === "accepted" ? (
+                <>
+                  <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"12px 16px", fontSize:13, color:C.success, fontWeight:700, marginBottom:8 }}>
+                    ✅ {estCommande ? "Commande modifiée" : "Heures supplémentaires acceptées par le prestataire"}
+                  </div>
+                  {multiJours && boutons}
+                </>
+              ) : extraHoursStatus === "refused" ? (
+                <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"12px 16px", fontSize:13, color:"#F25E5E" }}>
+                  <div style={{ marginBottom:10 }}>❌ Le prestataire n'a pas pu accepter la prolongation. Vous pouvez faire une nouvelle demande :</div>
+                  {boutons}
+                </div>
+              ) : boutons}
+            </div>
+          );
+        })()}
 
         {/* Modal heures supplémentaires */}
         {extraHoursModal && (
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
-              <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
-              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 20px", lineHeight:1.6 }}>Le prestataire devra accepter cette prolongation. Le montant sera ajusté en conséquence.</p>
+              {(() => {
+                const pd = planTrack && surPlusieursJours(planTrack) ? porteeDemande({ ...planTrack, started_at: startedAtTrack }, extraHoursPortee) : null;
+                return extraHoursPortee === "commande" ? (
+                  <>
+                    <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>✏️ Modifier la commande</h3>
+                    <p style={{ color:C.textSub, fontSize:13, margin:"0 0 20px", lineHeight:1.6 }}>
+                      Les heures ajoutées valent pour chacune des {pd?.ok ? pd.jours : "—"} journée(s) qui n'ont pas encore commencé. Le prestataire devra accepter. Pour réduire la commande, passez par l'annulation.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires{pd ? " aujourd'hui" : ""}</h3>
+                    <p style={{ color:C.textSub, fontSize:13, margin:"0 0 20px", lineHeight:1.6 }}>
+                      Le prestataire devra accepter cette prolongation. Le montant sera ajusté en conséquence.
+                      {pd && " Elle ne vaut que pour la journée en cours ; pour les journées à venir, modifiez la commande."}
+                    </p>
+                  </>
+                );
+              })()}
               <div style={{ marginBottom:20 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <span style={{ color:C.textSub, fontSize:13 }}>Heures à ajouter</span>
+                  <span style={{ color:C.textSub, fontSize:13 }}>{extraHoursPortee === "commande" ? "Heures à ajouter par journée" : "Heures à ajouter"}</span>
                   <span style={{ color:C.text, fontWeight:800, fontSize:20 }}>{extraHoursValue}h</span>
                 </div>
                 <input type="range" min={1} max={8} step={1} value={extraHoursValue} onChange={e=>setExtraHoursValue(Number(e.target.value))}
@@ -4100,8 +4155,10 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                   `prixHeuresSupp`, la fonction que le serveur utilise pour
                   facturer — un seul calcul, pas deux qui divergent. */}
               {(() => {
-                const tarifEstime = Number(contractMissionData?.tarif_horaire || p?.rateNum || 0);
-                const d = prixHeuresSupp(extraHoursValue, tarifEstime, 1);
+                const tarifEstime = Number(planTrack?.tarif_horaire || contractMissionData?.tarif_horaire || p?.rateNum || 0);
+                const pd = planTrack && surPlusieursJours(planTrack) ? porteeDemande({ ...planTrack, started_at: startedAtTrack }, extraHoursPortee) : null;
+                const nbJours = pd?.ok ? pd.jours : 1;
+                const d = prixHeuresSupp(extraHoursValue, tarifEstime, nbJours);
                 const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
                 return (
                   <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:20, fontSize:13, color:C.text }}>
@@ -4109,7 +4166,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                       <>
                         💳 Estimation : <strong>{fr(d.total)} €</strong>
                         <div style={{ color:C.textSub, fontSize:11.5, marginTop:4, lineHeight:1.6 }}>
-                          {extraHoursValue} h × {fr(tarifEstime)} € = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
+                          {extraHoursValue} h × {fr(tarifEstime)} €{nbJours > 1 ? ` × ${nbJours} journées` : ""} = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
                         </div>
                       </>
                     ) : (
@@ -4129,9 +4186,9 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                   const r = await fetch("/api/missions", {
                     method:"POST",
                     headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`},
-                    body: JSON.stringify({ action:"request_extra_hours", mission_id:resolvedMissionId, extra_hours:extraHoursValue }),
+                    body: JSON.stringify({ action:"request_extra_hours", mission_id:resolvedMissionId, extra_hours:extraHoursValue, portee:extraHoursPortee }),
                   });
-                  if (r.ok) { setExtraHoursStatus("pending"); setExtraHoursModal(false); }
+                  if (r.ok) { setExtraHoursStatus("pending"); setPlanTrack(prev => prev ? { ...prev, extra_hours_portee: extraHoursPortee } : prev); setExtraHoursModal(false); }
                   else {
                     // Un échec silencieux laissait le client persuadé d'avoir
                     // envoyé sa demande — et attendre une réponse qui ne
@@ -6474,6 +6531,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [extraHoursModal, setExtraHoursModal] = useState(false);
   const [extraHoursValue, setExtraHoursValue] = useState(1);
   const [extraHoursSending, setExtraHoursSending] = useState(false);
+  const [extraHoursPortee, setExtraHoursPortee] = useState("jour"); // "jour" | "commande"
 
   // Notification de fin de mission dès que le timer s'arrête (côté client)
   useEffect(() => {
@@ -7069,13 +7127,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // qu'un affichage : le serveur le recalcule depuis la proposition enregistrée,
   // et refuse un paiement qui ne la couvrirait pas.
   if (paiementSupp) {
-    const dSupp = prixHeuresSupp(paiementSupp.extra_hours_requested, paiementSupp.extra_hours_tarif, 1);
+    const dSupp = prixHeuresSupp(paiementSupp.extra_hours_requested, paiementSupp.extra_hours_tarif, Number(paiementSupp.extra_hours_jours) || 1);
     return (
       <StripePaymentScreen
         amount={dSupp.total}
         missionId={paiementSupp.id}
         mode="supplement"
-        description={`${paiementSupp.extra_hours_requested} h supplémentaire${Number(paiementSupp.extra_hours_requested) > 1 ? "s" : ""}`}
+        description={Number(paiementSupp.extra_hours_jours) > 1
+          ? `Modification de commande : +${paiementSupp.extra_hours_requested} h × ${paiementSupp.extra_hours_jours} journées`
+          : `${paiementSupp.extra_hours_requested} h supplémentaire${Number(paiementSupp.extra_hours_requested) > 1 ? "s" : ""}`}
         onBack={() => setPaiementSupp(null)}
         onSuccess={async (intentId) => {
           try {
@@ -7560,18 +7620,32 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
-          {selected.status === "assigned" && (selected.started_at || selected.arrived_at) && !completedResult
-            && fenetreHeuresSupp(finPremierJourMs(selected)).ouverte && (
+          {/* Sur plusieurs jours (06/10/2026) : heures supplémentaires pour la
+              journée en cours, ou modification de la commande pour les
+              journées pas encore commencées — le calcul du serveur
+              (`porteeDemande`). Une prolongation acceptée reste à régler
+              même hors de la fenêtre : rien ne l'applique avant le paiement. */}
+          {(() => {
+            if (selected.status !== "assigned" || completedResult) return null;
+            const multiJours = surPlusieursJours(selected);
+            const suppOuverte = !!(selected.started_at || selected.arrived_at) && (multiJours
+              ? porteeDemande(selected, "jour").ok
+              : fenetreHeuresSupp(finPremierJourMs(selected)).ouverte);
+            const commandeOuverte = multiJours && porteeDemande(selected, "commande").ok;
+            const enAttente = ["pending", "accepte_presta"].includes(selected.extra_hours_status);
+            return (suppOuverte || commandeOuverte || enAttente);
+          })() && (
             <div style={{ marginTop:12 }}>
               {selected.extra_hours_status === "pending" ? (
                 <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>
-                  ⏳ Demande d'heures supp. en attente de confirmation du prestataire
+                  ⏳ {selected.extra_hours_portee === "commande" ? "Modification de la commande" : "Demande d'heures supp."} en attente de confirmation du prestataire
                 </div>
               ) : selected.extra_hours_status === "accepte_presta" ? (() => {
                 // Le prestataire a accepté et chiffré. RIEN n'est appliqué tant
                 // que ce montant n'est pas réglé : ni la durée, ni le montant de
                 // la prestation. C'est ce paiement qui déclenche la prolongation.
-                const d = prixHeuresSupp(selected.extra_hours_requested, selected.extra_hours_tarif, 1);
+                const nbJ = Number(selected.extra_hours_jours) || 1;
+                const d = prixHeuresSupp(selected.extra_hours_requested, selected.extra_hours_tarif, nbJ);
                 return (
                   <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"14px" }}>
                     <div style={{ color:C.accentGold, fontWeight:800, fontSize:13, marginBottom:6 }}>
@@ -7579,7 +7653,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     </div>
                     <div style={{ color:C.textSub, fontSize:12, lineHeight:1.7 }}>
                       Le prestataire accepte <strong style={{ color:C.text }}>{selected.extra_hours_requested} h</strong> supplémentaire{Number(selected.extra_hours_requested) > 1 ? "s" : ""}
-                      à <strong style={{ color:C.text }}>{Number(selected.extra_hours_tarif || 0).toFixed(2).replace(".", ",")} €/h</strong>.
+                      à <strong style={{ color:C.text }}>{Number(selected.extra_hours_tarif || 0).toFixed(2).replace(".", ",")} €/h</strong>
+                      {nbJ > 1 ? <> sur chacune des <strong style={{ color:C.text }}>{nbJ} journées</strong> à venir</> : null}.
                       <br />Prestation {d.partPrestataire.toFixed(2).replace(".", ",")} € · frais de service {d.fraisService.toFixed(2).replace(".", ",")} €
                       <br /><strong style={{ color:C.text, fontSize:14 }}>Total {d.total.toFixed(2).replace(".", ",")} €</strong>
                     </div>
@@ -7592,15 +7667,37 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     </div>
                   </div>
                 );
-              })() : selected.extra_hours_status === "accepted" ? (
-                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.success }}>
-                  ✅ Heures supplémentaires acceptées
-                </div>
-              ) : (
-                <button onClick={() => { setExtraHoursValue(1); setExtraHoursModal(true); }} style={{ width:"100%", padding:"12px", borderRadius:12, border:`1px solid rgba(240,180,41,0.4)`, background:"rgba(240,180,41,0.08)", color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  ⏱ Demander des heures supplémentaires
-                </button>
-              )}
+              })() : (() => {
+                const multiJours = surPlusieursJours(selected);
+                const suppOuverte = !!(selected.started_at || selected.arrived_at) && (multiJours
+                  ? porteeDemande(selected, "jour").ok
+                  : fenetreHeuresSupp(finPremierJourMs(selected)).ouverte);
+                const commandeOuverte = multiJours && porteeDemande(selected, "commande").ok;
+                const ouvrir = (portee) => { setExtraHoursPortee(portee); setExtraHoursValue(1); setExtraHoursModal(true); };
+                return (
+                  <>
+                    {selected.extra_hours_status === "accepted" && (
+                      <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.success, marginBottom:8 }}>
+                        ✅ {selected.extra_hours_portee === "commande" ? "Commande modifiée" : "Heures supplémentaires acceptées"}
+                      </div>
+                    )}
+                    {(selected.extra_hours_status !== "accepted" || multiJours) && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {suppOuverte && (
+                          <button onClick={() => ouvrir("jour")} style={{ width:"100%", padding:"12px", borderRadius:12, border:`1px solid rgba(240,180,41,0.4)`, background:"rgba(240,180,41,0.08)", color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                            ⏱ {multiJours ? "Heures supplémentaires aujourd'hui" : "Demander des heures supplémentaires"}
+                          </button>
+                        )}
+                        {commandeOuverte && (
+                          <button onClick={() => ouvrir("commande")} style={{ width:"100%", padding:"12px", borderRadius:12, border:"1px solid rgba(124,111,224,0.35)", background:"rgba(124,111,224,0.08)", color:C.violet, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                            ✏️ Modifier la commande (journées à venir)
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
           {selected.status === "assigned" && !completedResult && (
@@ -8054,13 +8151,32 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           {extraHoursModal && (
             <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
               <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
-                <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
-                <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.5 }}>Le prestataire devra confirmer la demande.</p>
+                {(() => {
+                  const pd = surPlusieursJours(selected) ? porteeDemande(selected, extraHoursPortee) : null;
+                  return extraHoursPortee === "commande" ? (
+                    <>
+                      <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>✏️ Modifier la commande</h3>
+                      <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.5 }}>
+                        Les heures ajoutées valent pour chacune des {pd?.ok ? pd.jours : "—"} journée(s) qui n'ont pas encore commencé. Le prestataire devra confirmer. Pour réduire la commande, passez par l'annulation.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires{pd ? " aujourd'hui" : ""}</h3>
+                      <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.5 }}>
+                        Le prestataire devra confirmer la demande.
+                        {pd && " Elle ne vaut que pour la journée en cours ; pour les journées à venir, modifiez la commande."}
+                      </p>
+                    </>
+                  );
+                })()}
                 {/* Ce dialogue ne montrait AUCUN montant : on demandait au
                     client d'engager jusqu'à huit heures de prestation sans lui
                     donner le moindre ordre de grandeur. */}
                 {(() => {
-                  const d = prixHeuresSupp(extraHoursValue, Number(selected.tarif_horaire || 0), 1);
+                  const pd = surPlusieursJours(selected) ? porteeDemande(selected, extraHoursPortee) : null;
+                  const nbJours = pd?.ok ? pd.jours : 1;
+                  const d = prixHeuresSupp(extraHoursValue, Number(selected.tarif_horaire || 0), nbJours);
                   const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
                   return (
                     <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:C.text }}>
@@ -8068,7 +8184,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                         <>
                           💳 Estimation : <strong>{fr(d.total)} €</strong>
                           <div style={{ color:C.textSub, fontSize:11.5, marginTop:4, lineHeight:1.6 }}>
-                            {extraHoursValue} h × {fr(selected.tarif_horaire)} € = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
+                            {extraHoursValue} h × {fr(selected.tarif_horaire)} €{nbJours > 1 ? ` × ${nbJours} journées` : ""} = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
                           </div>
                         </>
                       ) : (
@@ -8091,10 +8207,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     setExtraHoursSending(true);
                     const { data:sd } = await supabase.auth.getSession();
                     const tok = sd?.session?.access_token;
-                    const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"request_extra_hours", mission_id:selected.id, extra_hours:extraHoursValue }) });
+                    const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"request_extra_hours", mission_id:selected.id, extra_hours:extraHoursValue, portee:extraHoursPortee }) });
                     if (res.ok) {
-                      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, extra_hours_status:"pending" } : m));
-                      setSelected(s => s ? { ...s, extra_hours_status:"pending" } : s);
+                      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, extra_hours_status:"pending", extra_hours_portee:extraHoursPortee } : m));
+                      setSelected(s => s ? { ...s, extra_hours_status:"pending", extra_hours_portee:extraHoursPortee } : s);
                       setExtraHoursModal(false);
                     } else {
                       // Sans ce bloc, le dialogue se contentait de rester ouvert
