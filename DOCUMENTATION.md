@@ -2545,8 +2545,11 @@ n'annule pas et le journalise. Il traite 50 lignes par passage, **tirées au has
 plus anciennes** (`tirerAuHasard()`, 05/10/2026) : celles laissées en l'état (Stripe muet,
 remboursement incomplet) restaient en tête et pouvaient bloquer toutes les suivantes. Une
 annulation refusée est journalisée — elle était avalée — et le message « vous êtes remboursé »
-n'est envoyé qu'une fois l'annulation faite ; sinon la ligne est reprise au passage suivant, le
-remboursement (idempotent) n'y repartant pas.
+n'est envoyé qu'une fois l'annulation faite. **Depuis le 06/10/2026, l'annulation précède le
+remboursement** : elle est conditionnelle et PREND la ligne ; si elle ne trouve rien, la prestation a
+été affectée entre-temps et son paiement est conservé. Dans l'ordre inverse, une affectation arrivée
+entre les deux donnait une prestation attribuée dont le paiement venait d'être rendu. Un remboursement
+incomplet remet la ligne en attente pour le passage suivant.
 
 *Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
 prestataire non activé, tarif incohérent, adresse hors zone — et les deux de
