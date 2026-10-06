@@ -946,6 +946,17 @@ tunnel de réservation et bloquerait des réservations légitimes.
 > Le verrou des modifications, `prevent_missions_field_tampering`, n'a pas ce défaut : il
 > exempte sur `auth.uid() IS NULL`, ce qui ne dépend pas du propriétaire de la fonction.
 
+**Il laissait passer ce qui fixe la part du prestataire** (relecture du 06/10/2026). Le
+navigateur peut créer une prestation, et rien n'interdisait d'y poser déjà `actual_hours = 24`,
+des heures supplémentaires à 500 €/h, un versement ou un cashback : le client payait le prix
+recalculé par le serveur, et la clôture versait au prestataire ce qu'il avait écrit. Depuis
+la migration `2026-10-06_heures_supp_par_journee.sql`, la création refuse toute valeur autre
+que celle par défaut sur `actual_hours`, les colonnes `extra_hours_*`, les heures ajoutées
+(`montant_heures_ajoutees`, `heures_ajoutees_*`), `heures_perdues`, le versement
+(`payout_*`, `stripe_transfer_id`), `invoice_number` et le cashback. Relevé avant (CLAUDE.md
+1.6) : les deux créations de l'application n'envoient aucune de ces colonnes. **Appliquée en
+recette le 06/10/2026** — `e2e/12` et `e2e/70`.
+
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
 recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
@@ -3419,14 +3430,57 @@ montant dû, donc le versement — sur des heures que personne n'a travaillées.
 laisse le temps de se décider pendant que le prestataire est encore là ; au-delà, ce n'est plus
 une prolongation, c'est une nouvelle prestation, et elle se réserve.
 
-**Sur une prestation de plusieurs jours, la fin qui compte est celle du PREMIER jour**
-(`finPremierJourMs()`, 06/10/2026). Une prolongation s'applique à chaque journée — elle est
-facturée autant de fois que la prestation compte de jours (`prixHeuresSupp`, `partHoraire`) — et
-ne peut donc se décider que le premier jour : demandée le troisième jour sur cinq, elle facturerait
-deux journées déjà passées. Et sans `date` (seule `date_debut` situe une prestation de plusieurs
-jours), l'horaire passait pour inconnu et la fenêtre restait **ouverte indéfiniment**, côté serveur
-comme côté écran. Prolonger une seule journée d'une série n'est pas prévu : ce serait un autre
-modèle de facturation (une décision produit).
+**Sur une prestation de plusieurs jours : une heure supplémentaire vaut pour UNE journée**
+(décision d'Alexandre du 06/10/2026, migration `2026-10-06_heures_supp_par_journee.sql`). La
+version du matin même — prolongation possible le premier jour seulement, facturée sur toutes les
+journées (`finPremierJourMs()`) — est remplacée. Avant elle, une heure demandée le dernier jour
+d'une série de cinq était facturée cinq fois, journées faites comprises.
+
+Le client a désormais deux demandes distinctes, sur l'écran de suivi comme dans « Mes
+réservations » :
+
+| Demande | Quand | Ce qu'elle couvre |
+|---|---|---|
+| **⏱ Heures supplémentaires aujourd'hui** (`portee: "jour"`) | pendant une journée de la prestation, jusqu'à 20 min après sa fin | la journée en cours, payée une fois |
+| **✏️ Modifier la commande** (`portee: "commande"`) | tant qu'une journée n'a pas commencé | chacune des journées **pas encore commencées**, en **hausse seulement** — une baisse passe par l'annulation et ses règles |
+
+Entre deux journées, les heures supplémentaires sont refusées et l'écran renvoie vers la
+modification de la commande. Le calcul vit dans `porteeDemande()` (`api/_heures_supp.js`), le
+même côté serveur et côté écran.
+
+**La portée est figée à la demande** (`extra_hours_portee`, `extra_hours_jours`) : le prix que
+le prestataire annonce, celui que le client paie et ce qu'applique la clôture portent sur le
+même nombre de journées (`joursFactures()`). Une demande antérieure, sans portée figée, garde
+l'ancien calcul. Une prestation d'un seul jour garde le chemin d'origine (`hours`,
+`extra_hours_appliquees`).
+
+**`hours` ne bouge plus** sur plusieurs jours : il vaut pour toutes les journées. L'ajout est
+tenu à part :
+
+| Colonne de `missions` | Contenu |
+|---|---|
+| `extra_hours_portee` | `jour` ou `commande` — la demande en cours ; NULL sinon |
+| `extra_hours_jours` | nombre de journées couvertes par la demande en cours (> 0) |
+| `montant_heures_ajoutees` | part du prestataire ajoutée, en € (cumul) — ajoutée par `montantsDeCloture()`, la facture et `montantPrestataire()` |
+| `heures_ajoutees_total` | heures ajoutées, toutes journées (cumul) |
+| `heures_ajoutees_dernier_jour` | heures ajoutées au dernier jour : elles reculent la fin (`finPrestationMs`), donc l'échéance du versement |
+| `heures_ajoutees_detail` | `[{ jour, heures, tarif, paiement }]`, une ligne par journée couverte |
+
+Toutes fermées à l'écriture depuis le navigateur. Les cumuls se recalculent depuis le détail
+(`cumulsAjouts()`).
+
+**Arrêter une série rend les heures ajoutées qui ne seront pas faites.** À l'interruption
+(`cancel_in_progress`), `ajoutsNonFaits()` relève, dans le détail, les heures des journées
+annulées et celles d'aujourd'hui au-delà de ce qui a été travaillé (la journée de base est faite
+d'abord). Elles sont remboursées **sur le paiement de prolongation qui les avait réglées**
+(`rembourserAjoutsNonFaits()`, `api/_remboursement_bo.js`, plafonné à ce qui reste remboursable),
+puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — les frais se
+déduisent de leur différence. Un échec de ce remboursement arrête l'interruption avant tout autre
+mouvement. Les frais de service de ces paiements restent acquis. Éprouvé par `e2e/70`.
+
+> **À savoir** : une modification payée après le début d'une journée qu'elle couvrait (demande
+> faite la veille, réglée le lendemain à midi) s'applique quand même à cette journée. Le prix a
+> été annoncé et payé pour ce nombre de journées ; le refuser après paiement serait pire.
 
 La règle est appliquée **aux trois endroits** : l'action `request_extra_hours`, l'écran de
 suivi et l'historique des prestations. Le bouton disparaît, et le serveur refuse.
