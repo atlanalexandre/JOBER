@@ -1427,6 +1427,9 @@ numérotation, même archive. Plafond de 100 factures par document, signalé s'i
 Une prestation de plusieurs jours a une `date` NULLE : le filtre teste aussi `date_debut`
 (sans quoi elle manquait au document, 05/10/2026). Les factures encore sans numéro sont rendues
 **une par une** : en parallèle, elles se disputaient le compteur et l'une échouait par lot.
+Le tri par jour se fait dans le code (`date`, à défaut `date_debut`) : `date.asc.nullslast` rejetait
+les prestations de plusieurs jours en fin de liste — numérotées après celles de la fin du mois, et
+écartées en premier par le plafond (06/10/2026).
 Un menu propose le mois en cours (heure de Paris, `moisEnCoursParis()` de `ui.jsx`) et les douze
 précédents (`moisProposes()`, 05/10/2026 — le 2 novembre, c'est octobre qu'un prestataire déclare) ;
 le serveur accepte n'importe quel mois, et ne rend que les factures de l'appelant.

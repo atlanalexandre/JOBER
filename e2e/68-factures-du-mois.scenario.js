@@ -94,10 +94,11 @@ test("plusieurs jours et factures à numéroter : toutes dans le document, aucun
     await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, hours, heure_debut, tarif_horaire, montant_total, adresse, ville, status)
                values ('${id}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', '${mois}-${j}', 8, '09:00', 13, 110.98, '10 rue de Rivoli', 'Paris', 'completed')`);
   }
-  // Une prestation de plusieurs jours : `date` est nulle, seule `date_debut` la situe.
+  // Une prestation de plusieurs jours, au DÉBUT du mois : `date` est nulle,
+  // seule `date_debut` la situe. Elle doit recevoir le premier numéro.
   const multi = crypto.randomUUID(); ids.push(multi);
   await sql(`insert into missions (id, client_id, prestataire_id, sector, metier, date, date_debut, date_fin, hours, heure_debut, tarif_horaire, montant_total, adresse, ville, status)
-             values ('${multi}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', null, '${mois}-20', '${mois}-22', 8, '09:00', 13, 332.94, '10 rue de Rivoli', 'Paris', 'completed')`);
+             values ('${multi}', '${c.id}', '${p.id}', 'hotellerie', 'Femme/Valet de chambre', null, '${mois}-02', '${mois}-04', 8, '09:00', 13, 332.94, '10 rue de Rivoli', 'Paris', 'completed')`);
 
   const doc = await ouvrir(mois, await jetonDuMois(c.jeton, mois));
   expect(doc.statut, doc.texte.slice(0, 300)).toBe(200);
@@ -107,4 +108,9 @@ test("plusieurs jours et factures à numéroter : toutes dans le document, aucun
   const nums = await sql(`select invoice_number from missions where id in ('${ids.join("','")}')`);
   const distincts = new Set(nums.map(n => n.invoice_number).filter(Boolean));
   expect(distincts.size, "six numéros distincts").toBe(6);
+  // Numérotation dans l'ordre des jours (06/10/2026) : la prestation du 2
+  // passait après celles du 10 au 14, triée en fin de liste faute de `date`.
+  const [{ invoice_number: numMulti }] = await sql(`select invoice_number from missions where id = '${multi}'`);
+  const autres = nums.map(n => n.invoice_number).filter(n => n && n !== numMulti);
+  expect(autres.every(n => numMulti < n), `${numMulti} avant ${autres.join(", ")}`).toBe(true);
 });
