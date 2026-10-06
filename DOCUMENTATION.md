@@ -2055,7 +2055,8 @@ Les comptes déjà créés en v1 continuent de fonctionner. Le **statut** (`stri
 lu par `statutCompte()` : en v2 (`stripe_transfers.status = active` → `enabled`), à défaut en v1
 (`payouts_enabled`) ; une absence de réponse ne vaut jamais « pas activé ». Il est relu chez Stripe
 quand le prestataire consulte son état (`stripe-connect`, action `statut`), avant de bloquer un
-versement (tâche planifiée), et à chaque événement v2 `v2.core.account…` reçu par le webhook.
+versement (tâche planifiée — une relecture par compte et **dix au plus par passage** : sans borne,
+la tâche dépassait son délai en recette), et à chaque événement v2 `v2.core.account…` reçu par le webhook.
 
 **Le lien part à l'ouverture de l'accès aux prestations, pas à la validation du compte**
 (24/08/2026). Il partait auparavant dans l'e-mail de bienvenue. Trop tôt : le lien de Stripe

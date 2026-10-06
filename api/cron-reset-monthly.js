@@ -709,6 +709,13 @@ export default async function handler(req, res) {
           // Refus passagers de Stripe (solde disponible insuffisant, service
           // indisponible) : reportés au passage suivant, comptés pour être dits.
           let bloquesPassagers = 0;
+          // Relectures de comptes chez Stripe : une par compte et par passage, et
+          // dix au plus. Sans borne, 200 versements vers des comptes jamais
+          // configurés faisaient autant d'appels à Stripe, et la tâche dépassait
+          // son délai (constaté en recette le 06/10/2026). Les autres gardent
+          // leur état connu et sont relus aux passages suivants.
+          const comptesRelus = new Map();
+          let relecturesRestantes = 10;
 
           for (const m of (Array.isArray(lots) ? lots : [])) {
             // Retenue inscrite AVANT la clôture — opposition bancaire reçue
@@ -764,11 +771,17 @@ export default async function handler(req, res) {
               // (v1) ; les comptes créés en Accounts v2 depuis le 05/10/2026
               // émettent des événements v2, qu'il faut abonner à part.
               if (pp?.stripe_account_id && pp.stripe_account_status !== "enabled") {
-                pp.stripe_account_status = await rafraichirStatutCompte({
-                  compteId: pp.stripe_account_id, statutConnu: pp.stripe_account_status,
-                  stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
-                  supabaseUrl: SUPABASE_URL, headers,
-                });
+                if (comptesRelus.has(pp.stripe_account_id)) {
+                  pp.stripe_account_status = comptesRelus.get(pp.stripe_account_id);
+                } else if (relecturesRestantes > 0) {
+                  relecturesRestantes--;
+                  pp.stripe_account_status = await rafraichirStatutCompte({
+                    compteId: pp.stripe_account_id, statutConnu: pp.stripe_account_status,
+                    stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
+                    supabaseUrl: SUPABASE_URL, headers,
+                  });
+                  comptesRelus.set(pp.stripe_account_id, pp.stripe_account_status);
+                }
               }
 
               if (!pp?.stripe_account_id || pp.stripe_account_status !== "enabled") {
