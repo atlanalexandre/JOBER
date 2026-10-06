@@ -3432,17 +3432,31 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               }
             }
             setDateError(false); setAvailError(""); setTooSoonError(false);
-            // Vérification en temps réel : le prestataire est-il déjà pris ce jour ?
+            // Le prestataire est-il déjà pris sur ce créneau — sur CHACUNE des
+            // journées d'une plage de dates ? Demandé au serveur : la base ne
+            // montre au client que ses propres prestations, et la requête faite
+            // ici ne voyait donc jamais celles des autres clients. Elle ne
+            // comparait en outre que le premier jour (06/10/2026).
             if (!isUrgent && startDate && p?.id) {
-              const { data: conflicts } = await supabase
-                .from("missions")
-                .select("id")
-                .eq("prestataire_id", p.id)
-                .eq("date", startDate)
-                .in("status", ["assigned", "pending_acceptance"]);
-              if (conflicts && conflicts.length > 0) {
-                setAvailError(`${p.name} a déjà une prestation assignée le ${formatDate(startDate)}. Choisissez une autre date.`);
-                return;
+              try {
+                const { data:{ session: sCr } } = await supabase.auth.getSession();
+                const rCr = await fetch("/api/missions", {
+                  method:"POST",
+                  headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sCr?.access_token || ""}` },
+                  body: JSON.stringify({ action:"verifier_creneau", prestataire_id:p.id, date:startDate,
+                    date_fin: (missionType === "range" && nbJours > 1) ? endDate : null,
+                    heure_debut: startTime || "08:00", hours }),
+                });
+                const jCr = await rCr.json().catch(() => ({}));
+                if (rCr.ok && jCr.libre === false) {
+                  setAvailError(`${p.name} a déjà une prestation le ${formatDate(jCr.jour || startDate)} sur ce créneau. Choisissez une autre date ou un autre horaire.`);
+                  return;
+                }
+                // Contrôle indisponible : on n'empêche pas la réservation — le
+                // prestataire reste libre de refuser, et le refus rembourse.
+                if (!rCr.ok) console.error("[réservation] créneau non vérifié :", jCr?.error || rCr.status);
+              } catch (e) {
+                console.error("[réservation] créneau non vérifié :", e.message);
               }
             }
             if (!clientContractSignedAt) {

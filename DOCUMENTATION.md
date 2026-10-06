@@ -208,6 +208,21 @@ ce qui suit sur les séries n'avait été éprouvé que sur des prestations cré
 L'écran transmet désormais `dateFin`, et `App.jsx` écrit `date` (premier jour), `date_debut` et
 `date_fin`. Éprouvé par `e2e/71`, par l'écran.
 
+**Un prestataire ne peut pas être réservé deux fois au même moment — journée par journée**
+(06/10/2026). Le contrôle de conflit (`checkPrestaireConflict`, `api/missions.js`) ne comparait
+que la **date du premier jour** : une série du lundi au mercredi ne voyait pas la prestation déjà
+acceptée le mardi, et une prestation le mardi ne voyait pas la série en cours. Il passe désormais
+par `conflitDeCreneau()` (`api/_creneaux.js`) : deux prestations sont en conflit si elles ont une
+journée en commun et que leurs horaires se chevauchent ce jour-là. Les sept appels (acceptation
+dans l'application et par e-mail, reprise, remplacement, réaffectation, paiement) en profitent.
+
+**Et l'écran demande au serveur** (action `verifier_creneau`, avant le contrat et le paiement).
+Il interrogeait la base lui-même ; or la règle de lecture de `missions` ne montre au client que
+ses propres prestations : un prestataire réservé par un autre client paraissait toujours libre, et
+le conflit n'apparaissait qu'à l'acceptation, le client déjà débité. La réponse ne dit que
+« libre » ou le jour pris. Si le contrôle est indisponible, la réservation n'est pas bloquée : le
+prestataire reste libre de refuser, et le refus rembourse. Éprouvé par `e2e/72`.
+
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
 bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son

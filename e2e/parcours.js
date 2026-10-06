@@ -165,20 +165,31 @@ export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09
     .last().click();
   await page.getByText(/Voir \d+ →/).first().click();
   await page.getByRole("button", { name: "📅 Réserver" }).first().click();
-  const date = new Date(Date.now() + dansJours * 864e5).toISOString().slice(0, 10);
-  if (nbJours > 1) {
-    // « Plage de dates » : du … au …, mêmes heures chaque jour.
-    const fin = new Date(Date.now() + (dansJours + nbJours - 1) * 864e5).toISOString().slice(0, 10);
-    await page.getByRole("button", { name: /Plage de dates/ }).click();
-    await page.locator('input[type="date"]').nth(0).fill(date);
-    await page.locator('input[type="date"]').nth(1).fill(fin);
-  } else {
-    await page.locator('input[type="date"]').fill(date);
-  }
+  if (nbJours > 1) await page.getByRole("button", { name: /Plage de dates/ }).click();
   await page.locator('input[type="time"]').fill(heure);
   await page.locator("textarea").fill(description);
   if (chaqueSemaine) await page.getByText("Répéter chaque semaine").click();
-  await page.getByRole("button", { name: /Continuer/ }).click();
+  // Le prestataire affiché en premier est celui de nombreuses recettes : il
+  // peut être réellement pris à cette date, et l'écran le refuse depuis que le
+  // serveur vérifie le créneau (06/10/2026). On avance alors d'un jour.
+  let date;
+  for (let decalage = 0; ; decalage++) {
+    date = new Date(Date.now() + (dansJours + decalage) * 864e5).toISOString().slice(0, 10);
+    if (nbJours > 1) {
+      // « Plage de dates » : du … au …, mêmes heures chaque jour.
+      const fin = new Date(Date.now() + (dansJours + decalage + nbJours - 1) * 864e5).toISOString().slice(0, 10);
+      await page.locator('input[type="date"]').nth(0).fill(date);
+      await page.locator('input[type="date"]').nth(1).fill(fin);
+    } else {
+      await page.locator('input[type="date"]').fill(date);
+    }
+    await page.getByRole("button", { name: /Continuer/ }).click();
+    const pris = page.getByText(/a déjà une prestation le/);
+    const contrat = page.getByText("J'ai lu et j'accepte les termes de ce contrat");
+    await expect(pris.or(contrat).first()).toBeVisible({ timeout: 20_000 });
+    if (!(await pris.isVisible())) break;
+    if (decalage >= 30) throw new Error("aucun jour libre sur trente pour le premier prestataire");
+  }
   // Contrat : seule la petite case est cliquable, pas la phrase (défaut d'accessibilité relevé).
   await page.getByText("J'ai lu et j'accepte les termes de ce contrat").locator("xpath=preceding-sibling::div[1]").click();
   await page.getByRole("button", { name: /Signer électroniquement/ }).click();
