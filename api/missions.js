@@ -3961,7 +3961,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
         { headers }
       );
       const mData = await mRes.json();

@@ -147,9 +147,13 @@ export function versementAAnnuler(m) {
  * paiement de prolongation qui les avait réglées (06/10/2026).
  *
  * `parPaiement` : { pi_… : euros }, tel que le calcule `ajoutsNonFaits()`.
- * Chaque remboursement est plafonné à ce qui reste remboursable sur son
- * paiement. La clé d'idempotence (`suffixe` : le jour et l'issue) fait qu'un
- * nouvel essai ne rembourse pas deux fois.
+ * Chaque remboursement est plafonné à ce que son paiement a encaissé. La clé
+ * d'idempotence (`suffixe` : le jour et l'issue) fait qu'un nouvel essai ne
+ * rembourse pas deux fois — à condition que le MONTANT soit le même : plafonné
+ * sur le reste remboursable, il changeait au second essai (déjà remboursé), et
+ * Stripe refusait la requête comme un doublon divergent (recette du
+ * 06/10/2026). Le plafond porte donc sur l'encaissé, fixe ; un paiement déjà
+ * entièrement rendu compte comme fait.
  *
  * Retourne { ok, centimes } — ok à false au premier échec : l'appelant
  * n'enregistre alors pas l'interruption.
@@ -164,9 +168,9 @@ export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contex
         { headers: { "Authorization": `Bearer ${cle}` } });
       const p = await r.json().catch(() => null);
       if (!r.ok || !p?.id) throw new Error(`paiement illisible (${r.status})`);
-      const reste = Math.max(0, (Number(p.amount_received) || 0) - (Number(p.latest_charge?.amount_refunded) || 0));
-      const montant = Math.min(voulu, reste);
-      if (montant < voulu) console.warn(`[${contexte}] ${pi} : ${voulu} c voulus, ${reste} c encore remboursables.`);
+      const encaisse = Math.max(0, Number(p.amount_received) || 0);
+      const montant = Math.min(voulu, encaisse);
+      if (montant < voulu) console.warn(`[${contexte}] ${pi} : ${voulu} c voulus, ${encaisse} c encaissés.`);
       if (montant <= 0) continue;
       const rf = await fetch("https://api.stripe.com/v1/refunds", {
         method: "POST",
@@ -175,6 +179,7 @@ export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contex
         body: new URLSearchParams({ payment_intent: pi, amount: String(montant), reason: "requested_by_customer" }).toString(),
       });
       const d = await rf.json().catch(() => ({}));
+      if (d?.error?.code === "charge_already_refunded") continue;
       if (!rf.ok || !d?.id) throw new Error(JSON.stringify(d?.error || d).slice(0, 200));
       centimes += montant;
     } catch (e) {

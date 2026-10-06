@@ -28,12 +28,13 @@ const decaler = (jour, n) => { const d = new Date(`${jour}T12:00:00Z`); d.setUTC
 async function serieEnCours(depuisH = 1) {
   const p = await prestataireOperationnel();
   const c = await client();
-  const m = await reservationPayee({ prestataire: p, client: c, heures: 4, tarif: 13 });
+  // Le paiement couvre les cinq journées : 5 × 4 h, ramenées ensuite à 4 h par jour.
+  const m = await reservationPayee({ prestataire: p, client: c, heures: 20, tarif: 13 });
   const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, p.jeton);
   expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
   const debut = Date.now() - depuisH * 3600e3;
   const aujourdhui = jourParis(debut);
-  await sql(`update missions set date = '${decaler(aujourdhui, -2)}', date_debut = '${decaler(aujourdhui, -2)}',
+  await sql(`update missions set hours = 4, date = '${decaler(aujourdhui, -2)}', date_debut = '${decaler(aujourdhui, -2)}',
              date_fin = '${decaler(aujourdhui, 2)}', heure_debut = '${heureParis(debut)}',
              started_at = '${new Date(Date.now() - (48 + depuisH) * 3600e3).toISOString()}' where id = '${m.id}'`);
   return { p, c, m };
