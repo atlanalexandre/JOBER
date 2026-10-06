@@ -152,14 +152,29 @@ export const confirmer = (page) => page.getByRole("button", { name: "Confirmer",
  * Réservation d'un prestataire d'hôtellerie par un client connecté, jusqu'à l'écran
  * de paiement. Renvoie la date réservée (AAAA-MM-JJ).
  */
-export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09:00", description = "Scénario de recette", chaqueSemaine = false } = {}) {
+export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09:00", description = "Scénario de recette", chaqueSemaine = false, nbJours = 1 } = {}) {
   await page.goto("/providers");
   await page.getByText("Passer le tutoriel").click({ timeout: 3_000 }).catch(() => { /* tutoriel déjà passé */ });
-  await page.getByText("Voir tous les prestataires").first().click();
+  // La carte HÔTELLERIE, et non la première : tant que l'état des secteurs
+  // n'est pas chargé, tous s'affichent ouverts, et la première carte est
+  // « Propreté », sans prestataire en recette — le scénario s'y bloquait
+  // (06/10/2026).
+  await page.locator("div")
+    .filter({ has: page.getByText("Hôtellerie", { exact: true }) })
+    .filter({ has: page.getByText("Voir tous les prestataires →") })
+    .last().click();
   await page.getByText(/Voir \d+ →/).first().click();
   await page.getByRole("button", { name: "📅 Réserver" }).first().click();
   const date = new Date(Date.now() + dansJours * 864e5).toISOString().slice(0, 10);
-  await page.locator('input[type="date"]').fill(date);
+  if (nbJours > 1) {
+    // « Plage de dates » : du … au …, mêmes heures chaque jour.
+    const fin = new Date(Date.now() + (dansJours + nbJours - 1) * 864e5).toISOString().slice(0, 10);
+    await page.getByRole("button", { name: /Plage de dates/ }).click();
+    await page.locator('input[type="date"]').nth(0).fill(date);
+    await page.locator('input[type="date"]').nth(1).fill(fin);
+  } else {
+    await page.locator('input[type="date"]').fill(date);
+  }
   await page.locator('input[type="time"]').fill(heure);
   await page.locator("textarea").fill(description);
   if (chaqueSemaine) await page.getByText("Répéter chaque semaine").click();

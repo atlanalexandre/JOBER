@@ -198,6 +198,16 @@ qui servent de repli à plusieurs écrans, sont réalignés sur le premier méti
 > qu'avant. C'est la bonne sémantique — il y est réellement disponible — mais le chiffre affiché
 > au back-office change sans que personne ne se soit inscrit.
 
+**Réserver sur plusieurs jours ne fonctionnait pas** (constaté le 06/10/2026). L'écran
+propose « Plage de dates » et fait payer toutes les journées, mais ne transmettait que la date
+de début : la prestation était enregistrée sur UNE journée, sans `date_debut` ni `date_fin`. Le
+serveur, qui revérifie le montant (`verifierMontant()`), ne voyait qu'un jour pour le prix de
+plusieurs et **refusait le paiement** (400, « Le montant de cette prestation ne correspond pas à
+son tarif »). Aucune réservation sur plusieurs jours n'a donc pu aboutir avant cette date : tout
+ce qui suit sur les séries n'avait été éprouvé que sur des prestations créées par les scénarios.
+L'écran transmet désormais `dateFin`, et `App.jsx` écrit `date` (premier jour), `date_debut` et
+`date_fin`. Éprouvé par `e2e/71`, par l'écran.
+
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
 bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son
@@ -1437,8 +1447,10 @@ serveur retient les prestations de l'appelant (client **ou** prestataire, lu dan
 jamais dans un paramètre) réalisées ou déjà numérotées, dont la `date` tombe dans le mois.
 Chaque facture passe par le même rendu qu'une facture seule (`produireFacture`) : même
 numérotation, même archive. Plafond de 100 factures par document, signalé s'il est atteint.
-Une prestation de plusieurs jours a une `date` NULLE : le filtre teste aussi `date_debut`
-(sans quoi elle manquait au document, 05/10/2026). Les factures encore sans numéro sont rendues
+Une prestation de plusieurs jours pouvait avoir une `date` NULLE : le filtre teste aussi
+`date_debut` (sans quoi elle manquait au document, 05/10/2026). Depuis le 06/10/2026, la
+réservation écrit `date` = premier jour en plus de `date_debut` / `date_fin` ; le filtre reste
+pour les lignes plus anciennes. Les factures encore sans numéro sont rendues
 **une par une** : en parallèle, elles se disputaient le compteur et l'une échouait par lot.
 Le tri par jour se fait dans le code (`date`, à défaut `date_debut`) : `date.asc.nullslast` rejetait
 les prestations de plusieurs jours en fin de liste — numérotées après celles de la fin du mois, et
@@ -1977,8 +1989,8 @@ n'est envoyé, car mieux vaut pas d'alerte qu'une alerte toutes les deux heures.
 restait « en recherche » toute la journée et n'était clôturée qu'après minuit — le client
 attendait quelqu'un qui ne viendrait pas, son argent bloqué. L'échéance est désormais l'HEURE
 DE DÉBUT, calculée en heure locale française par `debutPrestationMs()` (`api/_temps.js`).
-Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui portent
-`date_debut`, et PostgREST écarte les NULL d'une comparaison — ces prestations n'étaient donc
+Second trou : `date` était NULLE sur les prestations sur plusieurs jours, qui portaient
+`date_debut` (la réservation écrit les deux depuis le 06/10/2026), et PostgREST écarte les NULL d'une comparaison — ces prestations n'étaient donc
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
