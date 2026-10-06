@@ -10,7 +10,7 @@ const PRESTA = "44444444-4444-4444-8444-444444444444";
 const json = (v, status = 200) => Promise.resolve(new Response(JSON.stringify(v), { status }));
 const MISSION = {
   id: M, client_id: CLIENT, prestataire_id: PRESTA, sector: "hotellerie", metier: "Femme/Valet de chambre",
-  date: "2026-10-20", heure_debut: "09:00", hours: 8, tarif_horaire: 13, montant_total: 110.98,
+  date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), heure_debut: "09:00", hours: 8, tarif_horaire: 13, montant_total: 110.98,
   stripe_payment_intent: "pi_1", acceptance_deadline: new Date(Date.now() + 3600e3).toISOString(),
   tiers_declaration: { lieu: "client", beneficiaire: "Hôtel" }, ville: "Paris", adresse: "x",
 };
@@ -19,7 +19,7 @@ const MISSION = {
 process.env.VITE_SUPABASE_URL = "https://b.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "cle";
 
-function simuler({ basculeOk }) {
+function simuler({ basculeOk, statutApres = "refused", mission = MISSION }) {
   const appels = { remboursements: 0 };
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url);
@@ -27,8 +27,10 @@ function simuler({ basculeOk }) {
     const corps = o.body ? String(o.body) : "";
     if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
-    if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([MISSION]);
-    if (u.includes("/missions?") && m === "PATCH" && corps.includes('"status":"open"')) return basculeOk ? json([{ id: M }]) : json({ message: "refus" }, 500);
+    if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([mission]);
+    if (u.includes(`/missions?id=eq.${M}&select=status`) && m === "GET") return json([{ status: statutApres }]);
+    if (u.includes("/missions?") && m === "PATCH" && corps.includes('"status":"open"')) { appels.bascules = (appels.bascules || 0) + 1; return basculeOk ? json([{ id: M }]) : json({ message: "refus" }, 500); }
+    if (u.includes("/missions?") && m === "PATCH" && corps.includes('"status":"pending_acceptance"')) { appels.affectations = (appels.affectations || 0) + 1; return json([{ id: M }]); }
     if (u.includes("/missions?") && m === "PATCH") return json([{ ...MISSION, status: "refused", prestataire_id: null }]);
     if (u.includes("api.stripe.com/v1/refunds")) { appels.remboursements++; return json({ id: "re_1", status: "succeeded" }); }
     if (u.includes("api.stripe.com/v1/payment_intents/pi_1")) return json({ id: "pi_1", status: "succeeded", amount: 11098, amount_received: 11098, latest_charge: "ch_1" });
@@ -66,5 +68,23 @@ describe("refus d'une réservation chez un tiers", () => {
     const r = await refuser();
     expect(r.statut).toBe(200);
     expect(a.remboursements).toBe(0);
+  });
+
+  // Relecture du 06/10/2026 : la bascule a pu aboutir malgré une réponse perdue.
+  it("cascade en échec mais prestation déjà rediffusée : pas de remboursement", async () => {
+    const a = simuler({ basculeOk: false, statutApres: "open" });
+    const r = await refuser();
+    expect(r.statut).toBe(200);
+    expect(a.remboursements).toBe(0);
+  });
+
+  it("refus après l'heure de début : pas de candidat suivant, remboursement", async () => {
+    const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const a = simuler({ basculeOk: true, mission: { ...MISSION, date: hier, acceptance_deadline: new Date(Date.now() + 3600e3).toISOString() } });
+    const r = await refuser();
+    expect(r.statut).toBe(200);
+    expect(a.bascules || 0).toBe(0);
+    expect(a.affectations || 0).toBe(0);
+    expect(a.remboursements).toBe(1);
   });
 });
