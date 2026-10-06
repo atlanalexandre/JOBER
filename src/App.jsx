@@ -1917,6 +1917,15 @@ export default function App() {
             sector: selectedProvider?.sector || null,
             metier: selectedProvider?.jobTitle || selectedProvider?.role || null,
             date: data?.date || null,
+            // Réservation sur PLUSIEURS JOURS : la période. Seule la date de
+            // début était transmise — la prestation était enregistrée sur une
+            // journée, payée pour plusieurs, et le serveur, qui revérifie le
+            // montant, refusait le paiement : aucune réservation sur plusieurs
+            // jours ne pouvait aboutir (06/10/2026). `date` reste le premier
+            // jour : les tâches planifiées et les factures la lisent.
+            ...(data?.dateFin && data?.date && data.dateFin > data.date
+              ? { date_debut: data.date, date_fin: data.dateFin }
+              : {}),
             hours: data?.hours || 8,
             heure_debut: data?.startTime || null,
             // Le tarif RÉELLEMENT facturé, celui qui a servi au total. En urgence il
