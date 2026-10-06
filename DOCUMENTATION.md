@@ -3413,6 +3413,15 @@ montant dû, donc le versement — sur des heures que personne n'a travaillées.
 laisse le temps de se décider pendant que le prestataire est encore là ; au-delà, ce n'est plus
 une prolongation, c'est une nouvelle prestation, et elle se réserve.
 
+**Sur une prestation de plusieurs jours, la fin qui compte est celle du PREMIER jour**
+(`finPremierJourMs()`, 06/10/2026). Une prolongation s'applique à chaque journée — elle est
+facturée autant de fois que la prestation compte de jours (`prixHeuresSupp`, `partHoraire`) — et
+ne peut donc se décider que le premier jour : demandée le troisième jour sur cinq, elle facturerait
+deux journées déjà passées. Et sans `date` (seule `date_debut` situe une prestation de plusieurs
+jours), l'horaire passait pour inconnu et la fenêtre restait **ouverte indéfiniment**, côté serveur
+comme côté écran. Prolonger une seule journée d'une série n'est pas prévu : ce serait un autre
+modèle de facturation (une décision produit).
+
 La règle est appliquée **aux trois endroits** : l'action `request_extra_hours`, l'écran de
 suivi et l'historique des prestations. Le bouton disparaît, et le serveur refuse.
 

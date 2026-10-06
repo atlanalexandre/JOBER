@@ -309,6 +309,24 @@ export const DELAI_HEURES_SUPP_MS = 20 * 60000;
  * demande reste soumise à l'accord du prestataire — qui, lui, sait s'il est
  * encore là.
  */
+/**
+ * Fin du PREMIER jour d'une prestation : c'est jusqu'à elle (plus le délai de
+ * grâce) que des heures supplémentaires peuvent être demandées.
+ *
+ * Une prolongation s'applique à chaque journée — elle est facturée autant de
+ * fois que la prestation compte de jours (`prixHeuresSupp`, `partHoraire`).
+ * Elle ne peut donc se décider que le premier jour : demandée le troisième
+ * jour sur cinq, elle facturerait deux journées déjà passées. Et sans date
+ * principale (prestation sur plusieurs jours, `date` nulle), l'horaire était
+ * « inconnu » et la fenêtre restait ouverte indéfiniment (06/10/2026).
+ */
+export function finPremierJourMs(m) {
+  if (!m) return null;
+  const premierJour = String(m.date || m.date_debut || "").slice(0, 10);
+  if (!premierJour) return null;
+  return finPrestationMs({ ...m, date: premierJour, date_debut: null, date_fin: null });
+}
+
 export function fenetreHeuresSupp(finMs, nowMs = Date.now()) {
   if (!finMs || Number.isNaN(finMs)) return { ouverte: true, ferme: null, horaireInconnu: true };
   const ferme = finMs + DELAI_HEURES_SUPP_MS;
