@@ -1666,7 +1666,7 @@ crée un paiement Stripe avec la clé `accept-{prestation}-{candidature}-{montan
 Quand Stripe ne rendait pas de paiement — erreur, ou double clic : le second appel, même clé,
 reçoit « requête en cours » (409) —, le code retombait sur l'affectation et la prestation
 passait `assigned` sans rien d'encaissé. Il répond désormais 409 (« déjà en cours ») ou 502.
-L'affectation directe ne subsiste que sans clé Stripe configurée. Essai : `e2e/69`.
+L'affectation directe ne subsiste que sans clé Stripe configurée. Essai : `e2e/69`. Une prestation **illisible ou introuvable** arrête aussi l'action (503 / 404, 06/10/2026) : tout le reste était conditionné à sa lecture, et un échec menait à l'affectation sans paiement ni contrôle du propriétaire.
 
 ### Les contraintes de la base peuvent être en retard sur le code
 
