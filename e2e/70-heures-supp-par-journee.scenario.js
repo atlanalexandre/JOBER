@@ -127,6 +127,19 @@ test("entre deux journées, pas d'heures supplémentaires : on modifie la comman
   expect(l.extra_hours_status).toBeNull();
 });
 
+test("une journée ne dépasse pas 24 h, heures déjà ajoutées comprises", async () => {
+  const s = await serieEnCours(1);
+  // 4 h prévues + 14 h déjà ajoutées aujourd'hui : 18 h. 8 h de plus feraient 26 h.
+  const aujourdhui = jourParis(Date.now() - 3600e3);
+  await sql(`update missions set heures_ajoutees_detail = '[{"jour":"${aujourdhui}","heures":14,"tarif":20,"paiement":null}]'::jsonb,
+             heures_ajoutees_total = 14 where id = '${s.m.id}'`);
+  const trop = await api("/api/missions", { action: "request_extra_hours", mission_id: s.m.id, extra_hours: 8, portee: "jour" }, s.c.jeton);
+  expect(trop.statut, trop.texte.slice(0, 200)).toBe(400);
+  expect(trop.json?.error || "").toMatch(/24h/);
+  const ok = await api("/api/missions", { action: "request_extra_hours", mission_id: s.m.id, extra_hours: 6, portee: "jour" }, s.c.jeton);
+  expect(ok.statut, "6 h de plus : 24 h tout juste").toBe(200);
+});
+
 test("la base refuse une prestation créée avec des heures réalisées ou un versement", async () => {
   const c = await client();
   for (const champs of [{ actual_hours: 24 }, { extra_hours_tarif: 500 }, { montant_heures_ajoutees: 100 }, { payout_amount: 1000 }]) {

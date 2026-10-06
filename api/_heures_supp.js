@@ -267,3 +267,20 @@ export function ajoutsNonFaits(m, { aujourdHui, heuresFaites, heuresBase, annule
   }
   return { valeur: Math.round(valeur * 100) / 100, heures: Math.round(heures * 100) / 100, parPaiement, detail: reste };
 }
+
+/**
+ * La journée la plus longue parmi `journees`, heures déjà ajoutées comprises.
+ * Le plafond de 24 h se juge sur elle : `hours` seul ignorait les heures déjà
+ * ajoutées à une journée, et des demandes successives le même jour pouvaient
+ * dépasser 24 h (06/10/2026).
+ */
+export function dureeMaxDesJournees(m, journees) {
+  const base = Number(m?.hours) || 0;
+  const ajouts = detailAjouts(m);
+  let max = base;
+  for (const j of journees || []) {
+    const ajout = ajouts.filter(l => l.jour === j).reduce((t, l) => t + l.heures, 0);
+    max = Math.max(max, base + ajout);
+  }
+  return Math.round(max * 100) / 100;
+}
