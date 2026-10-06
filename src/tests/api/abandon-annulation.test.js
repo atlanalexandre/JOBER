@@ -7,15 +7,15 @@ import handler from "../../../api/cron-abandon.js";
 const json = (corps, status = 200) => Promise.resolve(new Response(status === 204 ? null : JSON.stringify(corps), { status }));
 const LIGNE = { id: "11111111-1111-4111-8111-111111111111", client_id: "22222222-2222-4222-8222-222222222222", titre: "Ménage", metier: "Femme/Valet de chambre" };
 
-function simuler({ patchMission }) {
+function simuler({ patchMission, remboursement = () => json({ id: "re_1" }) }) {
   const appels = { remboursements: 0, notifications: [], patchs: 0 };
   vi.stubGlobal("fetch", vi.fn((url, opts = {}) => {
     const u = String(url);
     const m = opts.method || "GET";
     if (u.includes("payment_intents/search")) return json({ data: [{ id: "pi_1", status: "succeeded", metadata: { mission: LIGNE.id } }] });
-    if (u.includes("api.stripe.com/v1/refunds")) { appels.remboursements++; return json({ id: "re_1" }); }
+    if (u.includes("api.stripe.com/v1/refunds")) { appels.remboursements++; return remboursement(); }
     if (u.includes("/rest/v1/missions") && u.includes("created_at=lt.") && m === "GET") return json([LIGNE]);
-    if (u.includes("/rest/v1/missions") && m === "PATCH") { appels.patchs++; return patchMission(); }
+    if (u.includes("/rest/v1/missions") && m === "PATCH") { appels.patchs++; (appels.corps ||= []).push(JSON.parse(opts.body)); return patchMission(appels.patchs); }
     if (u.includes("/rest/v1/notifications")) { appels.notifications.push(JSON.parse(opts.body)); return json(null, 201); }
     return json([]);
   }));
@@ -39,12 +39,30 @@ describe("réservations abandonnées payées", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-  it("annulation refusée : journalisée, et le client n'est pas prévenu", async () => {
+  it("annulation refusée : journalisée, rien remboursé, le client n'est pas prévenu", async () => {
     const a = simuler({ patchMission: () => json({ message: "refus" }, 500) });
     await appeler();
-    expect(a.remboursements).toBe(1);
+    expect(a.remboursements).toBe(0);
     expect(a.notifications.some(n => /remboursé/.test(n.title || ""))).toBe(false);
     expect(erreurs.mock.calls.some(c => /annulation de .* refusée/.test(String(c[0])))).toBe(true);
+  });
+
+  // Relecture du 06/10/2026 : on annule AVANT de rembourser.
+  it("affectée entre-temps (annulation sans ligne) : le paiement est conservé", async () => {
+    const a = simuler({ patchMission: () => json([]) });
+    await appeler();
+    expect(a.remboursements).toBe(0);
+    expect(a.notifications).toHaveLength(0);
+  });
+
+  it("remboursement en échec après l'annulation : remise en attente", async () => {
+    const a = simuler({
+      patchMission: () => json([{ id: LIGNE.id }]),
+      remboursement: () => json({ error: { code: "balance_insufficient", message: "x" } }, 400),
+    });
+    await appeler();
+    expect(a.corps).toEqual([{ status: "cancelled" }, { status: "pending_acceptance" }]);
+    expect(a.notifications).toHaveLength(0);
   });
 
   it("annulation faite : le client est prévenu une fois", async () => {
