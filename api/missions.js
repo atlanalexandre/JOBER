@@ -9,7 +9,8 @@ import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { verifierPaiementReservation, delaiReponseMinutes } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
-import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
+import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
+  detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -65,6 +66,7 @@ import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { rembourserAjoutsNonFaits } from "./_remboursement_bo.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
@@ -1805,7 +1807,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at,extra_hours_tarif,extra_hours_appliquees,heures_perdues`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_perdues`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -3959,7 +3961,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4011,8 +4013,10 @@ export default async function handler(req, res) {
       const elapsedHours = elapsedMs / 3600000;
 
       // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h), au bénéfice du
-      // prestataire, et plafonné aux heures prévues pour la journée.
-      const heuresDuJour = Math.min(Math.ceil(elapsedHours), totalHours);
+      // prestataire, et plafonné aux heures prévues pour la journée — heures
+      // ajoutées à cette journée comprises (06/10/2026).
+      const ajoutDuJour = detailAjouts(mission).filter(l => l.jour === aujourdHui).reduce((t, l) => t + l.heures, 0);
+      const heuresDuJour = Math.min(Math.ceil(elapsedHours), totalHours + ajoutDuJour);
       // Déjà écourtée : ses heures non faites sont déjà comptées.
       const heuresPerduesDuJour = dejaEcourtee ? 0 : Math.max(0, totalHours - heuresDuJour);
 
@@ -4062,6 +4066,26 @@ export default async function handler(req, res) {
         ((Number(mission.heures_perdues) || 0) + heuresPerduesAjoutees) * 100
       ) / 100;
 
+      // Heures AJOUTÉES (heures supplémentaires du jour, commande modifiée)
+      // qui ne seront pas faites : celles des journées annulées, et celles
+      // d'aujourd'hui au-delà de ce qui a été travaillé. Elles sont rendues au
+      // client sur le paiement qui les avait réglées, et retirées de la part du
+      // prestataire. Sans cela, arrêter une série dont la commande avait été
+      // modifiée payait au prestataire les heures ajoutées aux journées qui
+      // n'auraient pas lieu (06/10/2026). Les frais de service de ces
+      // paiements restent acquis, comme pour le reste de la prestation.
+      const ajoutsPerdus = ajoutsNonFaits(mission, {
+        aujourdHui, heuresFaites: heuresDuJour, heuresBase: totalHours, annulerReste, dejaEcourtee,
+      });
+      const montantAjoutsRestant = Math.max(0, Math.round(((Number(mission.montant_heures_ajoutees) || 0) - ajoutsPerdus.valeur) * 100) / 100);
+      // `montant_total` et `montant_heures_ajoutees` baissent ENSEMBLE : les
+      // frais se déduisent de leur différence (`montantsDeCloture`), et ne
+      // doivent ni gonfler ni fondre.
+      const montantTotalApresAjouts = Math.max(0, Math.round(((Number(mission.montant_total) || 0) - ajoutsPerdus.valeur) * 100) / 100);
+      const majAjouts = ajoutsPerdus.valeur > 0
+        ? { ...cumulsAjouts(mission, ajoutsPerdus.detail), montant_heures_ajoutees: montantAjoutsRestant }
+        : {};
+
       // LES FRAIS DE SERVICE RESTENT ACQUIS (03/09/2026).
       //
       // Le remboursement se calculait « payé − heures faites × tarif », et cette
@@ -4084,7 +4108,9 @@ export default async function handler(req, res) {
       // Le partage passe par `montantsDeCloture`, la seule source du calcul :
       // il retranche les heures non faites de la part du prestataire et déduit
       // les frais de l'encaissement, sans recopier ici la grille tarifaire.
-      const partage = montantsDeCloture({ ...mission, heures_perdues: heuresPerduesTotal });
+      const partage = montantsDeCloture({ ...mission, heures_perdues: heuresPerduesTotal,
+        ...(ajoutsPerdus.valeur > 0 ? { montant_heures_ajoutees: montantAjoutsRestant, montant_total: montantTotalApresAjouts } : {}),
+      });
       const proratedAmount = partage.partPrestataire;
       const fraisService   = partage.fraisService;
       const totalClient    = partage.totalClient;
@@ -4095,6 +4121,19 @@ export default async function handler(req, res) {
       const refundAmount = Math.max(0, Math.round(heuresPerduesAjoutees * tarifHoraire * 100) / 100);
       let stripeRefundId = null;
       const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
+
+      // Les heures ajoutées non faites d'abord : un échec arrête tout ici, avant
+      // le moindre autre mouvement. Un nouvel essai ne rembourse pas deux fois
+      // (clé par paiement, jour et issue).
+      if (ajoutsPerdus.valeur > 0) {
+        const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+        const rAjouts = cleAjouts
+          ? await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress")
+          : { ok: false };
+        if (!rAjouts.ok) {
+          return res.status(500).json({ error: "Le remboursement des heures ajoutées a échoué — la prestation n'a pas été interrompue. Réessayez, ou contactez le support." });
+        }
+      }
 
       if (refundAmount > 0 && isWalletPaidInProgress) {
         // Remboursement proraté sur le wallet prépayé
@@ -4187,11 +4226,14 @@ export default async function handler(req, res) {
               validation_client: true,
               actual_hours: totalHours,
               heures_perdues: heuresPerduesTotal,
+              ...majAjouts,
               montant_total: totalClient,
               cancellation_reason: `Interrompue en cours — ${billedHours}h dues sur ${totalHours * joursPrestation}h prévues`,
             }
           : {
               heures_perdues: heuresPerduesTotal,
+              ...majAjouts,
+              ...(ajoutsPerdus.valeur > 0 ? { montant_total: montantTotalApresAjouts } : {}),
               cancellation_reason: `Journée du ${aujourdHui} écourtée — ${heuresDuJour}h faites sur ${totalHours}h prévues`,
             }),
       });
@@ -4412,6 +4454,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${eur(ajoutsPerdus.valeur)} € remboursés sur les paiements de prolongation</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -4439,7 +4482,8 @@ export default async function handler(req, res) {
         billedHours,
         heuresDuJour,
         heuresPerdues: heuresPerduesTotal,
-        remboursement: refundAmount,
+        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur) * 100) / 100,
+        remboursementHeuresAjoutees: ajoutsPerdus.valeur,
         proratedAmount,
       });
     }
@@ -4875,7 +4919,7 @@ export default async function handler(req, res) {
       const { mission_id, response } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       if (!["approved", "rejected"].includes(response)) return res.status(400).json({ error: "response invalide" });
-      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre,tarif_horaire,extra_hours_tarif,extra_hours_appliquees,date_debut,date_fin,montant_total,stripe_payment_intent`, { headers });
+      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre,tarif_horaire,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,date_debut,date_fin,montant_total,stripe_payment_intent`, { headers });
       const mData2 = await mr2.json();
       const m2 = Array.isArray(mData2) && mData2[0];
       if (!m2) return res.status(404).json({ error: "Prestation introuvable" });
@@ -5338,7 +5382,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,extra_hours_portee,extra_hours_jours,montant_heures_ajoutees,heures_ajoutees_dernier_jour,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -5721,25 +5765,36 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at,heures_ajoutees_dernier_jour`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
 
-      // La demande n'était bornée par rien : ni ici, ni à l'écran. Un client
-      // pouvait prolonger une prestation terminée depuis des heures — et
-      // l'acceptation rallonge `hours`, donc le montant dû, donc le versement,
-      // sur des heures que personne n'a travaillées.
-      // Premier jour seulement : voir `finPremierJourMs` (06/10/2026).
-      const fenetreSupp = fenetreHeuresSupp(finPremierJourMs(mission));
-      if (!fenetreSupp.ouverte) {
-        return res.status(400).json({
-          error: (mission.date_fin && String(mission.date_fin).slice(0, 10) > String(mission.date || mission.date_debut || "").slice(0, 10))
-            ? "Sur une prestation de plusieurs jours, les heures supplémentaires se demandent le premier jour : "
-              + "elles s'appliquent à chaque journée. Réservez une nouvelle prestation pour un besoin ponctuel."
-            : "La prestation est terminée depuis plus de 20 minutes : les heures supplémentaires "
-               + "ne peuvent plus être demandées. Réservez une nouvelle prestation.",
-        });
+      // Prestation de plusieurs jours (décision d'Alexandre du 06/10/2026) :
+      //  • « jour » — des heures supplémentaires pour la journée EN COURS,
+      //    facturées une fois ;
+      //  • « commande » — modifier la commande : des heures en plus pour
+      //    chacune des journées PAS ENCORE COMMENCÉES (hausse seulement).
+      // La portée est figée ici (`extra_hours_jours`) : le prestataire chiffre,
+      // le client paie et la clôture applique le même nombre de journées.
+      // Une prestation d'un seul jour garde le chemin d'origine.
+      const multi = surPlusieursJours(mission);
+      let portee = null;
+      if (multi) {
+        portee = porteeDemande(mission, payload.portee === "commande" ? "commande" : "jour");
+        if (!portee.ok) return res.status(400).json({ error: portee.detail });
+      } else {
+        // La demande n'était bornée par rien : ni ici, ni à l'écran. Un client
+        // pouvait prolonger une prestation terminée depuis des heures — et
+        // l'acceptation rallonge `hours`, donc le montant dû, donc le
+        // versement, sur des heures que personne n'a travaillées.
+        const fenetreSupp = fenetreHeuresSupp(finPremierJourMs(mission));
+        if (!fenetreSupp.ouverte) {
+          return res.status(400).json({
+            error: "La prestation est terminée depuis plus de 20 minutes : les heures supplémentaires "
+                 + "ne peuvent plus être demandées. Réservez une nouvelle prestation.",
+          });
+        }
       }
 
       // Cap à 24h total pour éviter des prestations aberrantes
@@ -5760,7 +5815,9 @@ export default async function handler(req, res) {
 
       // Enregistrer la demande
       const demandeEcrite = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
-        { extra_hours_requested: eh, extra_hours_status: "pending" }, headers, "heures_supp/demande");
+        { extra_hours_requested: eh, extra_hours_status: "pending",
+          ...(portee ? { extra_hours_portee: portee.portee, extra_hours_jours: portee.jours } : {}) },
+        headers, "heures_supp/demande");
       if (!demandeEcrite) return res.status(500).json({ error: "Votre demande n'a pas pu être enregistrée. Réessayez." });
 
       // Notifier le prestataire
@@ -5768,8 +5825,10 @@ export default async function handler(req, res) {
         await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
-            title: "⏱ Demande d'heures supplémentaires",
-            body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez depuis l'application.`,
+            title: portee?.portee === "commande" ? "✏️ Demande de modification de commande" : "⏱ Demande d'heures supplémentaires",
+            body: portee?.portee === "commande"
+              ? `Le client souhaite ajouter ${eh}h par jour sur les ${portee.jours} journée${portee.jours > 1 ? "s" : ""} à venir de la prestation. Acceptez ou refusez depuis l'application.`
+              : `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}${portee ? " aujourd'hui" : ""}. Acceptez ou refusez depuis l'application.`,
             ref_id: mission_id,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/request_extra_hours] échec ignoré :", e?.message));
 
@@ -5820,7 +5879,7 @@ export default async function handler(req, res) {
       if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
       // Vérifier que le prestataire est bien assigné à cette mission
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date_debut,date_fin,extra_hours_requested,extra_hours_status`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date_debut,date_fin,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -5851,7 +5910,8 @@ export default async function handler(req, res) {
         }
 
         const frais = await lireFraisService(SUPABASE_URL, headers);
-        devis = prixHeuresSupp(extraH, tarif, nombreDeJours(mission), frais);
+        // Les journées couvertes, figées à la demande (06/10/2026).
+        devis = prixHeuresSupp(extraH, tarif, joursFactures(mission, nombreDeJours(mission)), frais);
         if (!(devis.total > 0)) {
           return res.status(400).json({ error: "Montant de la prolongation incalculable." });
         }
@@ -5874,7 +5934,7 @@ export default async function handler(req, res) {
         // débité, aucune heure en plus (audit « prestations », 01/10/2026).
         const rRefus = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.pending`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null }),
+          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null, extra_hours_portee: null, extra_hours_jours: null }),
         });
         const refusees = await rRefus.json().catch(() => null);
         if (!rRefus.ok || !Array.isArray(refusees)) {
@@ -5940,7 +6000,8 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
         + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
-        + `extra_hours_appliquees,stripe_payment_intent`,
+        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,`
+        + `extra_hours_portee,extra_hours_jours,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
         { headers }
       );
       const mission = (await mr.json().catch(() => []))[0];
@@ -5956,7 +6017,7 @@ export default async function handler(req, res) {
 
       const extraH = Number(mission.extra_hours_requested || 0);
       const frais  = await lireFraisService(SUPABASE_URL, headers);
-      const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, nombreDeJours(mission), frais);
+      const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), frais);
       if (!(devisC.total > 0)) return res.status(400).json({ error: "Montant de la prolongation incalculable." });
 
       const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
@@ -5987,7 +6048,12 @@ export default async function handler(req, res) {
       // réservation elle-même — même `metadata[mission]` — réglait n'importe
       // quelle prolongation, et celui d'une prolongation précédente redevenait
       // utilisable dès qu'une seconde l'avait remplacé (relecture du 01/10/2026).
-      const dejaAppliquees = String(Number(mission.extra_hours_appliquees || 0));
+      // Le repère compte AUSSI les heures ajoutées par journée (06/10/2026) :
+      // ce chemin-là ne touche pas `extra_hours_appliquees`, et un paiement
+      // déjà appliqué aurait sinon réglé la demande suivante. Inchangé pour une
+      // prestation d'un seul jour (heures_ajoutees_total y vaut 0).
+      const dejaAppliquees = String(Math.round((Number(mission.extra_hours_appliquees || 0)
+        + Number(mission.heures_ajoutees_total || 0)) * 100) / 100);
       const pourCetteProlongation = pi.metadata?.deja_appliquees !== undefined
         ? pi.metadata.deja_appliquees === dejaAppliquees
         // Paiement créé avant cette règle : admis seulement pour une première prolongation.
@@ -6025,6 +6091,43 @@ export default async function handler(req, res) {
       const nouvellesHeures = Math.min(24, Number(mission.hours || 0) + extraH);
       const nouveauTotal    = Math.round((Number(mission.montant_total || 0) + devisC.total) * 100) / 100;
 
+      // Prestation de plusieurs jours, demande à portée figée (06/10/2026) : la
+      // durée par jour (`hours`) ne bouge pas — elle vaut pour TOUTES les
+      // journées. L'ajout est cumulé à part, en montant pour le prestataire et
+      // en heures ; la clôture et la facture l'ajoutent. Les heures du dernier
+      // jour reculent la fin de la prestation, donc l'échéance du versement.
+      //
+      // Chaque journée couverte est inscrite au détail, avec son tarif et le
+      // paiement qui l'a réglée : une série arrêtée en cours de route rend au
+      // client ce qui ne sera pas fait (`ajoutsNonFaits`, action
+      // `cancel_in_progress`).
+      const parJournee = Number(mission.extra_hours_jours) > 0;
+      let detailAjoute = null;
+      if (parJournee) {
+        const enCours = porteeDemande(mission, "jour");
+        const couvertes = journeesCouvertes(mission, mission.extra_hours_portee,
+          Number(mission.extra_hours_jours), enCours.ok ? enCours.journee : dateDuJourFr());
+        detailAjoute = [
+          ...detailAjouts(mission),
+          ...couvertes.map(jour => ({ jour, heures: extraH, tarif: Number(mission.extra_hours_tarif), paiement: payment_intent })),
+        ];
+      }
+      const application = parJournee
+        ? {
+            ...cumulsAjouts(mission, detailAjoute),
+            montant_heures_ajoutees: Math.round((Number(mission.montant_heures_ajoutees || 0) + devisC.partPrestataire) * 100) / 100,
+            extra_hours_portee: null,
+            extra_hours_jours: null,
+          }
+        : {
+            hours: nouvellesHeures,
+            // Combien d'heures relèvent du tarif négocié. Sans cette valeur,
+            // la clôture recalcule tout au tarif de base et le prestataire perd
+            // l'écart qu'il avait annoncé.
+            extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
+            actual_hours: null,
+          };
+
       // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
       // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
       // ferme la même porte côté base.
@@ -6032,12 +6135,7 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.accepte_presta&status=eq.assigned`,
         { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({
-            hours: nouvellesHeures,
-            // Combien d'heures relèvent du tarif négocié. Sans cette valeur,
-            // la clôture recalcule tout au tarif de base et le prestataire perd
-            // l'écart qu'il avait annoncé.
-            extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
-            actual_hours: null,
+            ...application,
             montant_total: nouveauTotal,
             extra_hours_status: "accepted",
             extra_hours_requested: null,
@@ -6065,7 +6163,7 @@ export default async function handler(req, res) {
         sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/confirmer_heures_supp] échec ignoré :", e?.message));
       }
 
-      return res.status(200).json({ ok: true, hours: nouvellesHeures, montant_total: nouveauTotal });
+      return res.status(200).json({ ok: true, hours: parJournee ? mission.hours : nouvellesHeures, montant_total: nouveauTotal });
     }
 
     // ── Annulation par le prestataire ─────────────────────────────────

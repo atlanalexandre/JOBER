@@ -49,6 +49,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { FRAIS_PAR_DEFAUT } from "./_montant.js";
+import { debutPrestationMs, DELAI_HEURES_SUPP_MS } from "./_temps.js";
 
 // Bornes du tarif proposé pour une prolongation.
 //
@@ -104,4 +105,165 @@ export function prixHeuresSupp(heures, tarif, jours = 1, frais = FRAIS_PAR_DEFAU
 
   const total = Math.round((partPrestataire + fraisService) * 100) / 100;
   return { partPrestataire, fraisService, total, centimes: Math.round(total * 100) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Portée d'une demande sur une prestation de PLUSIEURS JOURS (06/10/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Décision d'Alexandre : une heure supplémentaire porte sur UNE journée, celle
+// en cours. Pour changer les heures de plusieurs journées, le client « modifie
+// la commande » : le nouvel horaire vaut pour les journées PAS ENCORE
+// COMMENCÉES, en hausse seulement.
+//
+// Jusqu'ici, une prolongation était facturée autant de fois que la prestation
+// comptait de jours — journées déjà faites comprises. La portée est figée à la
+// demande (`extra_hours_jours`) : le prix annoncé par le prestataire, payé par
+// le client et appliqué à la clôture est le même.
+
+/** Une prestation porte-t-elle plusieurs journées ? */
+export function surPlusieursJours(m) {
+  return joursDeLaPrestation(m).length > 1;
+}
+
+/**
+ * Les journées de la prestation, avec leur début et leur fin prévus (ms).
+ * La fin du dernier jour tient compte des heures déjà ajoutées à ce jour-là.
+ */
+export function joursDeLaPrestation(m) {
+  const premier = String(m?.date_debut || m?.date || "").slice(0, 10);
+  const dernier = String(m?.date_fin || "").slice(0, 10) || premier;
+  if (!premier) return [];
+  const heures = Number(m?.hours) || 1;
+  const jours = [];
+  const d = new Date(`${premier}T12:00:00Z`);
+  const fin = new Date(`${(dernier >= premier ? dernier : premier)}T12:00:00Z`);
+  for (let i = 0; d <= fin && i < 400; i++) {
+    const jour = d.toISOString().slice(0, 10);
+    const debutMs = debutPrestationMs(jour, m?.heure_debut);
+    jours.push({ jour, debutMs, finMs: debutMs === null ? null : debutMs + heures * 3600000 });
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  if (jours.length) {
+    const der = jours[jours.length - 1];
+    if (der.finMs !== null) der.finMs += (Number(m?.heures_ajoutees_dernier_jour) || 0) * 3600000;
+  }
+  return jours;
+}
+
+/**
+ * La portée d'une demande d'heures sur une prestation de plusieurs jours.
+ *
+ * @param {object} m        la prestation
+ * @param {"jour"|"commande"} portee
+ * @returns {{ok:true, portee:string, jours:number, dernierJour:boolean, journee?:string}
+ *          | {ok:false, detail:string}}
+ */
+export function porteeDemande(m, portee, nowMs = Date.now()) {
+  const jours = joursDeLaPrestation(m);
+  if (jours.some(j => j.debutMs === null)) {
+    return { ok: false, detail: "L'horaire de la prestation est illisible : la demande ne peut pas être chiffrée." };
+  }
+  if (portee === "commande") {
+    const aVenir = jours.filter(j => j.debutMs > nowMs);
+    if (!aVenir.length) {
+      return { ok: false, detail: "Toutes les journées ont commencé : il n'y a plus de journée à modifier. "
+        + "Pour la journée en cours, demandez des heures supplémentaires." };
+    }
+    return { ok: true, portee: "commande", jours: aVenir.length, dernierJour: true, journee: aVenir[0].jour };
+  }
+  const enCours = jours.find(j => j.debutMs <= nowMs && nowMs <= j.finMs + DELAI_HEURES_SUPP_MS);
+  if (!enCours) {
+    return { ok: false, detail: "Les heures supplémentaires se demandent pendant une journée de la prestation, "
+      + "jusqu'à 20 minutes après sa fin. Pour les journées à venir, modifiez la commande." };
+  }
+  return { ok: true, portee: "jour", jours: 1, dernierJour: enCours === jours[jours.length - 1], journee: enCours.jour };
+}
+
+/**
+ * Nombre de journées qu'une demande en cours fait payer. La portée figée à la
+ * demande fait foi ; à défaut (demande antérieure au 06/10/2026, ou prestation
+ * d'un seul jour), toutes les journées — l'ancien calcul, inchangé.
+ */
+export function joursFactures(m, nombreDeJours) {
+  const figes = Number(m?.extra_hours_jours);
+  return figes > 0 ? figes : nombreDeJours;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Le détail des heures ajoutées, journée par journée (06/10/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `missions.heures_ajoutees_detail` : [{ jour, heures, tarif, paiement }].
+// Il sert quand une série s'arrête en cours de route : les heures ajoutées aux
+// journées qui n'auront pas lieu — ou non faites aujourd'hui — sont rendues au
+// client, sur le paiement qui les avait réglées, et retirées de la part du
+// prestataire. Sans lui, on ne saurait ni à quel tarif, ni sur quel paiement.
+
+/** Le détail lu en base, nettoyé : toujours un tableau de lignes valides. */
+export function detailAjouts(m) {
+  const d = Array.isArray(m?.heures_ajoutees_detail) ? m.heures_ajoutees_detail : [];
+  return d
+    .map(l => ({ jour: String(l?.jour || "").slice(0, 10), heures: Number(l?.heures) || 0,
+      tarif: Number(l?.tarif) || 0, paiement: l?.paiement || null }))
+    .filter(l => l.jour && l.heures > 0);
+}
+
+/**
+ * Les journées qu'une demande payée couvre. « jour » : la journée de la
+ * demande. « commande » : les `n` DERNIÈRES journées de la prestation — les
+ * journées pas encore commencées sont toujours les dernières.
+ */
+export function journeesCouvertes(m, portee, n, jourDemande) {
+  const jours = joursDeLaPrestation(m).map(j => j.jour);
+  if (portee === "commande") return jours.slice(Math.max(0, jours.length - n));
+  return [jourDemande || jours[0]].filter(Boolean);
+}
+
+/** Les cumuls que la base garde à côté du détail, recalculés depuis lui. */
+export function cumulsAjouts(m, detail) {
+  const dernier = joursDeLaPrestation(m).map(j => j.jour).pop();
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return {
+    heures_ajoutees_detail: detail,
+    heures_ajoutees_total: r2(detail.reduce((s, l) => s + l.heures, 0)),
+    heures_ajoutees_dernier_jour: r2(detail.filter(l => l.jour === dernier).reduce((s, l) => s + l.heures, 0)),
+  };
+}
+
+/**
+ * Ce qui, des heures ajoutées, ne sera pas fait quand le client interrompt.
+ *
+ * - Journées APRÈS aujourd'hui : tout, si le client arrête la prestation.
+ * - Aujourd'hui : les heures ajoutées au-delà de ce qui a été travaillé — la
+ *   journée de base est faite d'abord (`heuresFaites` au-delà de `heuresBase`).
+ *   Une journée déjà écourtée n'est pas comptée deux fois.
+ *
+ * @returns {{ valeur:number, heures:number, parPaiement:Object<string,number>, detail:Array }}
+ *          `valeur` en euros, `parPaiement` en euros par paiement, `detail` ce qui reste.
+ */
+export function ajoutsNonFaits(m, { aujourdHui, heuresFaites, heuresBase, annulerReste, dejaEcourtee }) {
+  const detail = detailAjouts(m);
+  let auDela = Math.max(0, (Number(heuresFaites) || 0) - (Number(heuresBase) || 0));
+  let valeur = 0, heures = 0;
+  const parPaiement = {};
+  const reste = [];
+  const perdre = (l, h) => {
+    if (h <= 0) return;
+    const v = Math.round(h * l.tarif * 100) / 100;
+    valeur += v; heures += h;
+    if (l.paiement) parPaiement[l.paiement] = Math.round(((parPaiement[l.paiement] || 0) + v) * 100) / 100;
+  };
+  for (const l of detail) {
+    if (l.jour > aujourdHui && annulerReste) { perdre(l, l.heures); continue; }
+    if (l.jour === aujourdHui && !dejaEcourtee) {
+      const faites = Math.min(l.heures, auDela);
+      auDela -= faites;
+      perdre(l, l.heures - faites);
+      if (faites > 0) reste.push({ ...l, heures: faites });
+      continue;
+    }
+    reste.push(l);
+  }
+  return { valeur: Math.round(valeur * 100) / 100, heures: Math.round(heures * 100) / 100, parPaiement, detail: reste };
 }
