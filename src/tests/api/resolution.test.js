@@ -112,6 +112,9 @@ describe("exécution d'une résolution", () => {
       // La relecture de la prestation par executerResolution (30/09/2026) n'est
       // pas comptée : les tests ci-dessous portent sur ce qui est ÉCRIT.
       if (String(url).includes("select=*")) return { ok: true, json: async () => [{}] };
+      // La lecture du paiement chez Stripe (reste remboursable, 06/10/2026) non
+      // plus : muette ici, le plafond de la prestation s'applique seul.
+      if (String(url).includes("/v1/payment_intents/")) return { ok: false, status: 404, json: async () => ({}) };
       appels.push({ url: String(url), opts });
       if (String(url).includes("api.stripe.com")) {
         return { ok: true, json: async () => ({ id: "re_test" }) };

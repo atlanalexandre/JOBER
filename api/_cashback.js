@@ -143,24 +143,77 @@ async function completerCashback(mission, supabaseUrl, headers) {
 }
 
 /**
- * Plafonne un remboursement partiel à ce qui a été prélevé.
+ * Plafonne un remboursement partiel à ce qui RESTE remboursable.
  *
  * @param {number|null} centimes  montant voulu, ou null pour « la totalité »
  * @returns {number|null} le même, ou le plafond s'il est dépassé
  *
  * `null` traverse sans changement : un remboursement sans montant rend
- * exactement ce que Stripe a encaissé, il est donc déjà juste.
+ * exactement ce que Stripe peut encore rendre, il est donc déjà juste.
+ *
+ * Deux plafonds, le plus bas l'emporte :
+ *  1. ce que la carte a supporté (prix moins cashback) ;
+ *  2. ce que Stripe peut ENCORE rendre sur ce paiement — encaissé moins déjà
+ *     remboursé. Le premier ne voyait qu'un remboursement à la fois : une
+ *     réduction pour décalage puis un litige, chacun sous le plafond, pouvaient
+ *     ensemble le dépasser, et Stripe refusait le second (06/10/2026).
+ *     Stripe muet : on garde le premier, comme avant.
  */
 export async function plafonnerRemboursement(centimes, mission, supabaseUrl, headers) {
   if (centimes === null || centimes === undefined) return centimes;
   const m = await completerCashback(mission, supabaseUrl, headers);
-  const plafond = Math.round(montantCharge(m) * 100);
   const voulu = Math.round(Number(centimes) || 0);
+  let plafond = Math.round(montantCharge(m) * 100);
+  let raison = `${Number(m?.cashback_applique || 0).toFixed(2)} € avaient été réglés en cashback`;
+
+  const reste = await resteRemboursable(m, supabaseUrl, headers);
+  if (reste !== null && reste < plafond) {
+    plafond = reste;
+    raison = `il ne reste que ${(reste / 100).toFixed(2)} € remboursables sur ce paiement (remboursements antérieurs)`;
+  }
   if (voulu <= plafond) return voulu;
 
-  console.warn(`[cashback] remboursement ramené de ${voulu} c à ${plafond} c sur ${m?.id}`
-    + ` — ${Number(m?.cashback_applique || 0).toFixed(2)} € avaient été réglés en cashback.`);
+  console.warn(`[cashback] remboursement ramené de ${voulu} c à ${plafond} c sur ${m?.id} — ${raison}.`);
   return plafond;
+}
+
+/**
+ * Centimes encore remboursables sur le paiement de la prestation, d'après
+ * Stripe (encaissé − déjà remboursé). null si on ne peut pas le savoir —
+ * paiement absent ou non Stripe, clé absente, Stripe muet : l'appelant garde
+ * alors son plafond.
+ */
+async function resteRemboursable(mission, supabaseUrl, headers) {
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!cle || !mission?.id) return null;
+  let intent = mission.stripe_payment_intent;
+  if (intent === undefined) {
+    try {
+      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&select=stripe_payment_intent&limit=1`, { headers });
+      const l = await r.json().catch(() => null);
+      intent = r.ok && Array.isArray(l) && l[0] ? l[0].stripe_payment_intent : null;
+    } catch (e) {
+      console.error(`[cashback] paiement de ${mission.id} illisible :`, e.message);
+      return null;
+    }
+  }
+  if (typeof intent !== "string" || !intent.startsWith("pi_")) return null;
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(intent)}?expand[]=latest_charge`,
+      { headers: { "Authorization": `Bearer ${cle}` } });
+    const pi = await r.json().catch(() => null);
+    const charge = pi?.latest_charge;
+    if (!r.ok || !charge || typeof charge !== "object") {
+      console.warn(`[cashback] paiement ${intent} illisible chez Stripe (${r.status}) — plafond de la prestation seul.`);
+      return null;
+    }
+    const encaisse = Number(charge.amount_captured ?? charge.amount ?? 0);
+    const rendu = Number(charge.amount_refunded || 0);
+    return Math.max(0, Math.round(encaisse - rendu));
+  } catch (e) {
+    console.warn(`[cashback] paiement ${intent} injoignable chez Stripe — plafond de la prestation seul :`, e.message);
+    return null;
+  }
 }
 
 /**
