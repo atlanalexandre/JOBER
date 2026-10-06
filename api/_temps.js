@@ -71,6 +71,13 @@ export function dateDuJourFr(nowMs = Date.now()) {
 
 export function debutPrestationMs(date, heureDebut) {
   if (!date) return null;
+  // Le JOUR seul : `date_debut` est un timestamptz (« 2026-10-07 00:00:00+00 »).
+  // Plusieurs appelants passaient `m.date || m.date_debut` tel quel, et la
+  // date construite était invalide — début inconnu pour toute prestation sur
+  // plusieurs jours : alerte « sans prestataire » jamais envoyée, clôture
+  // faute de prestataire repliée sur la veille (relecture du 06/10/2026).
+  // Corrigé ici, à la source, plutôt qu'à chaque appel.
+  date = String(date).slice(0, 10);
   const [h = 8, mn = 0] = String(heureDebut || "08:00").split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(mn)) return null;
   const naive = new Date(`${date}T${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}:00`);
