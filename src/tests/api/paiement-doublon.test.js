@@ -83,4 +83,10 @@ describe("webhook : paiement en double", () => {
     await handler(requete(evenement), reponse());
     expect(appels.some(a => a.u.endsWith("/v1/refunds"))).toBe(false);
   });
+
+  it("prestation CLÔTURÉE faute de prestataire, sans paiement rattaché : il est remboursé", async () => {
+    const appels = simuler({ paiementEnBase: null, statut: "closed" });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.u.endsWith("/v1/refunds"))).toBe(true);
+  });
 });

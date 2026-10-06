@@ -1655,8 +1655,8 @@ alors en `assigned` **sans prestataire**, et l'affectation de l'application, arr
 cashback et ignore les paiements de série (`metadata[type] = serie`). Depuis le 04/10/2026, il **rembourse un
 paiement en double** : si la prestation est déjà réglée par un autre paiement, celui qui arrive
 est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu d'être ignoré.
-Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée ou
-refusée** sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
+Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée,
+refusée ou clôturée** (`closed` ajouté le 06/10/2026 : c'est l'état d'une demande close sans prestataire ni paiement) sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
 vivante sans paiement rattaché, il ne touche à rien et le journalise.
 Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
 est le refus de `/api/stripe-intent` (409 `deja_payee`).
