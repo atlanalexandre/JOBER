@@ -52,3 +52,35 @@ it("le filtre de lecture couvre les deux formes de prestation", () => {
   expect(filtrePeriode("2026-10-12", "2026-10-16"))
     .toBe("or=(and(date.gte.2026-10-12,date.lte.2026-10-16),and(date_debut.lte.2026-10-16,date_fin.gte.2026-10-12))");
 });
+
+import { premiereIndisponibilite, heureDansCreneaux } from "../../../api/_creneaux.js";
+
+describe("les disponibilités déclarées, sur chaque journée", () => {
+  const semaine = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
+  // Du vendredi 16 au lundi 19 octobre 2026.
+  const periode = joursCouverts({ date: "2026-10-16", date_fin: "2026-10-19" });
+
+  it("une période qui passe par le week-end est refusée au premier jour non travaillé", () => {
+    expect(premiereIndisponibilite({ jours: periode, disponJours: semaine, heureDebut: "09:00" }))
+      .toMatchObject({ jour: "2026-10-17", jourFr: "Samedi", motif: "jour" });
+  });
+
+  it("la même période passe chez un prestataire disponible tous les jours", () => {
+    expect(premiereIndisponibilite({ jours: periode, disponJours: [...semaine, "Samedi", "Dimanche"], heureDebut: "09:00" })).toBeNull();
+  });
+
+  it("un créneau du matin seulement le lundi refuse un début à 14 h", () => {
+    const r = premiereIndisponibilite({ jours: periode, creneaux: { Lundi: ["Matin (6h-13h)"] }, heureDebut: "14:00" });
+    expect(r).toMatchObject({ jour: "2026-10-19", motif: "creneau" });
+  });
+
+  it("aucune déclaration ne restreint rien", () => {
+    expect(premiereIndisponibilite({ jours: periode, heureDebut: "03:00" })).toBeNull();
+  });
+
+  it("les créneaux couvrent la nuit des deux côtés de minuit", () => {
+    expect(heureDansCreneaux(23, ["Soir/Nuit (20h-6h)"])).toBe(true);
+    expect(heureDansCreneaux(4, ["Soir/Nuit (20h-6h)"])).toBe(true);
+    expect(heureDansCreneaux(12, ["Soir/Nuit (20h-6h)"])).toBe(false);
+  });
+});

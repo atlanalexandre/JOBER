@@ -62,3 +62,41 @@ export function conflitDeCreneau(nouvelle, existantes) {
 export function filtrePeriode(premier, dernier) {
   return `or=(and(date.gte.${premier},date.lte.${dernier}),and(date_debut.lte.${dernier},date_fin.gte.${premier}))`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Disponibilités déclarées par le prestataire — journée par journée
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// L'écran de réservation contrôlait les jours et créneaux déclarés (« pas le
+// dimanche », « le matin seulement ») sur le PREMIER JOUR seulement : une
+// période passant par un dimanche était acceptée chez un prestataire qui ne
+// travaille pas ce jour-là (06/10/2026).
+
+export const JOURS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+
+/** L'heure (0-23) tombe-t-elle dans l'un des créneaux déclarés ? */
+export function heureDansCreneaux(heure, creneaux) {
+  return (creneaux.includes("Matin (6h-13h)") && heure >= 6 && heure < 13)
+    || (creneaux.includes("Après-midi (13h-20h)") && heure >= 13 && heure < 20)
+    || (creneaux.includes("Soir/Nuit (20h-6h)") && (heure >= 20 || heure < 6));
+}
+
+/**
+ * La première journée où le prestataire n'a pas déclaré être disponible, ou null.
+ * Une liste de jours vide, ou un jour sans créneaux, ne restreint rien : c'est
+ * la règle historique de l'écran.
+ *
+ * @returns {null | { jour:string, jourFr:string, motif:"jour"|"creneau", creneaux:string[] }}
+ */
+export function premiereIndisponibilite({ jours, disponJours = [], creneaux = {}, heureDebut = "" }) {
+  const h = parseInt(String(heureDebut).split(":")[0], 10);
+  for (const jour of jours || []) {
+    const jourFr = JOURS_FR[new Date(`${jour}T12:00:00Z`).getUTCDay()];
+    if (disponJours.length > 0 && !disponJours.includes(jourFr)) return { jour, jourFr, motif: "jour", creneaux: [] };
+    const duJour = creneaux[jourFr] || [];
+    if (duJour.length > 0 && Number.isFinite(h) && !heureDansCreneaux(h, duJour)) {
+      return { jour, jourFr, motif: "creneau", creneaux: duJour };
+    }
+  }
+  return null;
+}

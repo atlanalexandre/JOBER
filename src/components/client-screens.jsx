@@ -17,6 +17,7 @@ import { etatAccueil, debutMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp, finPremierJourMs } from "../../api/_temps.js";
 import { prixHeuresSupp, surPlusieursJours, porteeDemande } from "../../api/_heures_supp.js";
 import { libelleConstat } from "../../api/_localisation.js";
+import { joursCouverts, premiereIndisponibilite } from "../../api/_creneaux.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 // Un prestataire exerce-t-il dans ce secteur, ce métier ?
@@ -3405,30 +3406,28 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
               // Bloquer si la prestation démarre dans moins de 2h → mode urgence requis
-              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
               const [hh,mm] = (startTime||"08:00").split(":").map(Number);
               const missionStart = new Date(yr, mo-1, dy, hh, mm);
               const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
               if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
               setTooSoonError(false);
-              const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
+              // Jours et créneaux déclarés, sur CHACUNE des journées d'une plage
+              // de dates : seul le premier jour était contrôlé, et une période
+              // passant par un dimanche était acceptée chez un prestataire qui
+              // ne travaille pas ce jour-là (06/10/2026).
               const dispoDays = p.dispon_jours || [];
-              if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
-                setAvailError(`${p.name} n'est pas disponible le ${jourFr}. Jours disponibles : ${dispoDays.join(", ")}.`);
+              const indispo = premiereIndisponibilite({
+                jours: joursCouverts({ date: startDate, date_fin: (missionType === "range" && nbJours > 1) ? endDate : null }),
+                disponJours: dispoDays, creneaux: p.dispon_jours_creneaux || {}, heureDebut: startTime || "",
+              });
+              if (indispo?.motif === "jour") {
+                setAvailError(`${p.name} n'est pas disponible le ${indispo.jourFr}${nbJours > 1 ? ` (${formatDate(indispo.jour)})` : ""}. Jours disponibles : ${dispoDays.join(", ")}.`);
                 return;
               }
-              const creneaux = p.dispon_jours_creneaux || {};
-              const daySlots = creneaux[jourFr] || [];
-              if (daySlots.length > 0 && startTime) {
-                const h = parseInt(startTime.split(":")[0], 10);
-                const slotOk = (daySlots.includes("Matin (6h-13h)") && h >= 6 && h < 13) ||
-                               (daySlots.includes("Après-midi (13h-20h)") && h >= 13 && h < 20) ||
-                               (daySlots.includes("Soir/Nuit (20h-6h)") && (h >= 20 || h < 6));
-                if (!slotOk) {
-                  setAvailError(`${p.name} n'est pas disponible sur ce créneau le ${jourFr}. Créneaux déclarés : ${daySlots.join(", ")}.`);
-                  return;
-                }
+              if (indispo?.motif === "creneau") {
+                setAvailError(`${p.name} n'est pas disponible sur ce créneau le ${indispo.jourFr}${nbJours > 1 ? ` (${formatDate(indispo.jour)})` : ""}. Créneaux déclarés : ${indispo.creneaux.join(", ")}.`);
+                return;
               }
             }
             setDateError(false); setAvailError(""); setTooSoonError(false);

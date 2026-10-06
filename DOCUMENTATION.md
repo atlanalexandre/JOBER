@@ -223,6 +223,14 @@ le conflit n'apparaissait qu'à l'acceptation, le client déjà débité. La ré
 « libre » ou le jour pris. Si le contrôle est indisponible, la réservation n'est pas bloquée : le
 prestataire reste libre de refuser, et le refus rembourse. Éprouvé par `e2e/72`.
 
+**Les jours et créneaux déclarés sont contrôlés sur chaque journée** (06/10/2026). L'écran de
+réservation vérifiait « pas le dimanche » ou « le matin seulement » sur le premier jour de la
+période : une plage passant par un dimanche était acceptée chez un prestataire qui ne travaille
+pas ce jour-là. `premiereIndisponibilite()` (`api/_creneaux.js`) parcourt toutes les journées et
+le message nomme la première refusée. Une liste de jours vide, ou un jour sans créneau, ne
+restreint rien — règle inchangée. Contrôle d'écran seulement : ce sont des disponibilités
+déclarées, le prestataire reste libre d'accepter ou de refuser.
+
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
 bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son
