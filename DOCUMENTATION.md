@@ -4343,7 +4343,10 @@ Trois règles gouvernent cette imputation, et il faut les trois :
   disparaître le cashback d'un client en silence.
 - **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
   (`plafonnerRemboursement()`). Stripe refuse de rendre plus qu'il n'a prélevé, et ce refus
-  arriverait APRÈS l'annulation de la prestation.
+  arriverait APRÈS l'annulation de la prestation. **Et à ce qui reste remboursable** sur le
+  paiement d'après Stripe (encaissé − déjà remboursé, 06/10/2026) : chaque remboursement était
+  plafonné seul, et deux remboursements partiels — un décalage puis un litige — pouvaient ensemble
+  dépasser le prélevé ; Stripe refusait le second. Stripe muet : le premier plafond seul.
 - **Les frais retenus se calculent sur le PRIX**, jamais sur ce que la carte a payé. Quand
   `montant_total` est vide, `cancel_client` relit le montant chez Stripe — celui de la carte,
   cashback déduit — et en déduisait les frais : avec 5 € de cashback, il rendait 5 € de trop
