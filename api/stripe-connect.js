@@ -28,7 +28,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { verifyUser } from "./_auth.js";
-import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
+import { assurerCompteConnect, lienConfiguration, rafraichirStatutCompte } from "./_connect.js";
 import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
@@ -76,9 +76,18 @@ export default async function handler(req, res) {
 
   // ── L'état est demandé, pas un lien ──────────────────────────────────
   if (req.body?.action === "statut") {
+    // Pas encore activé : on relit chez Stripe. Le prestataire revient ici
+    // juste après sa configuration (lien de retour), et l'état ne dépend plus
+    // seulement du webhook — qu'il faut abonner aux événements v2 pour les
+    // comptes créés depuis le 05/10/2026 (voir api/_connect.js).
+    let statut = profil.stripe_account_status || "pending";
+    if (profil.stripe_account_id && statut !== "enabled") {
+      statut = await rafraichirStatutCompte({ compteId: profil.stripe_account_id, statutConnu: statut,
+        stripeKey: STRIPE_SK, supabaseUrl: SUPABASE_URL, headers }) || statut;
+    }
     return res.status(200).json({
-      compte: profil.stripe_account_id ? profil.stripe_account_status || "pending" : null,
-      versable: Boolean(profil.stripe_account_id) && profil.stripe_account_status === "enabled",
+      compte: profil.stripe_account_id ? statut : null,
+      versable: Boolean(profil.stripe_account_id) && statut === "enabled",
     });
   }
 

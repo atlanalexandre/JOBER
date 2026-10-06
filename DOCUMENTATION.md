@@ -1631,6 +1631,12 @@ Signature vérifiée systématiquement : HMAC-SHA256 sur le corps brut, comparai
 constant, tolérance de 300 s. Sans `STRIPE_WEBHOOK_SECRET`, le webhook est **rejeté**, jamais
 accepté par défaut.
 
+**Deux secrets** depuis Connect v2 (05/10/2026) : les événements v2 (« légers ») partent d'une
+*destination d'événements* distincte, signée par son propre secret, `STRIPE_WEBHOOK_SECRET_V2`
+(facultatif). Un événement v2 ne porte que l'identifiant de l'objet : le webhook relit le compte
+chez Stripe et n'en croit rien d'autre ; s'il ne peut pas le relire, il répond 500 pour que Stripe
+renvoie l'événement.
+
 **Idempotence** — Stripe réémet tant qu'il n'a pas reçu de 2xx. Deux protections :
 la recharge de portefeuille passe par la procédure `crediter_portefeuille`, dont la clé
 primaire est l'identifiant du paiement ; l'affectation d'une prestation vérifie
@@ -2032,6 +2038,26 @@ Les deux appelants sont l'ouverture de l'accès aux prestations (`bo-action.js`,
 — pays, capacités, type de compte — n'existent qu'à un seul endroit ; ils étaient recopiés dans
 deux fichiers.
 
+**Connect v2 (Accounts v2) depuis le 05/10/2026**, à la demande de l'équipe Stripe Accelerate :
+les comptes étaient créés par l'API historique (`POST /v1/accounts`, `type: express`), que Stripe
+dit « legacy ». Ils le sont par `POST /v2/core/accounts` (JSON, en-tête `Stripe-Version:
+2026-09-30.endive`, clé d'idempotence `compte-presta-{id}`), et le lien par
+`POST /v2/core/account_links` (`use_case.type = account_onboarding`). Correspondance avec Express,
+vérifiée contre la spécification officielle (`stripe/openapi`) : `dashboard: express`,
+`defaults.responsibilities` = `fees_collector: application` et `losses_collector: application` (seule
+valeur que Stripe accepte pour un compte `recipient` seul, confirmée par l'équipe Stripe Accelerate.
+Elle suppose que le **profil de plateforme** — Paramètres > Connect > Profil de la plateforme —
+déclare la plateforme responsable des soldes négatifs : sans cette attestation, Stripe refuse la
+création (« set losses_collector to stripe »). Attestation signée en mode test le 06/10/2026 ; **à
+refaire sur le compte de la société**, voir IMMATRICULATION.md §7), configuration `recipient` avec la capacité `stripe_balance.stripe_transfers` (l'ancien
+`capabilities[transfers]`). Les virements restent des `POST /v1/transfers` vers `acct_…`, inchangés.
+Les comptes déjà créés en v1 continuent de fonctionner. Le **statut** (`stripe_account_status`) est
+lu par `statutCompte()` : en v2 (`stripe_transfers.status = active` → `enabled`), à défaut en v1
+(`payouts_enabled`) ; une absence de réponse ne vaut jamais « pas activé ». Il est relu chez Stripe
+quand le prestataire consulte son état (`stripe-connect`, action `statut`), avant de bloquer un
+versement (tâche planifiée — une relecture par compte et **dix au plus par passage** : sans borne,
+la tâche dépassait son délai en recette), et à chaque événement v2 `v2.core.account…` reçu par le webhook.
+
 **Le lien part à l'ouverture de l'accès aux prestations, pas à la validation du compte**
 (24/08/2026). Il partait auparavant dans l'e-mail de bienvenue. Trop tôt : le lien de Stripe
 **expire en 24 h**, et valider un compte ne dit rien de l'état du dossier. Entre la validation
@@ -2063,7 +2089,8 @@ Connect n'étant pas encore en place, c'est aujourd'hui le cas de TOUS les verse
 traitement journalise désormais chaque blocage et son bilan, et le back-office les compte à
 part : bannière « virements impossibles — compte de paiement manquant », distincte du retard
 de traitement, et mention sur la ligne concernée. Le versement partira seul à l'activation du
-compte, par le webhook `account.updated`.
+compte, par le webhook `account.updated` (v1), un événement `v2.core.account…` (comptes
+v2), ou la relecture du statut par la tâche planifiée elle-même (05/10/2026).
 
 **`missions.payout_status = 'annule'`** (24/08/2026) — le versement n'aura pas lieu. Ce n'est
 ni un échec technique (`failed`, qu'on réessaie) ni une retenue (`held`, qui se lève d'office
@@ -4439,6 +4466,7 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `VITE_STRIPE_PUBLIC_KEY` | Clé publique Stripe |
 | `STRIPE_SECRET_KEY` | Clé secrète Stripe |
 | `STRIPE_WEBHOOK_SECRET` | Signature du webhook Stripe |
+| `STRIPE_WEBHOOK_SECRET_V2` | Signature de la destination d'événements v2 (comptes Connect v2) — facultatif : sans lui, l'état des comptes est relu par l'application et la tâche planifiée |
 | `VITE_SENTRY_DSN` | Remontée d'erreurs — si absente, Sentry est désactivé |
 | `STRIPE_PRICE_PREMIUM_MONTHLY` | Identifiant du tarif Stripe (`price_…`). **Le nom hérité `STRIPE_PREMIUM_MONTHLY`, sans `PRICE_`, est aussi accepté** — c'est celui posé dans Vercel. Ces variables étant « Sensitive », donc illisibles après enregistrement, le code s'adapte plutôt que d'imposer une renomination |
 | `STRIPE_PRICE_PREMIUM_YEARLY` | idem, abonnement annuel |

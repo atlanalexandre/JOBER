@@ -18,4 +18,13 @@ test("un prestataire complet obtient l'accès aux prestations et un compte de vi
   let raison = "";
   if (!profil.connect) raison = (await api("/api/stripe-connect", {}, p.jeton)).texte.slice(0, 300);
   expect(profil.connect, `compte Stripe Connect (test) créé à l'ouverture — ${raison}`).toBe(true);
+
+  // Connect v2 (05/10/2026) : le lien d'inscription vient de /v2/core/account_links,
+  // et l'état est relu chez Stripe (pas encore configuré : en attente).
+  const lien = await api("/api/stripe-connect", {}, p.jeton);
+  expect(lien.statut, lien.texte.slice(0, 300)).toBe(200);
+  expect(lien.json?.url, "lien d'inscription Stripe").toMatch(/^https:\/\/connect\.stripe\.com\//);
+  const etat = await api("/api/stripe-connect", { action: "statut" }, p.jeton);
+  expect(etat.statut, etat.texte.slice(0, 300)).toBe(200);
+  expect(etat.json).toEqual({ compte: "pending", versable: false });
 });
