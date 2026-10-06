@@ -112,7 +112,10 @@ export function finPrestationMs(m) {
   const dernierJour = String(m.date_fin || "").slice(0, 10);
   if (premierJour && dernierJour && dernierJour > premierJour) {
     const debutDernier = debutPrestationMs(dernierJour, m.heure_debut);
-    if (debutDernier !== null) return debutDernier + (Number(m.hours ?? 1) || 1) * 3600000;
+    // Heures ajoutées au dernier jour (heures supplémentaires du jour, ou
+    // commande modifiée, 06/10/2026) : la journée finit plus tard.
+    const ajoutDernier = Math.max(0, Number(m.heures_ajoutees_dernier_jour) || 0);
+    if (debutDernier !== null) return debutDernier + ((Number(m.hours ?? 1) || 1) + ajoutDernier) * 3600000;
   }
   const dureeH = Number(m.actual_hours ?? m.hours ?? 1) || 1;
   const dureeMs = dureeH * 3600000;

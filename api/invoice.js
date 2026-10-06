@@ -412,7 +412,11 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
     : 1;
   // Le tarif des heures supplémentaires suit jusqu'à la facture : le
   // prestataire facture ce qu'il a vendu, pas une moyenne.
-  const htCalc = partHoraire(mission, hours, nbJours);
+  // Heures ajoutées à certaines journées d'une prestation de plusieurs jours
+  // (06/10/2026) : un montant cumulé, à part de la durée par jour.
+  const ajoutJournees = Math.max(0, Number(mission.montant_heures_ajoutees) || 0);
+  const heuresAjoutees = Math.max(0, Number(mission.heures_ajoutees_total) || 0);
+  const htCalc = Math.round((partHoraire(mission, hours, nbJours) + ajoutJournees) * 100) / 100;
   // Repli sur montant_total seulement s'il n'y a rien à calculer. Il inclut les frais
   // de service d'ALANE, qui ne relèvent pas de la facture du prestataire : c'est un
   // pis-aller, signalé pour qu'il ne passe pas inaperçu.
@@ -616,6 +620,9 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       ? `${metier} — ${hours - heuresSupp}h × ${eurTarif(tarifHoraire)} €/h`
         + ` + ${heuresSupp}h supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
       : `${metier} — ${hours}h × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
+  const ligneAjout = ajoutJournees > 0
+    ? ` + ${heuresAjoutees}h ajoutées à certaines journées (${eurTarif(ajoutJournees)} €)`
+    : "";
 
   // Build HTML
   const html = `<!DOCTYPE html>
@@ -903,7 +910,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       </div>
       <div class="line-item">
         <div class="line-desc">
-          <div class="line-desc-main">${escHtml(lineItem)}</div>
+          <div class="line-desc-main">${escHtml(lineItem + ligneAjout)}</div>
           ${secteur ? `<div class="line-desc-detail">Secteur : ${escHtml(secteur)}</div>` : ""}
           ${missionDate ? `<div class="line-desc-detail">Date : ${escHtml(missionDate)}${heureDebut ? " à " + escHtml(heureDebut) : ""}</div>` : ""}
           ${hours > 0 ? `<div class="line-desc-detail">Durée : ${hours}h</div>` : ""}

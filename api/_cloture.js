@@ -105,9 +105,14 @@ export function montantsDeCloture(m) {
   const heuresPerdues = Math.max(0, Number(m?.heures_perdues) || 0);
   const valeurPerdue = Math.round(heuresPerdues * (Number(m?.tarif_horaire) || 0) * 100) / 100;
 
+  // Heures ajoutées à certaines journées seulement (prestation de plusieurs
+  // jours, 06/10/2026) : cumulées en MONTANT, au tarif annoncé à chaque fois,
+  // indépendamment de `hours` — qui vaut pour toutes les journées.
+  const ajoutJournees = Math.max(0, Number(m?.montant_heures_ajoutees) || 0);
+
   const partPrestataire = Math.max(
     0,
-    Math.round((partHoraire(m, heuresEffectives, jours) - valeurPerdue) * 100) / 100
+    Math.round((partHoraire(m, heuresEffectives, jours) + ajoutJournees - valeurPerdue) * 100) / 100
   );
 
   // Frais de service réellement encaissés : ce qui a été payé, moins la part
@@ -116,7 +121,7 @@ export function montantsDeCloture(m) {
   // diverger. Ils sont conservés même si la durée réelle diffère de la prévue :
   // ils rémunèrent la mise en relation, pas les heures.
   const totalPaye  = Number(m?.montant_total || 0);
-  const partPrevue = partHoraire(m, Number(m?.hours) || 0, jours);
+  const partPrevue = partHoraire(m, Number(m?.hours) || 0, jours) + ajoutJournees;
   const fraisService = (partPrevue > 0 && totalPaye > partPrevue)
     ? Math.round((totalPaye - partPrevue) * 100) / 100
     : 0;

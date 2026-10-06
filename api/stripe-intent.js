@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { verifyUser } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
-import { prixHeuresSupp } from "./_heures_supp.js";
+import { prixHeuresSupp, joursFactures } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
 import { reductionCashback } from "./_cashback.js";
 import { appUrl } from "./_url.js";
@@ -313,7 +313,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,stripe_payment_intent`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,extra_hours_jours,extra_hours_portee,heures_ajoutees_total,stripe_payment_intent`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -395,7 +395,8 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
     }
     const fraisS = await lireFraisService(SUPABASE_URL_PI, hdrsPI);
-    const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, nombreDeJours(mission), fraisS);
+    // Les journées couvertes, figées à la demande (06/10/2026).
+    const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), fraisS);
     if (!(devisS.total > 0)) {
       return res.status(400).json({ error: "Montant de la prolongation incalculable." });
     }
@@ -416,8 +417,13 @@ export default async function handler(req, res) {
       // Les heures DÉJÀ ajoutées au moment de ce paiement. Une fois cette
       // prolongation appliquée, elles changent : ce paiement ne peut plus servir
       // à en régler une autre (relecture du 01/10/2026).
-      "metadata[deja_appliquees]": String(Number(mission.extra_hours_appliquees || 0)),
-      description: `Heures supplémentaires — ${mission.extra_hours_requested} h`,
+      // Même repère que `confirmer_heures_supp` : heures ajoutées par journée
+      // comprises (06/10/2026).
+      "metadata[deja_appliquees]": String(Math.round((Number(mission.extra_hours_appliquees || 0)
+        + Number(mission.heures_ajoutees_total || 0)) * 100) / 100),
+      description: mission.extra_hours_portee === "commande"
+        ? `Modification de commande — +${mission.extra_hours_requested} h × ${mission.extra_hours_jours} jour(s)`
+        : `Heures supplémentaires — ${mission.extra_hours_requested} h`,
     };
     if (clientSupp) paramsS.customer = clientSupp;
 

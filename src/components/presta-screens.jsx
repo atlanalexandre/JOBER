@@ -66,7 +66,9 @@ function montantPrestataire(m) {
   // api/_cloture.js, qui fait foi : les deux doivent rester alignés.
   const supp = Math.min(heures, Math.max(0, Number(m?.extra_hours_appliquees) || 0));
   const tarifSupp = Number(m?.extra_hours_tarif) > 0 ? Number(m.extra_hours_tarif) : tarif;
-  return Math.round(((heures - supp) * tarif + supp * tarifSupp) * jours * 100) / 100;
+  // Heures ajoutées à certaines journées (06/10/2026) : un montant à part.
+  const ajout = Math.max(0, Number(m?.montant_heures_ajoutees) || 0);
+  return Math.round((((heures - supp) * tarif + supp * tarifSupp) * jours + ajout) * 100) / 100;
 }
 
 function validateDocSync(file) {
