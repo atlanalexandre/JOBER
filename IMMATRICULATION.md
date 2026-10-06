@@ -156,6 +156,15 @@ Le jour venu :
    longue est la référence — autant repartir propre.)*
 3. Recréer les quatre tarifs dans le catalogue Stripe : **29,99 €** et
    **79,99 €**, mensuel et annuel.
+   - **Connect v2 (depuis le 06/10/2026)** : dans Paramètres > Connect > Profil de la
+     plateforme, signer l'attestation « Responsabilité des soldes négatifs » — ALANE
+     couvre les pertes des comptes de ses prestataires (choix d'Alexandre, recommandé
+     par l'équipe Stripe Accelerate pour les paiements et transferts distincts). Sans
+     elle, **aucun compte de virement ne peut être créé**. C'est un vrai engagement
+     financier en production : relire les rubriques avant de cocher.
+   - Donner à la clé restreinte du serveur la permission **Accounts v2 — Écriture**
+     (Développeurs > Clés API > clé restreinte > Modifier), sans quoi Stripe refuse
+     la création des comptes (`v2_account_storer_write`).
 4. Ne pas oublier la clé publique `VITE_STRIPE_PUBLIC_KEY` (`pk_live_…`) : elle doit
    venir du **même compte et du même mode** que `STRIPE_SECRET_KEY`, sinon le
    formulaire de paiement échoue.

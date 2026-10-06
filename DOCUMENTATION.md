@@ -2045,9 +2045,11 @@ dit « legacy ». Ils le sont par `POST /v2/core/accounts` (JSON, en-tête `Stri
 `POST /v2/core/account_links` (`use_case.type = account_onboarding`). Correspondance avec Express,
 vérifiée contre la spécification officielle (`stripe/openapi`) : `dashboard: express`,
 `defaults.responsibilities` = `fees_collector: application` et `losses_collector: application` (seule
-valeur que Stripe accepte pour un compte `recipient` seul — mais le compte Stripe d'ALANE refuse
-encore que la plateforme porte les pertes : **bloqué côté Stripe le 05/10/2026**, question posée à
-l'équipe Accelerate), configuration `recipient` avec la capacité `stripe_balance.stripe_transfers` (l'ancien
+valeur que Stripe accepte pour un compte `recipient` seul, confirmée par l'équipe Stripe Accelerate.
+Elle suppose que le **profil de plateforme** — Paramètres > Connect > Profil de la plateforme —
+déclare la plateforme responsable des soldes négatifs : sans cette attestation, Stripe refuse la
+création (« set losses_collector to stripe »). Attestation signée en mode test le 06/10/2026 ; **à
+refaire sur le compte de la société**, voir IMMATRICULATION.md §7), configuration `recipient` avec la capacité `stripe_balance.stripe_transfers` (l'ancien
 `capabilities[transfers]`). Les virements restent des `POST /v1/transfers` vers `acct_…`, inchangés.
 Les comptes déjà créés en v1 continuent de fonctionner. Le **statut** (`stripe_account_status`) est
 lu par `statutCompte()` : en v2 (`stripe_transfers.status = active` → `enabled`), à défaut en v1

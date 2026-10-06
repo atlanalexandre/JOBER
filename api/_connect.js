@@ -40,10 +40,9 @@
 //   • `fees_collector` et `losses_collector` : `"application"` — la seule valeur
 //     que Stripe accepte pour un compte qui ne fait que RECEVOIR des virements
 //     (configuration `recipient` seule ; message de Stripe en mode test, le
-//     05/10/2026). ⚠️ Le compte Stripe d'ALANE refuse pour l'instant que la
-//     plateforme porte les pertes (« set losses_collector to stripe ») : la
-//     création échoue tant que ce réglage n'est pas levé côté Stripe — question
-//     posée à l'équipe Stripe Accelerate. Ne pas fusionner avant ;
+//     05/10/2026), confirmée par l'équipe Stripe Accelerate. Elle exige que le
+//     profil de plateforme déclare ALANE responsable des soldes négatifs
+//     (attestation signée en mode test le 06/10/2026) ;
 //   • configuration `recipient`, capacité `stripe_balance.stripe_transfers`
 //     — l'équivalent de `capabilities[transfers]` : le compte REÇOIT des
 //     virements (`POST /v1/transfers`, inchangé : les identifiants `acct_…`
