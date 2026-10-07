@@ -84,3 +84,26 @@ describe("les disponibilités déclarées, sur chaque journée", () => {
     expect(heureDansCreneaux(12, ["Soir/Nuit (20h-6h)"])).toBe(false);
   });
 });
+
+import { plagesParJour } from "../../../api/_creneaux.js";
+
+describe("heures ajoutées et créneaux de nuit (relecture du 07/10/2026)", () => {
+  it("une journée prolongée de 3 h occupe le prestataire jusqu'à 16 h", () => {
+    const prolongee = { ...serie, heures_ajoutees_detail: [{ jour: "2026-10-14", heures: 3, tarif: 20 }] };
+    expect(plagesParJour(prolongee)["2026-10-14"]).toEqual([[540, 960]]);
+    expect(conflitDeCreneau(ponctuelle("2026-10-14", "14:00"), [prolongee])?.id).toBe("s");
+    expect(conflitDeCreneau(ponctuelle("2026-10-13", "14:00"), [prolongee]), "le mardi n'est pas prolongé").toBeNull();
+  });
+
+  it("22 h + 8 h occupe aussi le lendemain jusqu'à 6 h", () => {
+    const nuit = { id: "n", date: "2026-10-14", heure_debut: "22:00", hours: 8 };
+    expect(plagesParJour(nuit)).toEqual({ "2026-10-14": [[1320, 1440]], "2026-10-15": [[0, 360]] });
+    expect(conflitDeCreneau(ponctuelle("2026-10-15", "05:00"), [nuit])?.id).toBe("n");
+    expect(conflitDeCreneau(ponctuelle("2026-10-15", "07:00"), [nuit])).toBeNull();
+  });
+
+  it("dans l'autre sens : une nuit nouvelle voit la prestation du lendemain matin", () => {
+    const nuit = { id: "n", date: "2026-10-14", heure_debut: "22:00", hours: 8 };
+    expect(conflitDeCreneau(nuit, [ponctuelle("2026-10-15", "05:00")])?.id).toBe("p-2026-10-15");
+  });
+});
