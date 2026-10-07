@@ -4488,7 +4488,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${eur(ajoutsPerdus.valeur)} € remboursés sur les paiements de prolongation</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} remboursés sur les paiements de prolongation</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -5924,6 +5924,7 @@ export default async function handler(req, res) {
       const extraH = Number(mission.extra_hours_requested || 0);
 
       let devis = null;
+      let tarifAnnonce = 0;
       if (response === "accept" && extraH > 0) {
         // L'ACCEPTATION N'APPLIQUE PLUS RIEN.
         //
@@ -5940,6 +5941,7 @@ export default async function handler(req, res) {
         const tarif = payload.tarif_horaire == null
           ? Number(mission.tarif_horaire || 0)
           : Number(payload.tarif_horaire);
+        tarifAnnonce = tarif;
         if (!tarifSuppValide(tarif)) {
           return res.status(400).json({ error: `Tarif horaire invalide (entre ${TARIF_SUPP_MIN} et ${TARIF_SUPP_MAX} €).` });
         }
@@ -5998,8 +6000,11 @@ export default async function handler(req, res) {
             type: "mission",
             title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
             body: isAccepted
-              ? `Le prestataire accepte la prolongation de ${extraH} h à ${Number(devis?.partPrestataire ? devis.partPrestataire / extraH : 0).toFixed(2).replace(".", ",")} €/h, `
-                + `soit ${Number(devis?.total || 0).toFixed(2).replace(".", ",")} € à régler. `
+              // Le tarif ANNONCÉ, et non part ÷ heures : sur une commande de
+              // plusieurs journées, la part inclut leur nombre, et le client
+              // lisait un tarif multiplié d'autant (relecture du 07/10/2026).
+              ? `Le prestataire accepte la prolongation de ${extraH} h à ${euros(tarifAnnonce)}/h, `
+                + `soit ${euros(devis?.total)} à régler. `
                 + "La durée sera prolongée dès le règlement — rien n'est modifié avant."
               : "Le prestataire n'a pas pu accepter la prolongation.",
             ref_id: mission_id,

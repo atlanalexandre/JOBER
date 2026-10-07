@@ -93,6 +93,10 @@ test("modifier la commande ajoute les heures aux deux journées à venir", async
   expect(Number(a.montant_heures_ajoutees)).toBe(80);
   expect(Number(a.heures_ajoutees_total)).toBe(4);
   expect(Number(a.heures_ajoutees_dernier_jour), "la dernière journée finit 2 h plus tard").toBe(2);
+
+  // Le client lit le tarif annoncé, pas la part ÷ heures (qui comptait les deux journées).
+  const [n] = await sql(`select body from notifications where user_id = '${s.c.id}' and title like '%acceptées%' order by created_at desc limit 1`);
+  expect(n?.body || "").toContain("20,00\u00a0€/h");
 });
 
 test("arrêter la série rend les heures ajoutées aux journées qui n'auront pas lieu", async () => {

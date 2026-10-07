@@ -205,3 +205,18 @@ describe("le plafond de 24 h se juge sur la journée, ajouts compris", () => {
     expect(dureeMaxDesJournees(SERIE, ["2026-10-14"])).toBe(4);
   });
 });
+
+describe("une journée prolongée garde sa fenêtre ouverte", () => {
+  // Mercredi 14 : 9 h – 13 h, plus 2 h ajoutées : fin à 15 h.
+  const m = { ...SERIE, heures_ajoutees_detail: [{ jour: "2026-10-14", heures: 2, tarif: 20, paiement: "pi_a" }] };
+  it("la journée du mercredi finit à 15 h, pas à 13 h", () => {
+    const j = joursDeLaPrestation(m).find(x => x.jour === "2026-10-14");
+    expect(j.finMs - j.debutMs).toBe(6 * 3600000);
+  });
+  it("à 14 h 30, des heures supplémentaires se demandent encore", () => {
+    expect(porteeDemande(m, "jour", a("2026-10-14", "14:30")).ok).toBe(true);
+  });
+  it("à 15 h 21, la fenêtre est fermée", () => {
+    expect(porteeDemande(m, "jour", a("2026-10-14", "15:21")).ok).toBe(false);
+  });
+});
