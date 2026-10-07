@@ -75,6 +75,22 @@ test("1 h supplémentaire un jour de série est payée une fois, pas cinq", asyn
   expect(a.extra_hours_jours, "la portée est soldée").toBeNull();
 });
 
+test("réglée le lendemain, la prolongation reste inscrite au jour de la demande", async () => {
+  const s = await serieEnCours(1);
+  const d = await api("/api/missions", { action: "request_extra_hours", mission_id: s.m.id, extra_hours: 1, portee: "jour" }, s.c.jeton);
+  expect(d.statut, d.texte.slice(0, 200)).toBe(200);
+  const aujourdhui = jourParis(Date.now() - 3600e3);
+  const [l] = await sql(`select extra_hours_journee::text as j from missions where id = '${s.m.id}'`);
+  expect(l.j, "le jour de la demande est retenu").toBe(aujourdhui);
+  // La demande date de la veille : réglée aujourd'hui, elle doit rester à la veille.
+  const veille = decaler(aujourdhui, -1);
+  await sql(`update missions set extra_hours_journee = '${veille}' where id = '${s.m.id}'`);
+  await accepterEtPayer(s, 20);
+  const [a] = await sql(`select heures_ajoutees_detail, extra_hours_journee from missions where id = '${s.m.id}'`);
+  expect(a.heures_ajoutees_detail.map(x => x.jour)).toEqual([veille]);
+  expect(a.extra_hours_journee, "soldé après paiement").toBeNull();
+});
+
 test("modifier la commande ajoute les heures aux deux journées à venir", async () => {
   const s = await serieEnCours(1);
   const d = await api("/api/missions", { action: "request_extra_hours", mission_id: s.m.id, extra_hours: 2, portee: "commande" }, s.c.jeton);
