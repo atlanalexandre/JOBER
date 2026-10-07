@@ -126,15 +126,22 @@ async function checkPrestaireConflict(prestataire_id, mission, supabaseUrl, head
   try {
     let m = mission;
     if (m.date_fin === undefined && excludeMissionId) {
-      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${excludeMissionId}&select=date,date_debut,date_fin,heure_debut,hours`, { headers });
+      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${excludeMissionId}&select=date,date_debut,date_fin,heure_debut,hours,heures_ajoutees_detail`, { headers });
       const l = await r.json().catch(() => null);
-      if (r.ok && Array.isArray(l) && l[0]) m = { ...mission, date_debut: l[0].date_debut, date_fin: l[0].date_fin };
+      if (r.ok && Array.isArray(l) && l[0]) m = { ...mission, date_debut: l[0].date_debut, date_fin: l[0].date_fin, heures_ajoutees_detail: l[0].heures_ajoutees_detail };
       else console.error(`[missions] période de ${excludeMissionId} illisible (${r.status}) — conflit vérifié sur le premier jour seul.`);
     }
     const jours = joursCouverts(m);
     if (!jours.length) return null;
+    // La veille aussi : un créneau de nuit qui passe minuit occupe le premier jour.
+    const veille = new Date(`${jours[0]}T12:00:00Z`);
+    veille.setUTCDate(veille.getUTCDate() - 1);
+    // Le lendemain du dernier jour : un créneau de nuit de la nouvelle prestation y déborde.
+    const lendemain = new Date(`${jours[jours.length - 1]}T12:00:00Z`);
+    lendemain.setUTCDate(lendemain.getUTCDate() + 1);
     let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)`
-      + `&${filtrePeriode(jours[0], jours[jours.length - 1])}&select=id,date,date_debut,date_fin,heure_debut,hours,metier`;
+      + `&${filtrePeriode(veille.toISOString().slice(0, 10), lendemain.toISOString().slice(0, 10))}`
+      + `&select=id,date,date_debut,date_fin,heure_debut,hours,metier,heures_ajoutees_detail`;
     if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
     const res = await fetch(url, { headers });
     if (!res.ok) {
@@ -3549,6 +3556,13 @@ export default async function handler(req, res) {
     if (action === "verifier_creneau") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      // Les CLIENTS seulement : la réponse dit, jour par jour, quand un
+      // prestataire est pris. Ouverte à tout compte, elle laissait un
+      // concurrent reconstituer son agenda (relecture du 07/10/2026).
+      const rRole = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`, { headers });
+      const lRole = await rRole.json().catch(() => null);
+      if (!rRole.ok || !Array.isArray(lRole)) return res.status(503).json({ error: "Compte illisible — réessayez." });
+      if (lRole[0]?.role !== "client") return res.status(403).json({ error: "Réservé aux clients." });
       const { prestataire_id, date, date_fin, heure_debut, hours } = payload;
       const jourValide = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
       if (!isUuid(prestataire_id) || !jourValide(date) || (date_fin != null && !jourValide(date_fin))
@@ -6279,7 +6293,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,metier,sector,date,heure_debut,hours,ville,adresse,tarif_horaire,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,metier,sector,date,date_debut,date_fin,heure_debut,hours,heures_ajoutees_detail,ville,adresse,tarif_horaire,started_at`, { headers });
       const mData = await mr.json().catch(() => []);
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non concernée" });

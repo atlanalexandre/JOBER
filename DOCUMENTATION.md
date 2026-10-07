@@ -223,6 +223,12 @@ le conflit n'apparaissait qu'à l'acceptation, le client déjà débité. La ré
 « libre » ou le jour pris. Si le contrôle est indisponible, la réservation n'est pas bloquée : le
 prestataire reste libre de refuser, et le refus rembourse. Éprouvé par `e2e/72`.
 
+Deux compléments (relecture du 07/10/2026). Les plages comparées (`plagesParJour()`) comptent les
+**heures ajoutées** à une journée, et un créneau qui **passe minuit** occupe aussi le lendemain
+(22 h + 8 h jusqu'à 6 h) : la lecture couvre donc la veille et le lendemain de la période.
+`verifier_creneau` est **réservé aux clients** : ouvert à tout compte, il laissait un concurrent
+reconstituer, jour par jour, l'agenda d'un prestataire.
+
 **Les jours et créneaux déclarés sont contrôlés sur chaque journée** (06/10/2026). L'écran de
 réservation vérifiait « pas le dimanche » ou « le matin seulement » sur le premier jour de la
 période : une plage passant par un dimanche était acceptée chez un prestataire qui ne travaille
