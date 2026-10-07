@@ -3620,7 +3620,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire,heures_ajoutees_detail`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3686,6 +3686,31 @@ export default async function handler(req, res) {
             else if (piData.amount > 0) missionAmount = piData.amount / 100;
           }
         } catch (e) { console.error("[missions] montant Stripe illisible — repli sur le montant en base :", e.message); }
+      }
+
+      // Commande modifiée AVANT le début (06/10/2026) : chaque modification a
+      // été réglée par un paiement à part, ajouté à `montant_total`. Sans les
+      // en retirer, le remboursement de la réservation était calculé sur le
+      // tout — plus que ce paiement n'avait encaissé, et Stripe le refusait —,
+      // tandis que les paiements de modification n'étaient jamais rendus
+      // (relecture du 07/10/2026). Rien n'a été fait : ils sont remboursés,
+      // part du prestataire, et frais compris si le prestataire est défaillant.
+      const ajoutsAnnules = detailAjouts(mission);
+      const paiementsAjouts = {};
+      if (ajoutsAnnules.length) {
+        if (!STRIPE_SECRET_KEY) return res.status(503).json({ error: "Paiement indisponible — réessayez plus tard." });
+        for (const pi of [...new Set(ajoutsAnnules.map(l => l.paiement).filter(Boolean))]) {
+          const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(pi)}`,
+            { headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` } }).catch(() => null);
+          const d = r ? await r.json().catch(() => null) : null;
+          if (!r?.ok || !d?.id) {
+            console.error(`[cancel_client] paiement de modification ${pi} illisible (${r?.status}) — annulation refusée.`);
+            return res.status(503).json({ error: "Le détail de vos paiements n'a pas pu être lu — réessayez dans un instant." });
+          }
+          paiementsAjouts[pi] = (Number(d.amount_received) || 0) / 100;
+        }
+        const totalAjouts = Object.values(paiementsAjouts).reduce((t, v) => t + v, 0);
+        if (Number(mission.montant_total)) missionAmount = Math.max(0, Math.round((missionAmount - totalAjouts) * 100) / 100);
       }
       // Ce que la CARTE a réellement payé : le prix, moins la part réglée en
       // cashback (api/_cashback.js). Le remboursement se calculait sur le prix
@@ -3787,6 +3812,14 @@ export default async function handler(req, res) {
         ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
         : Math.round(payeCarte * 100);
       const keptAmount = retenirFrais ? fraisRetenus : 0;
+      // Les paiements de modification : la part du prestataire, ou tout s'il
+      // est défaillant — comme la réservation elle-même.
+      const parPaiementAjouts = {};
+      for (const l of ajoutsAnnules) {
+        if (!l.paiement) continue;
+        parPaiementAjouts[l.paiement] = Math.round(((parPaiementAjouts[l.paiement] || 0) + l.heures * l.tarif) * 100) / 100;
+      }
+      if (!retenirFrais) for (const pi of Object.keys(paiementsAjouts)) parPaiementAjouts[pi] = paiementsAjouts[pi];
       if (retenirFrais) {
         console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
       }
@@ -3805,6 +3838,15 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       let stripeRefundError = null;
       let walletRefunded = false;
+
+      // Les paiements de modification d'abord : un échec arrête tout, avant
+      // le moindre autre mouvement (un nouvel essai ne rembourse pas deux fois).
+      if (Object.keys(parPaiementAjouts).length) {
+        const rAj = await rembourserAjoutsNonFaits(parPaiementAjouts, STRIPE_SECRET_KEY, "annulation", "cancel_client");
+        if (!rAj.ok) {
+          return res.status(500).json({ error: "Le remboursement de vos heures ajoutées a échoué — la prestation n'a pas été annulée. Réessayez, ou contactez le support." });
+        }
+      }
       const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
