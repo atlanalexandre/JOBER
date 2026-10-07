@@ -3507,7 +3507,11 @@ tenu à part :
 Toutes fermées à l'écriture depuis le navigateur. Les cumuls se recalculent depuis le détail
 (`cumulsAjouts()`). Le plafond de 24 h se juge sur la journée visée la plus chargée, heures déjà
 ajoutées comprises (`dureeMaxDesJournees()`), à la demande comme à l'acceptation : `hours` seul
-laissait des demandes successives le même jour dépasser 24 h.
+laissait des demandes successives le même jour dépasser 24 h. La fin de **chaque** journée tient compte des heures déjà
+ajoutées ce jour-là (`joursDeLaPrestation()`) : seule la dernière en tenait compte, et la fenêtre
+d'une journée prolongée se fermait à sa fin d'origine, prestataire encore au travail (relecture
+du 07/10/2026). La notification d'acceptation annonce le tarif convenu : elle divisait la part par
+les heures, journées comprises, et triplait le tarif d'une commande de trois journées.
 
 **Arrêter une série rend les heures ajoutées qui ne seront pas faites.** À l'interruption
 (`cancel_in_progress`), `ajoutsNonFaits()` relève, dans le détail, les heures des journées
