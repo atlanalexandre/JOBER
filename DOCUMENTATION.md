@@ -165,6 +165,13 @@ propreté**, alors qu'il s'y était inscrit. Une réservation perdue, et sans tr
 le métier **du secteur consulté**, et non le premier déclaré, qui peut relever d'un tout autre
 secteur.
 
+**Une erreur du serveur ne vide plus le catalogue** (recette du 07/10/2026). `useProviders()`
+lisait le corps d'une réponse en erreur (`{ error }`) comme « aucun prestataire » et le gardait en
+mémoire pour toute la vie de la page : un seul échec passager, et chaque secteur affichait
+« 0 prestataire » jusqu'au rechargement, sans un mot dans la console. La lecture passe par
+`lireJsonAvecReprise()` (`src/lib/lecture.js`) : deux nouveaux essais, une erreur n'est jamais
+rendue comme un résultat, et l'échec final est journalisé sans être mis en cache.
+
 Le comptage par secteur, le comptage par métier et le filtre « métier » suivent la même règle.
 Un **filtre par ville** s'ajoute aux filtres de l'écran de secteur, alimenté par les villes où
 ce secteur a réellement des prestataires ; il n'apparaît qu'à partir de deux villes. La
