@@ -117,6 +117,29 @@ test("arrêter la série rend les heures ajoutées aux journées qui n'auront pa
   expect(Number(l.montant_total)).toBeLessThan(Number(avant.montant_total) - 80 + 0.01);
 });
 
+test("annuler avant le début rend aussi la commande modifiée, et la réservation à hauteur de son paiement", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  // Cinq journées de 4 h, payées d'avance, dans cinq jours.
+  const m = await reservationPayee({ prestataire: p, client: c, heures: 20, tarif: 13, dansJours: 5 });
+  const ok = await api("/api/missions", { action: "respond_mission", mission_id: m.id, response: "accept" }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  await sql(`update missions set hours = 4, date_debut = '${m.date}', date_fin = '${decaler(m.date, 4)}' where id = '${m.id}'`);
+  const d = await api("/api/missions", { action: "request_extra_hours", mission_id: m.id, extra_hours: 2, portee: "commande" }, c.jeton);
+  expect(d.statut, d.texte.slice(0, 200)).toBe(200);
+  const { pi } = await accepterEtPayer({ p, c, m }, 20);
+
+  const r = await api("/api/missions", { action: "cancel_client", mission_id: m.id }, c.jeton);
+  expect(r.statut, r.texte.slice(0, 200)).toBe(200);
+  const modif = await paiementStripe(pi);
+  expect(modif.rembourse, "2 h × 5 journées × 20 € rendus sur le paiement de la modification").toBe(20000);
+  const resa = await paiementStripe(m.paymentIntent);
+  expect(resa.rembourse, "la réservation est remboursée, hors frais").toBeGreaterThan(0);
+  expect(resa.rembourse).toBeLessThan(resa.preleve);
+  const [l] = await sql(`select status from missions where id = '${m.id}'`);
+  expect(l.status).toBe("cancelled");
+});
+
 test("entre deux journées, pas d'heures supplémentaires : on modifie la commande", async () => {
   // La journée d'aujourd'hui (4 h) a fini il y a deux heures.
   const s = await serieEnCours(6);

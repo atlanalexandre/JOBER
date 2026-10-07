@@ -146,17 +146,20 @@ export function versementAAnnuler(m) {
  * Rend au client les heures ajoutées qui ne seront pas faites — sur le
  * paiement de prolongation qui les avait réglées (06/10/2026).
  *
- * `parPaiement` : { pi_… : euros }, tel que le calcule `ajoutsNonFaits()`.
- * Chaque remboursement est plafonné à ce que son paiement a encaissé. La clé
- * d'idempotence (`suffixe` : le jour et l'issue) fait qu'un nouvel essai ne
- * rembourse pas deux fois — à condition que le MONTANT soit le même : plafonné
- * sur le reste remboursable, il changeait au second essai (déjà remboursé), et
- * Stripe refusait la requête comme un doublon divergent (recette du
- * 06/10/2026). Le plafond porte donc sur l'encaissé, fixe ; un paiement déjà
- * entièrement rendu compte comme fait.
+ * `parPaiement` : { pi_… : euros }. `suffixe` nomme l'opération (le jour et
+ * l'issue, ou « annulation ») : chaque remboursement en porte l'étiquette
+ * (`metadata[alane_operation]`).
+ *
+ * UN NOUVEL ESSAI NE REMBOURSE PAS DEUX FOIS, ET N'ÉCHOUE PAS. Le montant d'une
+ * même opération peut changer d'un essai à l'autre (heures écoulées, reste
+ * remboursable) : une clé d'idempotence fixe faisait alors refuser la requête
+ * par Stripe comme un doublon divergent, et l'interruption ne passait plus
+ * jamais (relecture du 07/10/2026). On cherche donc d'abord, chez Stripe, un
+ * remboursement de ce paiement portant l'étiquette de l'opération : s'il
+ * existe, c'est fait.
  *
  * Retourne { ok, centimes } — ok à false au premier échec : l'appelant
- * n'enregistre alors pas l'interruption.
+ * n'enregistre alors pas l'opération.
  */
 export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contexte) {
   let centimes = 0;
@@ -164,19 +167,29 @@ export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contex
     const voulu = Math.round(Number(euros) * 100);
     if (!(voulu > 0)) continue;
     try {
+      const rl = await fetch(`https://api.stripe.com/v1/refunds?payment_intent=${encodeURIComponent(pi)}&limit=100`,
+        { headers: { "Authorization": `Bearer ${cle}` } });
+      const liste = await rl.json().catch(() => null);
+      if (!rl.ok || !Array.isArray(liste?.data)) throw new Error(`remboursements illisibles (${rl.status})`);
+      const deja = liste.data.find(r => r?.metadata?.alane_operation === suffixe && !["failed", "canceled"].includes(r.status));
+      if (deja) { centimes += Number(deja.amount) || 0; continue; }
+
       const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(pi)}?expand[]=latest_charge`,
         { headers: { "Authorization": `Bearer ${cle}` } });
       const p = await r.json().catch(() => null);
       if (!r.ok || !p?.id) throw new Error(`paiement illisible (${r.status})`);
-      const encaisse = Math.max(0, Number(p.amount_received) || 0);
-      const montant = Math.min(voulu, encaisse);
-      if (montant < voulu) console.warn(`[${contexte}] ${pi} : ${voulu} c voulus, ${encaisse} c encaissés.`);
+      const reste = Math.max(0, (Number(p.amount_received) || 0) - (Number(p.latest_charge?.amount_refunded) || 0));
+      const montant = Math.min(voulu, reste);
+      if (montant < voulu) console.warn(`[${contexte}] ${pi} : ${voulu} c voulus, ${reste} c encore remboursables.`);
       if (montant <= 0) continue;
       const rf = await fetch("https://api.stripe.com/v1/refunds", {
         method: "POST",
         headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded",
-          "Idempotency-Key": `refund-ajout-${pi}-${suffixe}` },
-        body: new URLSearchParams({ payment_intent: pi, amount: String(montant), reason: "requested_by_customer" }).toString(),
+          // Le montant fait partie de la clé : un même appel rejoué se
+          // retrouve, un montant différent n'est jamais refusé.
+          "Idempotency-Key": `refund-ajout-${pi}-${suffixe}-${montant}` },
+        body: new URLSearchParams({ payment_intent: pi, amount: String(montant), reason: "requested_by_customer",
+          "metadata[alane_operation]": suffixe }).toString(),
       });
       const d = await rf.json().catch(() => ({}));
       if (d?.error?.code === "charge_already_refunded") continue;

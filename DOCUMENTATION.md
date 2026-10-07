@@ -3518,6 +3518,20 @@ puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — l
 déduisent de leur différence. Un échec de ce remboursement arrête l'interruption avant tout autre
 mouvement. Les frais de service de ces paiements restent acquis. Éprouvé par `e2e/70`.
 
+**Annuler avant le début rend aussi les modifications de commande** (relecture du 07/10/2026).
+Une commande peut être modifiée avant la première journée, et chaque modification est un paiement
+à part, ajouté à `montant_total`. `cancel_client` calculait le remboursement de la réservation sur
+ce total : plus que son paiement n'avait encaissé, et Stripe le refusait ; les paiements de
+modification, eux, n'étaient jamais rendus. Ils sont désormais lus chez Stripe, retirés du total,
+et remboursés — la part du prestataire, ou tout si le prestataire est défaillant —, avant la
+réservation. Un échec arrête l'annulation avant tout mouvement.
+
+**Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
+l'étiquette de son opération (`metadata[alane_operation]` : le jour et l'issue, ou
+« annulation ») ; `rembourserAjoutsNonFaits()` cherche d'abord chez Stripe un remboursement de
+cette opération et le compte comme fait. Une clé d'idempotence fixe faisait refuser un nouvel
+essai dont le montant avait changé (heures écoulées) : la journée ne pouvait plus être écourtée.
+
 > **À savoir** : une modification payée après le début d'une journée qu'elle couvrait (demande
 > faite la veille, réglée le lendemain à midi) s'applique quand même à cette journée. Le prix a
 > été annoncé et payé pour ce nombre de journées ; le refuser après paiement serait pire.
