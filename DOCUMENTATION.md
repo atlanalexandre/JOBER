@@ -3512,6 +3512,7 @@ tenu à part :
 |---|---|
 | `extra_hours_portee` | `jour` ou `commande` — la demande en cours ; NULL sinon |
 | `extra_hours_jours` | nombre de journées couvertes par la demande en cours (> 0) |
+| `extra_hours_journee` | la journée visée par une demande « jour » en cours, retenue à la demande (migration `2026-10-07_heures_supp_jour_de_la_demande.sql`) : réglée le lendemain, la prolongation s'inscrivait au lendemain |
 | `montant_heures_ajoutees` | part du prestataire ajoutée, en € (cumul) — ajoutée par `montantsDeCloture()`, la facture et `montantPrestataire()` |
 | `heures_ajoutees_total` | heures ajoutées, toutes journées (cumul) |
 | `heures_ajoutees_dernier_jour` | heures ajoutées au dernier jour : elles reculent la fin (`finPrestationMs`), donc l'échéance du versement |

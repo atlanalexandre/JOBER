@@ -5910,7 +5910,10 @@ export default async function handler(req, res) {
       // Enregistrer la demande
       const demandeEcrite = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`,
         { extra_hours_requested: eh, extra_hours_status: "pending",
-          ...(portee ? { extra_hours_portee: portee.portee, extra_hours_jours: portee.jours } : {}) },
+          ...(portee ? { extra_hours_portee: portee.portee, extra_hours_jours: portee.jours,
+            // Le jour de la demande, retenu : réglée le lendemain, la
+            // prolongation s'inscrivait au lendemain (relecture du 07/10/2026).
+            extra_hours_journee: portee.portee === "jour" ? portee.journee : null } : {}) },
         headers, "heures_supp/demande");
       if (!demandeEcrite) return res.status(500).json({ error: "Votre demande n'a pas pu être enregistrée. Réessayez." });
 
@@ -5973,7 +5976,7 @@ export default async function handler(req, res) {
       if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
       // Vérifier que le prestataire est bien assigné à cette mission
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date,date_debut,date_fin,heure_debut,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee,heures_ajoutees_detail`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date,date_debut,date_fin,heure_debut,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee,extra_hours_journee,heures_ajoutees_detail`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -6005,7 +6008,8 @@ export default async function handler(req, res) {
         const enCoursR = porteeDemande(mission, "jour");
         const dureeVisee = Number(mission.extra_hours_jours) > 0
           ? dureeMaxDesJournees(mission, journeesCouvertes(mission, mission.extra_hours_portee,
-              Number(mission.extra_hours_jours), enCoursR.ok ? enCoursR.journee : dateDuJourFr()))
+              Number(mission.extra_hours_jours),
+              String(mission.extra_hours_journee || "").slice(0, 10) || (enCoursR.ok ? enCoursR.journee : dateDuJourFr())))
           : Number(mission.hours || 0);
         if (dureeVisee + extraH > 24) {
           return res.status(400).json({ error: "La durée totale dépasserait 24 h." });
@@ -6036,7 +6040,7 @@ export default async function handler(req, res) {
         // débité, aucune heure en plus (audit « prestations », 01/10/2026).
         const rRefus = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.pending`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null, extra_hours_portee: null, extra_hours_jours: null }),
+          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null, extra_hours_portee: null, extra_hours_jours: null, extra_hours_journee: null }),
         });
         const refusees = await rRefus.json().catch(() => null);
         if (!rRefus.ok || !Array.isArray(refusees)) {
@@ -6106,7 +6110,7 @@ export default async function handler(req, res) {
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
         + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
         + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,`
-        + `extra_hours_portee,extra_hours_jours,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
+        + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
         { headers }
       );
       const mission = (await mr.json().catch(() => []))[0];
@@ -6211,7 +6215,10 @@ export default async function handler(req, res) {
       if (parJournee) {
         const enCours = porteeDemande(mission, "jour");
         const couvertes = journeesCouvertes(mission, mission.extra_hours_portee,
-          Number(mission.extra_hours_jours), enCours.ok ? enCours.journee : dateDuJourFr());
+          Number(mission.extra_hours_jours),
+          // Le jour retenu à la demande fait foi ; à défaut (demande antérieure
+          // au 07/10/2026), la journée en cours.
+          String(mission.extra_hours_journee || "").slice(0, 10) || (enCours.ok ? enCours.journee : dateDuJourFr()));
         detailAjoute = [
           ...detailAjouts(mission),
           ...couvertes.map(jour => ({ jour, heures: extraH, tarif: Number(mission.extra_hours_tarif), paiement: payment_intent })),
@@ -6223,6 +6230,7 @@ export default async function handler(req, res) {
             montant_heures_ajoutees: Math.round((Number(mission.montant_heures_ajoutees || 0) + devisC.partPrestataire) * 100) / 100,
             extra_hours_portee: null,
             extra_hours_jours: null,
+            extra_hours_journee: null,
           }
         : {
             hours: nouvellesHeures,
