@@ -18,6 +18,7 @@ import { fenetreHeuresSupp, finPremierJourMs } from "../../api/_temps.js";
 import { prixHeuresSupp, surPlusieursJours, porteeDemande } from "../../api/_heures_supp.js";
 import { libelleConstat } from "../../api/_localisation.js";
 import { joursCouverts, premiereIndisponibilite } from "../../api/_creneaux.js";
+import { lireJsonAvecReprise } from "../lib/lecture.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 // Un prestataire exerce-t-il dans ce secteur, ce métier ?
@@ -1574,8 +1575,14 @@ export function useProviders() {
     if (cacheValid) { setProviders(_providersCache); setLoading(false); return; }
     if (!cacheValid) { _providersCachePromise = null; }
     if (!_providersCachePromise) {
-      _providersCachePromise = fetch("/api/prestataires")
-        .then(r => r.json())
+      // Une réponse en ERREUR ne devient plus une liste vide mise en mémoire.
+      // Le corps d'une erreur (`{ error }`) se lisait comme « aucun
+      // prestataire » et restait en cache pour toute la durée de vie de la
+      // page : un seul échec passager du serveur, et le catalogue affichait
+      // « 0 prestataire » partout jusqu'au rechargement — sans un mot dans la
+      // console (recette du 07/10/2026). On réessaie deux fois, et l'échec est
+      // journalisé.
+      _providersCachePromise = lireJsonAvecReprise("/api/prestataires")
         .then(({ prestataires = [] }) => {
           const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
           const mapped = prestataires.map(p => {
@@ -1629,7 +1636,11 @@ export function useProviders() {
           _providersCacheTs = Date.now();
           return mapped;
         })
-        .catch(() => { _providersCachePromise = null; return []; });
+        .catch((e) => {
+          console.error("[prestataires] liste illisible :", e.message);
+          _providersCachePromise = null;
+          return [];
+        });
     }
     _providersCachePromise.then(mapped => { setProviders(mapped); setLoading(false); });
   }, []);

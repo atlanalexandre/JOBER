@@ -165,6 +165,13 @@ propreté**, alors qu'il s'y était inscrit. Une réservation perdue, et sans tr
 le métier **du secteur consulté**, et non le premier déclaré, qui peut relever d'un tout autre
 secteur.
 
+**Une erreur du serveur ne vide plus le catalogue** (recette du 07/10/2026). `useProviders()`
+lisait le corps d'une réponse en erreur (`{ error }`) comme « aucun prestataire » et le gardait en
+mémoire pour toute la vie de la page : un seul échec passager, et chaque secteur affichait
+« 0 prestataire » jusqu'au rechargement, sans un mot dans la console. La lecture passe par
+`lireJsonAvecReprise()` (`src/lib/lecture.js`) : deux nouveaux essais, une erreur n'est jamais
+rendue comme un résultat, et l'échec final est journalisé sans être mis en cache.
+
 Le comptage par secteur, le comptage par métier et le filtre « métier » suivent la même règle.
 Un **filtre par ville** s'ajoute aux filtres de l'écran de secteur, alimenté par les villes où
 ce secteur a réellement des prestataires ; il n'apparaît qu'à partir de deux villes. La
@@ -222,6 +229,12 @@ ses propres prestations : un prestataire réservé par un autre client paraissai
 le conflit n'apparaissait qu'à l'acceptation, le client déjà débité. La réponse ne dit que
 « libre » ou le jour pris. Si le contrôle est indisponible, la réservation n'est pas bloquée : le
 prestataire reste libre de refuser, et le refus rembourse. Éprouvé par `e2e/72`.
+
+Deux compléments (relecture du 07/10/2026). Les plages comparées (`plagesParJour()`) comptent les
+**heures ajoutées** à une journée, et un créneau qui **passe minuit** occupe aussi le lendemain
+(22 h + 8 h jusqu'à 6 h) : la lecture couvre donc la veille et le lendemain de la période.
+`verifier_creneau` est **réservé aux clients** : ouvert à tout compte, il laissait un concurrent
+reconstituer, jour par jour, l'agenda d'un prestataire.
 
 **Les jours et créneaux déclarés sont contrôlés sur chaque journée** (06/10/2026). L'écran de
 réservation vérifiait « pas le dimanche » ou « le matin seulement » sur le premier jour de la
@@ -3508,7 +3521,11 @@ tenu à part :
 Toutes fermées à l'écriture depuis le navigateur. Les cumuls se recalculent depuis le détail
 (`cumulsAjouts()`). Le plafond de 24 h se juge sur la journée visée la plus chargée, heures déjà
 ajoutées comprises (`dureeMaxDesJournees()`), à la demande comme à l'acceptation : `hours` seul
-laissait des demandes successives le même jour dépasser 24 h.
+laissait des demandes successives le même jour dépasser 24 h. La fin de **chaque** journée tient compte des heures déjà
+ajoutées ce jour-là (`joursDeLaPrestation()`) : seule la dernière en tenait compte, et la fenêtre
+d'une journée prolongée se fermait à sa fin d'origine, prestataire encore au travail (relecture
+du 07/10/2026). La notification d'acceptation annonce le tarif convenu : elle divisait la part par
+les heures, journées comprises, et triplait le tarif d'une commande de trois journées.
 
 **Arrêter une série rend les heures ajoutées qui ne seront pas faites.** À l'interruption
 (`cancel_in_progress`), `ajoutsNonFaits()` relève, dans le détail, les heures des journées
@@ -3518,6 +3535,20 @@ d'abord). Elles sont remboursées **sur le paiement de prolongation qui les avai
 puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — les frais se
 déduisent de leur différence. Un échec de ce remboursement arrête l'interruption avant tout autre
 mouvement. Les frais de service de ces paiements restent acquis. Éprouvé par `e2e/70`.
+
+**Annuler avant le début rend aussi les modifications de commande** (relecture du 07/10/2026).
+Une commande peut être modifiée avant la première journée, et chaque modification est un paiement
+à part, ajouté à `montant_total`. `cancel_client` calculait le remboursement de la réservation sur
+ce total : plus que son paiement n'avait encaissé, et Stripe le refusait ; les paiements de
+modification, eux, n'étaient jamais rendus. Ils sont désormais lus chez Stripe, retirés du total,
+et remboursés — la part du prestataire, ou tout si le prestataire est défaillant —, avant la
+réservation. Un échec arrête l'annulation avant tout mouvement.
+
+**Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
+l'étiquette de son opération (`metadata[alane_operation]` : le jour et l'issue, ou
+« annulation ») ; `rembourserAjoutsNonFaits()` cherche d'abord chez Stripe un remboursement de
+cette opération et le compte comme fait. Une clé d'idempotence fixe faisait refuser un nouvel
+essai dont le montant avait changé (heures écoulées) : la journée ne pouvait plus être écourtée.
 
 > **À savoir** : une modification payée après le début d'une journée qu'elle couvrait (demande
 > faite la veille, réglée le lendemain à midi) s'applique quand même à cette journée. Le prix a

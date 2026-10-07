@@ -128,7 +128,10 @@ export function surPlusieursJours(m) {
 
 /**
  * Les journées de la prestation, avec leur début et leur fin prévus (ms).
- * La fin du dernier jour tient compte des heures déjà ajoutées à ce jour-là.
+ * La fin de CHAQUE journée tient compte des heures déjà ajoutées à ce jour-là :
+ * seule la dernière en tenait compte, et la fenêtre d'une journée prolongée se
+ * fermait 20 minutes après sa fin d'origine, prestataire encore au travail
+ * (relecture du 07/10/2026).
  */
 export function joursDeLaPrestation(m) {
   const premier = String(m?.date_debut || m?.date || "").slice(0, 10);
@@ -144,10 +147,14 @@ export function joursDeLaPrestation(m) {
     jours.push({ jour, debutMs, finMs: debutMs === null ? null : debutMs + heures * 3600000 });
     d.setUTCDate(d.getUTCDate() + 1);
   }
-  if (jours.length) {
-    const der = jours[jours.length - 1];
-    if (der.finMs !== null) der.finMs += (Number(m?.heures_ajoutees_dernier_jour) || 0) * 3600000;
-  }
+  const ajouts = detailAjouts(m);
+  jours.forEach((j, i) => {
+    if (j.finMs === null) return;
+    let ajout = ajouts.filter(l => l.jour === j.jour).reduce((t, l) => t + l.heures, 0);
+    // Le cumul du dernier jour vaut aussi pour une ligne sans détail.
+    if (i === jours.length - 1) ajout = Math.max(ajout, Number(m?.heures_ajoutees_dernier_jour) || 0);
+    j.finMs += ajout * 3600000;
+  });
   return jours;
 }
 

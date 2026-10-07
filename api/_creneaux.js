@@ -41,24 +41,58 @@ export function minutesDuCreneau(m) {
 }
 
 /**
+ * Les plages occupées, jour par jour : { "AAAA-MM-JJ": [[début, fin], …] } en
+ * minutes. Deux choses que le seul couple heure de début + durée ignorait
+ * (relecture du 07/10/2026) :
+ *   • les heures AJOUTÉES à une journée (`heures_ajoutees_detail`) la
+ *     prolongent ;
+ *   • un créneau qui passe minuit déborde sur le lendemain — 22 h + 8 h
+ *     occupe aussi le lendemain jusqu'à 6 h.
+ */
+export function plagesParJour(m) {
+  const creneau = minutesDuCreneau(m);
+  const plages = {};
+  if (!creneau) return plages;
+  const detail = Array.isArray(m?.heures_ajoutees_detail) ? m.heures_ajoutees_detail : [];
+  const ajout = (j) => detail.filter(l => String(l?.jour || "").slice(0, 10) === j)
+    .reduce((t, l) => t + (Number(l?.heures) || 0), 0);
+  const ajouter = (j, d, f) => { (plages[j] ||= []).push([d, f]); };
+  for (const j of joursCouverts(m)) {
+    const fin = creneau[1] + Math.round(ajout(j) * 60);
+    ajouter(j, creneau[0], Math.min(fin, 1440));
+    if (fin > 1440) {
+      const d = new Date(`${j}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      ajouter(d.toISOString().slice(0, 10), 0, Math.min(fin - 1440, 1440));
+    }
+  }
+  return plages;
+}
+
+/**
  * La première prestation existante en conflit avec `nouvelle`, ou null.
  * Une prestation sans heure de début n'est pas comparée (comportement
  * historique : on ne bloque pas sur un horaire qu'on ne connaît pas).
  */
 export function conflitDeCreneau(nouvelle, existantes) {
-  const creneau = minutesDuCreneau(nouvelle);
-  const jours = new Set(joursCouverts(nouvelle));
-  if (!creneau || !jours.size) return null;
+  const miennes = plagesParJour(nouvelle);
+  if (!Object.keys(miennes).length) return null;
   for (const e of existantes || []) {
-    const ce = minutesDuCreneau(e);
-    if (!ce) continue;
-    if (!joursCouverts(e).some(j => jours.has(j))) continue;
-    if (creneau[0] < ce[1] && ce[0] < creneau[1]) return e;
+    const siennes = plagesParJour(e);
+    for (const [j, plages] of Object.entries(siennes)) {
+      for (const [d1, f1] of miennes[j] || []) {
+        if (plages.some(([d2, f2]) => d1 < f2 && d2 < f1)) return e;
+      }
+    }
   }
   return null;
 }
 
-/** Filtre PostgREST : les prestations qui touchent la période [premier, dernier]. */
+/**
+ * Filtre PostgREST : les prestations qui touchent la période [premier, dernier].
+ * L'appelant élargit la période d'un jour avant : un créneau de nuit de la
+ * veille déborde sur le premier jour.
+ */
 export function filtrePeriode(premier, dernier) {
   return `or=(and(date.gte.${premier},date.lte.${dernier}),and(date_debut.lte.${dernier},date_fin.gte.${premier}))`;
 }

@@ -126,15 +126,22 @@ async function checkPrestaireConflict(prestataire_id, mission, supabaseUrl, head
   try {
     let m = mission;
     if (m.date_fin === undefined && excludeMissionId) {
-      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${excludeMissionId}&select=date,date_debut,date_fin,heure_debut,hours`, { headers });
+      const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${excludeMissionId}&select=date,date_debut,date_fin,heure_debut,hours,heures_ajoutees_detail`, { headers });
       const l = await r.json().catch(() => null);
-      if (r.ok && Array.isArray(l) && l[0]) m = { ...mission, date_debut: l[0].date_debut, date_fin: l[0].date_fin };
+      if (r.ok && Array.isArray(l) && l[0]) m = { ...mission, date_debut: l[0].date_debut, date_fin: l[0].date_fin, heures_ajoutees_detail: l[0].heures_ajoutees_detail };
       else console.error(`[missions] période de ${excludeMissionId} illisible (${r.status}) — conflit vérifié sur le premier jour seul.`);
     }
     const jours = joursCouverts(m);
     if (!jours.length) return null;
+    // La veille aussi : un créneau de nuit qui passe minuit occupe le premier jour.
+    const veille = new Date(`${jours[0]}T12:00:00Z`);
+    veille.setUTCDate(veille.getUTCDate() - 1);
+    // Le lendemain du dernier jour : un créneau de nuit de la nouvelle prestation y déborde.
+    const lendemain = new Date(`${jours[jours.length - 1]}T12:00:00Z`);
+    lendemain.setUTCDate(lendemain.getUTCDate() + 1);
     let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)`
-      + `&${filtrePeriode(jours[0], jours[jours.length - 1])}&select=id,date,date_debut,date_fin,heure_debut,hours,metier`;
+      + `&${filtrePeriode(veille.toISOString().slice(0, 10), lendemain.toISOString().slice(0, 10))}`
+      + `&select=id,date,date_debut,date_fin,heure_debut,hours,metier,heures_ajoutees_detail`;
     if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
     const res = await fetch(url, { headers });
     if (!res.ok) {
@@ -3549,6 +3556,13 @@ export default async function handler(req, res) {
     if (action === "verifier_creneau") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      // Les CLIENTS seulement : la réponse dit, jour par jour, quand un
+      // prestataire est pris. Ouverte à tout compte, elle laissait un
+      // concurrent reconstituer son agenda (relecture du 07/10/2026).
+      const rRole = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`, { headers });
+      const lRole = await rRole.json().catch(() => null);
+      if (!rRole.ok || !Array.isArray(lRole)) return res.status(503).json({ error: "Compte illisible — réessayez." });
+      if (lRole[0]?.role !== "client") return res.status(403).json({ error: "Réservé aux clients." });
       const { prestataire_id, date, date_fin, heure_debut, hours } = payload;
       const jourValide = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
       if (!isUuid(prestataire_id) || !jourValide(date) || (date_fin != null && !jourValide(date_fin))
@@ -3620,7 +3634,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire,heures_ajoutees_detail`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3686,6 +3700,31 @@ export default async function handler(req, res) {
             else if (piData.amount > 0) missionAmount = piData.amount / 100;
           }
         } catch (e) { console.error("[missions] montant Stripe illisible — repli sur le montant en base :", e.message); }
+      }
+
+      // Commande modifiée AVANT le début (06/10/2026) : chaque modification a
+      // été réglée par un paiement à part, ajouté à `montant_total`. Sans les
+      // en retirer, le remboursement de la réservation était calculé sur le
+      // tout — plus que ce paiement n'avait encaissé, et Stripe le refusait —,
+      // tandis que les paiements de modification n'étaient jamais rendus
+      // (relecture du 07/10/2026). Rien n'a été fait : ils sont remboursés,
+      // part du prestataire, et frais compris si le prestataire est défaillant.
+      const ajoutsAnnules = detailAjouts(mission);
+      const paiementsAjouts = {};
+      if (ajoutsAnnules.length) {
+        if (!STRIPE_SECRET_KEY) return res.status(503).json({ error: "Paiement indisponible — réessayez plus tard." });
+        for (const pi of [...new Set(ajoutsAnnules.map(l => l.paiement).filter(Boolean))]) {
+          const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(pi)}`,
+            { headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` } }).catch(() => null);
+          const d = r ? await r.json().catch(() => null) : null;
+          if (!r?.ok || !d?.id) {
+            console.error(`[cancel_client] paiement de modification ${pi} illisible (${r?.status}) — annulation refusée.`);
+            return res.status(503).json({ error: "Le détail de vos paiements n'a pas pu être lu — réessayez dans un instant." });
+          }
+          paiementsAjouts[pi] = (Number(d.amount_received) || 0) / 100;
+        }
+        const totalAjouts = Object.values(paiementsAjouts).reduce((t, v) => t + v, 0);
+        if (Number(mission.montant_total)) missionAmount = Math.max(0, Math.round((missionAmount - totalAjouts) * 100) / 100);
       }
       // Ce que la CARTE a réellement payé : le prix, moins la part réglée en
       // cashback (api/_cashback.js). Le remboursement se calculait sur le prix
@@ -3787,6 +3826,14 @@ export default async function handler(req, res) {
         ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
         : Math.round(payeCarte * 100);
       const keptAmount = retenirFrais ? fraisRetenus : 0;
+      // Les paiements de modification : la part du prestataire, ou tout s'il
+      // est défaillant — comme la réservation elle-même.
+      const parPaiementAjouts = {};
+      for (const l of ajoutsAnnules) {
+        if (!l.paiement) continue;
+        parPaiementAjouts[l.paiement] = Math.round(((parPaiementAjouts[l.paiement] || 0) + l.heures * l.tarif) * 100) / 100;
+      }
+      if (!retenirFrais) for (const pi of Object.keys(paiementsAjouts)) parPaiementAjouts[pi] = paiementsAjouts[pi];
       if (retenirFrais) {
         console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
       }
@@ -3805,6 +3852,15 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       let stripeRefundError = null;
       let walletRefunded = false;
+
+      // Les paiements de modification d'abord : un échec arrête tout, avant
+      // le moindre autre mouvement (un nouvel essai ne rembourse pas deux fois).
+      if (Object.keys(parPaiementAjouts).length) {
+        const rAj = await rembourserAjoutsNonFaits(parPaiementAjouts, STRIPE_SECRET_KEY, "annulation", "cancel_client");
+        if (!rAj.ok) {
+          return res.status(500).json({ error: "Le remboursement de vos heures ajoutées a échoué — la prestation n'a pas été annulée. Réessayez, ou contactez le support." });
+        }
+      }
       const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
@@ -4488,7 +4544,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${eur(ajoutsPerdus.valeur)} € remboursés sur les paiements de prolongation</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} remboursés sur les paiements de prolongation</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -5927,6 +5983,7 @@ export default async function handler(req, res) {
       const extraH = Number(mission.extra_hours_requested || 0);
 
       let devis = null;
+      let tarifAnnonce = 0;
       if (response === "accept" && extraH > 0) {
         // L'ACCEPTATION N'APPLIQUE PLUS RIEN.
         //
@@ -5943,6 +6000,7 @@ export default async function handler(req, res) {
         const tarif = payload.tarif_horaire == null
           ? Number(mission.tarif_horaire || 0)
           : Number(payload.tarif_horaire);
+        tarifAnnonce = tarif;
         if (!tarifSuppValide(tarif)) {
           return res.status(400).json({ error: `Tarif horaire invalide (entre ${TARIF_SUPP_MIN} et ${TARIF_SUPP_MAX} €).` });
         }
@@ -6002,8 +6060,11 @@ export default async function handler(req, res) {
             type: "mission",
             title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
             body: isAccepted
-              ? `Le prestataire accepte la prolongation de ${extraH} h à ${Number(devis?.partPrestataire ? devis.partPrestataire / extraH : 0).toFixed(2).replace(".", ",")} €/h, `
-                + `soit ${Number(devis?.total || 0).toFixed(2).replace(".", ",")} € à régler. `
+              // Le tarif ANNONCÉ, et non part ÷ heures : sur une commande de
+              // plusieurs journées, la part inclut leur nombre, et le client
+              // lisait un tarif multiplié d'autant (relecture du 07/10/2026).
+              ? `Le prestataire accepte la prolongation de ${extraH} h à ${euros(tarifAnnonce)}/h, `
+                + `soit ${euros(devis?.total)} à régler. `
                 + "La durée sera prolongée dès le règlement — rien n'est modifié avant."
               : "Le prestataire n'a pas pu accepter la prolongation.",
             ref_id: mission_id,
@@ -6240,7 +6301,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,metier,sector,date,heure_debut,hours,ville,adresse,tarif_horaire,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,metier,sector,date,date_debut,date_fin,heure_debut,hours,heures_ajoutees_detail,ville,adresse,tarif_horaire,started_at`, { headers });
       const mData = await mr.json().catch(() => []);
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non concernée" });

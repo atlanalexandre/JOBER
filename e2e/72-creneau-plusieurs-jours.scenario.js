@@ -66,6 +66,25 @@ test("le prestataire ne peut pas accepter une série qui chevauche une prestatio
   expect(l.status, "toujours en attente").toBe("pending_acceptance");
 });
 
+test("une journée prolongée occupe le prestataire jusqu'à sa nouvelle fin", async () => {
+  const p = await prestataireOperationnel();
+  const m = await priseLe(p, 6);
+  // 9 h – 17 h, plus 3 h ajoutées ce jour-là : jusqu'à 20 h.
+  await sql(`update missions set heures_ajoutees_detail = '[{"jour":"${jour(6)}","heures":3,"tarif":13,"paiement":null}]'::jsonb where id = '${m.id}'`);
+  const b = await client();
+  const r = await api("/api/missions", { action: "verifier_creneau", prestataire_id: p.id,
+    date: jour(6), heure_debut: "18:00", hours: 2 }, b.jeton);
+  expect(r.json).toEqual({ libre: false, jour: jour(6) });
+});
+
+test("seul un client peut demander si un prestataire est libre", async () => {
+  const p = await prestataireOperationnel();
+  const autre = await prestataireOperationnel();
+  const r = await api("/api/missions", { action: "verifier_creneau", prestataire_id: p.id,
+    date: jour(6), heure_debut: "10:00", hours: 2 }, autre.jeton);
+  expect(r.statut, "un prestataire ne lit pas l'agenda d'un autre").toBe(403);
+});
+
 test("une demande mal formée est refusée", async () => {
   const b = await client();
   const r = await api("/api/missions", { action: "verifier_creneau", prestataire_id: "x", date: "demain", heure_debut: "9h" }, b.jeton);
