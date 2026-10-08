@@ -175,6 +175,16 @@ rendue comme un résultat, et l'échec final est journalisé sans être mis en c
 « 0 prestataire » comme une plateforme vide), et seules une coupure réseau ou une erreur 5xx sont
 réessayées : un 4xx ne changera pas au second essai.
 
+**La recette se nettoie chaque nuit** (08/10/2026). Chaque recette crée des dizaines de comptes de
+test : le 08/10/2026, il y en avait 5 593, la tâche planifiée mettait 104 s et des scénarios
+échouaient sur des délais dépassés. Après un premier nettoyage (2 840 comptes de plus de sept
+jours retirés), elle met 60 s. Une tâche pg_cron **de la base de recette seulement**
+(`recette-nettoyage-comptes-test`, 3 h UTC) appelle `recette_nettoyer_comptes_test()`, qui
+supprime les comptes au motif des scénarios créés il y a plus de sept jours, avec leurs prestations
+et messages (`migrations/RECETTE_SEULEMENT_2026-10-08_nettoyage_comptes_test.sql`). Elle n'existe
+pas en production. La session Claude Code ne lance pas elle-même ces suppressions : son garde-fou
+refuse les suppressions massives.
+
 **Le catalogue est gardé 30 secondes par le réseau de Vercel** (08/10/2026,
 `Cache-Control: public, s-maxage=30, stale-while-revalidate=120`). Chaque calcul relit tous les
 comptes de la plateforme, clients compris, pour lire les métadonnées des prestataires : 3 à 4 s
