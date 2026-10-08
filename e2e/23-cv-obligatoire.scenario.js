@@ -40,7 +40,7 @@ test("CV avec l'expérience du métier : aucun avertissement, et le catalogue le
   const p = await prestataireOperationnel();
   expect(p.ouverture.statut, p.ouverture.texte.slice(0, 200)).toBe(200);
   expect((await fiche(p.id)).metiers_sans_experience).toEqual([]);
-  const r = await appelApi("/api/prestataires");
+  const r = await appelApi(`/api/prestataires?frais=${Date.now()}`);
   const d = r.json;
   const moi = (d.prestataires || []).find(x => x.id === p.id);
   expect(moi?.cv?.titre, "le CV vient de profiles.cv").toBe(CV_RECETTE.titre);

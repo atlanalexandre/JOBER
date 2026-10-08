@@ -41,7 +41,7 @@ function png(cote) {
 
 async function photoAuCatalogue(id) {
   const c = await request.newContext({ proxy });
-  const r = await c.get(`${RECETTE_URL}/api/prestataires`, { headers: { "x-vercel-protection-bypass": BYPASS } });
+  const r = await c.get(`${RECETTE_URL}/api/prestataires?frais=${Date.now()}`, { headers: { "x-vercel-protection-bypass": BYPASS } });
   expect(r.ok(), `catalogue : ${r.status()}`).toBeTruthy();
   const fiche = ((await r.json()).prestataires || []).find(p => p.id === id);
   await c.dispose();
