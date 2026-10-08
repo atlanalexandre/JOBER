@@ -66,7 +66,7 @@ import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
-import { joursCouverts, conflitDeCreneau, filtrePeriode } from "./_creneaux.js";
+import { joursCouverts, conflitDeCreneau, premierJourEnConflit, filtrePeriode } from "./_creneaux.js";
 import { rembourserAjoutsNonFaits } from "./_remboursement_bo.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
@@ -141,7 +141,7 @@ async function checkPrestaireConflict(prestataire_id, mission, supabaseUrl, head
     lendemain.setUTCDate(lendemain.getUTCDate() + 1);
     let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)`
       + `&${filtrePeriode(veille.toISOString().slice(0, 10), lendemain.toISOString().slice(0, 10))}`
-      + `&select=id,date,date_debut,date_fin,heure_debut,hours,metier,heures_ajoutees_detail`;
+      + `&select=id,date,date_debut,date_fin,heure_debut,hours,metier,heures_ajoutees_detail,heures_ajoutees_dernier_jour`;
     if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
     const res = await fetch(url, { headers });
     if (!res.ok) {
@@ -3572,8 +3572,7 @@ export default async function handler(req, res) {
       const demande = { date, date_debut: date, date_fin: date_fin || null, heure_debut, hours: Number(hours) || 1 };
       const conflit = await checkPrestaireConflict(prestataire_id, demande, SUPABASE_URL, headers);
       if (!conflit) return res.status(200).json({ libre: true });
-      const pris = new Set(joursCouverts(conflit));
-      return res.status(200).json({ libre: false, jour: joursCouverts(demande).find(j => pris.has(j)) || date });
+      return res.status(200).json({ libre: false, jour: premierJourEnConflit(demande, conflit) || date });
     }
 
     if (action === "get_position") {

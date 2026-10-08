@@ -77,6 +77,16 @@ test("une journée prolongée occupe le prestataire jusqu'à sa nouvelle fin", a
   expect(r.json).toEqual({ libre: false, jour: jour(6) });
 });
 
+test("une nuit qui déborde sur le lendemain annonce le lendemain", async () => {
+  const p = await prestataireOperationnel();
+  const m = await priseLe(p, 6);
+  await sql(`update missions set heure_debut = '05:00', hours = 2 where id = '${m.id}'`);
+  const b = await client();
+  const r = await api("/api/missions", { action: "verifier_creneau", prestataire_id: p.id,
+    date: jour(5), heure_debut: "22:00", hours: 8 }, b.jeton);
+  expect(r.json, "le conflit est le lendemain matin").toEqual({ libre: false, jour: jour(6) });
+});
+
 test("seul un client peut demander si un prestataire est libre", async () => {
   const p = await prestataireOperationnel();
   const autre = await prestataireOperationnel();
