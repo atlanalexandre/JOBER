@@ -198,15 +198,23 @@ describe("rendre compte à l'administration", () => {
 describe("le panneau du back-office", () => {
   const bo = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
 
+  // Depuis le 08/10/2026, la liste est calculée par le serveur sur TOUTES les
+  // pièces : l'écran n'en reçoit plus qu'une page, et une échéance hors de la
+  // page affichée doit quand même remonter.
+  const serveur = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+  const listeDocs = serveur.slice(serveur.indexOf('action === "list_all_docs"'), serveur.indexOf('action === "verify_doc"'));
+
   it("rassemble les échéances en tête de l'onglet Documents", () => {
-    expect(bo).toContain("const echeances = docs");
+    expect(bo).toContain("const echeances = infos.echeances");
     expect(bo).toContain("etatExpiration(d.expires_at)");
+    expect(listeDocs).toContain("etatExpiration(d.expires_at)");
+    expect(listeDocs).toMatch(/const echeances = tous\b/);
   });
 
   // La plus pressante d'abord : la liste répond à « de quoi dois-je m'occuper
   // aujourd'hui ? ».
   it("trie par urgence", () => {
-    expect(bo).toContain("a.exp.jours - b.exp.jours");
+    expect(listeDocs).toContain("x.exp.jours - y.exp.jours");
   });
 
   // Une pièce qui ne suspend pas ne doit pas se lire comme une urgence.

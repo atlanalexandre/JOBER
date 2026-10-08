@@ -158,12 +158,20 @@ export default async function handler(req, res) {
 
     // Fetch all ratings + completed missions count in parallel
     const prestaIdList = approvedProfiles.map(p => p.id);
-    const [ratingsRes, missionsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/ratings?select=reviewee_provider_id,rating`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=in.(${prestaIdList.join(",")})&status=eq.completed&select=prestataire_id`, { headers }),
+    // Lectures complètes (api/_lignes.js). Les avis s'arrêtaient à 1 000 ; et le
+    // `in.(…)` de TOUS les prestataires dépassait, au-delà de quelques
+    // centaines, la longueur d'adresse admise : la lecture échouait, et chaque
+    // fiche affichait zéro prestation réalisée (relevé le 08/10/2026, 1 300
+    // prestataires en recette). On lit les prestations terminées, et on ne
+    // compte que celles des prestataires affichés.
+    const affiches = new Set(prestaIdList);
+    const [allRatings, toutesTerminees] = await Promise.all([
+      lireTout(`${SUPABASE_URL}/rest/v1/ratings?select=id,reviewee_provider_id,rating`, headers)
+        .catch(e => { console.error("[prestataires] avis illisibles — notes absentes :", e.message); return []; }),
+      lireTout(`${SUPABASE_URL}/rest/v1/missions?status=eq.completed&prestataire_id=not.is.null&select=id,prestataire_id`, headers)
+        .catch(e => { console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return []; }),
     ]);
-    const allRatings = await ratingsRes.json();
-    const allCompletedMissions = await missionsRes.json().catch(() => []);
+    const allCompletedMissions = toutesTerminees.filter(m => affiches.has(m.prestataire_id));
     const missionCountByProvider = {};
     if (Array.isArray(allCompletedMissions)) {
       for (const m of allCompletedMissions) {

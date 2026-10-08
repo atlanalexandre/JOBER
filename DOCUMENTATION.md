@@ -1206,6 +1206,29 @@ pendant ce temps « 0 prestataire · Indisponible » sur chaque métier, rien n'
 affiche désormais « Chargement… » (`useProviders().loading`). Si le nombre réel de
 prestataires approche ce volume en production, alléger la réponse de `/api/prestataires`.
 
+**Deuxième balayage, le 08/10/2026.** Seize lectures restaient tronquées sans le dire. Elles
+passent toutes par `lireTout()`, ou ne lisent plus que les lignes utiles :
+
+| Où | Ce qui était faux au-delà de 1 000 lignes |
+|---|---|
+| Tâche planifiée, comptes orphelins | Tous les comptes après le 1 000e profil passaient pour orphelins, et étaient relus un par un à chaque passage : 1 771 appels inutiles sur la recette. **Cause probable de la lenteur de la tâche** |
+| Tâche planifiée, rappels de la veille | Le nom du destinataire manquait |
+| BO, tableau de bord (`stats`) | Comptes, prestations et chiffre d'affaires plafonnés |
+| BO, visites (`visits_stats`) | Compteurs plafonnés à 1 000. Ils **comptent** désormais (`Prefer: count=exact`) au lieu de lire les lignes |
+| BO, Documents (`list_all_docs`) | 1 000 pièces sur 9 318 en recette : les plus anciennes, souvent celles qui expirent, étaient invisibles, y compris dans « à surveiller ». L'écran reçoit maintenant une **page de 200** pièces filtrées (statut, type), et le serveur calcule sur l'ensemble les compteurs et la liste « à surveiller ». Les URL signées sont faites par lots de 100 (signature groupée du stockage), et non plus une par pièce. Tout renvoyer aurait dépassé les 4,5 Mo de réponse admis par Vercel |
+| BO, export DAC7 | Déclaration fiscale limitée à 1 000 prestataires et 1 000 versements |
+| BO, communication par e-mail et notification à tous | Les destinataires après le 1 000e ne recevaient rien |
+| BO, conformité : dépendance économique, mise à disposition | `limit=20000` rendait 1 000 lignes ; la seconde analyse ne regardait que les 1 000 dernières prestations |
+| BO, versements | Coupés à 300 versements et 200 créances |
+| BO, avis et tickets | Noms manquants, tickets anciens absents |
+| BO, liste noire | Un compte banni n'était plus reconnu |
+| Diffusion d'une demande, abonnements push | Les téléphones suivants ne recevaient pas la notification |
+| Catalogue, avis | Notes incomplètes |
+| Catalogue, prestations réalisées | Le `in.(…)` de **tous** les prestataires dépassait la longueur d'adresse admise : la lecture échouait, et chaque fiche affichait zéro prestation réalisée (1 300 prestataires en recette) |
+
+Le même piège a un cousin : un `in.(…)` de plusieurs centaines d'identifiants dépasse la
+longueur d'adresse admise. Toujours par **lots de 100**, comme `api/_habilitations.js`.
+
 ### La RLS, en pratique
 
 Chaque table a des règles décrivant qui peut lire et écrire quoi. Le principe général :
