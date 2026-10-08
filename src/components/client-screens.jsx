@@ -3899,7 +3899,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status,extra_hours_status,extra_hours_portee,arrived_at,started_at,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,heures_ajoutees_dernier_jour").eq("id",resolvedMissionId).single();
+      const { data } = await supabase.from("missions").select("status,extra_hours_status,extra_hours_portee,arrived_at,started_at,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,heures_ajoutees_dernier_jour,heures_ajoutees_detail").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
       setPlanTrack(data);
       if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }

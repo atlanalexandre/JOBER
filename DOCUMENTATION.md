@@ -3522,7 +3522,8 @@ Toutes fermées à l'écriture depuis le navigateur. Les cumuls se recalculent d
 (`cumulsAjouts()`). Le plafond de 24 h se juge sur la journée visée la plus chargée, heures déjà
 ajoutées comprises (`dureeMaxDesJournees()`), à la demande comme à l'acceptation : `hours` seul
 laissait des demandes successives le même jour dépasser 24 h. La fin de **chaque** journée tient compte des heures déjà
-ajoutées ce jour-là (`joursDeLaPrestation()`) : seule la dernière en tenait compte, et la fenêtre
+ajoutées ce jour-là (`joursDeLaPrestation()`, et l'écran de suivi lit `heures_ajoutees_detail`
+depuis le 08/10/2026 pour en profiter) : seule la dernière en tenait compte, et la fenêtre
 d'une journée prolongée se fermait à sa fin d'origine, prestataire encore au travail (relecture
 du 07/10/2026). La notification d'acceptation annonce le tarif convenu : elle divisait la part par
 les heures, journées comprises, et triplait le tarif d'une commande de trois journées.
@@ -3542,7 +3543,8 @@ Une commande peut être modifiée avant la première journée, et chaque modific
 ce total : plus que son paiement n'avait encaissé, et Stripe le refusait ; les paiements de
 modification, eux, n'étaient jamais rendus. Ils sont désormais lus chez Stripe, retirés du total,
 et remboursés — la part du prestataire, ou tout si le prestataire est défaillant —, avant la
-réservation. Un échec arrête l'annulation avant tout mouvement.
+réservation. Un échec arrête l'annulation avant tout mouvement. Le courriel de confirmation annonce ce
+second remboursement à part — il arrive sur le relevé en deux opérations (relecture du 08/10/2026).
 
 **Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
 l'étiquette de son opération (`metadata[alane_operation]` : le jour et l'issue, ou
