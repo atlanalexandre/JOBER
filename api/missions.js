@@ -3855,8 +3855,10 @@ export default async function handler(req, res) {
 
       // Les paiements de modification d'abord : un échec arrête tout, avant
       // le moindre autre mouvement (un nouvel essai ne rembourse pas deux fois).
+      let ajoutsRembourses = 0;
       if (Object.keys(parPaiementAjouts).length) {
         const rAj = await rembourserAjoutsNonFaits(parPaiementAjouts, STRIPE_SECRET_KEY, "annulation", "cancel_client");
+        ajoutsRembourses = (Number(rAj.centimes) || 0) / 100;
         if (!rAj.ok) {
           return res.status(500).json({ error: "Le remboursement de vos heures ajoutées a échoué — la prestation n'a pas été annulée. Réessayez, ou contactez le support." });
         }
@@ -3956,27 +3958,33 @@ export default async function handler(req, res) {
 
       // Email au client — confirmation de remboursement
       if (RESEND_API_KEY && clientEmail) {
-        const refundEur = (refundAmount / 100).toFixed(2).replace(".", ",");
-        const keptEur   = keptAmount.toFixed(2).replace(".", ",");
+        // Les montants passent par euros() (CLAUDE.md §4). La modification de
+        // commande, remboursée sur son propre paiement, est annoncée à part :
+        // le client voit deux remboursements sur son relevé (07/10/2026).
+        const refundEur = euros(refundAmount / 100);
+        const keptEur   = euros(keptAmount);
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: resendBody({
             from: RESEND_FROM,
             to: clientEmail,
-            subject: refundAmount > 0 ? `Annulation confirmée — remboursement de ${refundEur} € en cours` : "Annulation confirmée",
+            subject: (refundAmount > 0 || ajoutsRembourses > 0)
+              ? `Annulation confirmée — remboursement de ${euros(refundAmount / 100 + ajoutsRembourses)} en cours`
+              : "Annulation confirmée",
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
               <h2 style="color:#050E20">✅ Annulation confirmée</h2>
               <p style="color:#444">Votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong> a bien été annulée.</p>
               <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
                 <tr><td style="padding:6px 0;color:#666">Montant payé par carte</td><td style="font-weight:700">${euros(payeCarte)}</td></tr>
                 ${cashbackApplique > 0 ? `<tr><td style="padding:6px 0;color:#666">Réglé en cashback</td><td style="font-weight:700">${euros(cashbackApplique)}</td></tr>` : ""}
-                <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
-                ${keptAmount > 0 ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur}</td></tr>
+                ${ajoutsRembourses > 0 ? `<tr><td style="padding:6px 0;color:#666">Modification de commande remboursée (paiement séparé)</td><td style="font-weight:700;color:#10D98F">${euros(ajoutsRembourses)}</td></tr>` : ""}
+                ${keptAmount > 0 ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur}</td></tr>` : ""}
               </table>
               <p style="font-size:13px;color:#666">${refundAmount > 0 ? (walletRefunded ? "Le remboursement a été crédité instantanément sur votre wallet ALANE." : (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.")) : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${keptAmount > 0
-                ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
+                ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur}) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
                 : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
