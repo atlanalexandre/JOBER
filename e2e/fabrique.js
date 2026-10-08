@@ -142,6 +142,18 @@ export async function inscrire({ role, prenom, metadonnees = {}, email = emailTe
     data: { email, password: MOT_DE_PASSE, data: { role, prenom, nom: "Recette", ...metadonnees } },
   }), "inscription");
   const j = await res.json();
+  // Inscription REJOUÉE après une coupure réseau : la première a pu aboutir
+  // chez Supabase sans que la réponse arrive, et la seconde répond « déjà
+  // inscrit » — le compte existe, avec ce mot de passe. On s'y connecte au
+  // lieu d'échouer (recette du 08/10/2026, scénario 15).
+  if (res.status() === 422 && j?.error_code === "user_already_exists") {
+    const cn = await avecReprise(async () => c.post(`${SUPABASE}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: await anon() }, data: { email, password: MOT_DE_PASSE },
+    }), "connexion après inscription rejouée");
+    const k = await cn.json();
+    expect(cn.ok(), `connexion après inscription rejouée ${role} : ${JSON.stringify(k).slice(0, 200)}`).toBeTruthy();
+    return { email, id: k.user?.id, jeton: k.access_token };
+  }
   expect(res.ok(), `inscription ${role} : ${JSON.stringify(j).slice(0, 200)}`).toBeTruthy();
   return { email, id: j.user?.id, jeton: j.access_token };
 }
