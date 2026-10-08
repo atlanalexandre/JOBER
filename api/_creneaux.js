@@ -57,8 +57,14 @@ export function plagesParJour(m) {
   const ajout = (j) => detail.filter(l => String(l?.jour || "").slice(0, 10) === j)
     .reduce((t, l) => t + (Number(l?.heures) || 0), 0);
   const ajouter = (j, d, f) => { (plages[j] ||= []).push([d, f]); };
-  for (const j of joursCouverts(m)) {
-    const fin = creneau[1] + Math.round(ajout(j) * 60);
+  const jours = joursCouverts(m);
+  const dernier = jours[jours.length - 1];
+  for (const j of jours) {
+    // Le dernier jour retient aussi le cumul `heures_ajoutees_dernier_jour`,
+    // comme `joursDeLaPrestation()` : les deux calculs de la même fin ne
+    // doivent pas diverger (relecture du 08/10/2026).
+    const heuresAjoutees = j === dernier ? Math.max(ajout(j), Number(m?.heures_ajoutees_dernier_jour) || 0) : ajout(j);
+    const fin = creneau[1] + Math.round(heuresAjoutees * 60);
     ajouter(j, creneau[0], Math.min(fin, 1440));
     if (fin > 1440) {
       const d = new Date(`${j}T12:00:00Z`);
@@ -75,14 +81,22 @@ export function plagesParJour(m) {
  * historique : on ne bloque pas sur un horaire qu'on ne connaît pas).
  */
 export function conflitDeCreneau(nouvelle, existantes) {
+  for (const e of existantes || []) if (premierJourEnConflit(nouvelle, e)) return e;
+  return null;
+}
+
+/**
+ * Le premier jour où `nouvelle` et `existante` se chevauchent, ou null. Un
+ * conflit né du débordement d'un créneau de nuit tombe la veille ou le
+ * lendemain d'un jour réservé : le message nommait un jour libre, et le client
+ * changeait la mauvaise date (relecture du 08/10/2026).
+ */
+export function premierJourEnConflit(nouvelle, existante) {
   const miennes = plagesParJour(nouvelle);
-  if (!Object.keys(miennes).length) return null;
-  for (const e of existantes || []) {
-    const siennes = plagesParJour(e);
-    for (const [j, plages] of Object.entries(siennes)) {
-      for (const [d1, f1] of miennes[j] || []) {
-        if (plages.some(([d2, f2]) => d1 < f2 && d2 < f1)) return e;
-      }
+  const siennes = plagesParJour(existante);
+  for (const j of Object.keys(miennes).sort()) {
+    for (const [d1, f1] of miennes[j]) {
+      if ((siennes[j] || []).some(([d2, f2]) => d1 < f2 && d2 < f1)) return j;
     }
   }
   return null;

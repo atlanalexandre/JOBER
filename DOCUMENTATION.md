@@ -233,7 +233,9 @@ prestataire reste libre de refuser, et le refus rembourse. Éprouvé par `e2e/72
 Deux compléments (relecture du 07/10/2026). Les plages comparées (`plagesParJour()`) comptent les
 **heures ajoutées** à une journée, et un créneau qui **passe minuit** occupe aussi le lendemain
 (22 h + 8 h jusqu'à 6 h) : la lecture couvre donc la veille et le lendemain de la période.
-`verifier_creneau` est **réservé aux clients** : ouvert à tout compte, il laissait un concurrent
+Le jour annoncé au client est celui du chevauchement réel
+(`premierJourEnConflit()`), lendemain compris pour un créneau de nuit, et le dernier jour retient
+aussi le cumul `heures_ajoutees_dernier_jour` (08/10/2026). `verifier_creneau` est **réservé aux clients** : ouvert à tout compte, il laissait un concurrent
 reconstituer, jour par jour, l'agenda d'un prestataire.
 
 **Les jours et créneaux déclarés sont contrôlés sur chaque journée** (06/10/2026). L'écran de

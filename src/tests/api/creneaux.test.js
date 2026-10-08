@@ -107,3 +107,20 @@ describe("heures ajoutées et créneaux de nuit (relecture du 07/10/2026)", () =
     expect(conflitDeCreneau(nuit, [ponctuelle("2026-10-15", "05:00")])?.id).toBe("p-2026-10-15");
   });
 });
+
+import { premierJourEnConflit } from "../../../api/_creneaux.js";
+
+describe("le jour annoncé et le dernier jour (relecture du 08/10/2026)", () => {
+  it("un conflit né d'une nuit nomme le lendemain, pas le jour réservé", () => {
+    const nuit = { date: "2026-10-14", heure_debut: "22:00", hours: 8 };
+    expect(premierJourEnConflit(nuit, ponctuelle("2026-10-15", "05:00"))).toBe("2026-10-15");
+  });
+  it("le cumul du dernier jour compte, même sans détail", () => {
+    const ancienne = { ...serie, heures_ajoutees_detail: [], heures_ajoutees_dernier_jour: 3 };
+    expect(plagesParJour(ancienne)["2026-10-16"]).toEqual([[540, 960]]);
+    expect(conflitDeCreneau(ponctuelle("2026-10-16", "14:00"), [ancienne])?.id).toBe("s");
+  });
+  it("pas de conflit, pas de jour", () => {
+    expect(premierJourEnConflit(ponctuelle("2026-10-20"), serie)).toBeNull();
+  });
+});
