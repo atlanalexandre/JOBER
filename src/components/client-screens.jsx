@@ -1639,6 +1639,10 @@ export function useProviders() {
         .catch((e) => {
           console.error("[prestataires] liste illisible :", e.message);
           _providersCachePromise = null;
+          // Le client est PRÉVENU : sans ce message, chaque secteur affichait
+          // « 0 prestataire » comme si la plateforme était vide (relecture
+          // du 08/10/2026). Le prochain écran ouvert relance la lecture.
+          showToast("La liste des prestataires n'a pas pu être chargée. Réessayez dans un instant ou rechargez la page.", "error");
           return [];
         });
     }
