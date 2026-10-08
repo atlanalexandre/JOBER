@@ -315,12 +315,21 @@ de `.github/workflows/veille.yml`, jugée inutile par Alexandre. Elle relit en p
 changements de la veille et les chemins d'argent, rejoue la recette complète (`e2e/`), corrige
 ce qu'elle trouve — une pull request par sujet — et envoie un résumé à Alexandre.
 
-Elle **ouvre des pull requests, elle ne fusionne jamais** (décision d'Alexandre du 28/09/2026).
-La raison tient dans un cas réel : le correctif évident de la carte enregistrée aurait ouvert
-une faille permettant de débiter la carte d'autrui, parce qu'un paramètre voisin était lu
-depuis le navigateur. Il fallait corriger les deux ensemble. Sur une application qui manipule
-de l'argent, la revue humaine n'est pas une lenteur administrative. Elle n'écrit jamais en
-production, ni dans une base, ni dans un dashboard.
+Elle **fusionne d'elle-même les pull requests qui ne demandent aucun SQL** (décision
+d'Alexandre du 08/10/2026, qui remplace celle du 28/09/2026 : « ne jamais fusionner »), à
+quatre conditions réunies : aucune migration à passer, CI verte sur le dernier commit, recette
+concernée verte sur sa Preview, aucun conflit. Avant d'en fusionner plusieurs, elle vérifie
+localement que leur combinaison passe lint, tests, cohérence et build, puis contrôle que le
+déploiement de production est au vert.
+
+Une PR qui demande du SQL **reste ouverte** : la routine donne le SQL et les clics exacts, à passer
+d'abord sur la recette, puis en production après son test. Alexandre valide. La raison de la
+prudence d'origine tient toujours, et c'est pourquoi la relecture reste exigeante : le correctif
+évident de la carte enregistrée aurait ouvert une faille permettant de débiter la carte
+d'autrui, parce qu'un paramètre voisin était lu depuis le navigateur. Sur une application qui
+manipule de l'argent, une PR fusionnée sans relecture humaine doit avoir été prouvée par un
+test, puis par la recette. Elle n'écrit jamais en production, ni dans une base, ni dans un
+dashboard.
 
 ---
 
