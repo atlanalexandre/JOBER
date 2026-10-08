@@ -24,3 +24,11 @@ describe("lire avec reprise", () => {
     expect(await lireJsonAvecReprise("/x", { attenteMs: 0, fetchImpl: f })).toEqual({ ok: 1 });
   });
 });
+
+describe("une erreur définitive n'est pas réessayée (relecture du 08/10/2026)", () => {
+  it("un 404 échoue tout de suite, sans attendre", async () => {
+    const f = vi.fn().mockResolvedValue(reponse(404, { error: "introuvable" }));
+    await expect(lireJsonAvecReprise("/api/prestataires", { attenteMs: 10_000, fetchImpl: f })).rejects.toThrow(/404/);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});

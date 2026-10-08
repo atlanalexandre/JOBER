@@ -170,7 +170,10 @@ lisait le corps d'une réponse en erreur (`{ error }`) comme « aucun prestatair
 mémoire pour toute la vie de la page : un seul échec passager, et chaque secteur affichait
 « 0 prestataire » jusqu'au rechargement, sans un mot dans la console. La lecture passe par
 `lireJsonAvecReprise()` (`src/lib/lecture.js`) : deux nouveaux essais, une erreur n'est jamais
-rendue comme un résultat, et l'échec final est journalisé sans être mis en cache.
+rendue comme un résultat, et l'échec final est journalisé sans être mis en cache. Depuis le
+08/10/2026, le client en est **prévenu** par un message (le catalogue affichait sinon
+« 0 prestataire » comme une plateforme vide), et seules une coupure réseau ou une erreur 5xx sont
+réessayées : un 4xx ne changera pas au second essai.
 
 Le comptage par secteur, le comptage par métier et le filtre « métier » suivent la même règle.
 Un **filtre par ville** s'ajoute aux filtres de l'écran de secteur, alimenté par les villes où
