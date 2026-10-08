@@ -362,6 +362,15 @@ export default async function handler(req, res) {
         console.log(`[prestataires] secteur(s) fermé(s) : ${fermes.join(", ") || "aucun"} — `
           + `${masques} prestataire(s) masqué(s), ${tailles} dont la liste de métiers a été réduite.`);
       }
+      // Gardé 30 s par le réseau de Vercel (08/10/2026). Le catalogue est
+      // public et le même pour tous, mais chaque calcul relit TOUS les comptes
+      // de la plateforme, clients compris : 3 à 4 s d'attente à chaque
+      // ouverture, qui croissent avec le nombre d'inscrits. Seule la réponse
+      // complète est gardée — jamais un catalogue dégradé ou vide. Un
+      // prestataire activé apparaît au plus 30 s plus tard (2 min au pire
+      // pendant le recalcul en arrière-plan) ; les photos, signées pour une
+      // heure, restent valides.
+      res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=120");
       return res.status(200).json({ prestataires: visibles });
     } catch (e) {
       // Le filtrage est un affinage, pas une sécurité : le refus de réservation

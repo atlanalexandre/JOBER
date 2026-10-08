@@ -48,7 +48,7 @@ test("métier réglementé ajouté : fermé sans titre, ses autres métiers rest
   expect(refus.json?.error).toMatch(/métier réglementé/);
 
   // … le catalogue ne le propose pas pour ce métier, mais le garde pour les autres.
-  const cat = await appelApi("/api/prestataires");
+  const cat = await appelApi(`/api/prestataires?frais=${Date.now()}`);
   const fiche = (cat.json?.prestataires || []).find(x => x.id === p.id);
   expect(fiche, "toujours au catalogue").toBeTruthy();
   expect(fiche.metiers_list.map(m => m.metier)).not.toContain(SECURITE);

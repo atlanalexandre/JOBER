@@ -12,7 +12,7 @@ test("le catalogue ne donne que l'initiale ; le client de la prestation, et lui 
   const intrus = await client();
 
   // Le catalogue, SANS compte — ce que voit n'importe quel visiteur.
-  const r = await appelApi("/api/prestataires");
+  const r = await appelApi(`/api/prestataires?frais=${Date.now()}`);
   expect(r.statut, `catalogue : ${r.texte.slice(0, 200)}`).toBe(200);
   const { prestataires } = r.json;
   const fiche = prestataires.find(x => x.id === p.id);

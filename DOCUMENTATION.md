@@ -175,6 +175,15 @@ rendue comme un résultat, et l'échec final est journalisé sans être mis en c
 « 0 prestataire » comme une plateforme vide), et seules une coupure réseau ou une erreur 5xx sont
 réessayées : un 4xx ne changera pas au second essai.
 
+**Le catalogue est gardé 30 secondes par le réseau de Vercel** (08/10/2026,
+`Cache-Control: public, s-maxage=30, stale-while-revalidate=120`). Chaque calcul relit tous les
+comptes de la plateforme, clients compris, pour lire les métadonnées des prestataires : 3 à 4 s
+d'attente en recette (5 600 comptes), qui croissent avec chaque inscrit. Seule la réponse complète
+est gardée, jamais un catalogue dégradé. Un prestataire activé apparaît au plus 30 s plus tard
+(2 min au pire). Les scénarios qui créent un prestataire puis le cherchent demandent une version
+fraîche (`/api/prestataires?frais=…`). Sur le réseau, la réponse est compressée (88 Ko pour 3,5 Mo
+de données en recette).
+
 Le comptage par secteur, le comptage par métier et le filtre « métier » suivent la même règle.
 Un **filtre par ville** s'ajoute aux filtres de l'écran de secteur, alimenté par les villes où
 ce secteur a réellement des prestataires ; il n'apparaît qu'à partir de deux villes. La
