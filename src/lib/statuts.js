@@ -106,3 +106,15 @@ export const ONGLETS_PRESTATIONS = [
   { id: "assigned",      l: "Confirmées" },
   { id: "completed",     l: "Terminées" },
 ];
+
+// Date d'une commande pour la liste du BO. Une commande sur plusieurs jours
+// n'affichait que son premier jour. `date_debut` / `date_fin` sont des
+// timestamptz : on ne garde que le jour (« 2026-10-08 00:00:00+00 »).
+export function periodePrestation(m) {
+  const jour = (v) => { const [a, mo, j] = String(v).slice(0, 10).split("-"); return `${j}/${mo}/${a}`; };
+  const debut = m.date_debut ? String(m.date_debut).slice(0, 10) : (m.date ? String(m.date).slice(0, 10) : "");
+  const fin   = m.date_fin ? String(m.date_fin).slice(0, 10) : "";
+  if (!debut) return "—";
+  if (fin && fin !== debut) return `du ${jour(debut)} au ${jour(fin)}`;
+  return jour(debut);
+}

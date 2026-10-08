@@ -2583,31 +2583,42 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_missions") {
-      // S-11: whitelist status values to prevent injection via the status param
-      const VALID_STATUSES = ["open","pending_acceptance","assigned","completed","closed","rejected","refused","cancelled"];
+      // S-11: whitelist status values to prevent injection via the status param.
+      // `disputed` et `needs_replacement` manquaient : le filtre « En litige »
+      // retombait sur « Toutes » sans le dire (relevé le 08/10/2026).
+      const VALID_STATUSES = ["open","pending_acceptance","assigned","needs_replacement","completed","disputed","closed","rejected","refused","cancelled"];
       const rawStatus = req.body.status;
       const statusFilter = rawStatus && rawStatus !== "all" && VALID_STATUSES.includes(rawStatus) ? `&status=eq.${rawStatus}` : "";
-      const [missionsRes, authRes, profilesRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence,started_at,arrived_at,arrivee_localisation,arrivee_distance_m${statusFilter}&order=created_at.desc&limit=300`, { headers }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers }),
-      ]);
-      const missions  = await missionsRes.json();
-      const authData  = await authRes.json();
-      const profiles  = await profilesRes.json();
-      const authMap   = {};
-      (authData.users || []).forEach(u => { authMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+      // Une page de PAGE_BO commandes ; l'écran demande la suivante par `offset`.
+      // Avant, la liste s'arrêtait aux 300 plus récentes sans le signaler.
+      const PAGE_BO = 200;
+      const offset = Math.max(0, Math.min(Number.parseInt(req.body.offset, 10) || 0, 1000000));
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,date_debut,date_fin,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence,started_at,arrived_at,arrivee_localisation,arrivee_distance_m${statusFilter}&order=created_at.desc,id.desc&limit=${PAGE_BO}&offset=${offset}`, { headers });
+      if (!missionsRes.ok) {
+        console.error("[bo list_missions] lecture des prestations refusée :", missionsRes.status, await missionsRes.text().catch(e => e.message));
+        return res.status(502).json({ error: "Lecture des prestations impossible" });
+      }
+      const missions = await missionsRes.json();
+      // Les noms ne sont lus que pour les comptes de cette page. La lecture de
+      // TOUS les profils s'arrêtait à 1 000 lignes (PostgREST) : au-delà, le
+      // client s'affichait « Client » et le prestataire « Prestataire ».
+      const ids = [...new Set(missions.flatMap(m => [m.client_id, m.prestataire_id]).filter(isUuidId))];
       const nameMap = {};
-      (Array.isArray(profiles) ? profiles : []).forEach(p => {
-        const n = `${p.prenom||""} ${p.nom||""}`.trim();
-        nameMap[p.id] = n || (authMap[p.id]?.meta?.prenom ? `${authMap[p.id].meta.prenom} ${authMap[p.id].meta.nom||""}`.trim() : "");
-      });
-      const enriched = (Array.isArray(missions) ? missions : []).map(m => ({
+      for (let i = 0; i < ids.length; i += 100) {
+        const lot = ids.slice(i, i + 100);
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom&id=in.(${lot.join(",")})`, { headers });
+        if (!pr.ok) {
+          console.error("[bo list_missions] lecture des noms refusée :", pr.status, await pr.text().catch(e => e.message));
+          return res.status(502).json({ error: "Lecture des noms impossible" });
+        }
+        for (const p of await pr.json()) nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
+      }
+      const enriched = missions.map(m => ({
         ...m,
         client_name: nameMap[m.client_id] || "Client",
         presta_name: m.prestataire_id ? (nameMap[m.prestataire_id] || "Prestataire") : null,
       }));
-      return res.status(200).json(enriched);
+      return res.status(200).json({ prestations: enriched, suivante: missions.length === PAGE_BO ? offset + PAGE_BO : null });
     }
 
     if (action === "force_complete_mission") {

@@ -3242,6 +3242,22 @@ le reste est « Région non renseignée » plutôt que deviné. Île-de-France =
 prénom, e-mail et téléphone ; un sélecteur trie la liste par date (défaut), par nom ou par
 prénom (A → Z, comptes sans nom en dernier).
 
+### Back-office : la liste de toutes les commandes
+
+L'onglet **📋 Prestations** montre **toutes** les commandes, des plus récentes aux plus anciennes,
+par pages de 200 (`list_missions` de `api/bo-action.js`, paramètre `offset` ; la réponse est
+`{ prestations, suivante }`, `suivante` valant `null` sur la dernière page). Un bouton « Afficher
+les prestations plus anciennes » charge la page suivante. Filtres : toutes, ouverte, en attente,
+en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
+
+Corrigé le 08/10/2026 : la liste s'arrêtait **sans le dire** aux 300 plus récentes ; le filtre
+« En litige » (`disputed`, absent de la liste blanche du serveur) affichait **toutes** les
+commandes ; les annulées n'avaient pas de filtre ; une commande sur plusieurs jours n'affichait
+que son premier jour (`periodePrestation()`, `src/lib/statuts.js`, affiche « du … au … ») ; et
+les noms étaient lus sur **tous** les profils, donc tronqués à 1 000 lignes — au-delà, la liste
+affichait « Client » et « Prestataire ». Les noms ne sont plus lus que pour les comptes de la
+page. Une erreur de lecture s'affiche, au lieu d'une liste vide.
+
 ### Ne pas choisir le prestataire : la demande diffusée
 
 **Réparé le 28/09/2026**, décision d'Alexandre. Le parcours ne pouvait pas aboutir : aucun
