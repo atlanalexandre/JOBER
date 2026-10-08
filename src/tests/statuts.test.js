@@ -4,7 +4,7 @@
 // `completed` et `closed` sont deux états distincts en base, une seule et même
 // chose pour lui — la prestation a eu lieu.
 import { describe, it, expect } from "vitest";
-import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
+import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS, periodePrestation } from "../lib/statuts.js";
 
 const LE_20_AOUT = new Date("2026-08-20T12:00:00Z").getTime();
 const passee = { status:"assigned", date:"2026-08-19", heure_debut:"08:00", hours:1 };
@@ -75,5 +75,22 @@ describe("ONGLETS_PRESTATIONS", () => {
     // carnet d'adresses, qui ne filtre rien et poussait les vrais onglets hors
     // de l'écran. Il vit désormais dans l'en-tête.
     expect(ONGLETS_PRESTATIONS.map(o => o.id)).not.toContain("prestataires");
+  });
+});
+
+describe("periodePrestation (liste du back-office)", () => {
+  it("affiche la période d'une commande sur plusieurs jours", () => {
+    // Seul le premier jour s'affichait (relevé le 08/10/2026).
+    expect(periodePrestation({ date:"2026-10-08", date_debut:"2026-10-08 00:00:00+00", date_fin:"2026-10-10 00:00:00+00" }))
+      .toBe("du 08/10/2026 au 10/10/2026");
+  });
+
+  it("n'affiche qu'un jour quand début et fin coïncident", () => {
+    expect(periodePrestation({ date_debut:"2026-10-08T00:00:00+00:00", date_fin:"2026-10-08T00:00:00+00:00" })).toBe("08/10/2026");
+  });
+
+  it("se rabat sur `date` pour une commande sans période", () => {
+    expect(periodePrestation({ date:"2026-10-08" })).toBe("08/10/2026");
+    expect(periodePrestation({})).toBe("—");
   });
 });

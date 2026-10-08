@@ -6,6 +6,7 @@ import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { libelleConstat } from "../../api/_localisation.js";
+import { periodePrestation } from "../lib/statuts.js";
 
 // Fiches de comptes rendues par tranche dans la liste du back-office.
 const PAR_PAGE_COMPTES = 100;
@@ -3918,6 +3919,9 @@ export function BOMissions() {
 
   const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
+  // Position de la page suivante, ou null quand tout est affiché.
+  const [suivante, setSuivante] = useState(null);
+  const [erreur, setErreur]     = useState("");
   const [filter, setFilter]     = useState("all");
   const [validating, setValidating] = useState(null);
   const [disputing, setDisputing] = useState(null);
@@ -3928,13 +3932,23 @@ export function BOMissions() {
   const [reassignEmail, setReassignEmail] = useState("");
   const [reassignReason, setReassignReason] = useState("");
 
-  const load = async (status = filter) => {
+  // `offset` > 0 : ajoute la page suivante à la liste au lieu de la remplacer.
+  // Une erreur s'affiche : une liste vide laissait croire qu'il n'y avait aucune commande.
+  const load = async (status = filter, offset = 0) => {
     setLoading(true);
+    setErreur("");
     try {
-      const res = await boFetch({ action:"list_missions", status });
-      const data = await res.json();
-      setMissions(Array.isArray(data) ? data : []);
-    } catch { setMissions([]); }
+      const res = await boFetch({ action:"list_missions", status, offset });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+      const page = Array.isArray(data.prestations) ? data.prestations : [];
+      setMissions(ms => offset > 0 ? [...ms, ...page] : page);
+      setSuivante(data.suivante ?? null);
+    } catch (e) {
+      console.error("[BO prestations] chargement impossible :", e.message);
+      setErreur(e.message || "Erreur réseau");
+      if (offset === 0) { setMissions([]); setSuivante(null); }
+    }
     setLoading(false);
   };
 
@@ -4006,7 +4020,7 @@ export function BOMissions() {
 
       {/* Filtres */}
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
-        {["all","open","pending_acceptance","assigned","completed","disputed","closed"].map(s => (
+        {["all","open","pending_acceptance","assigned","needs_replacement","completed","disputed","closed","cancelled"].map(s => (
           <button key={s} onClick={()=>setFilter(s)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${filter===s?C.violet:C.border}`, background:filter===s?`${C.violet}20`:"transparent", color:filter===s?C.violet:C.textSub, fontWeight:filter===s?700:500, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
             {s==="all"?"Toutes":STATUS_LABELS[s]||s}
           </button>
@@ -4014,9 +4028,11 @@ export function BOMissions() {
         <button onClick={()=>load(filter)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textMuted, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>🔄</button>
       </div>
 
-      {loading && <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>}
+      {loading && filtered.length === 0 && <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>}
 
-      {!loading && filtered.length === 0 && (
+      {erreur && <div style={{ color:"#F25E5E", fontSize:13, padding:"10px 0" }}>❌ Chargement des prestations impossible : {erreur}</div>}
+
+      {!loading && !erreur && filtered.length === 0 && (
         <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune prestation{filter!=="all"?` avec ce statut`:""}</div>
       )}
 
@@ -4050,7 +4066,7 @@ export function BOMissions() {
                   {m.metier || m.sector} {m.ville ? `— ${m.ville}` : ""}
                 </div>
                 <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:12, color:C.textSub, marginBottom:4 }}>
-                  <span>📅 {m.date||"—"}</span>
+                  <span>📅 {periodePrestation(m)}</span>
                   <span>⏱ {m.hours}h</span>
                   {montant > 0 && <span>💶 {euros(montant)}</span>}
                 </div>
@@ -4145,6 +4161,12 @@ export function BOMissions() {
           </div>
         );
       })}
+
+      {suivante !== null && (
+        <button onClick={()=>load(filter, suivante)} disabled={loading} style={{ display:"block", margin:"6px auto 0", padding:"9px 18px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}18`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:loading?0.5:1 }}>
+          {loading ? "Chargement…" : `Afficher les prestations plus anciennes (${prestations.length} affichées)`}
+        </button>
+      )}
     </div>
   );
 }
