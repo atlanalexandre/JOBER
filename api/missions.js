@@ -3071,8 +3071,10 @@ export default async function handler(req, res) {
       }
 
       // Fetch all push subscriptions for quick lookup
-      const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=user_id,endpoint,p256dh,auth`, { headers });
-      const allSubs = await psRes.json().catch(() => []);
+      // Lecture complète (api/_lignes.js) : au-delà de 1 000 abonnements, les
+      // téléphones suivants ne recevaient pas la notification (08/10/2026).
+      const allSubs = await lireTout(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=id,user_id,endpoint,p256dh,auth`, headers)
+        .catch(e => { console.error("[diffusion] abonnements push illisibles :", e.message); return []; });
       const subsByUser = {};
       if (Array.isArray(allSubs)) {
         for (const s of allSubs) {

@@ -3678,17 +3678,30 @@ export function BODocuments() {
   const [typeFilter, setType] = useState("all");
   const [preview, setPreview] = useState(null);
   const [verifying, setVerifying] = useState(null);
+  // Le serveur renvoie une page de pièces filtrées, et calcule sur l'ensemble
+  // les compteurs et la liste « à surveiller » (api/bo-action.js, list_all_docs).
+  const [infos, setInfos]     = useState({ total:0, filtres:0, enAttente:0, types:[], echeances:[], suivante:null });
+  const [erreur, setErreur]   = useState("");
 
-  const load = async () => {
+  // `offset` > 0 : ajoute la page suivante. Une erreur s'affiche, au lieu d'une
+  // liste vide qui laissait croire qu'aucune pièce n'avait été déposée.
+  const load = async (offset = 0) => {
     setLoading(true);
+    setErreur("");
     try {
-      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs" }) });
-      const data = await r.json();
-      setDocs(Array.isArray(data) ? data : []);
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs", statut:filter, type:typeFilter, offset }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `Erreur ${r.status}`);
+      const page = Array.isArray(data.documents) ? data.documents : [];
+      setDocs(prev => offset > 0 ? [...prev, ...page] : page);
+      setInfos({ total:data.total||0, filtres:data.filtres||0, enAttente:data.enAttente||0, types:Array.isArray(data.types)?data.types:[], echeances:Array.isArray(data.echeances)?data.echeances:[], suivante:data.suivante ?? null });
+    } catch (e) {
+      console.error("[BO documents] chargement impossible :", e.message);
+      setErreur(e.message || "Erreur réseau");
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(0); }, [filter, typeFilter]);
 
   const handleVerify = async (doc) => {
     const validite = await demanderValidite(doc.type);
@@ -3699,21 +3712,18 @@ export function BODocuments() {
       // sans regarder si le serveur avait accepté.
       const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id, expiresAt: validite.expiresAt }) });
       const j = await r.json().catch(()=>({}));
-      if (r.ok) setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
+      if (r.ok) {
+        setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
+        if (!doc.verified) setInfos(i => ({ ...i, enAttente: Math.max(0, i.enAttente - 1) }));
+      }
       else showToast(j.error || `Erreur ${r.status}`, "error");
     } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     finally { setVerifying(null); }
   };
 
-  const displayed = docs.filter(d => {
-    if (filter === "pending"  && d.verified)  return false;
-    if (filter === "verified" && !d.verified) return false;
-    if (typeFilter !== "all" && d.type !== typeFilter) return false;
-    return true;
-  });
-
-  const types = [...new Set(docs.map(d => d.type))];
-  const pendingCount = docs.filter(d => !d.verified).length;
+  const displayed = docs;
+  const types = infos.types;
+  const pendingCount = infos.enAttente;
 
   // ── Ce qui expire, rassemblé en tête ──────────────────────────────────
   //
@@ -3724,10 +3734,10 @@ export function BODocuments() {
   //
   // Cette liste répond à la seule question utile : de quoi dois-je m'occuper
   // aujourd'hui ? Elle est triée par urgence, la plus pressante d'abord.
-  const echeances = docs
+  // Triée par le serveur, sur TOUTES les pièces — pas seulement la page affichée.
+  const echeances = infos.echeances
     .map(d => ({ ...d, exp: etatExpiration(d.expires_at) }))
-    .filter(d => d.exp && d.exp.etat !== "valide")
-    .sort((a, b) => a.exp.jours - b.exp.jours);
+    .filter(d => d.exp && d.exp.etat !== "valide");
 
   const nomDe = (d) => [d.prenom, d.nom].filter(Boolean).join(" ") || d.email || "Prestataire";
   const couleurEtat = (e) => e === "suspendable" ? C.danger : e === "expire" ? "#F25E5E" : C.accentGold;
@@ -3773,9 +3783,9 @@ export function BODocuments() {
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, gap:10, flexWrap:"wrap" }}>
         <div>
           <div style={{ fontWeight:800, fontSize:16, color:C.text }}>📂 Documents prestataires</div>
-          <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{docs.length} document{docs.length>1?"s":""} · {pendingCount} en attente de validation</div>
+          <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{infos.total} document{infos.total>1?"s":""} · {pendingCount} en attente de validation</div>
         </div>
-        <button onClick={load} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={()=>load(0)} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
           {loading ? "Chargement…" : "🔄 Actualiser"}
         </button>
       </div>
@@ -3793,8 +3803,9 @@ export function BODocuments() {
         </select>
       </div>
 
-      {loading && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Chargement…</div>}
-      {!loading && displayed.length === 0 && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Aucun document{filter!=="all"?" dans ce filtre":""}</div>}
+      {loading && displayed.length === 0 && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Chargement…</div>}
+      {erreur && <div style={{ color:"#F25E5E", fontSize:13, padding:"10px 0" }}>❌ Chargement des documents impossible : {erreur}</div>}
+      {!loading && !erreur && displayed.length === 0 && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Aucun document{filter!=="all"?" dans ce filtre":""}</div>}
 
       {displayed.map(doc => {
         const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
@@ -3823,6 +3834,12 @@ export function BODocuments() {
           </div>
         );
       })}
+
+      {infos.suivante !== null && (
+        <button onClick={()=>load(infos.suivante)} disabled={loading} style={{ display:"block", margin:"6px auto 0", padding:"9px 18px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}18`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:loading?0.5:1 }}>
+          {loading ? "Chargement…" : `Afficher les documents plus anciens (${docs.length} sur ${infos.filtres})`}
+        </button>
+      )}
 
       {/* Modal prévisualisation */}
       {preview && (

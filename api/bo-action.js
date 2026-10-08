@@ -172,7 +172,9 @@ export default async function handler(req, res) {
       const [profiles, authRes, blacklistRes, tousDocs] = await Promise.all([
         lireProfils(),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
+        // Lecture complète : au-delà de 1 000 entrées, un compte banni n'était plus reconnu.
+        lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash`, headers)
+          .catch(e => { console.error("[list] liste noire illisible :", e.message); return null; }),
         // Les pièces de chacun, pour dire AVANT le clic ce qui empêche d'ouvrir
         // l'accès. Illisibles : `null`, et l'écran n'affirme rien.
         lireTout(`${SUPABASE_URL}/rest/v1/documents?select=id,prestataire_id,type,verified,expires_at`, headers)
@@ -186,7 +188,7 @@ export default async function handler(req, res) {
       const authData = await authRes.json();
 
       // Construire les sets de hash pour lookup O(1)
-      const blData = blacklistRes ? await blacklistRes.json().catch(() => []) : [];
+      const blData = blacklistRes || [];
       const blSets = { email: new Set(), tel: new Set(), iban: new Set(), siret: new Set() };
       if (Array.isArray(blData)) {
         for (const entry of blData) {
@@ -1164,16 +1166,21 @@ export default async function handler(req, res) {
     }
 
     if (action === "stats") {
-      const [profilesRes, missionsRes, ticketsRes, recentRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status,created_at`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total,created_at`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=status`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,role,status,created_at&order=created_at.desc&limit=6`, { headers }),
-      ]);
-
-      const profiles  = await profilesRes.json();
-      const missions  = await missionsRes.json();
-      const tickets   = await ticketsRes.json();
+      // Lecture complète (api/_lignes.js) : PostgREST s'arrête à 1 000 lignes, et
+      // les compteurs du tableau de bord plafonnaient à 1 000 comptes et 1 000
+      // prestations, chiffre d'affaires compris (relevé le 08/10/2026).
+      let profiles, missions, tickets;
+      try {
+        [profiles, missions, tickets] = await Promise.all([
+          lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=role,status,created_at`, headers),
+          lireTout(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total,created_at`, headers),
+          lireTout(`${SUPABASE_URL}/rest/v1/support_tickets?select=status`, headers),
+        ]);
+      } catch (e) {
+        console.error("[bo stats] lecture impossible :", e.message);
+        return res.status(502).json({ error: "Statistiques illisibles" });
+      }
+      const recentRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,role,status,created_at&order=created_at.desc&limit=6`, { headers });
       const recent    = await recentRes.json();
 
       const p = Array.isArray(profiles) ? profiles : [];
@@ -1262,10 +1269,12 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_tickets") {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc`, { headers });
-      const data = await r.json().catch(() => null);
-      if (!r.ok || !Array.isArray(data)) {
-        console.error(`[bo-action/list_tickets] tickets illisibles (${r.status})`);
+      // Lecture complète : au-delà de 1 000 tickets, les plus anciens disparaissaient.
+      let data;
+      try {
+        data = await lireTout(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc,id.desc`, headers);
+      } catch (e) {
+        console.error("[bo-action/list_tickets] tickets illisibles :", e.message);
         return res.status(502).json({ error: "Tickets illisibles." });
       }
       // Les réponses d'ALANE sont tenues au journal (`bo_logs`, action
@@ -1564,17 +1573,15 @@ export default async function handler(req, res) {
       // Les messages transactionnels — confirmation, rappel, validation,
       // versement — ne passent pas par ici : ils relèvent de l'exécution du
       // contrat et ne sont pas concernés.
-      const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved&accepte_communications=is.true`, { headers }),
+      // Destinataires lus en entier (api/_lignes.js) : au-delà de 1 000, les
+      // suivants ne recevaient rien, sans que personne le sache (08/10/2026).
+      const [profiles, authRes] = await Promise.all([
+        lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved&accepte_communications=is.true`, headers)
+          .catch(e => { console.error(`[send_global_comm] destinataires illisibles : ${e.message}`
+            + " — vérifier que la migration 2026-08-15_communications_commerciales.sql est appliquée."); return null; }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
-      if (!profilesRes.ok) {
-        const detail = await profilesRes.text().catch(() => "");
-        console.error(`[send_global_comm] destinataires illisibles (${profilesRes.status}) : ${detail.slice(0, 200)}`
-          + " — vérifier que la migration 2026-08-15_communications_commerciales.sql est appliquée.");
-        return res.status(503).json({ error: "Destinataires illisibles — migration non appliquée ?" });
-      }
-      const profiles = await profilesRes.json();
+      if (!profiles) return res.status(503).json({ error: "Destinataires illisibles — migration non appliquée ?" });
       const authData = await authRes.json();
       const authUsers = authData.users || [];
       const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
@@ -1825,45 +1832,95 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_all_docs") {
-      // Récupère tous les documents + infos prestataire
-      const docsRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?select=*&order=created_at.desc`, { headers });
-      const allDocs = await docsRes.json();
-      if (!Array.isArray(allDocs)) return res.status(200).json([]);
-
-      // Récupère les profils pour les noms
-      const ids = [...new Set(allDocs.map(d => d.prestataire_id))];
-      let profileMap = {};
-      if (ids.length) {
-        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`, { headers });
-        const profs = await pr.json();
-        if (Array.isArray(profs)) profs.forEach(p => { profileMap[p.id] = p; });
+      // Toutes les pièces, lues page par page (api/_lignes.js). La lecture
+      // unique s'arrêtait à 1 000 : sur la recette (9 318 pièces), les plus
+      // anciennes — souvent celles qui expirent — n'apparaissaient jamais, ni
+      // dans la liste ni dans « à surveiller » (relevé le 08/10/2026).
+      //
+      // L'écran ne reçoit plus tout : une page de 200 pièces filtrées, plus les
+      // compteurs et la liste « à surveiller », calculés ici sur l'ensemble.
+      // Tout renvoyer, avec une URL signée par pièce, dépassait la taille de
+      // réponse admise par Vercel (4,5 Mo) et coûtait un appel au stockage par pièce.
+      const PAGE_DOCS = 200;
+      const statut = ["pending", "verified"].includes(req.body.statut) ? req.body.statut : "all";
+      const typeDemande = typeof req.body.type === "string" && /^[a-z_]{1,40}$/.test(req.body.type) ? req.body.type : "all";
+      const offset = Math.max(0, Math.min(Number.parseInt(req.body.offset, 10) || 0, 1000000));
+      let tous;
+      try {
+        tous = await lireTout(`${SUPABASE_URL}/rest/v1/documents?select=*&order=created_at.desc,id.desc`, headers);
+      } catch (e) {
+        console.error("[bo list_all_docs] pièces illisibles :", e.message);
+        return res.status(502).json({ error: "Documents illisibles" });
       }
 
-      // Récupère les emails depuis auth.users
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers: { ...headers, "apikey": (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""), "Authorization": `Bearer ${(process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "")}` } });
-      const usersData = await usersRes.json();
-      let emailMap = {};
-      if (usersData?.users) usersData.users.forEach(u => { emailMap[u.id] = u.email; });
+      const filtres = tous.filter(d =>
+        (statut === "all" || (statut === "pending" ? !d.verified : !!d.verified))
+        && (typeDemande === "all" || d.type === typeDemande));
+      const page = filtres.slice(offset, offset + PAGE_DOCS);
+      const echeances = tous
+        .map(d => ({ d, exp: etatExpiration(d.expires_at) }))
+        .filter(x => x.exp && x.exp.etat !== "valide")
+        .sort((x, y) => x.exp.jours - y.exp.jours)
+        .map(x => x.d);
+      const aMontrer = [...new Map([...page, ...echeances].map(d => [d.id, d])).values()];
 
-      // Génère les signed URLs
-      const withUrls = await Promise.all(allDocs.map(async (doc) => {
-        let signedUrl = null;
+      // Noms (profils) et adresses (comptes) des seuls prestataires montrés,
+      // par lots de 100 : un `in.(…)` de mille identifiants dépassait la
+      // longueur d'adresse admise, et la lecture échouait sans le dire.
+      const ids = [...new Set(aMontrer.map(d => d.prestataire_id).filter(isUuidId))];
+      const profileMap = {};
+      for (let i = 0; i < ids.length; i += 100) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.slice(i, i + 100).join(",")})&select=id,prenom,nom`, { headers });
+        if (!pr.ok) {
+          console.error("[bo list_all_docs] noms illisibles :", pr.status, await pr.text().catch(e => e.message));
+          return res.status(502).json({ error: "Noms des prestataires illisibles" });
+        }
+        for (const p of await pr.json()) profileMap[p.id] = p;
+      }
+      const emailMap = {};
+      if (ids.length) {
+        const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+        const usersData = await usersRes.json().catch(() => null);
+        if (!usersRes.ok || !Array.isArray(usersData?.users)) {
+          console.error("[bo list_all_docs] adresses illisibles :", usersRes.status);
+        } else {
+          const voulus = new Set(ids);
+          for (const u of usersData.users) if (voulus.has(u.id)) emailMap[u.id] = u.email;
+        }
+      }
+
+      // URLs signées par lots de 100 (signature groupée du stockage) — une
+      // requête par pièce auparavant.
+      const urlMap = {};
+      const chemins = [...new Set(aMontrer.map(d => d.storage_path).filter(Boolean))];
+      for (let i = 0; i < chemins.length; i += 100) {
         try {
-          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/Documents/${doc.storage_path}`, {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/Documents`, {
             method: "POST",
             headers: { ...headers, "Content-Type": "application/json" },
-            body: JSON.stringify({ expiresIn: 3600 }),
+            body: JSON.stringify({ expiresIn: 3600, paths: chemins.slice(i, i + 100) }),
           });
-          const sj = await sr.json();
-          signedUrl = sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null;
-        } catch (e) { console.error("[bo-action] URL signée du document non générée :", e.message); }
+          const sj = await sr.json().catch(() => null);
+          if (!sr.ok || !Array.isArray(sj)) {
+            console.error("[bo list_all_docs] URLs signées non générées :", sr.status, JSON.stringify(sj).slice(0, 200));
+            continue;
+          }
+          for (const x of sj) if (x?.signedURL && x.path) urlMap[x.path] = `${SUPABASE_URL}/storage/v1${x.signedURL}`;
+        } catch (e) { console.error("[bo-action] URLs signées des documents non générées :", e.message); }
+      }
+      const enrichir = (doc) => {
         const prof = profileMap[doc.prestataire_id] || {};
-        const meta = usersData?.users?.find(u => u.id === doc.prestataire_id)?.user_metadata || {};
-        const prenom = prof.prenom || meta.prenom || "";
-        const nom = prof.nom || meta.nom || "";
-        return { ...doc, signedUrl, prenom, nom, email: emailMap[doc.prestataire_id] || "" };
-      }));
-      return res.status(200).json(withUrls);
+        return { ...doc, signedUrl: urlMap[doc.storage_path] || null, prenom: prof.prenom || "", nom: prof.nom || "", email: emailMap[doc.prestataire_id] || "" };
+      };
+      return res.status(200).json({
+        documents: page.map(enrichir),
+        suivante: offset + PAGE_DOCS < filtres.length ? offset + PAGE_DOCS : null,
+        total: tous.length,
+        filtres: filtres.length,
+        enAttente: tous.filter(d => !d.verified).length,
+        types: [...new Set(tous.map(d => d.type))],
+        echeances: echeances.map(enrichir),
+      });
     }
 
     if (action === "verify_doc") {
@@ -2008,21 +2065,35 @@ export default async function handler(req, res) {
       const startWeek  = new Date(now.getTime() - 7 * 86400000).toISOString();
       const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-      const [todayR, weekR, monthR, totalR] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startToday}&select=id`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startWeek}&select=id`,  { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startMonth}&select=id`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/visits?select=id`, { headers }),
-      ]);
-
-      const [today, week, month, total] = await Promise.all([
-        todayR.json(), weekR.json(), monthR.json(), totalR.json(),
-      ]);
+      // Compter, et non plus lire les lignes : la lecture s'arrêtait à 1 000, et
+      // le compteur de visites plafonnait à 1 000 sans le dire (08/10/2026).
+      // `count=exact` rend le vrai total dans l'en-tête Content-Range (« 0-0/1429 »).
+      const compter = async (filtre) => {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/visits?select=id${filtre}&limit=1`, { headers: { ...headers, Prefer: "count=exact" } });
+        const total = Number(String(r.headers.get("content-range") || "").split("/")[1]);
+        if (!r.ok || !Number.isFinite(total)) throw new Error(`comptage des visites refusé (${r.status})`);
+        return total;
+      };
+      let today, week, month, total;
+      try {
+        [today, week, month, total] = await Promise.all([
+          compter(`&created_at=gte.${startToday}`), compter(`&created_at=gte.${startWeek}`),
+          compter(`&created_at=gte.${startMonth}`), compter(""),
+        ]);
+      } catch (e) {
+        console.error("[bo visits_stats]", e.message);
+        return res.status(502).json({ error: "Visites illisibles" });
+      }
 
       // Visites par jour sur les 14 derniers jours
       const start14 = new Date(now.getTime() - 13 * 86400000).toISOString();
-      const allR = await fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${start14}&select=created_at&order=created_at.asc`, { headers });
-      const all  = await allR.json();
+      let all;
+      try {
+        all = await lireTout(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${start14}&select=created_at&order=created_at.asc,id.asc`, headers);
+      } catch (e) {
+        console.error("[bo visits_stats] visites des 14 jours illisibles :", e.message);
+        return res.status(502).json({ error: "Visites illisibles" });
+      }
       const byDay = {};
       (Array.isArray(all) ? all : []).forEach(v => {
         const d = v.created_at?.slice(0, 10);
@@ -2030,10 +2101,7 @@ export default async function handler(req, res) {
       });
 
       return res.status(200).json({
-        today: Array.isArray(today) ? today.length : 0,
-        week:  Array.isArray(week)  ? week.length  : 0,
-        month: Array.isArray(month) ? month.length : 0,
-        total: Array.isArray(total) ? total.length : 0,
+        today, week, month, total,
         byDay,
       });
     }
@@ -2063,22 +2131,24 @@ export default async function handler(req, res) {
       const debut = `${annee}-01-01`;
       const fin   = `${annee + 1}-01-01`;
 
-      const [pRes, mRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire`
-          + `&select=id,prenom,nom,societe_nom,siret,nif,residence_fiscale,adresse,code_postal,ville,rib`, { headers }),
-        // Seules les prestations RÉELLEMENT VERSÉES entrent dans la déclaration :
-        // ce qui est en attente ou retenu n'a pas été perçu par le prestataire.
-        fetch(`${SUPABASE_URL}/rest/v1/missions?payout_status=eq.transferred`
-          + `&date=gte.${debut}&date=lt.${fin}`
-          + `&select=id,prestataire_id,date,payout_amount,payout_compensation`, { headers }),
-      ]);
-      if (!pRes.ok || !mRes.ok) {
-        console.error(`[export_dac7] lecture impossible (profils ${pRes.status}, prestations ${mRes.status}) `
+      // Lecture complète (api/_lignes.js) : une déclaration fiscale ne peut pas
+      // s'arrêter à 1 000 prestataires ni à 1 000 versements (08/10/2026).
+      let profils, missions;
+      try {
+        [profils, missions] = await Promise.all([
+          lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire`
+            + `&select=id,prenom,nom,societe_nom,siret,nif,residence_fiscale,adresse,code_postal,ville,rib`, headers),
+          // Seules les prestations RÉELLEMENT VERSÉES entrent dans la déclaration :
+          // ce qui est en attente ou retenu n'a pas été perçu par le prestataire.
+          lireTout(`${SUPABASE_URL}/rest/v1/missions?payout_status=eq.transferred`
+            + `&date=gte.${debut}&date=lt.${fin}`
+            + `&select=id,prestataire_id,date,payout_amount,payout_compensation`, headers),
+        ]);
+      } catch (e) {
+        console.error(`[export_dac7] lecture impossible (${e.message}) `
           + "— vérifier que la migration 2026-08-16_conformite_dac7.sql est appliquée.");
         return res.status(503).json({ error: "Export indisponible — migration non appliquée ?" });
       }
-      const profils = await pRes.json().catch(() => []);
-      const missions = await mRes.json().catch(() => []);
 
       const parPresta = new Map();
       for (const m of (Array.isArray(missions) ? missions : [])) {
@@ -2178,28 +2248,29 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_versements") {
-      const vRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions`
-        + `?payout_status=in.(pending,processing,held,failed,annule)`
-        + `&select=id,prestataire_id,client_id,metier,sector,date,payout_status,payout_amount,`
-        + `payout_due_at,payout_hold_reason,payout_hold_at,payout_hold_until,payout_compensation,status`
-        + `&order=payout_due_at&limit=300`,
-        { headers }
-      );
-      if (!vRes.ok) {
-        const detail = await vRes.text().catch(() => "");
-        console.error(`[list_versements] lecture impossible (${vRes.status}) : ${detail.slice(0, 200)}`);
+      // Lecture complète (api/_lignes.js) : la liste s'arrêtait aux 300 premiers
+      // versements, et aux 200 premières créances, sans le dire (08/10/2026).
+      let versements;
+      try {
+        versements = await lireTout(
+          `${SUPABASE_URL}/rest/v1/missions`
+          + `?payout_status=in.(pending,processing,held,failed,annule)`
+          + `&select=id,prestataire_id,client_id,metier,sector,date,payout_status,payout_amount,`
+          + `payout_due_at,payout_hold_reason,payout_hold_at,payout_hold_until,payout_compensation,status`
+          + `&order=payout_due_at,id`,
+          headers
+        );
+      } catch (e) {
+        console.error(`[list_versements] lecture impossible : ${e.message}`);
         return res.status(503).json({ error: "Versements illisibles — vérifier que les migrations sont appliquées." });
       }
-      const versements = await vRes.json().catch(() => []);
 
       // Créances en cours, tous prestataires confondus.
-      const cRes = await fetch(
+      const creances = await lireTout(
         `${SUPABASE_URL}/rest/v1/creances_prestataires`
-        + `?statut=in.(active,contestee)&select=*&order=created_at.desc&limit=200`,
-        { headers }
-      ).catch(() => null);
-      const creances = cRes?.ok ? await cRes.json().catch(() => []) : [];
+        + `?statut=in.(active,contestee)&select=*&order=created_at.desc,id.desc`,
+        headers
+      ).catch(e => { console.error("[list_versements] créances illisibles :", e.message); return []; });
 
       // Noms, en une seule passe : un aller-retour par ligne rendait l'écran
       // inutilisable dès la centaine de versements.
@@ -2212,12 +2283,22 @@ export default async function handler(req, res) {
       const versable = {};
       const idsOrphelins = new Set();
       if (ids.length) {
-        const nRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom,stripe_account_id,stripe_account_status`,
-          { headers }
-        ).catch(() => null);
-        const nRows = nRes?.ok ? await nRes.json().catch(() => []) : [];
-        for (const p of (Array.isArray(nRows) ? nRows : [])) {
+        // Par lots de 100 : un `in.(…)` de quelques centaines d'identifiants
+        // dépasse la longueur d'adresse admise.
+        const nRows = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          const nRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.slice(i, i + 100).join(",")})&select=id,prenom,nom,stripe_account_id,stripe_account_status`,
+            { headers }
+          ).catch(e => { console.error("[list_versements] noms illisibles :", e.message); return null; });
+          const lot = nRes?.ok ? await nRes.json().catch(() => null) : null;
+          if (!Array.isArray(lot)) {
+            console.error("[list_versements] noms illisibles :", nRes?.status);
+            return res.status(502).json({ error: "Prestataires des versements illisibles" });
+          }
+          nRows.push(...lot);
+        }
+        for (const p of nRows) {
           noms[p.id] = [p.prenom, p.nom].filter(Boolean).join(" ") || null;
           // Sans compte Stripe Connect actif, AUCUN virement ne peut partir vers
           // ce prestataire. Le back-office affichait « en retard » et accusait le
@@ -2879,9 +2960,15 @@ export default async function handler(req, res) {
       const { title, body: notifBody, target } = body;
       if (!title || !notifBody) return res.status(400).json({ error: "title + body requis" });
       const roleFilter = target === "clients" ? "&role=eq.client" : target === "prestataires" ? "&role=eq.prestataire" : "";
-      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id${roleFilter}&status=eq.approved`, { headers });
-      const profs = await pr.json();
-      if (!Array.isArray(profs) || profs.length === 0) return res.status(200).json({ ok:true, sent:0 });
+      // Lecture complète : au-delà de 1 000 comptes, les suivants ne recevaient rien.
+      let profs;
+      try {
+        profs = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id${roleFilter}&status=eq.approved`, headers);
+      } catch (e) {
+        console.error("[broadcast_notification] destinataires illisibles :", e.message);
+        return res.status(502).json({ error: "Destinataires illisibles" });
+      }
+      if (profs.length === 0) return res.status(200).json({ ok:true, sent:0 });
       const notifs = profs.map(p => ({ user_id:p.id, type:"system", title, body:notifBody, read:false }));
       for (let i = 0; i < notifs.length; i += 100) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs.slice(i, i+100)) }).catch(e => console.error("[bo-action/broadcast_notification] échec ignoré :", e?.message));
@@ -2987,16 +3074,22 @@ export default async function handler(req, res) {
       // annulée ne crée ni dépendance ni intégration.
       const depuis = new Date(Date.now() - (Number(seuils.fenetre_jours) || 180) * 86400000)
         .toISOString().slice(0, 10);
-      const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions`
-        + `?status=in.(completed,closed)`
-        + `&date=gte.${depuis}`
-        + `&select=client_id,prestataire_id,date,hours,actual_hours,tarif_horaire`
-        + `&limit=20000`,
-        { headers }
-      );
-      const brutes = mr.ok ? await mr.json().catch(() => []) : [];
-      if (!Array.isArray(brutes)) return res.status(200).json({ signaux: [], seuils });
+      // Lecture complète : `limit=20000` ne rendait que 1 000 prestations
+      // (PostgREST), et l'analyse en ignorait le reste sans le dire (08/10/2026).
+      // Illisible : une erreur, jamais « aucun signal ».
+      let brutes;
+      try {
+        brutes = await lireTout(
+          `${SUPABASE_URL}/rest/v1/missions`
+          + `?status=in.(completed,closed)`
+          + `&date=gte.${depuis}`
+          + `&select=id,client_id,prestataire_id,date,hours,actual_hours,tarif_horaire`,
+          headers
+        );
+      } catch (e) {
+        console.error("[conformite] prestations illisibles :", e.message);
+        return res.status(502).json({ error: "Prestations illisibles" });
+      }
 
       // Le montant retenu est la rémunération du prestataire, pas ce que le
       // client a payé : c'est son chiffre d'affaires qui mesure sa dépendance.
@@ -3034,22 +3127,37 @@ export default async function handler(req, res) {
     }
 
     if (action === "signaux_mise_a_disposition") {
-      const mrs = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status,tiers_declaration&order=created_at.desc&limit=1000`,
-        { headers }
-      );
-      const toutes = await mrs.json().catch(() => []);
-      if (!Array.isArray(toutes) || toutes.length === 0) return res.status(200).json([]);
+      // Toutes les prestations (api/_lignes.js), et plus les 1 000 dernières :
+      // un schéma de mise à disposition s'étale justement dans le temps.
+      // Illisible : une erreur, jamais « aucun signal » (08/10/2026).
+      let toutes;
+      try {
+        toutes = await lireTout(`${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status,tiers_declaration&order=created_at.desc,id.desc`, headers);
+      } catch (e) {
+        console.error("[signaux_mise_a_disposition] prestations illisibles :", e.message);
+        return res.status(502).json({ error: "Prestations illisibles" });
+      }
+      if (toutes.length === 0) return res.status(200).json([]);
 
       const clientIds = [...new Set(toutes.map(m => m.client_id).filter(Boolean))];
       if (!clientIds.length) return res.status(200).json([]);
 
-      const prs = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=in.(${clientIds.join(",")})&role=eq.client&select=id,prenom,nom,ville`,
-        { headers }
-      );
-      const profils = await prs.json().catch(() => []);
-      const parClient = Object.fromEntries((Array.isArray(profils) ? profils : []).map(p => [p.id, p]));
+      // Par lots de 100 : un `in.(…)` de mille identifiants dépassait la
+      // longueur d'adresse admise, et la lecture échouait sans le dire.
+      const profils = [];
+      for (let i = 0; i < clientIds.length; i += 100) {
+        const prs = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${clientIds.slice(i, i + 100).join(",")})&role=eq.client&select=id,prenom,nom,ville`,
+          { headers }
+        );
+        const lot = await prs.json().catch(() => null);
+        if (!prs.ok || !Array.isArray(lot)) {
+          console.error("[signaux_mise_a_disposition] clients illisibles :", prs.status);
+          return res.status(502).json({ error: "Clients illisibles" });
+        }
+        profils.push(...lot);
+      }
+      const parClient = Object.fromEntries(profils.map(p => [p.id, p]));
 
       // La ville du compte peut n'exister que dans user_metadata pour les comptes anciens.
       let metaVille = {};
@@ -3269,10 +3377,22 @@ export default async function handler(req, res) {
         console.error("[list_ratings] lecture refusée :", JSON.stringify(ratings).slice(0, 200));
         return res.status(500).json({ error: "Avis illisibles" });
       }
-      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom,role`, { headers });
-      const profs = await pr.json();
+      // Noms des seuls auteurs et destinataires des avis, par lots de 100. La
+      // lecture de TOUS les profils s'arrêtait à 1 000 (PostgREST) : au-delà, la
+      // personne s'affichait sans nom (08/10/2026).
+      const idsAvis = [...new Set((Array.isArray(ratings) ? ratings : []).flatMap(x => [x.reviewer_id, x.reviewee_provider_id]).filter(isUuidId))];
+      const profs = [];
+      for (let i = 0; i < idsAvis.length; i += 100) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${idsAvis.slice(i, i + 100).join(",")})&select=id,prenom,nom,role`, { headers });
+        const lot = await pr.json().catch(() => null);
+        if (!pr.ok || !Array.isArray(lot)) {
+          console.error("[list_ratings] noms illisibles :", pr.status);
+          return res.status(502).json({ error: "Noms illisibles" });
+        }
+        profs.push(...lot);
+      }
       const nameMap = {}, roleMap = {};
-      (Array.isArray(profs) ? profs : []).forEach(p => {
+      profs.forEach(p => {
         nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
         roleMap[p.id] = p.role;
       });

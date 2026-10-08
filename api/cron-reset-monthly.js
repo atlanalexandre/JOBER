@@ -1311,8 +1311,12 @@ export default async function handler(req, res) {
       }
 
       if (utilisateurs.length > 0) {
-        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id`, { headers });
-        const profils = pr.ok ? await pr.json().catch(() => null) : null;
+        // Lecture complète (api/_lignes.js). Elle s'arrêtait à 1 000 profils :
+        // tous les comptes suivants passaient pour orphelins, et chaque passage
+        // les relisait un par un — 1 771 appels inutiles sur la recette, cause
+        // probable de la lenteur de la tâche planifiée (08/10/2026).
+        const profils = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id`, headers)
+          .catch(e => { console.error("[orphelins] profils illisibles :", e.message); return null; });
         if (!Array.isArray(profils)) {
           console.error("[orphelins] profils illisibles — aucune réparation tentée.");
         } else {
@@ -1913,10 +1917,11 @@ export default async function handler(req, res) {
         if (batch.length < 1000) break;
         usersPage++;
       }
-      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
-      const profiles  = await profilesRes.json();
+      // Lecture complète : au-delà de 1 000 profils, les rappels perdaient le nom.
+      const profiles  = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, headers)
+        .catch(e => { console.error("[rappels] noms illisibles :", e.message); return []; });
       const nameMap   = {};
-      (Array.isArray(profiles) ? profiles : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
+      profiles.forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
 
       // ── 1. Rappels de mission pour demain ────────────────────────
       const tomorrow = new Date();
