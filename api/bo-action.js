@@ -9,6 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
+import { periodeDecalee } from "./_creneaux.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
@@ -2982,7 +2983,26 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const updates = {};
-      if (date !== undefined && date !== "") updates.date = date;
+      if (date !== undefined && date !== "") {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) {
+          return res.status(400).json({ error: "Date invalide (attendu : AAAA-MM-JJ)" });
+        }
+        updates.date = date;
+        // Une prestation sur plusieurs jours porte aussi sa période
+        // (`date_debut` / `date_fin`), que lisent la vérification des créneaux
+        // et le calcul des journées. Seule `date` changeait : la prestation
+        // était annoncée au nouveau jour, mais le prestataire restait réservé
+        // — et vérifié — sur l'ancienne période (relecture du 09/10/2026). La
+        // période est décalée d'autant, sa durée conservée.
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=date,date_debut,date_fin`, { headers });
+        const lignes = lr.ok ? await lr.json().catch(() => null) : null;
+        if (!Array.isArray(lignes) || !lignes[0]) {
+          console.error("[bo update_mission] prestation illisible :", lr.status);
+          return res.status(lr.ok ? 404 : 502).json({ error: lr.ok ? "Prestation introuvable" : "Prestation illisible" });
+        }
+        const actuelle = lignes[0];
+        Object.assign(updates, periodeDecalee(actuelle, date));
+      }
       if (hours !== undefined && hours !== "") updates.hours = Number(hours);
       if (tarif_horaire !== undefined && tarif_horaire !== "") updates.tarif_horaire = Number(tarif_horaire);
       if (ville !== undefined && ville !== "") updates.ville = ville;
