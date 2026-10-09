@@ -82,6 +82,34 @@ export default async function handler(req, res) {
 
   // Validation UUID pour profileId — évite les injections PostgREST via le paramètre de chemin
   const isUuidId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  // Identifiant de document : la clé primaire de `documents` n'est pas un uuid mais un
+  // entier (BIGSERIAL). Exiger un uuid faisait échouer toute validation et tout refus de
+  // document avec « docId invalide », y compris « Tout valider » sur les 7 pièces d'un
+  // prestataire — le bouton n'a donc jamais fonctionné. Les deux formes sont acceptées et
+  // strictement validées : les anciens fichiers de schéma du dépôt (retirés le 28/09/2026)
+  // se contredisaient sur le type de cette colonne (uuid contre BIGSERIAL), et la
+  // référence est la base, pas le dépôt.
+  const isDocId = (v) => {
+    if (isUuidId(v)) return true;
+    const s = typeof v === "number" ? String(v) : v;
+    return typeof s === "string" && /^[0-9]{1,19}$/.test(s);
+  };
+  if (profileId !== undefined && profileId !== null && !isUuidId(profileId)) {
+    return res.status(400).json({ error: "profileId invalide" });
+  }
+  // Sanitize : supprime espaces/sauts de ligne (copier-coller iPad/mobile)
+  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    return res.status(500).json({ error: "Configuration serveur manquante" });
+  }
+
+  const headers = {
+    "apikey": SERVICE_ROLE_KEY,
+    "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
   // Curseur de pagination des listes du BO : { created_at, id } de la dernière
   // ligne affichée. Tout autre format est ignoré (première page). L'identifiant
   // est un uuid (missions) ou un entier (documents : `bigint`) — n'accepter que
@@ -112,34 +140,6 @@ export default async function handler(req, res) {
       if (n) noms[id] = n;
     }
     return noms;
-  };
-  // Identifiant de document : la clé primaire de `documents` n'est pas un uuid mais un
-  // entier (BIGSERIAL). Exiger un uuid faisait échouer toute validation et tout refus de
-  // document avec « docId invalide », y compris « Tout valider » sur les 7 pièces d'un
-  // prestataire — le bouton n'a donc jamais fonctionné. Les deux formes sont acceptées et
-  // strictement validées : les anciens fichiers de schéma du dépôt (retirés le 28/09/2026)
-  // se contredisaient sur le type de cette colonne (uuid contre BIGSERIAL), et la
-  // référence est la base, pas le dépôt.
-  const isDocId = (v) => {
-    if (isUuidId(v)) return true;
-    const s = typeof v === "number" ? String(v) : v;
-    return typeof s === "string" && /^[0-9]{1,19}$/.test(s);
-  };
-  if (profileId !== undefined && profileId !== null && !isUuidId(profileId)) {
-    return res.status(400).json({ error: "profileId invalide" });
-  }
-  // Sanitize : supprime espaces/sauts de ligne (copier-coller iPad/mobile)
-  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
-  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
-
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    return res.status(500).json({ error: "Configuration serveur manquante" });
-  }
-
-  const headers = {
-    "apikey": SERVICE_ROLE_KEY,
-    "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
   };
 
   // ── Journal du backoffice ─────────────────────────────────────────
