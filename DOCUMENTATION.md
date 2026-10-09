@@ -173,7 +173,9 @@ mémoire pour toute la vie de la page : un seul échec passager, et chaque secte
 rendue comme un résultat, et l'échec final est journalisé sans être mis en cache. Depuis le
 08/10/2026, le client en est **prévenu** par un message (le catalogue affichait sinon
 « 0 prestataire » comme une plateforme vide), et seules une coupure réseau ou une erreur 5xx sont
-réessayées : un 4xx ne changera pas au second essai.
+réessayées : un 4xx ne changera pas au second essai. Exceptions depuis le 09/10/2026 : 408
+(délai) et 429 (limite de débit), passagers, sont réessayés, comme une réponse 200 au corps
+tronqué.
 
 **La recette se nettoie chaque nuit** (08/10/2026). Chaque recette crée des dizaines de comptes de
 test : le 08/10/2026, il y en avait 5 593, la tâche planifiée mettait 104 s et des scénarios
@@ -189,7 +191,9 @@ refuse les suppressions massives.
 `Cache-Control: public, s-maxage=30, stale-while-revalidate=120`). Chaque calcul relit tous les
 comptes de la plateforme, clients compris, pour lire les métadonnées des prestataires : 3 à 4 s
 d'attente en recette (5 600 comptes), qui croissent avec chaque inscrit. Seule la réponse complète
-est gardée, jamais un catalogue dégradé. Un prestataire activé apparaît au plus 30 s plus tard
+est gardée, jamais un catalogue dégradé : depuis le 09/10/2026, une lecture de secours (avis,
+prestations réalisées, comptes) marque la réponse incomplète (`degrade`), qui part alors sans
+en-tête de cache — elle était auparavant servie à tous pendant deux minutes. Un prestataire activé apparaît au plus 30 s plus tard
 (2 min au pire). Les scénarios qui créent un prestataire puis le cherchent demandent une version
 fraîche (`/api/prestataires?frais=…`). Sur le réseau, la réponse est compressée (88 Ko pour 3,5 Mo
 de données en recette).

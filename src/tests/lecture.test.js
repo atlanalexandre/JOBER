@@ -32,3 +32,27 @@ describe("une erreur définitive n'est pas réessayée (relecture du 08/10/2026)
     expect(f).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("passager malgré un 4xx, ou réponse tronquée (relecture du 09/10/2026)", () => {
+  it("une limite de débit (429) et un délai dépassé (408) sont réessayés", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(reponse(429, {}))
+      .mockResolvedValueOnce(reponse(408, {}))
+      .mockResolvedValueOnce(reponse(200, { ok: 1 }));
+    expect(await lireJsonAvecReprise("/x", { attenteMs: 0, fetchImpl: f })).toEqual({ ok: 1 });
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+
+  it("un 200 au corps tronqué est réessayé", async () => {
+    const tronque = { ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } };
+    const f = vi.fn().mockResolvedValueOnce(tronque).mockResolvedValueOnce(reponse(200, { ok: 1 }));
+    expect(await lireJsonAvecReprise("/x", { attenteMs: 0, fetchImpl: f })).toEqual({ ok: 1 });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it("un corps toujours tronqué finit en erreur, jamais en résultat", async () => {
+    const tronque = { ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } };
+    const f = vi.fn().mockResolvedValue(tronque);
+    await expect(lireJsonAvecReprise("/x", { attenteMs: 0, fetchImpl: f })).rejects.toThrow(/illisible/);
+  });
+});
