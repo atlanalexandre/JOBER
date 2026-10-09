@@ -1064,8 +1064,8 @@ Cinq procédures stockées sont appelées depuis le code, et n'existent donc que
   (`2026-10-09_perf_compteur_prestations_terminees.sql`). `/api/prestataires` lisait toutes les
   prestations terminées pour les compter, un volume sans fin qui échouait au-delà de 50 000.
   Lecture seule, `SECURITY INVOKER`, `service_role` uniquement. Absente ou en erreur, le code
-  garde la lecture complète (signalée dans les journaux). **À passer** sur la recette puis en
-  production (PR du 09/10/2026).
+  garde la lecture complète (signalée dans les journaux). Appliquée sur la recette puis en
+  production le 09/10/2026 ; l'appel par le catalogue est vérifié sur la recette.
 
 Comme elles ne sont pas visibles dans les fichiers SQL du dépôt, une modification de leur
 signature casse le code sans que rien ne le signale. **La référence, c'est la base.**
