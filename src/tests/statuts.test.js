@@ -89,6 +89,11 @@ describe("periodePrestation (liste du back-office)", () => {
     expect(periodePrestation({ date_debut:"2026-10-08T00:00:00+00:00", date_fin:"2026-10-08T00:00:00+00:00" })).toBe("08/10/2026");
   });
 
+  it("montre la date corrigée par le back-office, qui ne modifie que `date`", () => {
+    expect(periodePrestation({ date:"2026-10-12", date_debut:"2026-10-10 00:00:00+00", date_fin:"2026-10-10 00:00:00+00" }))
+      .toBe("12/10/2026");
+  });
+
   it("se rabat sur `date` pour une commande sans période", () => {
     expect(periodePrestation({ date:"2026-10-08" })).toBe("08/10/2026");
     expect(periodePrestation({})).toBe("—");

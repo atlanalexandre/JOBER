@@ -208,7 +208,7 @@ describe("le panneau du back-office", () => {
     expect(bo).toContain("const echeances = infos.echeances");
     expect(bo).toContain("etatExpiration(d.expires_at)");
     expect(listeDocs).toContain("etatExpiration(d.expires_at)");
-    expect(listeDocs).toMatch(/const echeances = tous\b/);
+    expect(listeDocs).toMatch(/const toutesEcheances = tous\b/);
   });
 
   // La plus pressante d'abord : la liste répond à « de quoi dois-je m'occuper
