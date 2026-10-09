@@ -2922,6 +2922,14 @@ function StripeStatsCard() {
   return (
     <div style={{ background:"#0D1B3E", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
       <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>💳 Données Stripe en temps réel</div>
+      {/* Clé de test : argent fictif, et partagé avec la recette jusqu'à la
+          bascule de Stripe en réel (IMMATRICULATION.md §7). Ces montants se
+          lisaient comme un vrai solde (relecture du 09/10/2026). */}
+      {!loading && !error && stats?.mode === "test" && (
+        <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:10, padding:"9px 12px", marginBottom:12, color:C.accentGold, fontSize:12, fontWeight:700, lineHeight:1.5 }}>
+          🧪 MODE TEST — argent fictif (carte de test 4242…). Ces montants incluent les essais automatiques de la recette : ils ne reflètent aucune activité réelle.
+        </div>
+      )}
       {loading && (
         <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"20px 0", fontSize:13 }}>Chargement…</div>
       )}
@@ -2945,13 +2953,16 @@ function StripeStatsCard() {
           <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>📊</div>
             <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{fmt(stats.last30days.volume)} €</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> prestations</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Encaissé sur 30 jours, remboursements déduits · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> paiement{stats.last30days.count>1?"s":""}</div>
           </div>
           <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>💰</div>
-            <div style={{ fontWeight:800, color:"#F0B429", fontSize:18 }}>{fmt(stats.last30days.commission)} €</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Commission ALANE (20%)</div>
+            <div style={{ fontWeight:800, color:"#F0B429", fontSize:18 }}>{fmt(stats.last30days.verse)} €</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Versé aux prestataires sur 30 jours</div>
           </div>
+          {stats.last30days.complet === false && (
+            <div style={{ gridColumn:"1/-1", color:C.textMuted, fontSize:11 }}>⚠️ Plus de 300 opérations sur 30 jours : seules les 300 dernières sont comptées.</div>
+          )}
         </div>
       )}
     </div>

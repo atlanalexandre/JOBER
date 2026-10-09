@@ -3625,37 +3625,68 @@ export default async function handler(req, res) {
       const stripeAuth = "Basic " + Buffer.from(STRIPE_KEY + ":").toString("base64");
       const thirtyDaysAgo = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
 
-      const [balanceRes, chargesRes] = await Promise.all([
-        fetch("https://api.stripe.com/v1/balance", {
-          headers: { "Authorization": stripeAuth },
-        }),
-        fetch(`https://api.stripe.com/v1/charges?limit=100&created[gte]=${thirtyDaysAgo}`, {
-          headers: { "Authorization": stripeAuth },
-        }),
-      ]);
+      // Mode du compte, lu sur la clé : en test, le solde et les paiements sont
+      // fictifs (carte 4242…) et mêlent recette et production, qui partagent ce
+      // compte jusqu'à la bascule (IMMATRICULATION.md §7). L'écran le dit.
+      const mode = /^(sk|rk)_live_/.test(STRIPE_KEY) ? "live" : "test";
 
-      if (!balanceRes.ok || !chargesRes.ok) {
+      // Liste Stripe complète, page par page (100 au plus par page) : la lecture
+      // unique s'arrêtait à 100 paiements, sans le dire (relecture du 09/10/2026).
+      // 3 pages : la lecture se fait page après page, chacune prend une à trois
+      // secondes. 30 pages dépassaient le délai de la fonction (32 s), 10 en
+      // prenaient 29 sur le compte de test. 300 opérations couvrent largement
+      // les premiers mois d'activité réelle ; au-delà, l'écran le signale, et
+      // ces chiffres devront venir de la base (DOCUMENTATION.md).
+      const PAGES_MAX = 3;
+      const lireListe = async (base) => {
+        const lignes = [];
+        let apres = null;
+        for (let page = 0; page < PAGES_MAX; page++) {
+          const r = await fetch(`${base}&limit=100${apres ? `&starting_after=${encodeURIComponent(apres)}` : ""}`, { headers: { "Authorization": stripeAuth } });
+          if (!r.ok) throw new Error(`Stripe ${r.status}`);
+          const j = await r.json();
+          const lot = Array.isArray(j.data) ? j.data : [];
+          lignes.push(...lot);
+          if (!j.has_more || !lot.length) return { lignes, complet: true };
+          apres = lot[lot.length - 1].id;
+        }
+        return { lignes, complet: false };
+      };
+
+      let balanceData, paiements, virements;
+      try {
+        const balanceRes = await fetch("https://api.stripe.com/v1/balance", { headers: { "Authorization": stripeAuth } });
+        if (!balanceRes.ok) throw new Error(`Stripe ${balanceRes.status}`);
+        balanceData = await balanceRes.json();
+        [paiements, virements] = await Promise.all([
+          lireListe(`https://api.stripe.com/v1/charges?created[gte]=${thirtyDaysAgo}`),
+          lireListe(`https://api.stripe.com/v1/transfers?created[gte]=${thirtyDaysAgo}`),
+        ]);
+      } catch (e) {
+        console.error("[bo stripe_stats] lecture Stripe impossible :", e.message);
         return res.status(200).json({ error: "Erreur Stripe API" });
       }
-
-      const balanceData = await balanceRes.json();
-      const chargesData = await chargesRes.json();
 
       const available = (balanceData.available || []).reduce((acc, b) => acc + (b.amount || 0), 0) / 100;
       const pending   = (balanceData.pending   || []).reduce((acc, b) => acc + (b.amount || 0), 0) / 100;
 
-      const charges = Array.isArray(chargesData.data) ? chargesData.data : [];
-      const succeeded = charges.filter(c => c.status === "succeeded");
-      const volume = succeeded.reduce((acc, c) => acc + (c.amount || 0), 0) / 100;
-      const commission = Math.round(volume * 0.20 * 100) / 100;
+      // Encaissé : paiements réussis, remboursements déduits. Versé : virements
+      // aux prestataires, annulations déduites. La « commission ALANE (20 %) »
+      // affichée auparavant était 20 % du volume, un chiffre inventé : ALANE se
+      // rémunère sur ses frais de service, sans pourcentage fixe.
+      const reussis = paiements.lignes.filter(c => c.status === "succeeded");
+      const encaisse = reussis.reduce((acc, c) => acc + (c.amount || 0) - (c.amount_refunded || 0), 0) / 100;
+      const verse = virements.lignes.reduce((acc, t) => acc + (t.amount || 0) - (t.amount_reversed || 0), 0) / 100;
 
       return res.status(200).json({
+        mode,
         available: Math.round(available * 100) / 100,
         pending:   Math.round(pending   * 100) / 100,
         last30days: {
-          count:      succeeded.length,
-          volume:     Math.round(volume     * 100) / 100,
-          commission: commission,
+          count:  reussis.length,
+          volume: Math.round(encaisse * 100) / 100,
+          verse:  Math.round(verse * 100) / 100,
+          complet: paiements.complet && virements.complet,
         },
       });
     }

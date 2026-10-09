@@ -3276,6 +3276,28 @@ le reste est « Région non renseignée » plutôt que deviné. Île-de-France =
 prénom, e-mail et téléphone ; un sélecteur trie la liste par date (défaut), par nom ou par
 prénom (A → Z, comptes sans nom en dernier).
 
+### Back-office, écran Finance : le mode test se voit
+
+**Le bloc « Données Stripe en temps réel » lit le compte Stripe**, pas la base. Tant que la
+production encaisse en mode test, sur le même compte que la recette (IMMATRICULATION.md §7),
+ses montants sont fictifs et viennent surtout des scénarios automatiques de la recette : le
+09/10/2026, il affichait 39 851 € « disponibles » et 95 « prestations » en 30 jours, pour aucune
+activité réelle. Depuis : un bandeau « MODE TEST » s'affiche quand la clé n'est pas `sk_live_` /
+`rk_live_` ; « Volume » devient l'**encaissé** (remboursements déduits) et compte des
+**paiements** (une prolongation est un paiement à part) ; la « Commission ALANE (20 %) » —
+20 % du volume, un chiffre inventé, ALANE se rémunérant sur ses frais de service — est remplacée
+par le **versé aux prestataires** (virements Stripe, annulations déduites). Les listes sont lues
+page par page (elles s'arrêtaient à 100 paiements), jusqu'à **300 opérations**, au-delà desquelles
+l'écran le signale : Stripe se lit page après page, une à trois secondes chacune, et 10 pages
+prenaient 29 s sur le compte de test. Quand l'activité réelle dépassera ce volume, ces chiffres
+devront être calculés depuis la base.
+
+**Les commandes d'essai de la production ont été retirées le 09/10/2026** (décision d'Alexandre,
+SQL passé par lui) : les 11 commandes, leurs candidatures, 2 messages et 12 notifications, et les
+compteurs des comptes. Les **3 factures archivées sont gardées** : elles portent des numéros
+émis, et un trou dans la numérotation se lirait comme des factures supprimées (à voir avec
+l'expert-comptable). Les essais se font désormais sur la recette.
+
 ### Back-office : la liste de toutes les commandes
 
 L'onglet **📋 Prestations** montre **toutes** les commandes, des plus récentes aux plus anciennes,
