@@ -165,6 +165,24 @@ export default async function handler(req, res) {
     // prestataires en recette). On lit les prestations terminées, et on ne
     // compte que celles des prestataires affichés.
     const affiches = new Set(prestaIdList);
+    // Nombre de prestations terminées par prestataire. Calculé par la base
+    // (migration 2026-10-09_perf_compteur_prestations_terminees.sql) : une ligne
+    // par prestataire, au lieu de lire TOUTES les prestations terminées — un
+    // volume sans fin, qui échouait au-delà de 50 000 (relecture du 09/10/2026).
+    // Fonction absente ou en erreur : la lecture complète, comme avant.
+    const compterPrestationsTerminees = async () => {
+      const compte = {};
+      try {
+        const lignes = await lireTout(`${SUPABASE_URL}/rest/v1/rpc/prestations_terminees_par_prestataire?select=prestataire_id,nombre&order=prestataire_id.asc`, headers);
+        for (const l of lignes) compte[l.prestataire_id] = Number(l.nombre) || 0;
+        return compte;
+      } catch (e) {
+        console.error("[prestataires] compteur par la base indisponible — lecture complète (migration du 09/10/2026 à passer ?) :", e.message);
+      }
+      const terminees = await lireTout(`${SUPABASE_URL}/rest/v1/missions?status=eq.completed&prestataire_id=not.is.null&select=id,prestataire_id`, headers);
+      for (const m of terminees) compte[m.prestataire_id] = (compte[m.prestataire_id] || 0) + 1;
+      return compte;
+    };
     // Une lecture de secours (avis, compteurs, métadonnées) rend un catalogue
     // INCOMPLET : il ne doit pas être gardé par le réseau de Vercel, qui le
     // servirait à tous pendant deux minutes (relecture du 09/10/2026).
@@ -172,15 +190,12 @@ export default async function handler(req, res) {
     const [allRatings, toutesTerminees] = await Promise.all([
       lireTout(`${SUPABASE_URL}/rest/v1/ratings?select=id,reviewee_provider_id,rating`, headers)
         .catch(e => { degrade = true; console.error("[prestataires] avis illisibles — notes absentes :", e.message); return []; }),
-      lireTout(`${SUPABASE_URL}/rest/v1/missions?status=eq.completed&prestataire_id=not.is.null&select=id,prestataire_id`, headers)
-        .catch(e => { degrade = true; console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return []; }),
+      compterPrestationsTerminees()
+        .catch(e => { degrade = true; console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return {}; }),
     ]);
-    const allCompletedMissions = toutesTerminees.filter(m => affiches.has(m.prestataire_id));
     const missionCountByProvider = {};
-    if (Array.isArray(allCompletedMissions)) {
-      for (const m of allCompletedMissions) {
-        missionCountByProvider[m.prestataire_id] = (missionCountByProvider[m.prestataire_id] || 0) + 1;
-      }
+    for (const [id, n] of Object.entries(toutesTerminees)) {
+      if (affiches.has(id)) missionCountByProvider[id] = n;
     }
     const ratingsByProvider = {};
     if (Array.isArray(allRatings)) {

@@ -1039,7 +1039,7 @@ recharge soit créditée deux fois. Lisible par le seul service role. Avant elle
 entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
 justifié, ni rapproché des encaissements Stripe.
 
-Quatre procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
+Cinq procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
 - `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
@@ -1059,6 +1059,13 @@ Quatre procédures stockées sont appelées depuis le code, et n'existent donc q
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
+- `prestations_terminees_par_prestataire()` — une ligne par prestataire (`prestataire_id`,
+  `nombre`) : le compteur « prestations réalisées » du catalogue
+  (`2026-10-09_perf_compteur_prestations_terminees.sql`). `/api/prestataires` lisait toutes les
+  prestations terminées pour les compter, un volume sans fin qui échouait au-delà de 50 000.
+  Lecture seule, `SECURITY INVOKER`, `service_role` uniquement. Absente ou en erreur, le code
+  garde la lecture complète (signalée dans les journaux). **À passer** sur la recette puis en
+  production (PR du 09/10/2026).
 
 Comme elles ne sont pas visibles dans les fichiers SQL du dépôt, une modification de leur
 signature casse le code sans que rien ne le signale. **La référence, c'est la base.**
