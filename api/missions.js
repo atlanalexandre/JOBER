@@ -3979,11 +3979,16 @@ export default async function handler(req, res) {
               <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
                 <tr><td style="padding:6px 0;color:#666">Montant payé par carte</td><td style="font-weight:700">${euros(payeCarte)}</td></tr>
                 ${cashbackApplique > 0 ? `<tr><td style="padding:6px 0;color:#666">Réglé en cashback</td><td style="font-weight:700">${euros(cashbackApplique)}</td></tr>` : ""}
-                <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur}</td></tr>
+                ${(refundAmount > 0 || ajoutsRembourses <= 0) ? `<tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur}</td></tr>` : ""}
                 ${ajoutsRembourses > 0 ? `<tr><td style="padding:6px 0;color:#666">Modification de commande remboursée (paiement séparé)</td><td style="font-weight:700;color:#10D98F">${euros(ajoutsRembourses)}</td></tr>` : ""}
                 ${keptAmount > 0 ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur}</td></tr>` : ""}
               </table>
-              <p style="font-size:13px;color:#666">${refundAmount > 0 ? (walletRefunded ? "Le remboursement a été crédité instantanément sur votre wallet ALANE." : (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.")) : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
+              <p style="font-size:13px;color:#666">${refundAmount > 0 ? (walletRefunded ? "Le remboursement a été crédité instantanément sur votre wallet ALANE." : (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.")) : ajoutsRembourses > 0
+                // Seule la modification de commande est rendue (relecture du
+                // 09/10/2026) : l'e-mail annonçait « 0,00 € » et « aucun montant
+                // n'est dû », en contradiction avec son objet.
+                ? "La modification de commande a été remboursée automatiquement. Elle apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés."
+                : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${keptAmount > 0
                 ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur}) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
                 : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}

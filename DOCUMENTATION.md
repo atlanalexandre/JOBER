@@ -3607,7 +3607,10 @@ ce total : plus que son paiement n'avait encaissé, et Stripe le refusait ; les 
 modification, eux, n'étaient jamais rendus. Ils sont désormais lus chez Stripe, retirés du total,
 et remboursés — la part du prestataire, ou tout si le prestataire est défaillant —, avant la
 réservation. Un échec arrête l'annulation avant tout mouvement. Le courriel de confirmation annonce ce
-second remboursement à part — il arrive sur le relevé en deux opérations (relecture du 08/10/2026).
+second remboursement à part — il arrive sur le relevé en deux opérations (relecture du 08/10/2026). Quand les frais de
+service absorbent tout le paiement principal et que seule la modification est rendue, le courriel ne
+montre plus « Remboursement 0,00 € » ni « aucun montant n'est dû » : il annonce le remboursement de
+la modification et son délai (relecture du 09/10/2026).
 
 **Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
 l'étiquette de son opération (`metadata[alane_operation]` : le jour et l'issue, ou
