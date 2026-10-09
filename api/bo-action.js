@@ -3632,7 +3632,9 @@ export default async function handler(req, res) {
 
       // Liste Stripe complète, page par page (100 au plus par page) : la lecture
       // unique s'arrêtait à 100 paiements, sans le dire (relecture du 09/10/2026).
-      const PAGES_MAX = 30;
+      // 10 pages : au-delà, la lecture séquentielle dépassait le délai de la
+      // fonction (32 s mesurées sur la recette, des milliers de paiements de test).
+      const PAGES_MAX = 10;
       const lireListe = async (base) => {
         const lignes = [];
         let apres = null;

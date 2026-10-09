@@ -2961,7 +2961,7 @@ function StripeStatsCard() {
             <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Versé aux prestataires sur 30 jours</div>
           </div>
           {stats.last30days.complet === false && (
-            <div style={{ gridColumn:"1/-1", color:C.textMuted, fontSize:11 }}>⚠️ Plus de 3 000 opérations sur 30 jours : seules les 3 000 dernières sont comptées.</div>
+            <div style={{ gridColumn:"1/-1", color:C.textMuted, fontSize:11 }}>⚠️ Plus de 1 000 opérations sur 30 jours : seules les 1 000 dernières sont comptées.</div>
           )}
         </div>
       )}

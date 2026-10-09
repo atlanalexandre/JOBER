@@ -3287,7 +3287,7 @@ activité réelle. Depuis : un bandeau « MODE TEST » s'affiche quand la clé n
 **paiements** (une prolongation est un paiement à part) ; la « Commission ALANE (20 %) » —
 20 % du volume, un chiffre inventé, ALANE se rémunérant sur ses frais de service — est remplacée
 par le **versé aux prestataires** (virements Stripe, annulations déduites). Les listes sont lues
-page par page (elles s'arrêtaient à 100 paiements), jusqu'à 3 000 opérations, au-delà desquelles
+page par page (elles s'arrêtaient à 100 paiements), jusqu'à 1 000 opérations (au-delà, la fonction dépassait son délai), au-delà desquelles
 l'écran le signale.
 
 **Les commandes d'essai de la production ont été retirées le 09/10/2026** (décision d'Alexandre,
