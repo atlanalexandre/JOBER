@@ -7,8 +7,10 @@
 /**
  * Lit `url` et rend le JSON d'une réponse réussie. Réessaie `reprises` fois,
  * après `attenteMs` × numéro de l'essai ; lève une erreur si tout échoue.
- * Seules une coupure réseau et une erreur du serveur (5xx) sont réessayées :
- * un 4xx ne changera pas au second essai, et faisait attendre 4,5 s pour rien.
+ * Sont réessayées : une coupure réseau, une erreur du serveur (5xx), un délai
+ * dépassé (408), une limite de débit (429) et une réponse tronquée (JSON
+ * illisible). Un autre 4xx ne changera pas au second essai, et faisait
+ * attendre 4,5 s pour rien.
  */
 export async function lireJsonAvecReprise(url, { reprises = 2, attenteMs = 1500, fetchImpl = fetch } = {}) {
   for (let essai = 0; ; essai++) {
@@ -16,12 +18,12 @@ export async function lireJsonAvecReprise(url, { reprises = 2, attenteMs = 1500,
     let motif;
     try {
       r = await fetchImpl(url);
+      if (r.ok) return await r.json();
     } catch (e) {
       motif = e.message;
     }
-    if (r?.ok) return r.json();
-    if (r && r.status < 500) throw new Error(`${url} refusé (${r.status})`);
-    if (r) motif = r.status;
+    if (r && !r.ok && r.status < 500 && r.status !== 408 && r.status !== 429) throw new Error(`${url} refusé (${r.status})`);
+    if (r && !r.ok) motif = r.status;
     if (essai >= reprises) throw new Error(`${url} illisible (${motif})`);
     await new Promise(ok => setTimeout(ok, attenteMs * (essai + 1)));
   }

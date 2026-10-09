@@ -165,11 +165,15 @@ export default async function handler(req, res) {
     // prestataires en recette). On lit les prestations terminées, et on ne
     // compte que celles des prestataires affichés.
     const affiches = new Set(prestaIdList);
+    // Une lecture de secours (avis, compteurs, métadonnées) rend un catalogue
+    // INCOMPLET : il ne doit pas être gardé par le réseau de Vercel, qui le
+    // servirait à tous pendant deux minutes (relecture du 09/10/2026).
+    let degrade = false;
     const [allRatings, toutesTerminees] = await Promise.all([
       lireTout(`${SUPABASE_URL}/rest/v1/ratings?select=id,reviewee_provider_id,rating`, headers)
-        .catch(e => { console.error("[prestataires] avis illisibles — notes absentes :", e.message); return []; }),
+        .catch(e => { degrade = true; console.error("[prestataires] avis illisibles — notes absentes :", e.message); return []; }),
       lireTout(`${SUPABASE_URL}/rest/v1/missions?status=eq.completed&prestataire_id=not.is.null&select=id,prestataire_id`, headers)
-        .catch(e => { console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return []; }),
+        .catch(e => { degrade = true; console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return []; }),
     ]);
     const allCompletedMissions = toutesTerminees.filter(m => affiches.has(m.prestataire_id));
     const missionCountByProvider = {};
@@ -193,10 +197,11 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`,
         { headers }
       );
+      if (!allUsersRes.ok) throw new Error(`comptes illisibles (${allUsersRes.status})`);
       const allUsersData = await allUsersRes.json();
       const allUsers = allUsersData.users || [];
       for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
-    } catch (e) { console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
+    } catch (e) { degrade = true; console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
 
     // Nom de famille réduit à son initiale (décision d'Alexandre du 28/09/2026).
     // Ce catalogue est public, sans compte : le nom complet permettait de
@@ -378,7 +383,7 @@ export default async function handler(req, res) {
       // prestataire activé apparaît au plus 30 s plus tard (2 min au pire
       // pendant le recalcul en arrière-plan) ; les photos, signées pour une
       // heure, restent valides.
-      res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=120");
+      if (!degrade) res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=120");
       return res.status(200).json({ prestataires: visibles });
     } catch (e) {
       // Le filtrage est un affinage, pas une sécurité : le refus de réservation
