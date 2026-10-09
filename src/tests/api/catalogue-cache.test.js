@@ -23,3 +23,21 @@ describe("mise en cache du catalogue", () => {
     expect(code).toContain("if (!allUsersRes.ok) throw");
   });
 });
+
+describe("compteur de prestations réalisées (relecture du 09/10/2026)", () => {
+  it("est demandé à la base, une ligne par prestataire", () => {
+    expect(code).toContain("rpc/prestations_terminees_par_prestataire");
+  });
+
+  it("garde la lecture complète si la fonction n'est pas encore installée", () => {
+    const i = code.indexOf("rpc/prestations_terminees_par_prestataire");
+    const repli = code.indexOf("missions?status=eq.completed&prestataire_id=not.is.null", i);
+    expect(repli).toBeGreaterThan(i);
+  });
+
+  it("la migration ne l'ouvre qu'au service role", () => {
+    const sql = readFileSync(new URL("../../../migrations/2026-10-09_perf_compteur_prestations_terminees.sql", import.meta.url), "utf8");
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.prestations_terminees_par_prestataire\(\) FROM PUBLIC, anon, authenticated/);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.prestations_terminees_par_prestataire\(\) TO service_role/);
+  });
+});
