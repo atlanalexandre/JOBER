@@ -322,6 +322,14 @@ concernée verte sur sa Preview, aucun conflit. Avant d'en fusionner plusieurs, 
 localement que leur combinaison passe lint, tests, cohérence et build, puis contrôle que le
 déploiement de production est au vert.
 
+**Le samedi, Alexandre ne touche pas son téléphone** (Shabbat, décision du 09/10/2026). Ce jour-là
+**uniquement**, toute session — la relecture comme une autre — agit sans attendre son accord : elle
+ne lui pose aucune question, prend la décision la plus judicieuse et la plus prudente, la note avec
+sa raison dans la PR et dans son résumé, et n'envoie **aucune notification** sur son téléphone. Ce
+qui ne change pas le samedi : jamais d'écriture en production ni de migration appliquée ; une PR
+qui demande du SQL reste ouverte, SQL prêt pour son retour ; aucune action destructrice
+irréversible (règle 2.4). Les autres jours, les règles ordinaires s'appliquent.
+
 Une PR qui demande du SQL **reste ouverte** : la routine donne le SQL et les clics exacts, à passer
 d'abord sur la recette, puis en production après son test. Alexandre valide. La raison de la
 prudence d'origine tient toujours, et c'est pourquoi la relecture reste exigeante : le correctif
