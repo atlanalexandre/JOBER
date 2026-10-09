@@ -3278,9 +3278,14 @@ suivante }`, `suivante` valant `null` sur la dernière page). La page suivante s
 position : une commande créée pendant la lecture décalait les pages, une commande annulée sous un
 filtre en faisait sauter une (relecture du 09/10/2026). L'onglet **Documents** fait de même, et
 ne reçoit que les **100** échéances les plus pressantes (`echeancesTotal` donne le nombre réel).
-Une réponse arrivée après un changement de filtre est ignorée. La date affichée part de `date`,
-la colonne que « Modifier » change — `date_debut` n'est pas mise à jour par cette action, à
-corriger à part. Un bouton « Afficher
+Une réponse arrivée après un changement de filtre est ignorée. La date affichée part de `date`.
+
+**« Modifier » décale toute la période** (09/10/2026). L'action `update_mission` ne changeait que
+`date` : une prestation sur plusieurs jours était annoncée au nouveau jour, mais son prestataire
+restait réservé — et vérifié par `api/_creneaux.js` — sur l'ancienne période. `date_debut` et
+`date_fin` sont désormais décalées d'autant, durée conservée (`periodeDecalee()`,
+`api/_creneaux.js`), et une date mal formée est refusée. Le back-office ne vérifie pas que le
+prestataire est libre au nouveau jour : c'est à l'administrateur de s'en assurer avant de déplacer. Un bouton « Afficher
 les prestations plus anciennes » charge la page suivante. Filtres : toutes, ouverte, en attente,
 en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
 

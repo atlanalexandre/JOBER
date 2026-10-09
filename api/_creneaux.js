@@ -148,3 +148,25 @@ export function premiereIndisponibilite({ jours, disponJours = [], creneaux = {}
   }
   return null;
 }
+
+/**
+ * Période d'une prestation sur plusieurs jours, décalée pour commencer à
+ * `nouvelleDate` (« AAAA-MM-JJ »), sa durée conservée. Sert à « Modifier » du
+ * back-office, qui changeait `date` seule : la période — que lisent la
+ * vérification des créneaux et le calcul des journées — restait l'ancienne
+ * (relecture du 09/10/2026). `date_debut` / `date_fin` sont des timestamptz
+ * (« 2026-09-30 00:00:00+00 ») : on n'en garde que le jour (CLAUDE.md §4).
+ *
+ * @returns {{date_debut?: string, date_fin?: string}} vide pour une prestation
+ *          d'un jour (sans `date_debut`)
+ */
+export function periodeDecalee(mission, nouvelleDate) {
+  if (!mission?.date_debut) return {};
+  const jour = (v) => Date.parse(`${String(v).slice(0, 10)}T00:00:00Z`);
+  const decalage = jour(nouvelleDate) - jour(mission.date || mission.date_debut);
+  if (!Number.isFinite(decalage)) return {};
+  const iso = (ms) => `${new Date(ms).toISOString().slice(0, 10)}T00:00:00Z`;
+  const periode = { date_debut: iso(jour(mission.date_debut) + decalage) };
+  if (mission.date_fin) periode.date_fin = iso(jour(mission.date_fin) + decalage);
+  return periode;
+}
