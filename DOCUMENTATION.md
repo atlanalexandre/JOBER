@@ -3268,8 +3268,15 @@ prénom (A → Z, comptes sans nom en dernier).
 ### Back-office : la liste de toutes les commandes
 
 L'onglet **📋 Prestations** montre **toutes** les commandes, des plus récentes aux plus anciennes,
-par pages de 200 (`list_missions` de `api/bo-action.js`, paramètre `offset` ; la réponse est
-`{ prestations, suivante }`, `suivante` valant `null` sur la dernière page). Un bouton « Afficher
+par pages de 200 (`list_missions` de `api/bo-action.js` ; la réponse est `{ prestations,
+suivante }`, `suivante` valant `null` sur la dernière page). La page suivante se demande par un
+**curseur** (`avant` = `{ created_at, id }` de la dernière commande affichée), et non par une
+position : une commande créée pendant la lecture décalait les pages, une commande annulée sous un
+filtre en faisait sauter une (relecture du 09/10/2026). L'onglet **Documents** fait de même, et
+ne reçoit que les **100** échéances les plus pressantes (`echeancesTotal` donne le nombre réel).
+Une réponse arrivée après un changement de filtre est ignorée. La date affichée part de `date`,
+la colonne que « Modifier » change — `date_debut` n'est pas mise à jour par cette action, à
+corriger à part. Un bouton « Afficher
 les prestations plus anciennes » charge la page suivante. Filtres : toutes, ouverte, en attente,
 en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
 

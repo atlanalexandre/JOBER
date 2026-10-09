@@ -110,6 +110,37 @@ export default async function handler(req, res) {
     "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
   };
+  // Curseur de pagination des listes du BO : { created_at, id } de la dernière
+  // ligne affichée. Tout autre format est ignoré (première page). L'identifiant
+  // est un uuid (missions) ou un entier (documents : `bigint`) — n'accepter que
+  // l'uuid renvoyait la première page à chaque « Afficher plus » des documents.
+  const curseurValide = (c) => (c && typeof c === "object"
+    && (isUuidId(c.id) || (typeof c.id === "number" && Number.isSafeInteger(c.id) && c.id > 0) || (typeof c.id === "string" && /^\d{1,15}$/.test(c.id)))
+    && typeof c.created_at === "string" && /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)?$/.test(c.created_at)
+    && Number.isFinite(Date.parse(c.created_at))) ? { id: c.id, created_at: c.created_at } : null;
+  // Noms de quelques comptes : profils par lots de 100, puis, pour un profil
+  // sans nom, le nom déclaré à l'inscription (user_metadata) — un compte ancien
+  // peut n'avoir que celui-là. Rend null si les profils sont illisibles.
+  const nomsDesComptes = async (ids) => {
+    const noms = {};
+    for (let i = 0; i < ids.length; i += 100) {
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom&id=in.(${ids.slice(i, i + 100).join(",")})`, { headers });
+      if (!pr.ok) {
+        console.error("[bo noms] lecture des profils refusée :", pr.status, await pr.text().catch(e => e.message));
+        return null;
+      }
+      for (const p of await pr.json()) noms[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
+    }
+    for (const id of ids.filter(x => !noms[x]).slice(0, 50)) {
+      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+      const u = ur.ok ? await ur.json().catch(() => null) : null;
+      if (!ur.ok) console.error(`[bo noms] compte ${id} illisible (${ur.status})`);
+      const meta = u?.user_metadata || {};
+      const n = `${meta.prenom||""} ${meta.nom||""}`.trim();
+      if (n) noms[id] = n;
+    }
+    return noms;
+  };
 
   // ── Journal du backoffice ─────────────────────────────────────────
   //
@@ -1844,7 +1875,18 @@ export default async function handler(req, res) {
       const PAGE_DOCS = 200;
       const statut = ["pending", "verified"].includes(req.body.statut) ? req.body.statut : "all";
       const typeDemande = typeof req.body.type === "string" && /^[a-z_]{1,40}$/.test(req.body.type) ? req.body.type : "all";
-      const offset = Math.max(0, Math.min(Number.parseInt(req.body.offset, 10) || 0, 1000000));
+      // Page suivante par curseur ({ created_at, id } de la dernière pièce
+      // affichée) : une position sautait des pièces dès qu'on en validait sous
+      // le filtre « En attente » (relecture du 09/10/2026).
+      const curseur = curseurValide(req.body.avant);
+      // Ordre décroissant (date, puis identifiant), le même pour le tri et pour
+      // le curseur : sans quoi une page peut chevaucher la précédente.
+      const avantDans = (x, y) => {
+        const dx = Date.parse(x.created_at) || 0, dy = Date.parse(y.created_at) || 0;
+        // Identifiants entiers (bigint) : comparés comme des nombres — en texte,
+        // « 10 » passerait avant « 9 ».
+        return dx !== dy ? dy - dx : Number(y.id) - Number(x.id);
+      };
       let tous;
       try {
         tous = await lireTout(`${SUPABASE_URL}/rest/v1/documents?select=*&order=created_at.desc,id.desc`, headers);
@@ -1853,15 +1895,22 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: "Documents illisibles" });
       }
 
+      tous.sort(avantDans);
       const filtres = tous.filter(d =>
         (statut === "all" || (statut === "pending" ? !d.verified : !!d.verified))
         && (typeDemande === "all" || d.type === typeDemande));
-      const page = filtres.slice(offset, offset + PAGE_DOCS);
-      const echeances = tous
+      const restants = curseur ? filtres.filter(d => avantDans(curseur, d) < 0) : filtres;
+      const page = restants.slice(0, PAGE_DOCS);
+      // Les plus pressantes seulement : sans borne, des milliers de pièces
+      // expirées, chacune avec son URL signée, auraient refait dépasser la
+      // taille de réponse admise. Le total est rendu à part.
+      const ECHEANCES_MAX = 100;
+      const toutesEcheances = tous
         .map(d => ({ d, exp: etatExpiration(d.expires_at) }))
         .filter(x => x.exp && x.exp.etat !== "valide")
         .sort((x, y) => x.exp.jours - y.exp.jours)
         .map(x => x.d);
+      const echeances = toutesEcheances.slice(0, ECHEANCES_MAX);
       const aMontrer = [...new Map([...page, ...echeances].map(d => [d.id, d])).values()];
 
       // Noms (profils) et adresses (comptes) des seuls prestataires montrés,
@@ -1877,7 +1926,7 @@ export default async function handler(req, res) {
         }
         for (const p of await pr.json()) profileMap[p.id] = p;
       }
-      const emailMap = {};
+      const emailMap = {}, metaMap = {};
       if (ids.length) {
         const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
         const usersData = await usersRes.json().catch(() => null);
@@ -1885,7 +1934,7 @@ export default async function handler(req, res) {
           console.error("[bo list_all_docs] adresses illisibles :", usersRes.status);
         } else {
           const voulus = new Set(ids);
-          for (const u of usersData.users) if (voulus.has(u.id)) emailMap[u.id] = u.email;
+          for (const u of usersData.users) if (voulus.has(u.id)) { emailMap[u.id] = u.email; metaMap[u.id] = u.user_metadata || {}; }
         }
       }
 
@@ -1909,17 +1958,20 @@ export default async function handler(req, res) {
         } catch (e) { console.error("[bo-action] URLs signées des documents non générées :", e.message); }
       }
       const enrichir = (doc) => {
+        // Nom du profil, sinon celui déclaré à l'inscription (comptes anciens).
         const prof = profileMap[doc.prestataire_id] || {};
-        return { ...doc, signedUrl: urlMap[doc.storage_path] || null, prenom: prof.prenom || "", nom: prof.nom || "", email: emailMap[doc.prestataire_id] || "" };
+        const meta = metaMap[doc.prestataire_id] || {};
+        return { ...doc, signedUrl: urlMap[doc.storage_path] || null, prenom: prof.prenom || meta.prenom || "", nom: prof.nom || meta.nom || "", email: emailMap[doc.prestataire_id] || "" };
       };
       return res.status(200).json({
         documents: page.map(enrichir),
-        suivante: offset + PAGE_DOCS < filtres.length ? offset + PAGE_DOCS : null,
+        suivante: restants.length > PAGE_DOCS ? { created_at: page[page.length - 1].created_at, id: page[page.length - 1].id } : null,
         total: tous.length,
         filtres: filtres.length,
         enAttente: tous.filter(d => !d.verified).length,
         types: [...new Set(tous.map(d => d.type))],
         echeances: echeances.map(enrichir),
+        echeancesTotal: toutesEcheances.length,
       });
     }
 
@@ -2670,11 +2722,17 @@ export default async function handler(req, res) {
       const VALID_STATUSES = ["open","pending_acceptance","assigned","needs_replacement","completed","disputed","closed","rejected","refused","cancelled"];
       const rawStatus = req.body.status;
       const statusFilter = rawStatus && rawStatus !== "all" && VALID_STATUSES.includes(rawStatus) ? `&status=eq.${rawStatus}` : "";
-      // Une page de PAGE_BO commandes ; l'écran demande la suivante par `offset`.
-      // Avant, la liste s'arrêtait aux 300 plus récentes sans le signaler.
+      // Une page de PAGE_BO commandes. La suivante se demande par un CURSEUR —
+      // la date et l'identifiant de la dernière commande affichée — et non par
+      // une position : une commande créée pendant la lecture décalait les pages
+      // (doublons), une commande annulée sous un filtre en faisait sauter une
+      // (relecture du 09/10/2026).
       const PAGE_BO = 200;
-      const offset = Math.max(0, Math.min(Number.parseInt(req.body.offset, 10) || 0, 1000000));
-      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,date_debut,date_fin,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence,started_at,arrived_at,arrivee_localisation,arrivee_distance_m${statusFilter}&order=created_at.desc,id.desc&limit=${PAGE_BO}&offset=${offset}`, { headers });
+      const curseur = curseurValide(req.body.avant);
+      const apres = curseur
+        ? `&or=(created_at.lt.${encodeURIComponent(curseur.created_at)},and(created_at.eq.${encodeURIComponent(curseur.created_at)},id.lt.${curseur.id}))`
+        : "";
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,date_debut,date_fin,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence,started_at,arrived_at,arrivee_localisation,arrivee_distance_m${statusFilter}${apres}&order=created_at.desc,id.desc&limit=${PAGE_BO}`, { headers });
       if (!missionsRes.ok) {
         console.error("[bo list_missions] lecture des prestations refusée :", missionsRes.status, await missionsRes.text().catch(e => e.message));
         return res.status(502).json({ error: "Lecture des prestations impossible" });
@@ -2684,22 +2742,18 @@ export default async function handler(req, res) {
       // TOUS les profils s'arrêtait à 1 000 lignes (PostgREST) : au-delà, le
       // client s'affichait « Client » et le prestataire « Prestataire ».
       const ids = [...new Set(missions.flatMap(m => [m.client_id, m.prestataire_id]).filter(isUuidId))];
-      const nameMap = {};
-      for (let i = 0; i < ids.length; i += 100) {
-        const lot = ids.slice(i, i + 100);
-        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom&id=in.(${lot.join(",")})`, { headers });
-        if (!pr.ok) {
-          console.error("[bo list_missions] lecture des noms refusée :", pr.status, await pr.text().catch(e => e.message));
-          return res.status(502).json({ error: "Lecture des noms impossible" });
-        }
-        for (const p of await pr.json()) nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
-      }
+      const nameMap = await nomsDesComptes(ids);
+      if (!nameMap) return res.status(502).json({ error: "Lecture des noms impossible" });
       const enriched = missions.map(m => ({
         ...m,
         client_name: nameMap[m.client_id] || "Client",
         presta_name: m.prestataire_id ? (nameMap[m.prestataire_id] || "Prestataire") : null,
       }));
-      return res.status(200).json({ prestations: enriched, suivante: missions.length === PAGE_BO ? offset + PAGE_BO : null });
+      const derniere = missions[missions.length - 1];
+      return res.status(200).json({
+        prestations: enriched,
+        suivante: missions.length === PAGE_BO ? { created_at: derniere.created_at, id: derniere.id } : null,
+      });
     }
 
     if (action === "force_complete_mission") {

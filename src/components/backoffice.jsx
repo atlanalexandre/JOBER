@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS, LIBELLE_CONNAISSANCE, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { REGIONS, regionDe } from "../constants/regions.js";
@@ -3682,26 +3682,31 @@ export function BODocuments() {
   // les compteurs et la liste « à surveiller » (api/bo-action.js, list_all_docs).
   const [infos, setInfos]     = useState({ total:0, filtres:0, enAttente:0, types:[], echeances:[], suivante:null });
   const [erreur, setErreur]   = useState("");
+  // Une réponse plus ancienne que la dernière demande est ignorée (filtre changé).
+  const demande = useRef(0);
 
   // `offset` > 0 : ajoute la page suivante. Une erreur s'affiche, au lieu d'une
   // liste vide qui laissait croire qu'aucune pièce n'avait été déposée.
-  const load = async (offset = 0) => {
+  const load = async (avant = null) => {
+    const numero = ++demande.current;
     setLoading(true);
     setErreur("");
     try {
-      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs", statut:filter, type:typeFilter, offset }) });
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs", statut:filter, type:typeFilter, avant }) });
       const data = await r.json().catch(() => ({}));
+      if (numero !== demande.current) return;
       if (!r.ok) throw new Error(data.error || `Erreur ${r.status}`);
       const page = Array.isArray(data.documents) ? data.documents : [];
-      setDocs(prev => offset > 0 ? [...prev, ...page] : page);
-      setInfos({ total:data.total||0, filtres:data.filtres||0, enAttente:data.enAttente||0, types:Array.isArray(data.types)?data.types:[], echeances:Array.isArray(data.echeances)?data.echeances:[], suivante:data.suivante ?? null });
+      setDocs(prev => avant ? [...prev, ...page.filter(p => !prev.some(d => d.id === p.id))] : page);
+      setInfos({ total:data.total||0, filtres:data.filtres||0, enAttente:data.enAttente||0, types:Array.isArray(data.types)?data.types:[], echeances:Array.isArray(data.echeances)?data.echeances:[], echeancesTotal:data.echeancesTotal||0, suivante:data.suivante ?? null });
     } catch (e) {
+      if (numero !== demande.current) return;
       console.error("[BO documents] chargement impossible :", e.message);
       setErreur(e.message || "Erreur réseau");
-    } finally { setLoading(false); }
+    } finally { if (numero === demande.current) setLoading(false); }
   };
 
-  useEffect(() => { load(0); }, [filter, typeFilter]);
+  useEffect(() => { load(null); }, [filter, typeFilter]);
 
   const handleVerify = async (doc) => {
     const validite = await demanderValidite(doc.type);
@@ -3750,7 +3755,7 @@ export function BODocuments() {
       {echeances.length > 0 && (
         <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
           <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:3 }}>
-            ⏳ {echeances.length} document{echeances.length>1?"s":""} à surveiller
+            ⏳ {Math.max(echeances.length, infos.echeancesTotal||0)} document{Math.max(echeances.length, infos.echeancesTotal||0)>1?"s":""} à surveiller{(infos.echeancesTotal||0) > echeances.length ? ` — les ${echeances.length} plus pressants ci-dessous` : ""}
           </div>
           <div style={{ color:C.textSub, fontSize:11, marginBottom:10, lineHeight:1.5 }}>
             Le prestataire est relancé automatiquement, une fois par semaine. Passé trente jours après
@@ -3785,7 +3790,7 @@ export function BODocuments() {
           <div style={{ fontWeight:800, fontSize:16, color:C.text }}>📂 Documents prestataires</div>
           <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{infos.total} document{infos.total>1?"s":""} · {pendingCount} en attente de validation</div>
         </div>
-        <button onClick={()=>load(0)} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={()=>load(null)} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
           {loading ? "Chargement…" : "🔄 Actualiser"}
         </button>
       </div>
@@ -3936,8 +3941,12 @@ export function BOMissions() {
 
   const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
-  // Position de la page suivante, ou null quand tout est affiché.
+  // Curseur de la page suivante ({ created_at, id }), ou null quand tout est affiché.
   const [suivante, setSuivante] = useState(null);
+  // Numéro de la dernière demande : une réponse plus ancienne (filtre changé
+  // entre-temps) est ignorée, au lieu d'ajouter à la liste des commandes d'un
+  // autre filtre (relecture du 09/10/2026).
+  const demande = useRef(0);
   const [erreur, setErreur]     = useState("");
   const [filter, setFilter]     = useState("all");
   const [validating, setValidating] = useState(null);
@@ -3949,22 +3958,25 @@ export function BOMissions() {
   const [reassignEmail, setReassignEmail] = useState("");
   const [reassignReason, setReassignReason] = useState("");
 
-  // `offset` > 0 : ajoute la page suivante à la liste au lieu de la remplacer.
+  // `avant` (curseur) : ajoute la page suivante à la liste au lieu de la remplacer.
   // Une erreur s'affiche : une liste vide laissait croire qu'il n'y avait aucune commande.
-  const load = async (status = filter, offset = 0) => {
+  const load = async (status = filter, avant = null) => {
+    const numero = ++demande.current;
     setLoading(true);
     setErreur("");
     try {
-      const res = await boFetch({ action:"list_missions", status, offset });
+      const res = await boFetch({ action:"list_missions", status, avant });
       const data = await res.json().catch(() => ({}));
+      if (numero !== demande.current) return;
       if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
       const page = Array.isArray(data.prestations) ? data.prestations : [];
-      setMissions(ms => offset > 0 ? [...ms, ...page] : page);
+      setMissions(ms => avant ? [...ms, ...page.filter(p => !ms.some(m => m.id === p.id))] : page);
       setSuivante(data.suivante ?? null);
     } catch (e) {
+      if (numero !== demande.current) return;
       console.error("[BO prestations] chargement impossible :", e.message);
       setErreur(e.message || "Erreur réseau");
-      if (offset === 0) { setMissions([]); setSuivante(null); }
+      if (!avant) { setMissions([]); setSuivante(null); }
     }
     setLoading(false);
   };
