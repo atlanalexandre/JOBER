@@ -325,10 +325,14 @@ déploiement de production est au vert.
 **Le samedi, Alexandre ne touche pas son téléphone** (Shabbat, décision du 09/10/2026). Ce jour-là
 **uniquement**, toute session — la relecture comme une autre — agit sans attendre son accord : elle
 ne lui pose aucune question, prend la décision la plus judicieuse et la plus prudente, la note avec
-sa raison dans la PR et dans son résumé, et n'envoie **aucune notification** sur son téléphone. Ce
-qui ne change pas le samedi : jamais d'écriture en production ni de migration appliquée ; une PR
-qui demande du SQL reste ouverte, SQL prêt pour son retour ; aucune action destructrice
-irréversible (règle 2.4). Les autres jours, les règles ordinaires s'appliquent.
+sa raison dans la PR et dans son résumé, et lui **envoie le résumé en notification**, qu'il lira
+après Shabbat. **Le SQL, la session le passe elle-même quand elle le peut** (précision du même
+jour) : sur la **recette**, par l'accès dont elle dispose, après relecture, et seulement une
+migration qui ajoute ou corrige sans rien détruire — puis elle le vérifie. La **production** lui
+reste inaccessible en écriture (son accès y est en lecture seule) : le SQL de production attend
+son retour, prêt à coller, et la PR qui en dépend reste ouverte. Toujours interdit : toute action
+nuisible ou destructrice irréversible (règle 2.4) — suppression de données, de comptes, de
+fichiers. Les autres jours, les règles ordinaires s'appliquent.
 
 Une PR qui demande du SQL **reste ouverte** : la routine donne le SQL et les clics exacts, à passer
 d'abord sur la recette, puis en production après son test. Alexandre valide. La raison de la
