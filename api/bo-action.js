@@ -83,8 +83,11 @@ export default async function handler(req, res) {
   // Validation UUID pour profileId — évite les injections PostgREST via le paramètre de chemin
   const isUuidId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
   // Curseur de pagination des listes du BO : { created_at, id } de la dernière
-  // ligne affichée. Tout autre format est ignoré (première page).
-  const curseurValide = (c) => (c && typeof c === "object" && isUuidId(c.id)
+  // ligne affichée. Tout autre format est ignoré (première page). L'identifiant
+  // est un uuid (missions) ou un entier (documents : `bigint`) — n'accepter que
+  // l'uuid renvoyait la première page à chaque « Afficher plus » des documents.
+  const curseurValide = (c) => (c && typeof c === "object"
+    && (isUuidId(c.id) || (typeof c.id === "number" && Number.isSafeInteger(c.id) && c.id > 0) || (typeof c.id === "string" && /^\d{1,15}$/.test(c.id)))
     && typeof c.created_at === "string" && /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)?$/.test(c.created_at)
     && Number.isFinite(Date.parse(c.created_at))) ? { id: c.id, created_at: c.created_at } : null;
   // Noms de quelques comptes : profils par lots de 100, puis, pour un profil
@@ -1880,7 +1883,9 @@ export default async function handler(req, res) {
       // le curseur : sans quoi une page peut chevaucher la précédente.
       const avantDans = (x, y) => {
         const dx = Date.parse(x.created_at) || 0, dy = Date.parse(y.created_at) || 0;
-        return dx !== dy ? dy - dx : String(y.id).localeCompare(String(x.id));
+        // Identifiants entiers (bigint) : comparés comme des nombres — en texte,
+        // « 10 » passerait avant « 9 ».
+        return dx !== dy ? dy - dx : Number(y.id) - Number(x.id);
       };
       let tous;
       try {
