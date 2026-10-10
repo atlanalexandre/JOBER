@@ -193,7 +193,10 @@ comptes de la plateforme, clients compris, pour lire les métadonnées des prest
 d'attente en recette (5 600 comptes), qui croissent avec chaque inscrit. Seule la réponse complète
 est gardée, jamais un catalogue dégradé : depuis le 09/10/2026, une lecture de secours (avis,
 prestations réalisées, comptes) marque la réponse incomplète (`degrade`), qui part alors sans
-en-tête de cache — elle était auparavant servie à tous pendant deux minutes. Un prestataire activé apparaît au plus 30 s plus tard
+en-tête de cache — elle était auparavant servie à tous pendant deux minutes. Depuis le
+10/10/2026, c'est aussi le cas quand les justificatifs sont illisibles (tous les métiers
+réglementés sont alors retirés, par prudence) ou qu'une photo n'a pas pu être lue ou signée
+(`photosVerifiees()` le signale par `incomplete`). Un prestataire activé apparaît au plus 30 s plus tard
 (2 min au pire). Les scénarios qui créent un prestataire puis le cherchent demandent une version
 fraîche (`/api/prestataires?frais=…`). Sur le réseau, la réponse est compressée (88 Ko pour 3,5 Mo
 de données en recette).

@@ -243,6 +243,10 @@ export default async function handler(req, res) {
       approvedProfiles.filter(p => userMetaMap[p.id]?.photo_public_auth).map(p => p.id),
       SUPABASE_URL, headers
     );
+    // Justificatifs illisibles (`null`) : tous les métiers réglementés sont
+    // retirés, par prudence. Photos en partie illisibles : des fiches sans photo.
+    // Dans les deux cas, la vitrine est incomplète — pas de mise en cache.
+    if (justifs === null || photosCatalogue.incomplete) degrade = true;
 
     // Tous ses métiers sont réglementés et aucun titre n'est vérifié : il ne
     // peut rien exercer, il n'a rien à faire au catalogue.
