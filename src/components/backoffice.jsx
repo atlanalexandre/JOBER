@@ -3696,7 +3696,7 @@ export function BODocuments() {
   // Une réponse plus ancienne que la dernière demande est ignorée (filtre changé).
   const demande = useRef(0);
 
-  // `offset` > 0 : ajoute la page suivante. Une erreur s'affiche, au lieu d'une
+  // `avant` (curseur de la dernière pièce affichée) : ajoute la page suivante. Une erreur s'affiche, au lieu d'une
   // liste vide qui laissait croire qu'aucune pièce n'avait été déposée.
   const load = async (avant = null) => {
     const numero = ++demande.current;
@@ -4046,7 +4046,7 @@ export function BOMissions() {
     try {
       const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
       const data = await res.json();
-      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
+      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals,...(data.misAJour||{})}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
     } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);

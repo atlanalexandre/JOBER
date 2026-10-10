@@ -3314,7 +3314,16 @@ Une réponse arrivée après un changement de filtre est ignorée. La date affic
 restait réservé — et vérifié par `api/_creneaux.js` — sur l'ancienne période. `date_debut` et
 `date_fin` sont désormais décalées d'autant, durée conservée (`periodeDecalee()`,
 `api/_creneaux.js`), et une date mal formée est refusée. Le back-office ne vérifie pas que le
-prestataire est libre au nouveau jour : c'est à l'administrateur de s'en assurer avant de déplacer. Un bouton « Afficher
+prestataire est libre au nouveau jour : c'est à l'administrateur de s'en assurer avant de déplacer.
+Depuis le 10/10/2026 (relecture du samedi, décision prise sans Alexandre) : la période **commence
+au nouveau jour** (décalage mesuré depuis `date_debut`, ce qui répare aussi une période déjà
+décalée), l'écran reprend les champs réellement écrits (`misAJour`), et **une prestation qui a des
+heures ajoutées, ou une demande d'heures en cours, ne peut plus être déplacée** (409) : ses heures
+et leurs remboursements sont rattachés à leurs journées, qu'il faudrait déplacer avec l'argent.
+L'annuler et en créer une nouvelle.
+
+Écran Finance, même jour : un paiement remboursé en entier n'est plus compté (le nombre
+correspond désormais au montant encaissé), et le solde est lu en même temps que les listes. Un bouton « Afficher
 les prestations plus anciennes » charge la page suivante. Filtres : toutes, ouverte, en attente,
 en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
 
