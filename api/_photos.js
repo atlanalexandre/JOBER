@@ -28,6 +28,9 @@ const LOT = 100;
  */
 export async function photosVerifiees(ids, SUPABASE_URL, headers) {
   const carte = new Map();
+  // `carte.incomplete` : une lecture ou une signature a échoué. Le catalogue ne
+  // doit pas être mis en cache dans cet état (relecture du 10/10/2026).
+  carte.incomplete = false;
   const uniques = [...new Set((ids || []).filter(Boolean))];
   for (let i = 0; i < uniques.length; i += LOT) {
     const lot = uniques.slice(i, i + LOT);
@@ -40,6 +43,7 @@ export async function photosVerifiees(ids, SUPABASE_URL, headers) {
       const lignes = await dr.json().catch(() => null);
       if (!dr.ok || !Array.isArray(lignes)) {
         console.error(`[photos] photos validées illisibles (${dr.status}) — ${lot.length} prestataire(s) sans photo.`);
+        carte.incomplete = true;
         continue;
       }
       const avecChemin = lignes.filter(l => l.storage_path);
@@ -52,6 +56,7 @@ export async function photosVerifiees(ids, SUPABASE_URL, headers) {
       const signees = await sr.json().catch(() => null);
       if (!sr.ok || !Array.isArray(signees)) {
         console.error(`[photos] URL signées refusées (${sr.status}) — ${avecChemin.length} photo(s) non affichée(s).`);
+        carte.incomplete = true;
         continue;
       }
       const parChemin = new Map(signees.filter(s => s?.signedURL).map(s => [s.path, s.signedURL]));
@@ -62,6 +67,7 @@ export async function photosVerifiees(ids, SUPABASE_URL, headers) {
       }
     } catch (e) {
       console.error(`[photos] photos validées indisponibles pour ${lot.length} prestataire(s) :`, e.message);
+      carte.incomplete = true;
     }
   }
   return carte;

@@ -41,3 +41,14 @@ describe("compteur de prestations réalisées (relecture du 09/10/2026)", () => 
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.prestations_terminees_par_prestataire\(\) TO service_role/);
   });
 });
+
+describe("justificatifs et photos illisibles (relecture du 10/10/2026)", () => {
+  it("rendent le catalogue incomplet, donc non mis en cache", () => {
+    expect(code).toContain("if (justifs === null || photosCatalogue.incomplete) degrade = true;");
+  });
+
+  it("photosVerifiees signale chaque échec", () => {
+    const photos = readFileSync(new URL("../../../api/_photos.js", import.meta.url), "utf8");
+    expect((photos.match(/carte\.incomplete = true;/g) || []).length).toBe(3);
+  });
+});
