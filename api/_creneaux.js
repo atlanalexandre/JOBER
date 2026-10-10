@@ -163,7 +163,10 @@ export function premiereIndisponibilite({ jours, disponJours = [], creneaux = {}
 export function periodeDecalee(mission, nouvelleDate) {
   if (!mission?.date_debut) return {};
   const jour = (v) => Date.parse(`${String(v).slice(0, 10)}T00:00:00Z`);
-  const decalage = jour(nouvelleDate) - jour(mission.date || mission.date_debut);
+  // Ancré sur `date_debut`, et non sur `date` : la période commence au nouveau
+  // jour même si `date` s'en était écartée — ce que faisait « Modifier » avant
+  // le 09/10/2026. Ancré sur `date`, l'écart était conservé (relecture du 10/10).
+  const decalage = jour(nouvelleDate) - jour(mission.date_debut);
   if (!Number.isFinite(decalage)) return {};
   const iso = (ms) => `${new Date(ms).toISOString().slice(0, 10)}T00:00:00Z`;
   const periode = { date_debut: iso(jour(mission.date_debut) + decalage) };

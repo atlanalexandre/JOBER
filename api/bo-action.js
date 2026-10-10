@@ -116,7 +116,7 @@ export default async function handler(req, res) {
   // est un uuid (missions) ou un entier (documents : `bigint`) — n'accepter que
   // l'uuid renvoyait la première page à chaque « Afficher plus » des documents.
   const curseurValide = (c) => (c && typeof c === "object"
-    && (isUuidId(c.id) || (typeof c.id === "number" && Number.isSafeInteger(c.id) && c.id > 0) || (typeof c.id === "string" && /^\d{1,15}$/.test(c.id)))
+    && isDocId(c.id)
     && typeof c.created_at === "string" && /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)?$/.test(c.created_at)
     && Number.isFinite(Date.parse(c.created_at))) ? { id: c.id, created_at: c.created_at } : null;
   // Noms de quelques comptes : profils par lots de 100, puis, pour un profil
@@ -132,14 +132,21 @@ export default async function handler(req, res) {
       }
       for (const p of await pr.json()) noms[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
     }
-    for (const id of ids.filter(x => !noms[x]).slice(0, 50)) {
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
-      const u = ur.ok ? await ur.json().catch(() => null) : null;
-      if (!ur.ok) console.error(`[bo noms] compte ${id} illisible (${ur.status})`);
-      const meta = u?.user_metadata || {};
-      const n = `${meta.prenom||""} ${meta.nom||""}`.trim();
-      if (n) noms[id] = n;
-    }
+    // En parallèle : l'un après l'autre, 50 comptes ajoutaient plusieurs
+    // secondes à chaque page (relecture du 10/10/2026). Un compte supprimé
+    // (404) n'a plus de nom à rendre : ce n'est pas une erreur.
+    await Promise.all(ids.filter(x => !noms[x]).slice(0, 50).map(async (id) => {
+      try {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+        if (ur.status === 404) return;
+        if (!ur.ok) { console.error(`[bo noms] compte ${id} illisible (${ur.status})`); return; }
+        const meta = (await ur.json())?.user_metadata || {};
+        const n = `${meta.prenom||""} ${meta.nom||""}`.trim();
+        if (n) noms[id] = n;
+      } catch (e) {
+        console.error(`[bo noms] compte ${id} illisible :`, e.message);
+      }
+    }));
     return noms;
   };
 
@@ -2994,13 +3001,29 @@ export default async function handler(req, res) {
         // était annoncée au nouveau jour, mais le prestataire restait réservé
         // — et vérifié — sur l'ancienne période (relecture du 09/10/2026). La
         // période est décalée d'autant, sa durée conservée.
-        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=date,date_debut,date_fin`, { headers });
-        const lignes = lr.ok ? await lr.json().catch(() => null) : null;
-        if (!Array.isArray(lignes) || !lignes[0]) {
-          console.error("[bo update_mission] prestation illisible :", lr.status);
-          return res.status(lr.ok ? 404 : 502).json({ error: lr.ok ? "Prestation introuvable" : "Prestation illisible" });
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=date,date_debut,date_fin,heures_ajoutees_detail,extra_hours_status`, { headers });
+        if (!lr.ok) {
+          console.error("[bo update_mission] prestation illisible :", lr.status, await lr.text().catch(e => e.message));
+          return res.status(502).json({ error: "Prestation illisible" });
         }
+        let lignes;
+        try { lignes = await lr.json(); } catch (e) {
+          console.error("[bo update_mission] réponse illisible :", e.message);
+          return res.status(502).json({ error: "Prestation illisible" });
+        }
+        if (!Array.isArray(lignes) || !lignes[0]) return res.status(404).json({ error: "Prestation introuvable" });
         const actuelle = lignes[0];
+        // Des heures ajoutées sont rattachées à LEURS journées (détail, paiement,
+        // remboursement étiqueté par jour) : déplacer la prestation les laisserait
+        // sur des jours qu'elle ne couvre plus, et un remboursement ultérieur
+        // pourrait ne pas reconnaître celui déjà fait. Décision prudente de la
+        // relecture du 10/10/2026 (samedi, sans Alexandre) : refuser plutôt que
+        // déplacer l'argent avec la date. Même chose pendant une demande en cours.
+        const ajouts = Array.isArray(actuelle.heures_ajoutees_detail) ? actuelle.heures_ajoutees_detail : [];
+        if (String(date) !== String(actuelle.date || "").slice(0, 10)
+            && (ajouts.length > 0 || ["pending", "accepte_presta"].includes(actuelle.extra_hours_status))) {
+          return res.status(409).json({ error: "Cette prestation a des heures ajoutées (ou une demande en cours) : sa date ne peut pas être déplacée. Annulez-la et créez-en une nouvelle." });
+        }
         Object.assign(updates, periodeDecalee(actuelle, date));
       }
       if (hours !== undefined && hours !== "") updates.hours = Number(hours);
@@ -3011,7 +3034,9 @@ export default async function handler(req, res) {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(updates) });
       if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour" });
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(e => console.error("[bo-action/update_mission] échec ignoré :", e?.message));
-      return res.status(200).json({ success: true });
+      // Les champs réellement écrits, période décalée comprise : l'écran les
+      // reprend tels quels (il affichait l'ancienne période jusqu'au rechargement).
+      return res.status(200).json({ success: true, misAJour: updates });
     }
 
     if (action === "adjust_cashback") {
@@ -3655,10 +3680,13 @@ export default async function handler(req, res) {
 
       let balanceData, paiements, virements;
       try {
-        const balanceRes = await fetch("https://api.stripe.com/v1/balance", { headers: { "Authorization": stripeAuth } });
-        if (!balanceRes.ok) throw new Error(`Stripe ${balanceRes.status}`);
-        balanceData = await balanceRes.json();
-        [paiements, virements] = await Promise.all([
+        const lireSolde = async () => {
+          const balanceRes = await fetch("https://api.stripe.com/v1/balance", { headers: { "Authorization": stripeAuth } });
+          if (!balanceRes.ok) throw new Error(`Stripe ${balanceRes.status}`);
+          return balanceRes.json();
+        };
+        [balanceData, paiements, virements] = await Promise.all([
+          lireSolde(),
           lireListe(`https://api.stripe.com/v1/charges?created[gte]=${thirtyDaysAgo}`),
           lireListe(`https://api.stripe.com/v1/transfers?created[gte]=${thirtyDaysAgo}`),
         ]);
@@ -3674,7 +3702,9 @@ export default async function handler(req, res) {
       // aux prestataires, annulations déduites. La « commission ALANE (20 %) »
       // affichée auparavant était 20 % du volume, un chiffre inventé : ALANE se
       // rémunère sur ses frais de service, sans pourcentage fixe.
-      const reussis = paiements.lignes.filter(c => c.status === "succeeded");
+      // Un paiement remboursé en entier reste « succeeded » chez Stripe : il
+      // n'est pas compté, pour que le nombre corresponde au montant encaissé.
+      const reussis = paiements.lignes.filter(c => c.status === "succeeded" && (c.amount_refunded || 0) < (c.amount || 0));
       const encaisse = reussis.reduce((acc, c) => acc + (c.amount || 0) - (c.amount_refunded || 0), 0) / 100;
       const verse = virements.lignes.reduce((acc, t) => acc + (t.amount || 0) - (t.amount_reversed || 0), 0) / 100;
 

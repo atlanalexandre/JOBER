@@ -25,4 +25,9 @@ describe("bloc Stripe de l'écran Finance", () => {
     expect(bloc).toContain("amount_refunded");
     expect(bloc).toContain("v1/transfers");
   });
+
+  it("ne compte pas un paiement remboursé en entier, et lit le solde en même temps que les listes", () => {
+    expect(bloc).toContain("(c.amount_refunded || 0) < (c.amount || 0)");
+    expect(bloc).toMatch(/\[balanceData, paiements, virements\] = await Promise\.all/);
+  });
 });

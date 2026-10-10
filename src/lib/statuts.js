@@ -112,8 +112,9 @@ export const ONGLETS_PRESTATIONS = [
 // timestamptz : on ne garde que le jour (« 2026-10-08 00:00:00+00 »).
 export function periodePrestation(m) {
   const jour = (v) => { const [a, mo, j] = String(v).slice(0, 10).split("-"); return `${j}/${mo}/${a}`; };
-  // `date` d'abord : c'est la colonne que modifie le back-office (« Modifier »),
-  // qui ne touche pas `date_debut` — la date corrigée doit se voir (09/10/2026).
+  // `date` d'abord : c'est le premier jour, celui que modifie « Modifier » du
+  // back-office — qui décale aussi `date_debut` / `date_fin` depuis le
+  // 09/10/2026. Une ligne ancienne où `date` s'en écarte montre `date`.
   const debut = m.date ? String(m.date).slice(0, 10) : (m.date_debut ? String(m.date_debut).slice(0, 10) : "");
   const fin   = m.date_fin ? String(m.date_fin).slice(0, 10) : "";
   if (!debut) return "—";
