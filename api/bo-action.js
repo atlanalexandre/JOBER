@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { periodeDecalee } from "./_creneaux.js";
+import { nouvellePeriode } from "./_creneaux.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
@@ -116,7 +116,10 @@ export default async function handler(req, res) {
   // est un uuid (missions) ou un entier (documents : `bigint`) — n'accepter que
   // l'uuid renvoyait la première page à chaque « Afficher plus » des documents.
   const curseurValide = (c) => (c && typeof c === "object"
-    && isDocId(c.id)
+    // Identifiant de document : entier sûr (≤ 15 chiffres), pour que la
+    // comparaison numérique reste exacte — plus strict qu'isDocId à dessein.
+    && (isUuidId(c.id) || (typeof c.id === "number" && Number.isSafeInteger(c.id) && c.id > 0)
+        || (typeof c.id === "string" && /^[1-9]\d{0,14}$/.test(c.id)))
     && typeof c.created_at === "string" && /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)?$/.test(c.created_at)
     && Number.isFinite(Date.parse(c.created_at))) ? { id: c.id, created_at: c.created_at } : null;
   // Noms de quelques comptes : profils par lots de 100, puis, pour un profil
@@ -135,7 +138,10 @@ export default async function handler(req, res) {
     // En parallèle : l'un après l'autre, 50 comptes ajoutaient plusieurs
     // secondes à chaque page (relecture du 10/10/2026). Un compte supprimé
     // (404) n'a plus de nom à rendre : ce n'est pas une erreur.
-    await Promise.all(ids.filter(x => !noms[x]).slice(0, 50).map(async (id) => {
+    // Par paquets de 10 : 50 appels d'un coup déclenchaient la limite de débit
+    // de l'authentification (429), et des noms manquaient (relecture du 11/10).
+    const manquants = ids.filter(x => !noms[x]).slice(0, 50);
+    for (let i = 0; i < manquants.length; i += 10) await Promise.all(manquants.slice(i, i + 10).map(async (id) => {
       try {
         const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
         if (ur.status === 404) return;
@@ -2987,6 +2993,8 @@ export default async function handler(req, res) {
 
     if (action === "update_mission") {
       const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
+      const ERREUR_HEURES_AJOUTEES = "Cette prestation a des heures ajoutées (ou une demande en cours) : sa date ne peut pas être déplacée. Annulez-la et créez-en une nouvelle.";
+      let dateChange = false;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const updates = {};
@@ -3020,19 +3028,34 @@ export default async function handler(req, res) {
         // relecture du 10/10/2026 (samedi, sans Alexandre) : refuser plutôt que
         // déplacer l'argent avec la date. Même chose pendant une demande en cours.
         const ajouts = Array.isArray(actuelle.heures_ajoutees_detail) ? actuelle.heures_ajoutees_detail : [];
-        if (String(date) !== String(actuelle.date || "").slice(0, 10)
-            && (ajouts.length > 0 || ["pending", "accepte_presta"].includes(actuelle.extra_hours_status))) {
-          return res.status(409).json({ error: "Cette prestation a des heures ajoutées (ou une demande en cours) : sa date ne peut pas être déplacée. Annulez-la et créez-en une nouvelle." });
+        dateChange = String(date) !== String(actuelle.date || "").slice(0, 10);
+        if (dateChange && (ajouts.length > 0 || ["pending", "accepte_presta"].includes(actuelle.extra_hours_status))) {
+          return res.status(409).json({ error: ERREUR_HEURES_AJOUTEES });
         }
-        Object.assign(updates, periodeDecalee(actuelle, date));
+        // La période ne bouge que si la date change (relecture du 11/10/2026).
+        Object.assign(updates, nouvellePeriode(actuelle, date));
       }
       if (hours !== undefined && hours !== "") updates.hours = Number(hours);
       if (tarif_horaire !== undefined && tarif_horaire !== "") updates.tarif_horaire = Number(tarif_horaire);
       if (ville !== undefined && ville !== "") updates.ville = ville;
       if (metier !== undefined && metier !== "") updates.metier = metier;
       if (!Object.keys(updates).length) return res.status(400).json({ error: "Aucun champ à modifier" });
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(updates) });
-      if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+      // Date déplacée : l'écriture n'a lieu que si, au même instant, la
+      // prestation n'a toujours ni heures ajoutées ni demande en cours. Une
+      // demande payée entre la lecture et l'écriture aurait sinon ses journées
+      // laissées sur l'ancienne période (relecture du 11/10/2026).
+      const garde = dateChange
+        ? "&and=(or(heures_ajoutees_detail.is.null,heures_ajoutees_detail.eq.[]),or(extra_hours_status.is.null,extra_hours_status.not.in.(pending,accepte_presta)))"
+        : "";
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}${garde}`, { method:"PATCH", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify(updates) });
+      if (!r.ok) {
+        console.error("[bo update_mission] écriture refusée :", r.status, await r.text().catch(e => e.message));
+        return res.status(500).json({ error: "Erreur mise à jour" });
+      }
+      const ecrites = await r.json().catch(() => null);
+      if (!Array.isArray(ecrites) || ecrites.length === 0) {
+        return res.status(409).json({ error: ERREUR_HEURES_AJOUTEES });
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(e => console.error("[bo-action/update_mission] échec ignoré :", e?.message));
       // Les champs réellement écrits, période décalée comprise : l'écran les
       // reprend tels quels (il affichait l'ancienne période jusqu'au rechargement).

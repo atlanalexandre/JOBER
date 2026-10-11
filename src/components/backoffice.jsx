@@ -4046,7 +4046,7 @@ export function BOMissions() {
     try {
       const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
       const data = await res.json();
-      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals,...(data.misAJour||{})}:m)); setEditingMission(null); setEditMissionVals({}); }
+      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...(data.misAJour||editMissionVals)}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
     } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);

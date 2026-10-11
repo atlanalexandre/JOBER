@@ -2,7 +2,7 @@
 // suit la nouvelle date (relecture du 09/10/2026).
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { periodeDecalee } from "../../../api/_creneaux.js";
+import { periodeDecalee, nouvellePeriode } from "../../../api/_creneaux.js";
 
 describe("periodeDecalee", () => {
   it("décale début et fin d'autant, la durée conservée", () => {
@@ -31,22 +31,36 @@ describe("periodeDecalee", () => {
   });
 });
 
+describe("nouvellePeriode : la période ne bouge que si la date change (relecture du 11/10/2026)", () => {
+  const ecartee = { date:"2026-10-15", date_debut:"2026-10-10 00:00:00+00", date_fin:"2026-10-12 00:00:00+00" };
+
+  it("enregistrer la même date (changement de ville) ne déplace rien", () => {
+    expect(nouvellePeriode(ecartee, "2026-10-15")).toEqual({});
+  });
+
+  it("une date différente fait commencer la période au nouveau jour", () => {
+    expect(nouvellePeriode(ecartee, "2026-10-20")).toEqual({ date_debut:"2026-10-20T00:00:00Z", date_fin:"2026-10-22T00:00:00Z" });
+  });
+});
+
 describe("update_mission l'applique", () => {
   const code = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
   const bloc = code.slice(code.indexOf('action === "update_mission"'), code.indexOf('action === "adjust_cashback"'));
   it("décale la période quand la date change, et refuse une date mal formée", () => {
-    expect(bloc).toContain("Object.assign(updates, periodeDecalee(actuelle, date))");
+    expect(bloc).toContain("Object.assign(updates, nouvellePeriode(actuelle, date))");
     expect(bloc).toContain("Date invalide");
   });
 
   it("refuse de déplacer une prestation qui a des heures ajoutées ou une demande en cours", () => {
-    expect(bloc).toMatch(/ajouts\.length > 0 \|\| \["pending", "accepte_presta"\]\.includes\(actuelle\.extra_hours_status\)/);
+    expect(bloc).toMatch(/dateChange && \(ajouts\.length > 0 \|\| \["pending", "accepte_presta"\]\.includes\(actuelle\.extra_hours_status\)\)/);
+    // Et l'écriture elle-même est conditionnée : une demande apparue entre-temps la fait échouer.
+    expect(bloc).toContain("extra_hours_status.not.in.(pending,accepte_presta)");
     expect(bloc).toContain("res.status(409)");
   });
 
   it("rend les champs écrits, que l'écran reprend", () => {
     expect(bloc).toContain("misAJour: updates");
     const ecran = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
-    expect(ecran).toContain("...(data.misAJour||{})");
+    expect(ecran).toContain("...(data.misAJour||editMissionVals)");
   });
 });
