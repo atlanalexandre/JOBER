@@ -160,6 +160,17 @@ export function premiereIndisponibilite({ jours, disponJours = [], creneaux = {}
  * @returns {{date_debut?: string, date_fin?: string}} vide pour une prestation
  *          d'un jour (sans `date_debut`)
  */
+/**
+ * Période à écrire quand le back-office enregistre `nouvelleDate` : vide si la
+ * date ne change pas. Le formulaire « Modifier » renvoie toujours la date ;
+ * sans cette garde, changer la ville d'une prestation dont `date` s'écartait de
+ * `date_debut` déplaçait toute sa période (relecture du 11/10/2026).
+ */
+export function nouvellePeriode(mission, nouvelleDate) {
+  if (String(nouvelleDate || "").slice(0, 10) === String(mission?.date || "").slice(0, 10)) return {};
+  return periodeDecalee(mission, nouvelleDate);
+}
+
 export function periodeDecalee(mission, nouvelleDate) {
   if (!mission?.date_debut) return {};
   const jour = (v) => Date.parse(`${String(v).slice(0, 10)}T00:00:00Z`);

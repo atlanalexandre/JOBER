@@ -49,6 +49,6 @@ describe("justificatifs et photos illisibles (relecture du 10/10/2026)", () => {
 
   it("photosVerifiees signale chaque échec", () => {
     const photos = readFileSync(new URL("../../../api/_photos.js", import.meta.url), "utf8");
-    expect((photos.match(/carte\.incomplete = true;/g) || []).length).toBe(3);
+    expect((photos.match(/carte\.incomplete = true;/g) || []).length).toBe(4);
   });
 });

@@ -63,7 +63,7 @@ export async function photosVerifiees(ids, SUPABASE_URL, headers) {
       for (const l of avecChemin) {
         const u = parChemin.get(l.storage_path);
         if (u) carte.set(l.prestataire_id, `${SUPABASE_URL}/storage/v1${u}`);
-        else console.error(`[photos] URL signée absente pour ${l.storage_path}`);
+        else { console.error(`[photos] URL signée absente pour ${l.storage_path}`); carte.incomplete = true; }
       }
     } catch (e) {
       console.error(`[photos] photos validées indisponibles pour ${lot.length} prestataire(s) :`, e.message);

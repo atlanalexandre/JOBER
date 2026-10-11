@@ -3293,7 +3293,9 @@ par le **versé aux prestataires** (virements Stripe, annulations déduites). Le
 page par page (elles s'arrêtaient à 100 paiements), jusqu'à **300 opérations**, au-delà desquelles
 l'écran le signale : Stripe se lit page après page, une à trois secondes chacune, et 10 pages
 prenaient 29 s sur le compte de test. Quand l'activité réelle dépassera ce volume, ces chiffres
-devront être calculés depuis la base.
+devront être calculés depuis la base. Un paiement remboursé en entier
+n'est pas compté (10/10/2026) : le nombre correspond au montant encaissé ; le solde est lu en
+même temps que les listes.
 
 **Les commandes d'essai de la production ont été retirées le 09/10/2026** (décision d'Alexandre,
 SQL passé par lui) : les 11 commandes, leurs candidatures, 2 messages et 12 notifications, et les
@@ -3311,6 +3313,8 @@ position : une commande créée pendant la lecture décalait les pages, une comm
 filtre en faisait sauter une (relecture du 09/10/2026). L'onglet **Documents** fait de même, et
 ne reçoit que les **100** échéances les plus pressantes (`echeancesTotal` donne le nombre réel).
 Une réponse arrivée après un changement de filtre est ignorée. La date affichée part de `date`.
+Un bouton « Afficher les prestations plus anciennes » charge la page suivante. Filtres : toutes,
+ouverte, en attente, en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
 
 **« Modifier » décale toute la période** (09/10/2026). L'action `update_mission` ne changeait que
 `date` : une prestation sur plusieurs jours était annoncée au nouveau jour, mais son prestataire
@@ -3325,10 +3329,13 @@ heures ajoutées, ou une demande d'heures en cours, ne peut plus être déplacé
 et leurs remboursements sont rattachés à leurs journées, qu'il faudrait déplacer avec l'argent.
 L'annuler et en créer une nouvelle.
 
-Écran Finance, même jour : un paiement remboursé en entier n'est plus compté (le nombre
-correspond désormais au montant encaissé), et le solde est lu en même temps que les listes. Un bouton « Afficher
-les prestations plus anciennes » charge la page suivante. Filtres : toutes, ouverte, en attente,
-en cours, remplaçant recherché, terminée, en litige, clôturée, annulée.
+**La période ne bouge que si la date change** (relecture du 11/10/2026). Le formulaire renvoie
+toujours la date : ancré sur `date_debut`, enregistrer un simple changement de ville déplaçait la
+période d'une prestation dont `date` s'en écartait. `nouvellePeriode()` (`api/_creneaux.js`) ne
+rend un décalage que si la date soumise diffère de `date` ; le refus des heures ajoutées porte sur
+le même cas. L'écriture est conditionnée en base à l'absence d'heures ajoutées et de demande en
+cours : une demande apparue entre la lecture et l'écriture fait échouer la modification (409) au
+lieu de déplacer des journées payées. L'écran ne reprend que les champs réellement écrits.
 
 Corrigé le 08/10/2026 : la liste s'arrêtait **sans le dire** aux 300 plus récentes ; le filtre
 « En litige » (`disputed`, absent de la liste blanche du serveur) affichait **toutes** les
