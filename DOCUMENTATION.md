@@ -505,7 +505,7 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
    devient obligatoire, et **son intitulé nomme le titre attendu** — « Carte professionnelle
    CNAPS » plutôt que « Diplômes & certifications ». Un prestataire à qui l'on réclame « un
    diplôme » envoie n'importe quoi ; à qui l'on réclame sa carte, envoie sa carte ;
-2. l'inscription, l'onglet « Docs » et la checklist « Premiers pas » lisent tous cette liste —
+2. l'inscription, Profil › Documents et la checklist « Premiers pas » lisent tous cette liste —
    l'onglet affichait jusqu'ici `DOCS_REQUIS` brut, donc la même liste pour tout le monde ;
 3. **`enable_missions` refuse d'ouvrir l'accès aux prestations** tant que le justificatif n'est
    pas déposé **et vérifié**. Un document déposé mais jamais regardé ne vaut pas une
@@ -1532,14 +1532,14 @@ recalculée à chaque affichage jusqu'au 04/10/2026 : une facture émise en aoû
 « émise le » jour où on la rouvrait. Sans archive (attestation sans numéro), c'est la date du jour.
 
 **Accès** — chaque prestation réalisée (ou déjà facturée) porte un bouton « Ma facture » /
-« Facture », côté client (détail de la prestation) comme côté prestataire (onglet Historique).
+« Facture », côté client (détail de la prestation) comme côté prestataire (Prestations › Terminées).
 Le bouton prestataire n'apparaissait que pour `completed` : une prestation facturée puis
 remboursée (`closed` avec `invoice_number`) restait sans accès pour lui, alors que le client
 la voyait. Aligné le 04/10/2026.
 
 **Toutes les factures du mois** (04/10/2026) — menu du mois et bouton « 🧾 Mes factures de {mois} » (« d'octobre », « de mai »)
 en tête de la liste des prestations (client, onglets « Toutes » et « Terminées ») et de
-l'onglet Historique (prestataire). Il ouvre `/api/invoice?mois=AAAA-MM&token=…` : un seul
+Prestations › Terminées (prestataire). Il ouvre `/api/invoice?mois=AAAA-MM&token=…` : un seul
 document, une facture par page à l'impression, à enregistrer en PDF. Le jeton vient de
 `generate_invoice_token` avec `{ mois }` — signé `{user}.mois-{AAAA-MM}.{exp}`, 30 minutes —
 et n'ouvre que ce mois-là ; un jeton de facture seule ne l'ouvre pas, et inversement. Le
@@ -2035,7 +2035,7 @@ recueilli « préalablement à tout encaissement », et sans mandat de facturati
 n'émet qu'une **attestation sans numéro**, pas une facture opposable à la comptabilité du
 prestataire. Le contrôle est posé à l'ouverture de l'accès **et non au versement** : refuser
 l'accès n'immobilise l'argent de personne, alors que bloquer un virement retiendrait une somme
-due à quelqu'un qui a déjà travaillé. Le prestataire signe depuis son espace, onglet Revenus.
+due à quelqu'un qui a déjà travaillé. Le prestataire signe depuis son espace, onglet Revenus de la barre du bas.
 
 Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. **Jusqu'au
 23/09/2026, la contrainte `profiles_status_check` ignorait `suspended`** : la suspension du
@@ -4708,7 +4708,11 @@ Principales adresses :
 | `/` | Accueil |
 | `/auth/signin` | Choix du profil, puis `/auth/signin/client` ou `/auth/signin/provider` |
 | `/dashboard` | Espace client |
-| `/provider/dashboard` | Espace prestataire |
+| `/provider/dashboard` | Espace prestataire — Accueil |
+| `/provider/missions` | Prestations du prestataire (en cours, terminées, clients) |
+| `/provider/calendar` | Planning du prestataire |
+| `/provider/earnings` | Revenus du prestataire (mandats, versements, factures) |
+| `/provider/account` | Profil du prestataire (profil, documents, abonnement, réglages) |
 | `/providers` | Catalogue |
 | `/missions` | Historique des prestations |
 | `/booking` | Réservation |
@@ -4733,6 +4737,23 @@ auparavant des marqueurs `[À REMPLIR]`, tels quels, à l'utilisateur. Le jour d
 l'immatriculation : remplir les champs, passer le drapeau à `true`, et le test
 `src/tests/mentions-legales.test.js` échoue tant qu'un champ obligatoire manque. Voir
 [IMMATRICULATION.md](IMMATRICULATION.md) pour ce qui ne se trouve pas dans ce fichier.
+
+**Une seule barre de navigation par espace** (12/10/2026, constat d'Alexandre). Côté prestataire,
+Accueil, Prestations et Profil ouvraient le même écran (`PrestaDashboard`), doublé d'une seconde
+barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Historique · Clients) :
+« Accueil » et « Prestations » ne différaient que par un titre. Désormais :
+
+- **prestataire** — Accueil · Prestations · Planning · Revenus · Profil (`PrestaNav`). L'accueil
+  résume ce qui attend une action (`ResumeDuJour` : demandes à accepter, prochaine prestation,
+  litiges) ; la liste détaillée est dans Prestations, avec un sélecteur En cours · Terminées ·
+  Clients ; le Profil a un sélecteur Mon profil · Documents, et y range l'abonnement et les
+  réglages, qui avaient chacun un onglet. La liste reste montée, invisible, sous l'accueil : elle
+  porte la détection d'arrivée (pointage automatique). Le guide de première connexion montre la
+  barre du bas (`ONGLETS_PRESTA_GUIDE`, aligné sur `PrestaNav`) ;
+- **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
+  doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
+  doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre
+  (`mission_history` manquait à la liste des écrans qui la portent).
 
 Trois gardes s'appliquent automatiquement : sans session sur un écran protégé, on est renvoyé
 vers `/auth/signin` ; avec une session sur un écran de connexion, vers son espace ; et un

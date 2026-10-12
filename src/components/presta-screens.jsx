@@ -2131,7 +2131,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       done:!!profil.rib, action:"settings" },
     { id:"mandats", label:"Mandats de facturation et d'encaissement acceptés",
       aide:"Onglet Revenus — sans eux, pas de facture à votre nom",
-      done:!!(profil.mandat_facturation_at && profil.mandat_encaissement_at), action:"p_dashboard" },
+      done:!!(profil.mandat_facturation_at && profil.mandat_encaissement_at), action:"p_revenus" },
     // L'IBAN au-dessus sert à la facture ; celui-ci sert au virement. Ce sont
     // deux choses différentes, et la liste n'en montrait qu'une : un
     // prestataire pouvait avoir tout coché et ne jamais être payé.
@@ -3586,29 +3586,41 @@ export function RemplacementsProposes({ onRepondu }) {
 // pas. Chaque étape ouvre l'onglet dont elle parle : on ne lit pas un mode
 // d'emploi, on est emmené à l'endroit.
 //
-// Les onglets répliqués ci-dessous doivent rester alignés sur ceux de
-// `PrestaDashboard` — même identifiants, même ordre.
+// La barre du bas de l'espace prestataire, telle qu'elle apparaît vraiment
+// (`PrestaNav`, src/App.jsx) — mêmes identifiants, même ordre. Depuis le
+// 12/10/2026, c'est la seule barre : la seconde, sous la photo, a disparu.
 const ONGLETS_PRESTA_GUIDE = [
-  { id:"prestations", l:"Prestations" },
-  { id:"profil",      l:"Profil" },
-  { id:"docs",        l:"Docs" },
-  { id:"revenus",     l:"Revenus" },
-  { id:"historique",  l:"Historique" },
-  { id:"clients",     l:"Clients" },
+  { id:"p_home",      l:"Accueil" },
+  { id:"p_missions",  l:"Prestations" },
+  { id:"calendar",    l:"Planning" },
+  { id:"p_revenus",   l:"Revenus" },
+  { id:"p_dashboard", l:"Profil" },
 ];
+
+// Chaque vue du tableau de bord, selon l'écran ouvert par la barre du bas.
+const VUE_PAR_ECRAN = { p_home:"accueil", p_missions:"prestations", p_revenus:"revenus", p_dashboard:"profil" };
+const TITRE_VUE = { prestations:"Mes prestations", revenus:"Mes revenus", profil:"Mon profil" };
+
+// Ce qu'ouvre chaque étape du guide : [écran, onglet du profil].
+const CIBLES_GUIDE = {
+  docs:        ["p_dashboard", "docs"],
+  revenus:     ["p_revenus"],
+  profil:      ["p_dashboard", "profil"],
+  prestations: ["p_missions"],
+};
 
 const PRESTA_TOUR_STEPS = [
   {
     cible:null,
     icon:"🧭",
     title:"Tout se passe dans cette barre",
-    desc:"Votre espace tient en six onglets, juste sous votre photo. Deux d'entre eux doivent être complétés avant de recevoir votre première prestation — on vous les montre maintenant.",
+    desc:"Votre espace tient en cinq onglets, en bas de l'écran. Deux choses doivent être complétées avant de recevoir votre première prestation — on vous les montre maintenant.",
     color:"#7C6FE0",
   },
   {
     cible:"docs",
     icon:"📎",
-    title:"Onglet Docs — vos justificatifs",
+    title:"Profil › Documents — vos justificatifs",
     desc:"C'est ici que vous déposez vos sept documents : pièce d'identité, justificatif d'immatriculation, attestation URSSAF, justificatif de domicile, RIB, photo et attestation RC Pro.",
     consequence:"Tant qu'ils ne sont pas déposés et vérifiés, votre profil n'apparaît dans aucune recherche : vous ne recevrez aucune proposition.",
     color:"#F0B429",
@@ -3631,7 +3643,7 @@ const PRESTA_TOUR_STEPS = [
   {
     cible:"profil",
     icon:"👤",
-    title:"Onglet Profil — votre tarif et vos créneaux",
+    title:"Profil › Mon profil — votre tarif et vos créneaux",
     desc:"Votre tarif horaire, vos métiers, votre rayon d'intervention et vos disponibilités. Vous les fixez librement et vous pouvez les modifier à tout moment.",
     consequence:"Ce sont ces critères qui déterminent les prestations qui vous sont proposées : un rayon trop court ou des créneaux trop étroits réduisent ce que vous recevez.",
     color:"#4FC3F7",
@@ -3640,7 +3652,7 @@ const PRESTA_TOUR_STEPS = [
     cible:"prestations",
     icon:"🔔",
     title:"Onglet Prestations — vos propositions",
-    desc:"Les prestations qui vous sont proposées arrivent ici, et une notification vous prévient sur votre téléphone. Vous acceptez ou vous refusez, sans avoir à vous justifier.",
+    desc:"Les prestations qui vous sont proposées arrivent ici, et une notification vous prévient sur votre téléphone. L'Accueil vous signale aussi celles qui attendent votre réponse. Vous acceptez ou vous refusez, sans avoir à vous justifier.",
     // Trois délais, pas deux. Celui des prestations urgentes — 20 minutes —
     // manquait : un prestataire persuadé d'avoir une heure la perdait sans
     // comprendre. Les valeurs viennent de la réservation (src/App.jsx) :
@@ -3655,10 +3667,11 @@ const PRESTA_TOUR_STEPS = [
 // mesurer la position d'un élément qui défile horizontalement — une flèche
 // posée au mauvais endroit désigne pire que rien.
 function BarreOngletsGuide({ cible, couleur }) {
+  const onglet = CIBLES_GUIDE[cible]?.[0] || null;
   return (
     <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, gap:2, overflow:"hidden" }}>
       {ONGLETS_PRESTA_GUIDE.map(t => {
-        const vise = t.id === cible;
+        const vise = t.id === onglet;
         return (
           <div key={t.id} style={{
             flex:"1 0 auto", padding:"8px 4px", borderRadius:9, textAlign:"center",
@@ -3714,7 +3727,7 @@ export function PrestaTour({ onDone, onOuvrirOnglet }) {
         {s.cible && (
           <button onClick={()=>{ onOuvrirOnglet?.(s.cible); onDone(); }}
             style={{ display:"block", width:"100%", padding:"0 0 14px", background:"none", border:"none", color:s.color, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-            Ouvrir l’onglet {ONGLETS_PRESTA_GUIDE.find(t=>t.id===s.cible)?.l} maintenant →
+            Ouvrir {s.cible === "docs" ? "mes documents" : `l’onglet ${ONGLETS_PRESTA_GUIDE.find(t=>t.id===CIBLES_GUIDE[s.cible]?.[0])?.l}`} maintenant →
           </button>
         )}
         {!isLast && (
@@ -3825,6 +3838,98 @@ function debutLocalMs(m) {
   return Number.isNaN(t) ? null : t;
 }
 
+// Sélecteur à deux ou trois positions, pour les sous-parties d'une vue
+// (Prestations : en cours / terminées / clients ; Profil : profil / documents).
+function SelecteurVue({ valeur, onChange, options }) {
+  return (
+    <div role="tablist" style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18 }}>
+      {options.map(o => {
+        const actif = valeur === o.id;
+        return (
+          <button key={o.id} role="tab" aria-selected={actif} onClick={()=>onChange(o.id)} style={{ flex:1, padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:actif?C.white:"transparent", color:actif?C.navy:C.gray, fontWeight:actif?700:500, fontSize:12, fontFamily:"inherit", boxShadow:actif?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{o.l}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+const fmtJourCourt = (iso) => {
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? String(iso || "") : d.toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long" });
+};
+
+// Résumé de l'accueil : ce qui attend une action, en une carte par sujet. Le
+// détail et les boutons d'action restent dans « Prestations » ; l'accueil ne
+// fait qu'y conduire (12/10/2026 — il affichait auparavant la même liste).
+function ResumeDuJour({ onNavigate, actif, nbLitiges }) {
+  const [etat, setEtat] = useState({ charge:false, erreur:false, demandes:0, prochaine:null, nbAVenir:0 });
+  useEffect(() => {
+    if (!actif) return;
+    let annule = false;
+    (async () => {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        if (!token) return;
+        const r = await fetch("/api/missions", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+          body: JSON.stringify({ action:"my_missions" }),
+        });
+        if (!r.ok) throw new Error(`chargement refusé (${r.status})`);
+        const j = await r.json();
+        const demandes = (Array.isArray(j.pending) ? j.pending : []).filter(m => m.status !== "cancelled").length;
+        // Une prestation commencée reste « la prochaine » jusqu'à sa fin :
+        // on garde celles qui débutent au plus tôt il y a 12 h.
+        const depuis = Date.now() - 12 * 3600 * 1000;
+        const aVenir = (Array.isArray(j.assigned) ? j.assigned : [])
+          .filter(m => m.status !== "cancelled")
+          .map(m => ({ m, t: debutLocalMs(m), fin: m.date_fin ? new Date(`${String(m.date_fin).slice(0, 10)}T23:59:59`).getTime() : null }))
+          // Une série sur plusieurs jours reste à venir jusqu'à son dernier jour.
+          .filter(x => x.t == null || x.t >= depuis || (x.fin != null && x.fin >= Date.now()))
+          .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
+        if (!annule) setEtat({ charge:true, erreur:false, demandes, prochaine: aVenir[0]?.m || null, nbAVenir: aVenir.length });
+      } catch (e) {
+        console.error("[accueil prestataire] résumé indisponible :", e?.message);
+        if (!annule) setEtat(v => ({ ...v, charge:true, erreur:true }));
+      }
+    })();
+    return () => { annule = true; };
+  }, [actif]);
+
+  const carte = (couleur, icone, titre, sous, action) => (
+    <div onClick={()=>onNavigate("p_missions")} role="button" style={{ background:`${couleur}14`, border:`1px solid ${couleur}55`, borderRadius:14, padding:"13px 14px", marginBottom:12, display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+      <span style={{ fontSize:22 }}>{icone}</span>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>{titre}</div>
+        {sous && <div style={{ color:C.textSub, fontSize:11.5, marginTop:2 }}>{sous}</div>}
+      </div>
+      <span style={{ color:couleur, fontSize:12, fontWeight:700, flexShrink:0 }}>{action} ›</span>
+    </div>
+  );
+
+  return <>
+    {nbLitiges > 0 && carte("#F2A65E", "⚠️", `${nbLitiges} litige${nbLitiges>1?"s":""} en cours`, "Une réponse est attendue de votre part.", "Voir")}
+    {actif && etat.erreur && (
+      <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"11px 14px", marginBottom:12, fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+        Le résumé de vos prestations n'a pas pu être chargé. Ouvrez l'onglet <strong>Prestations</strong> pour les voir.
+      </div>
+    )}
+    {actif && etat.charge && !etat.erreur && <>
+      {etat.demandes > 0 && carte(C.accent, "🔔", `${etat.demandes} demande${etat.demandes>1?"s":""} attend${etat.demandes>1?"ent":""} votre réponse`, "Le délai de réponse est limité : passé ce délai, elle est proposée à un autre prestataire.", "Répondre")}
+      {etat.prochaine
+        ? carte(C.success, "📅", "Prochaine prestation",
+            `${fmtJourCourt(etat.prochaine.date_debut || etat.prochaine.date)}${etat.prochaine.heure_debut ? ` à ${String(etat.prochaine.heure_debut).slice(0,5)}` : ""} · ${etat.prochaine.titre || etat.prochaine.metier || "Prestation"}${etat.prochaine.ville ? ` · ${etat.prochaine.ville}` : ""}${etat.nbAVenir > 1 ? ` (+${etat.nbAVenir - 1} autre${etat.nbAVenir > 2 ? "s" : ""})` : ""}`,
+            "Voir")
+        : etat.demandes === 0 && (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:12, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+            📭 Aucune prestation à venir pour l'instant. Les nouvelles demandes arrivent dans l'onglet <strong>Prestations</strong>, et une notification vous prévient.
+          </div>
+        )}
+    </>}
+  </>;
+}
+
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0, ongletInitial=null }) {
   // Opposition à une proposition de résolution (CGPS art. 17.1). Même geste
   // que côté client, même endpoint : c'est le serveur qui vérifie que
@@ -3883,9 +3988,17 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   // pouvait que déposer le prestataire sur l'onglet « Prestations », à charge
   // pour lui de trouver « Docs ». Montrer l'endroit vaut mieux que le décrire.
   // La valeur n'est retenue que si elle correspond à un onglet réel.
-  const [tab,setTab]=useState(
-    ONGLETS_PRESTA_GUIDE.some(o => o.id === ongletInitial) ? ongletInitial : "prestations"
-  );
+  //
+  // Depuis le 12/10/2026, chaque bouton de la barre du bas ouvre SA vue :
+  // Accueil, Prestations, Revenus et Profil affichaient le même écran, avec une
+  // seconde barre d'onglets (Prestations · Profil · Docs · Revenus · Historique
+  // · Clients) qui répétait la première. « Accueil » et « Prestations » étaient
+  // identiques au titre près (constat d'Alexandre). Il ne reste qu'une barre ;
+  // les sous-parties d'une vue se choisissent par un sélecteur à deux ou trois
+  // positions.
+  const vue = VUE_PAR_ECRAN[activeScreen] || "accueil";
+  const [sousPrestations,setSousPrestations]=useState("en_cours");
+  const [sousProfil,setSousProfil]=useState(ongletInitial === "docs" ? "docs" : "profil");
   // L'IBAN du prestataire. Le bandeau d'alerte plus bas était branché sur un
   // état que PERSONNE ne mettait jamais à vrai : il ne s'est donc jamais
   // affiché. La donnée était pourtant chargée juste à côté.
@@ -4034,9 +4147,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
   useEffect(()=>{
-    if(activeScreen==="p_dashboard") setTab("profil");
-    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
-  },[activeScreen]);
+    if(activeScreen==="p_dashboard") setSousProfil(ongletInitial === "docs" ? "docs" : "profil");
+    if(activeScreen==="p_missions") setSousPrestations("en_cours");
+  },[activeScreen, ongletInitial]);
   useEffect(()=>{
     (async()=>{
       const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
@@ -4367,7 +4480,21 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </div>
         </div>
       )}
-      {showTour && <PrestaTour onDone={dismissTour} onOuvrirOnglet={setTab} />}
+      {showTour && <PrestaTour onDone={dismissTour} onOuvrirOnglet={(cible)=>{ const [ecran, onglet] = CIBLES_GUIDE[cible] || ["p_home"]; onNavigate(ecran, onglet ? { onglet } : undefined); if(ecran==="p_dashboard") setSousProfil(onglet==="docs"?"docs":"profil"); }} />}
+      {vue!=="accueil" ? (
+        <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"44px 22px 20px", borderRadius:"0 0 26px 26px", display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ flex:1 }}>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0 }}>Espace prestataire</p>
+            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"2px 0 0" }}>{TITRE_VUE[vue]}</h2>
+          </div>
+          <button onClick={()=>onNavigate("notifications")} aria-label="Notifications" style={{ position:"relative", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:12, width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, cursor:"pointer", flexShrink:0 }}>
+            🔔
+            {notifCount > 0 && (
+              <div style={{ position:"absolute", top:-4, right:-4, background:"#E74C3C", borderRadius:"50%", width:18, height:18, fontSize:10, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{notifCount > 9 ? "9+" : notifCount}</div>
+            )}
+          </button>
+        </div>
+      ) : (
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
           <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)", flexShrink:0 }}>
@@ -4448,14 +4575,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           );
         })()}
       </div>
+      )}
       <div style={{ padding:"18px 18px 0" }}>
-        {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} ouverte={launchPhaseActive} />}
-        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-          {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"historique",l:"Historique"},{id:"clients",l:"Clients"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
-          ))}
-        </div>
-        {tab==="prestations" && <>
+        {vue==="accueil" && launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} ouverte={launchPhaseActive} />}
+        {vue==="prestations" && (
+          <SelecteurVue valeur={sousPrestations} onChange={setSousPrestations} options={[{id:"en_cours",l:"En cours"},{id:"terminees",l:"Terminées"},{id:"clients",l:"Clients"}]} />
+        )}
+        {vue==="profil" && (
+          <SelecteurVue valeur={sousProfil} onChange={setSousProfil} options={[{id:"profil",l:"Mon profil"},{id:"docs",l:"Documents"}]} />
+        )}
+        {vue==="prestations" && sousPrestations==="en_cours" && <>
           {/* ── Litiges en cours ─────────────────────────────────────────
               Ils étaient rangés dans l'historique. Un litige n'est pourtant
               pas de l'histoire : c'est un dossier ouvert, avec une réponse
@@ -4488,6 +4617,32 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </div>
             );
           })}
+          {!missionsEnabled ? (
+            <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
+              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux prestations en attente</div>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
+                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux prestations.<br/>
+                Assurez-vous d'avoir uploadé tous vos documents dans <strong>Profil › Documents</strong>.
+              </p>
+              <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:"rgba(240,180,41,0.2)", border:`1px solid rgba(240,180,41,0.5)`, borderRadius:r, padding:"10px 18px", color:C.accentGold, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                📎 Compléter mon dossier
+              </button>
+            </div>
+          ) : (
+            <PMissionsTab onNavigate={onNavigate} />
+          )}
+        </>}
+        {vue==="accueil" && <>
+          {/* L'accueil résume ce qui attend une action ; le détail vit dans
+              « Prestations ». Avant le 12/10/2026, il affichait la même liste
+              que l'onglet Prestations. */}
+          <ResumeDuJour onNavigate={onNavigate} actif={missionsEnabled} nbLitiges={litiges.length} />
+          {/* La liste reste montée, invisible : c'est elle qui détecte
+              l'arrivée sur place (pointage automatique). Sur l'accueil, elle
+              tournait jusqu'ici en plein écran ; la retirer aurait coupé ce
+              pointage tant que le prestataire n'ouvre pas « Prestations ». */}
+          {missionsEnabled && <div style={{ display:"none" }} aria-hidden="true"><PMissionsTab onNavigate={onNavigate} /></div>}
           <CarteVirements />
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <AlerteTitresACompleter onNavigate={onNavigate} />
@@ -4527,26 +4682,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </div>
             );
           })()}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes prestations" : "🔔 Prestations disponibles"}</p>
-          {!missionsEnabled ? (
-            <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
-              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux prestations en attente</div>
-              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
-                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux prestations.<br/>
-                Assurez-vous d'avoir uploadé tous vos documents dans l'onglet <strong>Docs</strong>.
-              </p>
-              <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:"rgba(240,180,41,0.2)", border:`1px solid rgba(240,180,41,0.5)`, borderRadius:r, padding:"10px 18px", color:C.accentGold, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-                📎 Compléter mon dossier
-              </button>
-            </div>
-          ) : (
-            <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
-          )}
         </>}
-        {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
-        {tab==="clients" && <PrestaClientsTab />}
-        {tab==="docs" && <>
+        {vue==="profil" && sousProfil==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
+        {vue==="prestations" && sousPrestations==="clients" && <PrestaClientsTab />}
+        {vue==="profil" && sousProfil==="docs" && <>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12 }}>⚠️ Certains documents doivent être renouvelés annuellement (attestation URSSAF, RC Pro).</div>
           <div onClick={()=>onNavigate("micro_entreprise")} style={{ background:"linear-gradient(135deg,#4F46E515,#0EA5E910)", border:"1px solid #4F46E540", borderRadius:r, padding:"13px 14px", marginBottom:14, cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
             <span style={{ fontSize:22 }}>🚀</span>
@@ -4564,7 +4703,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             }} />
           ))}
         </>}
-        {tab==="historique" && (()=>{
+        {vue==="prestations" && sousPrestations==="terminees" && (()=>{
           // `disputed` n'apparaît plus ici : un litige en cours vit dans
           // l'onglet « Prestations ». `closed` est l'état d'une prestation
           // dont le litige s'est dénoué par un remboursement — pour le
@@ -4691,7 +4830,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             })}
           </>;
         })()}
-        {tab==="revenus" && (()=>{
+        {vue==="revenus" && (()=>{
           const getAmt = montantPrestataire;
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           const resteDu = creances.reduce((t,c)=>t+Number(c.montant_restant||0),0);

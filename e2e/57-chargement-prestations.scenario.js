@@ -22,6 +22,10 @@ test("panne du chargement : un message et « Réessayer », pas « Aucune presta
   await page.addLocatorHandler(page.getByText("Passer le tutoriel"), (l) => l.click());
   await connexion(page, { espace: "prestataire", email: p.email });
   await expect(page).toHaveURL(/\/provider\//, { timeout: 30_000 });
+  // L'accueil le dit aussi, dans son résumé (12/10/2026)…
+  await expect(page.getByText("Le résumé de vos prestations n'a pas pu être chargé")).toBeVisible({ timeout: 60_000 });
+  // … et la liste, dans l'onglet « Prestations ».
+  await page.goto("/provider/missions");
   await expect(page.getByText("Vos prestations n'ont pas pu être chargées")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Aucune prestation en cours")).toHaveCount(0);
 

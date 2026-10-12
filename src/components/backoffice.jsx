@@ -3147,8 +3147,9 @@ export function BOTest({ onNavigate }) {
 
   const prestaScreens = [
     { id:"p_home",              label:"Accueil prestataire",  icon:"🏠" },
-    { id:"p_missions",          label:"Prestations disponibles", icon:"📦" },
-    { id:"p_dashboard",         label:"Dashboard presta",     icon:"📊" },
+    { id:"p_missions",          label:"Prestations prestataire", icon:"📦" },
+    { id:"p_revenus",           label:"Revenus prestataire",  icon:"💶" },
+    { id:"p_dashboard",         label:"Profil prestataire",   icon:"👤" },
     { id:"calendar",            label:"Calendrier",           icon:"📅" },
     { id:"abonnement_presta",   label:"Abonnement",           icon:"💳" },
     { id:"doc_upload",          label:"Documents",            icon:"📎" },

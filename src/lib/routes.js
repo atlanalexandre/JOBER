@@ -55,6 +55,7 @@ export const SCREEN_TO_PATH = {
   // Espace prestataire
   p_home:              "/provider/dashboard",
   p_missions:          "/provider/missions",
+  p_revenus:           "/provider/earnings",
   p_dashboard:         "/provider/account",
   calendar:            "/provider/calendar",
   abonnement_presta:   "/provider/subscription",
