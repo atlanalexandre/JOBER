@@ -59,11 +59,20 @@ export async function photosVerifiees(ids, SUPABASE_URL, headers) {
         carte.incomplete = true;
         continue;
       }
-      const parChemin = new Map(signees.filter(s => s?.signedURL).map(s => [s.path, s.signedURL]));
+      const parChemin = new Map(signees.filter(s => s?.path).map(s => [s.path, s]));
       for (const l of avecChemin) {
-        const u = parChemin.get(l.storage_path);
-        if (u) carte.set(l.prestataire_id, `${SUPABASE_URL}/storage/v1${u}`);
-        else { console.error(`[photos] URL signée absente pour ${l.storage_path}`); carte.incomplete = true; }
+        const s = parChemin.get(l.storage_path);
+        if (s?.signedURL) carte.set(l.prestataire_id, `${SUPABASE_URL}/storage/v1${s.signedURL}`);
+        else if (s?.error) {
+          // Refus explicite du stockage (fichier absent) : durable, le
+          // prestataire reste sans photo. Marquer la réponse incomplète
+          // priverait le catalogue de cache tant que la donnée n'est pas
+          // réparée (relecture du 12/10/2026) — on le journalise seulement.
+          console.error(`[photos] photo validée sans fichier signable (${l.storage_path}) :`, s.error);
+        } else {
+          console.error(`[photos] URL signée absente pour ${l.storage_path}`);
+          carte.incomplete = true;
+        }
       }
     } catch (e) {
       console.error(`[photos] photos validées indisponibles pour ${lot.length} prestataire(s) :`, e.message);

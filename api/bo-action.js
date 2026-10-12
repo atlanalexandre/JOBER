@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { nouvellePeriode } from "./_creneaux.js";
+import { champsModifies, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
@@ -2993,68 +2993,56 @@ export default async function handler(req, res) {
 
     if (action === "update_mission") {
       const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
-      const ERREUR_HEURES_AJOUTEES = "Cette prestation a des heures ajoutées (ou une demande en cours) : sa date ne peut pas être déplacée. Annulez-la et créez-en une nouvelle.";
-      let dateChange = false;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const updates = {};
+      const saisie = { date, hours, tarif_horaire, ville, metier };
+      if (!Object.values(saisie).some(v => v !== undefined && v !== "")) return res.status(400).json({ error: "Aucun champ à modifier" });
       if (date !== undefined && date !== "") {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) {
           return res.status(400).json({ error: "Date invalide (attendu : AAAA-MM-JJ)" });
         }
-        updates.date = date;
-        // Une prestation sur plusieurs jours porte aussi sa période
-        // (`date_debut` / `date_fin`), que lisent la vérification des créneaux
-        // et le calcul des journées. Seule `date` changeait : la prestation
-        // était annoncée au nouveau jour, mais le prestataire restait réservé
-        // — et vérifié — sur l'ancienne période (relecture du 09/10/2026). La
-        // période est décalée d'autant, sa durée conservée.
-        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=date,date_debut,date_fin,heures_ajoutees_detail,extra_hours_status`, { headers });
-        if (!lr.ok) {
-          console.error("[bo update_mission] prestation illisible :", lr.status, await lr.text().catch(e => e.message));
-          return res.status(502).json({ error: "Prestation illisible" });
-        }
-        let lignes;
-        try { lignes = await lr.json(); } catch (e) {
-          console.error("[bo update_mission] réponse illisible :", e.message);
-          return res.status(502).json({ error: "Prestation illisible" });
-        }
-        if (!Array.isArray(lignes) || !lignes[0]) return res.status(404).json({ error: "Prestation introuvable" });
-        const actuelle = lignes[0];
-        // Des heures ajoutées sont rattachées à LEURS journées (détail, paiement,
-        // remboursement étiqueté par jour) : déplacer la prestation les laisserait
-        // sur des jours qu'elle ne couvre plus, et un remboursement ultérieur
-        // pourrait ne pas reconnaître celui déjà fait. Décision prudente de la
-        // relecture du 10/10/2026 (samedi, sans Alexandre) : refuser plutôt que
-        // déplacer l'argent avec la date. Même chose pendant une demande en cours.
-        const ajouts = Array.isArray(actuelle.heures_ajoutees_detail) ? actuelle.heures_ajoutees_detail : [];
-        dateChange = String(date) !== String(actuelle.date || "").slice(0, 10);
-        if (dateChange && (ajouts.length > 0 || ["pending", "accepte_presta"].includes(actuelle.extra_hours_status))) {
-          return res.status(409).json({ error: ERREUR_HEURES_AJOUTEES });
-        }
-        // La période ne bouge que si la date change (relecture du 11/10/2026).
-        Object.assign(updates, nouvellePeriode(actuelle, date));
       }
-      if (hours !== undefined && hours !== "") updates.hours = Number(hours);
-      if (tarif_horaire !== undefined && tarif_horaire !== "") updates.tarif_horaire = Number(tarif_horaire);
-      if (ville !== undefined && ville !== "") updates.ville = ville;
-      if (metier !== undefined && metier !== "") updates.metier = metier;
-      if (!Object.keys(updates).length) return res.status(400).json({ error: "Aucun champ à modifier" });
-      // Date déplacée : l'écriture n'a lieu que si, au même instant, la
-      // prestation n'a toujours ni heures ajoutées ni demande en cours. Une
-      // demande payée entre la lecture et l'écriture aurait sinon ses journées
-      // laissées sur l'ancienne période (relecture du 11/10/2026).
-      const garde = dateChange
-        ? "&and=(or(heures_ajoutees_detail.is.null,heures_ajoutees_detail.eq.[]),or(extra_hours_status.is.null,extra_hours_status.not.in.(pending,accepte_presta)))"
-        : "";
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}${garde}`, { method:"PATCH", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify(updates) });
+      // Le formulaire renvoie tous ses champs, lus à l'ouverture de la liste :
+      // on compare à la base pour n'écrire que ce qui change vraiment. Une
+      // heure supplémentaire payée entre-temps était sinon effacée par un
+      // simple changement de ville (relecture du 12/10/2026, api/_modification.js).
+      const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=date,date_debut,date_fin,hours,tarif_horaire,ville,metier,heures_ajoutees_detail,extra_hours_status,extra_hours_appliquees`, { headers });
+      if (!lr.ok) {
+        console.error("[bo update_mission] prestation illisible :", lr.status, await lr.text().catch(e => e.message));
+        return res.status(502).json({ error: "Prestation illisible" });
+      }
+      let lignes;
+      try { lignes = await lr.json(); } catch (e) {
+        console.error("[bo update_mission] réponse illisible :", e.message);
+        return res.status(502).json({ error: "Prestation illisible" });
+      }
+      if (!Array.isArray(lignes) || !lignes[0]) return res.status(404).json({ error: "Prestation introuvable" });
+      const actuelle = lignes[0];
+      // Une prestation sur plusieurs jours porte aussi sa période : une date
+      // changée la décale d'autant, sa durée conservée (relectures des 09 et 11/10).
+      const updates = champsModifies(actuelle, saisie);
+      if (!Object.keys(updates).length) return res.status(200).json({ success: true, misAJour: {} });
+      // Des heures ajoutées sont rattachées à LEURS journées et à leur prix
+      // (détail, paiement, remboursement étiqueté par jour) : déplacer la
+      // prestation ou changer ses heures ou son tarif désaccorderait la clôture
+      // et la facture de ce que le client a payé. Décision prudente de la
+      // relecture du 10/10/2026, étendue aux heures et au tarif le 12/10.
+      if (touchePrixOuJours(updates) && porteHeuresAjoutees(actuelle)) {
+        return res.status(409).json({ error: "Cette prestation a des heures ajoutées (ou une demande en cours) : sa date, ses heures et son tarif ne peuvent pas être modifiés ici. Annulez-la et créez-en une nouvelle." });
+      }
+      // L'écriture n'a lieu que si la base vaut encore ce qui a été lu.
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}${gardeEcriture(actuelle, updates)}&select=id`, { method:"PATCH", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify(updates) });
       if (!r.ok) {
         console.error("[bo update_mission] écriture refusée :", r.status, await r.text().catch(e => e.message));
         return res.status(500).json({ error: "Erreur mise à jour" });
       }
-      const ecrites = await r.json().catch(() => null);
+      let ecrites;
+      try { ecrites = await r.json(); } catch (e) {
+        console.error("[bo update_mission] résultat de l'écriture illisible :", e.message);
+        return res.status(502).json({ error: "Le résultat de l'enregistrement est illisible : rechargez la liste pour vérifier la prestation." });
+      }
       if (!Array.isArray(ecrites) || ecrites.length === 0) {
-        return res.status(409).json({ error: ERREUR_HEURES_AJOUTEES });
+        return res.status(409).json({ error: "La prestation a changé pendant la modification (heures ajoutées, autre modification ou suppression) : rechargez la liste et recommencez." });
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(e => console.error("[bo-action/update_mission] échec ignoré :", e?.message));
       // Les champs réellement écrits, période décalée comprise : l'écran les

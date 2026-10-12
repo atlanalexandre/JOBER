@@ -150,17 +150,6 @@ export function premiereIndisponibilite({ jours, disponJours = [], creneaux = {}
 }
 
 /**
- * Période d'une prestation sur plusieurs jours, décalée pour commencer à
- * `nouvelleDate` (« AAAA-MM-JJ »), sa durée conservée. Sert à « Modifier » du
- * back-office, qui changeait `date` seule : la période — que lisent la
- * vérification des créneaux et le calcul des journées — restait l'ancienne
- * (relecture du 09/10/2026). `date_debut` / `date_fin` sont des timestamptz
- * (« 2026-09-30 00:00:00+00 ») : on n'en garde que le jour (CLAUDE.md §4).
- *
- * @returns {{date_debut?: string, date_fin?: string}} vide pour une prestation
- *          d'un jour (sans `date_debut`)
- */
-/**
  * Période à écrire quand le back-office enregistre `nouvelleDate` : vide si la
  * date ne change pas. Le formulaire « Modifier » renvoie toujours la date ;
  * sans cette garde, changer la ville d'une prestation dont `date` s'écartait de
@@ -171,6 +160,17 @@ export function nouvellePeriode(mission, nouvelleDate) {
   return periodeDecalee(mission, nouvelleDate);
 }
 
+/**
+ * Période d'une prestation sur plusieurs jours, décalée pour commencer à
+ * `nouvelleDate` (« AAAA-MM-JJ »), sa durée conservée. Sert à « Modifier » du
+ * back-office, qui changeait `date` seule : la période — que lisent la
+ * vérification des créneaux et le calcul des journées — restait l'ancienne
+ * (relecture du 09/10/2026). `date_debut` / `date_fin` sont des timestamptz
+ * (« 2026-09-30 00:00:00+00 ») : on n'en garde que le jour (CLAUDE.md §4).
+ *
+ * @returns {{date_debut?: string, date_fin?: string}} vide pour une prestation
+ *          d'un jour (sans `date_debut`)
+ */
 export function periodeDecalee(mission, nouvelleDate) {
   if (!mission?.date_debut) return {};
   const jour = (v) => Date.parse(`${String(v).slice(0, 10)}T00:00:00Z`);
