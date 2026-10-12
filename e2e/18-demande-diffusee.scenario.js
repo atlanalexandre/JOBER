@@ -82,6 +82,9 @@ test("par l'écran : le client diffuse, le prestataire se propose, le client le 
   await pageP.addLocatorHandler(pageP.getByText("Passer le tutoriel"), (l) => l.click());
   await connexion(pageP, { espace: "prestataire", email: p.email });
   await expect(pageP).toHaveURL(/\/provider\//, { timeout: 30_000 });
+  // Les demandes vivent dans l'onglet « Prestations » (l'accueil n'en montre
+  // qu'un résumé depuis le 12/10/2026).
+  await pageP.goto("/provider/missions");
   await expect(pageP.getByText(/📢 Demandes ouvertes/)).toBeVisible({ timeout: 20_000 });
   await pageP.screenshot({ path: "e2e-resultats/captures/18-demandes-ouvertes.png", fullPage: true });
   const carte = pageP.locator("div").filter({ hasText: repere }).filter({ has: pageP.getByRole("button", { name: /Je suis disponible/ }) }).last();
@@ -273,6 +276,7 @@ test("par l'écran : reprendre une prestation payée fait d'abord signer le cont
   await page.addLocatorHandler(page.getByText("Passer le tutoriel"), (l) => l.click());
   await connexion(page, { espace: "prestataire", email: preneur.email });
   await expect(page).toHaveURL(/\/provider\//, { timeout: 30_000 });
+  await page.goto("/provider/missions");
   const carte = page.locator("div").filter({ hasText: repere }).filter({ has: page.getByRole("button", { name: /Je prends cette prestation/ }) }).last();
   await carte.getByRole("button", { name: /Je prends cette prestation/ }).click();
   await expect(page.getByText("Contrat de prestation de service").first()).toBeVisible();

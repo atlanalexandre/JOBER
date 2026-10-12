@@ -657,11 +657,13 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 // ── NAV BARS ──────────────────────────────────────────────────────
 function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
+    // Dans l'ordre d'une commande : chercher, suivre ses prestations, puis son
+    // compte (12/10/2026). « Réglages » est dans « Compte », qui le proposait
+    // déjà : la barre en portait un doublon.
     {id:"home",            icon:"🏠", label:"Accueil" },
-    {id:"mission_history", icon:"📋", label:"Prestations"},
     {id:"search_filters",  icon:"🔍", label:"Chercher"},
+    {id:"mission_history", icon:"📋", label:"Prestations"},
     {id:"dashboard",       icon:"👤", label:"Compte"  },
-    {id:"settings",        icon:"⚙️", label:"Réglages"},
   ];
   return (
     <nav aria-label="Navigation client" style={{
@@ -699,11 +701,15 @@ function ClientNav({ active, onNavigate, unreadCount }) {
 
 function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
-    {id:"p_home",          icon:"🏠", label:"Accueil"   },
-    {id:"p_missions",      icon:"📋", label:"Prestations"  },
-    {id:"abonnement_presta",icon:"💎", label:"Abonnement"},
-    {id:"p_dashboard",     icon:"👤", label:"Profil"    },
-    {id:"settings",        icon:"⚙️", label:"Réglages"  },
+    // Une seule barre, dans l'ordre d'une journée : aujourd'hui, mon travail,
+    // mon agenda, mon argent, moi (12/10/2026). L'abonnement et les réglages
+    // sont dans « Profil » ; une seconde barre d'onglets, sous la photo,
+    // répétait celle-ci et a disparu.
+    {id:"p_home",          icon:"🏠", label:"Accueil"     },
+    {id:"p_missions",      icon:"📋", label:"Prestations" },
+    {id:"calendar",        icon:"📅", label:"Planning"    },
+    {id:"p_revenus",       icon:"💶", label:"Revenus"     },
+    {id:"p_dashboard",     icon:"👤", label:"Profil"      },
   ];
   return (
     <nav aria-label="Navigation prestataire" style={{
@@ -781,8 +787,8 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 
   const clientNav = [
     { id:"home",           icon:"🏠", label:"Accueil"         },
-    { id:"mission_history",icon:"📋", label:"Mes prestations"    },
     { id:"search_filters", icon:"🔍", label:"Rechercher"      },
+    { id:"mission_history",icon:"📋", label:"Mes prestations"    },
     { id:"team_booking",   icon:"👥", label:"Équipe"          },
     { id:"favorites",      icon:"❤️", label:"Favoris"         },
     { id:"notifications",  icon:"🔔", label:"Notifications"   },
@@ -793,6 +799,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
     { id:"p_missions", icon:"📋", label:"Prestations"     },
     { id:"calendar",   icon:"📅", label:"Planning"     },
+    { id:"p_revenus",  icon:"💶", label:"Revenus"      },
     { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
   ];
@@ -1626,7 +1633,7 @@ export default function App() {
     setScreen("role");
   },[authReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_revenus","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
   // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
@@ -1705,8 +1712,10 @@ export default function App() {
     setScreen(to);
   };
 
-  const clientScreens=["home","catalogue","search_filters","dashboard","settings","contact_support","notifications"];
-  const prestaScreens=["p_home","p_missions","p_dashboard","calendar","settings","contact_support","notifications"];
+  // `mission_history` manquait : l'onglet « Prestations » de la barre faisait
+  // disparaître la barre elle-même (12/10/2026).
+  const clientScreens=["home","catalogue","search_filters","mission_history","dashboard","settings","contact_support","notifications"];
+  const prestaScreens=["p_home","p_missions","p_revenus","p_dashboard","calendar","settings","contact_support","notifications"];
   const showClientNav=role==="client"&&clientScreens.includes(screen);
   const showPrestaNav=role==="prestataire"&&prestaScreens.includes(screen);
 
@@ -1852,7 +1861,7 @@ export default function App() {
         onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }}
         onApproved={(r)=>{ setRole(r); setScreen(r==="prestataire"?"p_home":"home"); }}
       />}
-      {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
+      {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} />}
@@ -2157,10 +2166,12 @@ export default function App() {
             {/* Actions rapides */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
               {[
-                { icon:"📋", label:"Mes prestations",   color:C.violet,     action:"mission_history" },
+                // « Mes prestations » est l'onglet voisin de la barre du bas :
+                // son raccourci ici faisait doublon (12/10/2026).
                 { icon:"❤️", label:"Mes favoris",    color:"#F25E5E",    action:"favorites"       },
                 { icon:"👥", label:"Équipe",         color:C.accentGold, action:"team_booking"    },
                 { icon:"🔔", label:"Notifications",  color:C.success,    action:"notifications"   },
+                { icon:"🎁", label:"Parrainage",     color:C.violet,     action:"referral"        },
               ].map((item,i) => (
                 <div key={i} onClick={()=>navigate(item.action)} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:11, transition:"all 0.2s" }}
                   className="card-hover">
@@ -2173,13 +2184,14 @@ export default function App() {
             {/* Menu secondaire */}
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12, letterSpacing:0.3 }}>Gestion</div>
             {[
-              { icon:"📄", label:"Mes factures",      sub:"Voir mes prestations et justificatifs", action:"mission_history" },
-              { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
+              // Les réglages n'ont plus d'onglet dans la barre du bas : ils
+              // passent en tête de la gestion du compte (12/10/2026).
+              { icon:"⚙️", label:"Réglages",           sub:"Compte, sécurité, paiement",      action:"settings"      },
+              { icon:"📄", label:"Mes factures",      sub:"Dans chaque prestation terminée, onglet Prestations", action:"mission_history" },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
               { icon:"⚖️", label:"Mentions légales",    sub:"Éditeur, hébergeur, médiation",    action:"mentions_legales" },
-              { icon:"⚙️", label:"Paramètres",         sub:"Compte, sécurité, paiement",      action:"settings"      },
             ].map((item,i) => (
               <div key={i} onClick={()=>{
                 if(item.action==="legal_cgu") navigate("legal","cgu");
@@ -2221,7 +2233,7 @@ export default function App() {
         </div>
       )}
 
-      {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
+      {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_revenus"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
           <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} ongletInitial={prestaOnglet} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
@@ -2231,6 +2243,12 @@ export default function App() {
           {screen==="p_dashboard" && (
             <div style={{ padding:"0 18px 18px" }}>
               <OnlineStatusWidget online={onlineStatus} onToggle={handleToggleOnline} />
+              {/* L'abonnement et les réglages avaient chacun un onglet dans la
+                  barre du bas jusqu'au 12/10/2026 : ils se rangent ici. */}
+              <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+                <button onClick={()=>navigate("abonnement_presta")} style={{ flex:1, padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>💎 Mon abonnement</button>
+                <button onClick={()=>navigate("settings")} style={{ flex:1, padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>⚙️ Réglages</button>
+              </div>
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={()=>navigate("legal","cgu")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📋 CGU</button>
                 <button onClick={()=>navigate("legal","cgps")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📝 CGPS</button>

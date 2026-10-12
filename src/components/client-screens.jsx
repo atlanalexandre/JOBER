@@ -10086,8 +10086,8 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     { icon:"📄", title:"Constituez votre dossier", lines:[
       "Sept pièces sont exigées : photo de profil, extrait KBIS ou INSEE, attestation URSSAF, pièce d'identité, justificatif de domicile, RIB et attestation RC Pro.",
       "Tant qu'il en manque une, le dossier ne peut pas être examiné. Vos diplômes et certifications sont facultatifs, mais ils comptent aux yeux des clients.",
-      "Où les déposer : sur votre tableau de bord, onglet « Docs ». C'est au même endroit que vous les renouvellerez — l'attestation URSSAF et la RC Pro sont à refaire chaque année.",
-    ], action:{ to:"p_dashboard", data:{ onglet:"docs" }, label:"📂 Ouvrir l'onglet Docs →" }, color:C.violet },
+      "Où les déposer : onglet « Profil » en bas de l'écran, partie « Documents ». C'est au même endroit que vous les renouvellerez — l'attestation URSSAF et la RC Pro sont à refaire chaque année.",
+    ], action:{ to:"p_dashboard", data:{ onglet:"docs" }, label:"📂 Ouvrir mes documents →" }, color:C.violet },
     { icon:"✅", title:"Deux validations, pas une", lines:[
       "1️⃣ Notre équipe vérifie votre dossier, généralement sous 24 h, et active votre compte.",
       "2️⃣ L'accès aux prestations est ouvert dans un second temps. C'est à ce moment que vous recevez le lien pour configurer votre compte de virement — sans lui, aucun paiement ne peut vous être envoyé.",
