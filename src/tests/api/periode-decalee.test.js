@@ -46,15 +46,15 @@ describe("nouvellePeriode : la période ne bouge que si la date change (relectur
 describe("update_mission l'applique", () => {
   const code = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
   const bloc = code.slice(code.indexOf('action === "update_mission"'), code.indexOf('action === "adjust_cashback"'));
-  it("décale la période quand la date change, et refuse une date mal formée", () => {
-    expect(bloc).toContain("Object.assign(updates, nouvellePeriode(actuelle, date))");
+  it("n'écrit que les champs changés, et refuse une date mal formée", () => {
+    expect(bloc).toContain("champsModifies(actuelle, saisie)");
     expect(bloc).toContain("Date invalide");
   });
 
-  it("refuse de déplacer une prestation qui a des heures ajoutées ou une demande en cours", () => {
-    expect(bloc).toMatch(/dateChange && \(ajouts\.length > 0 \|\| \["pending", "accepte_presta"\]\.includes\(actuelle\.extra_hours_status\)\)/);
-    // Et l'écriture elle-même est conditionnée : une demande apparue entre-temps la fait échouer.
-    expect(bloc).toContain("extra_hours_status.not.in.(pending,accepte_presta)");
+  it("refuse de toucher au prix ou aux journées d'une prestation qui porte des heures ajoutées", () => {
+    expect(bloc).toContain("touchePrixOuJours(updates) && porteHeuresAjoutees(actuelle)");
+    // Et l'écriture elle-même est conditionnée sur ce qui a été lu.
+    expect(bloc).toContain("gardeEcriture(actuelle, updates)");
     expect(bloc).toContain("res.status(409)");
   });
 

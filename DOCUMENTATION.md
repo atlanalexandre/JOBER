@@ -196,7 +196,10 @@ prestations réalisées, comptes) marque la réponse incomplète (`degrade`), qu
 en-tête de cache — elle était auparavant servie à tous pendant deux minutes. Depuis le
 10/10/2026, c'est aussi le cas quand les justificatifs sont illisibles (tous les métiers
 réglementés sont alors retirés, par prudence) ou qu'une photo n'a pas pu être lue ou signée
-(`photosVerifiees()` le signale par `incomplete`). Un prestataire activé apparaît au plus 30 s plus tard
+(`photosVerifiees()` le signale par `incomplete`). Un fichier que le stockage déclare absent (refus
+explicite, durable) n'entre pas dans ce cas depuis le 12/10/2026 : il est journalisé et le
+prestataire reste sans photo, sinon le catalogue perdait son cache tant que la donnée n'était pas
+réparée. Un prestataire activé apparaît au plus 30 s plus tard
 (2 min au pire). Les scénarios qui créent un prestataire puis le cherchent demandent une version
 fraîche (`/api/prestataires?frais=…`). Sur le réseau, la réponse est compressée (88 Ko pour 3,5 Mo
 de données en recette).
@@ -3336,6 +3339,19 @@ rend un décalage que si la date soumise diffère de `date` ; le refus des heure
 le même cas. L'écriture est conditionnée en base à l'absence d'heures ajoutées et de demande en
 cours : une demande apparue entre la lecture et l'écriture fait échouer la modification (409) au
 lieu de déplacer des journées payées. L'écran ne reprend que les champs réellement écrits.
+
+**Seuls les champs changés sont écrits** (relecture du 12/10/2026, `api/_modification.js`). Le
+formulaire renvoie aussi les heures et le tarif **lus à l'ouverture de la liste** : une heure
+supplémentaire payée entre-temps (`hours` passé de 4 à 6, `extra_hours_appliquees` à 2) était
+réécrite à 4 dès qu'on changeait la ville, et la clôture comme la facture ne correspondaient plus
+à ce que le client avait payé. Désormais : `champsModifies()` compare chaque champ à la base et
+n'écrit que ce qui diffère (rien de changé → « Aucun changement ») ; la **date, les heures et le
+tarif** d'une prestation qui porte des heures ajoutées (appliquées, détaillées par journée, ou
+demande en cours — `porteHeuresAjoutees()`) sont refusés (409) — la ville et le métier restent
+modifiables ; et l'écriture est conditionnée par `gardeEcriture()` à ce que chaque champ modifié
+vaille encore ce qui a été lu. Une modification concurrente (autre administrateur, heures payées,
+suppression) fait échouer l'enregistrement avec « rechargez la liste et recommencez » au lieu
+d'écraser.
 
 Corrigé le 08/10/2026 : la liste s'arrêtait **sans le dire** aux 300 plus récentes ; le filtre
 « En litige » (`disputed`, absent de la liste blanche du serveur) affichait **toutes** les
