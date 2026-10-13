@@ -12,7 +12,7 @@ import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
 import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
-import { activerNotifications, etatNotifications, LIBELLE_NOTIFICATIONS, notifierLocalement } from "../lib/push.js";
+import { activerNotifications, envoyerNotificationTest, etatNotifications, LIBELLE_NOTIFICATIONS, messageTest, notifierLocalement } from "../lib/push.js";
 import { choisirTheme, themeClairEnregistre } from "../lib/theme.js";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs } from "../lib/accueil.js";
@@ -313,6 +313,22 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     catch (e) { showToast(e.message, "error"); }
     setNotifEnCours(false);
   };
+  // Notification de test : la seule façon de savoir si ce téléphone reçoit.
+  const [notifTest, setNotifTest] = useState(null);
+  const [notifTestEnCours, setNotifTestEnCours] = useState(false);
+  const testerNotif = async () => {
+    setNotifTestEnCours(true);
+    setNotifTest("Départ dans 5 secondes : vous pouvez quitter l'application pour la voir arriver.");
+    try {
+      const m = messageTest(await envoyerNotificationTest());
+      setNotifTest(m.texte);
+      showToast(m.texte, m.ok ? "success" : "error");
+    } catch (e) {
+      setNotifTest(e.message);
+      showToast(e.message, "error");
+    }
+    setNotifTestEnCours(false);
+  };
   const [lightMode, setLightMode] = useState(themeClairEnregistre);
   const toggleTheme = (v) => { choisirTheme(v); setLightMode(v); };
   const [clientMeta, setClientMeta] = useState(null);
@@ -511,6 +527,9 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       items:[
         { icon:"🔔", label:"Notifications", value:notifEnCours ? "Activation…" : LIBELLE_NOTIFICATIONS[notifEtat],
           action: notifEtat === "a_activer" && !notifEnCours ? activerNotif : undefined, chevron: notifEtat === "a_activer" },
+        ...(notifEtat === "actives" ? [{ icon:"📨", label:"Notification de test",
+          value: notifTest || "Vérifier que ce téléphone les reçoit",
+          action: notifTestEnCours ? undefined : testerNotif, chevron: !notifTestEnCours }] : []),
         { icon:"🌍", label:"Langue", value:"Français" },
         { icon:"📄", label:"CGU & Politique de confidentialité", action:()=>onNavigate("legal","cgu"), chevron:true },
         { icon:"⚖️", label:"Mentions légales", action:()=>onNavigate("mentions_legales"), chevron:true },

@@ -1164,7 +1164,10 @@ c'est l'inverse qui ne l'est pas.
 
 **L'abonnement d'un appareil** (14/10/2026) passe par `activerNotifications()` de
 `src/lib/push.js`. La demande d'autorisation partait seule à l'ouverture de l'application :
-l'iPhone ne l'accepte qu'après un geste, et l'ignorait — aucun iPhone ne s'abonnait. Sur iPhone,
+l'iPhone ne l'accepte qu'après un geste, et l'ignorait. Un iPhone ne s'abonnait que si l'accord
+avait été donné d'un appui ailleurs — le bandeau « Activer les notifications » de l'accueil client,
+que les prestataires n'ont pas (5 appareils Apple abonnés en production le 14/10/2026, dont 4
+clients ; cette page disait « aucun iPhone », c'était faux). Sur iPhone,
 l'ouverture ne fait plus que rafraîchir un abonnement déjà accordé ; l'activation se fait dans
 **Réglages › Notifications**, qui affiche l'état réel (`etatNotifications()` : activées, à
 activer, bloquées, ou « ajoutez ALANE à l'écran d'accueil » — seule l'application installée reçoit
@@ -1173,6 +1176,31 @@ des push sur iPhone). La ligne disait « Activées » en dur. `push_subscribe` �
 sur `id` et un appareil réabonné heurtait l'unicité, réponse « success » à l'appui. Une
 notification locale (« votre prestataire arrive ») passe par `notifierLocalement()` : `new
 Notification()` lève une erreur sur téléphone.
+
+**Seuls les services de notification des navigateurs sont contactés** (14/10/2026) —
+`serviceDeNotificationReconnu()` de `api/_push.js` : Apple (`*.push.apple.com`), Google
+(`fcm.googleapis.com`, `android.googleapis.com`), Mozilla (`*.push.services.mozilla.com`),
+Microsoft (`*.notify.windows.com`), en https sur le port normal. Toute adresse en https était
+acceptée comme « téléphone », et le serveur y envoyait ensuite chaque notification du compte :
+n'importe quel compte pouvait faire envoyer, par le serveur d'ALANE, des requêtes vers le site de
+son choix (constaté en recette le 13/10/2026, où un faux téléphone a servi à tester l'envoi). La
+règle joue à l'abonnement (`push_subscribe` répond 400 « Service de notification non reconnu ») **et
+à l'envoi** (`sendWebPush` rend `service_refuse` sans rien contacter) : un abonnement enregistré
+avant elle n'est plus jamais appelé, sans être supprimé — si un navigateur légitime manquait à la
+liste, l'élargir suffirait à le rétablir. En production le 14/10/2026 : 5 abonnements Apple,
+1 Google, tous couverts.
+
+**Notification de test** (Réglages, 14/10/2026) : action `push_test` de `/api/missions`. Elle
+réinscrit d'abord l'appareil (`envoyerNotificationTest()`, sans rien demander), attend **cinq
+secondes** — le temps de quitter l'application, un téléphone n'affichant pas toujours la
+notification de l'application ouverte — puis écrit à tous les appareils du compte appelant, à eux
+seuls, et rend le bilan de `sendPushToUser()` : `{ appareils, acceptes, expires, echecs: [{ service,
+raison }] }` — le service, jamais l'adresse de l'appareil. L'écran le traduit en une phrase
+(`messageTest()`). Un abonnement que le service déclare expiré (410) est retiré par le serveur, et
+l'écran en refait un neuf. `sendPushToUser()` rend ce même bilan à tous ses appelants (il ne
+rendait rien) et signale des appareils illisibles au lieu de les confondre avec « aucun ». Essai :
+`e2e/73` — aucun service réel n'étant joignable depuis la recette, l'appareil y est simulé avec
+une adresse Google inexistante.
 
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
@@ -4730,6 +4758,10 @@ vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), ma
 `/api/prestataires` rendait `false` pour un compte qui ne l'avait jamais touché : le prestataire
 se croyait disponible et apparaissait indisponible aux clients (corrigé le 14/10/2026). L'écriture
 de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
+
+**Réglages › Notification de test** (14/10/2026) : ligne affichée quand les notifications sont
+activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
+secondes après l'appui et dit ce que le service de notification a répondu (§4, `push_subscriptions`).
 
 **Thème clair** (Réglages) : `src/lib/theme.js`, réappliqué au démarrage (`main.jsx`). Il ne
 marchait pas : l'inversion des couleurs était posée sur `body` et sur `#root`, donc appliquée deux

@@ -18,7 +18,44 @@
 // `crypto` natif de Node 18+.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── Services de notification reconnus (14/10/2026) ──────────────────────────
+//
+// Le serveur envoie chaque notification à l'adresse (`endpoint`) que le
+// navigateur a déclarée en s'abonnant. Toute adresse en https était acceptée :
+// n'importe quel compte pouvait faire envoyer, par le serveur d'ALANE, des
+// requêtes vers le site de son choix, à chaque notification qui le concernait.
+// C'est ainsi qu'un faux « téléphone » a pu être inscrit en recette le
+// 13/10/2026, pour tester l'envoi.
+//
+// Seuls les services des navigateurs sont acceptés : Apple (Safari, iPhone),
+// Google (Chrome, Android, Samsung Internet, Opera), Mozilla (Firefox) et
+// Microsoft (Edge). En production le 14/10/2026 : 5 abonnements Apple, 1 Google.
+// Contrôle à l'abonnement (`push_subscribe`) ET à l'envoi : un abonnement
+// enregistré avant cette règle n'est plus jamais contacté.
+const SERVICES_EXACTS = ["fcm.googleapis.com", "android.googleapis.com"];
+const SERVICES_DOMAINES = [".push.apple.com", ".push.services.mozilla.com", ".notify.windows.com"];
+
+export function serviceDeNotificationReconnu(endpoint) {
+  let u;
+  try { u = new URL(String(endpoint || "")); }
+  catch { return false; /* adresse illisible : refusée */ }
+  if (u.protocol !== "https:" || u.port || u.username || u.password) return false;
+  const hote = u.hostname.toLowerCase();
+  return SERVICES_EXACTS.includes(hote) || SERVICES_DOMAINES.some(d => hote.endsWith(d));
+}
+
+/** Le service d'un abonnement, pour les journaux et le bilan — jamais l'adresse entière, qui identifie l'appareil. */
+export function serviceDe(endpoint) {
+  try { return new URL(String(endpoint || "")).hostname || "inconnu"; }
+  catch { return "adresse illisible"; /* rien de plus à en dire */ }
+}
+
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
+//
+// Rend le code HTTP du service de notification (201 ou 200 : accepté ; 410 :
+// l'abonnement n'existe plus), ou une raison : "vapid_absent",
+// "abonnement_incomplet", "service_refuse" (adresse hors des services
+// reconnus, jamais contactée), null (erreur pendant l'envoi).
 export async function sendWebPush(sub, notification) {
   const VAPID_PUB = (process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "");
   const VAPID_PRV = (process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "");
@@ -27,11 +64,15 @@ export async function sendWebPush(sub, notification) {
   // pendant des heures parce que rien ne la signale.
   if (!VAPID_PUB || !VAPID_PRV) {
     console.error("[push] VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY absente — aucune notification ne peut être envoyée.");
-    return false;
+    return "vapid_absent";
   }
   if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) {
-    console.error("[push] abonnement incomplet, envoi impossible :", sub?.endpoint?.slice(0, 40) || "sans adresse");
-    return false;
+    console.error("[push] abonnement incomplet, envoi impossible :", serviceDe(sub?.endpoint));
+    return "abonnement_incomplet";
+  }
+  if (!serviceDeNotificationReconnu(sub.endpoint)) {
+    console.error("[push] service de notification non reconnu, envoi refusé :", serviceDe(sub.endpoint));
+    return "service_refuse";
   }
   try {
     const sc = globalThis.crypto.subtle;
@@ -97,23 +138,49 @@ export async function sendWebPush(sub, notification) {
 
 // Haversine distance in km between two lat/lng points
 
+// Ce que chaque échec veut dire, pour l'utilisateur qui teste son téléphone.
+const RAISONS = {
+  vapid_absent: "notifications non configurées sur le serveur",
+  abonnement_incomplet: "abonnement incomplet",
+  service_refuse: "service de notification non reconnu",
+};
+const raisonEchec = (statut) => RAISONS[statut] || (typeof statut === "number" ? `refus du service (${statut})` : "erreur pendant l'envoi");
+
+/**
+ * Envoie une notification à tous les appareils d'un compte. Ne lève jamais, et
+ * rend un bilan : { appareils, acceptes, expires, echecs: [{ service, raison }],
+ * illisible } — `illisible` quand les appareils n'ont pas pu être lus. Un
+ * appareil qui « n'existe plus » (410) est retiré.
+ */
 export async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
+  const bilan = { appareils: 0, acceptes: 0, expires: 0, echecs: [], illisible: false };
   try {
     const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
-    const subs = await psRes.json().catch(() => []);
-    if (!Array.isArray(subs) || subs.length === 0) return;
+    const subs = await psRes.json().catch(() => null);
+    if (!psRes.ok || !Array.isArray(subs)) {
+      console.error(`[sendPushToUser] appareils illisibles pour ${userId} (${psRes.status})`);
+      bilan.illisible = true;
+      return bilan;
+    }
+    bilan.appareils = subs.length;
     await Promise.all(subs.map(async (s) => {
       const status = await sendWebPush(s, notification);
+      if (status === 201 || status === 200) { bilan.acceptes++; return; }
       if (status === 410) {
+        bilan.expires++;
         await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, {
           method: "DELETE",
           headers: serviceHeaders,
         }).catch(e => console.error("[_push] échec ignoré :", e?.message));
+        return;
       }
+      bilan.echecs.push({ service: serviceDe(s.endpoint), raison: raisonEchec(status) });
     }));
   } catch(e) {
     console.error("[sendPushToUser] error:", e.message);
+    bilan.illisible = true;
   }
+  return bilan;
 }
 
 /**
