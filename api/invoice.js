@@ -5,6 +5,7 @@
 
 import crypto from "crypto";
 import { partHoraire, montantsDeCloture } from "./_cloture.js";
+import { dureeTexte } from "./_temps.js";
 
 function escHtml(str) {
   return String(str || "")
@@ -624,9 +625,9 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   const lineItem = htCalc <= 0
     ? metier
     : heuresSupp > 0
-      ? `${metier} — ${hours - heuresSupp}h × ${eurTarif(tarifHoraire)} €/h`
-        + ` + ${heuresSupp}h supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
-      : `${metier} — ${hours}h × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
+      ? `${metier} — ${dureeTexte(hours - heuresSupp)} × ${eurTarif(tarifHoraire)} €/h`
+        + ` + ${dureeTexte(heuresSupp)} supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
+      : `${metier} — ${dureeTexte(hours)} × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
   const ligneAjout = (ajoutJournees > 0
     ? ` + ${heuresAjoutees}h ajoutées à certaines journées (${eurTarif(ajoutJournees)} €)`
     : "")
@@ -921,7 +922,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
           <div class="line-desc-main">${escHtml(lineItem + ligneAjout)}</div>
           ${secteur ? `<div class="line-desc-detail">Secteur : ${escHtml(secteur)}</div>` : ""}
           ${missionDate ? `<div class="line-desc-detail">Date : ${escHtml(missionDate)}${heureDebut ? " à " + escHtml(heureDebut) : ""}</div>` : ""}
-          ${hours > 0 ? `<div class="line-desc-detail">Durée : ${hours}h</div>` : ""}
+          ${hours > 0 ? `<div class="line-desc-detail">Durée : ${escHtml(dureeTexte(hours))}</div>` : ""}
           ${ville ? `<div class="line-desc-detail">Ville : ${escHtml(ville)}</div>` : ""}
           ${adresse ? `<div class="line-desc-detail">Adresse : ${escHtml(adresse)}</div>` : ""}
         </div>

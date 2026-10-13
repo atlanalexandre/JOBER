@@ -95,7 +95,7 @@ export function montantsDeCloture(m) {
   let valeurRetardUnJour = 0;
   if (m?.delay_status === "pending") {
     const retardH = (Number(m.arrival_delay_minutes) || 0) / 60;
-    const plafonnees = Math.max(0, Math.round((Number(m.hours || 0) - retardH) * 100) / 100);
+    const plafonnees = Math.max(0, Math.round((Number(m.hours || 0) - retardH) * 10000) / 10000);
     if (plafonnees < heuresEffectives) {
       ajustementRetard = { avant: heuresEffectives, apres: plafonnees, retard: Number(m.arrival_delay_minutes) || 0 };
       if (jours > 1) {

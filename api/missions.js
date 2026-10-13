@@ -5103,9 +5103,10 @@ export default async function handler(req, res) {
       const delayMins = m2.arrival_delay_minutes || 0;
       const plannedHours = m2.hours || 0;
       const actualHours = response === "rejected"
-        ? Math.max(0, Math.round((plannedHours - delayMins / 60) * 100) / 100)
+        ? Math.max(0, Math.round((plannedHours - delayMins / 60) * 10000) / 10000)
         : plannedHours;
-      // hours = durée effective du timer (réduite si refus) ; actual_hours = même valeur pour ancrer la facturation
+      // actual_hours = durée retenue (quatre décimales : vingt minutes ne s'arrondissent pas au centième d'heure,
+      // sans quoi le versement et le remboursement ne retombaient pas sur le prix payé, à 4 centimes près).
       // Ces heures fondent la facturation : une réponse non enregistrée ne doit
       // pas être annoncée au prestataire comme acquise.
       //
@@ -5129,7 +5130,7 @@ export default async function handler(req, res) {
       const majDecalage = { delay_status: response };
       if (!plusieursJours) majDecalage.actual_hours = actualHours;
       else if (response === "rejected") {
-        majDecalage.heures_perdues = Math.round((Number(m2.heures_perdues || 0) + (plannedHours - actualHours)) * 100) / 100;
+        majDecalage.heures_perdues = Math.round((Number(m2.heures_perdues || 0) + (plannedHours - actualHours)) * 10000) / 10000;
       }
       const decalageEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&delay_status=eq.pending`,
         majDecalage, headers, "reponse_decalage");
