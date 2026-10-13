@@ -9500,8 +9500,10 @@ export function AbonnementPrestaScreen({ onBack }) {
       if (p.id === "elite") {
         features[0] = limit >= 999 ? "Prestations illimitées" : `${limit} prestations/mois`;
       } else {
-        const launchSuffix = p.id === "free" && launchActive ? " (10 pendant le lancement)" : "";
-        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+        // Plus de mention « (10 pendant le lancement) » (14/10/2026) : l'offre
+        // de lancement donne 8 prestations, aux 100 premiers validés seulement
+        // (api/_offre.js), et la note de la carte le dit déjà.
+        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois`;
       }
     }
     return {
