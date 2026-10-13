@@ -1350,9 +1350,10 @@ Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichie
 
 | Mécanisme | Fichiers | Principe |
 |---|---|---|
-| `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc`, `reparer-profil` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
+| `verifyUser` | `missions`, `support`, `stripe-intent`, `stripe-connect`, `booking-draft`, `get-profile`, `notify-doc`, `reparer-profil` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user`. (`wallet`, `stripe-wallet-topup` et `get-documents`, encore cités ici jusqu'au 13/10/2026, n'existent plus) |
 | Vérification inline équivalente | `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js`. **Corrigé le 01/10/2026** : cette ligne était fausse pour `upload-document`, qui *décodait* le jeton sans en vérifier la signature (voir plus bas) ; `save-document` et `update-profile`, encore cités, avaient été supprimés le 11/09/2026 |
-| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
+| Token backoffice | `bo-action`, `bo-verify-pin`, `stripe-refund`, `verify-docs` | Session BO signée en HMAC avec `BO_SESSION_SECRET`. `verify-docs` (bouton « Vérifier IBAN / SIRET ») ne vérifiait **aucun** appelant jusqu'au 13/10/2026 — relais public vers l'annuaire SIRENE ; il passe par `sessionBOValide()` (`api/_session_bo.js`), qui refuse l'ancien format à deux parties encore accepté par les trois autres copies |
+| Lien signé | `invoice` | Jeton éphémère `{user}.{prestation}.{exp}` signé par `generate_invoice_token` (30 min) — ce n'est pas une session BO |
 | Lien de réinitialisation | `forgot-password` (public), `reset-password` (public) | Lien à usage unique signé par `api/_reinitialisation.js` — voir plus bas. Ces deux fonctions étaient rangées à tort dans la ligne précédente |
 | `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
 
