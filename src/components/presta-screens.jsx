@@ -4582,7 +4582,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               {dispoRapide ? "Disponible maintenant" : "Non disponible"}
             </span>
           </div>
-          <button onClick={()=>{ const v=!dispoRapide; setDispoRapide(v); supabase.auth.updateUser({data:{dispo_immediat:v}}); }}
+          <button onClick={async ()=>{
+              // Le résultat est lu : en cas d'échec, l'interrupteur affichait un
+              // état que les clients ne voyaient pas (14/10/2026).
+              const v=!dispoRapide; setDispoRapide(v);
+              const { error } = await supabase.auth.updateUser({data:{dispo_immediat:v}});
+              if (error) { console.error("[disponibilité] non enregistrée :", error.message); setDispoRapide(!v); showToast("Disponibilité non enregistrée, réessayez", "error"); }
+            }}
             style={{ width:44, height:24, borderRadius:12, border:"none", cursor:"pointer", position:"relative",
               background:dispoRapide?C.success:"rgba(255,255,255,0.15)", transition:"background 0.2s" }}>
             <div style={{ position:"absolute", top:3, left:dispoRapide?21:3, width:18, height:18, borderRadius:"50%",

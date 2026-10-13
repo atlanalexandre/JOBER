@@ -1162,6 +1162,18 @@ désormais les lignes portant le même endpoint et un autre `user_id` avant d'in
 (migration `2026-08-18_un_appareil_un_compte.sql`). Plusieurs appareils par compte reste normal ;
 c'est l'inverse qui ne l'est pas.
 
+**L'abonnement d'un appareil** (14/10/2026) passe par `activerNotifications()` de
+`src/lib/push.js`. La demande d'autorisation partait seule à l'ouverture de l'application :
+l'iPhone ne l'accepte qu'après un geste, et l'ignorait — aucun iPhone ne s'abonnait. Sur iPhone,
+l'ouverture ne fait plus que rafraîchir un abonnement déjà accordé ; l'activation se fait dans
+**Réglages › Notifications**, qui affiche l'état réel (`etatNotifications()` : activées, à
+activer, bloquées, ou « ajoutez ALANE à l'écran d'accueil » — seule l'application installée reçoit
+des push sur iPhone). La ligne disait « Activées » en dur. `push_subscribe` écrit en
+`on_conflict=user_id,endpoint` et **vérifie son écriture** : sans `on_conflict`, la fusion portait
+sur `id` et un appareil réabonné heurtait l'unicité, réponse « success » à l'appui. Une
+notification locale (« votre prestataire arrive ») passe par `notifierLocalement()` : `new
+Notification()` lève une erreur sur téléphone.
+
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
 ### Tables supprimées
@@ -4707,6 +4719,22 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 ---
 
 ## 7. Navigation et URLs
+
+**La barre du bas reste sur les écrans secondaires du prestataire** (14/10/2026, décision
+d'Alexandre) : Abonnement, Modifier mon profil, Dépôt d'un document, Micro-entreprise, Messagerie,
+Réglages. L'onglet d'origine reste allumé (`ONGLET_PARENT_PRESTA`, `App.jsx`), et la zone qui
+défile réserve la hauteur de la barre (`paddingBottom` de `ResponsiveLayout`).
+
+**« Disponible maintenant »** (accueil du prestataire, `user_metadata.dispo_immediat`) : absent
+vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), mais
+`/api/prestataires` rendait `false` pour un compte qui ne l'avait jamais touché : le prestataire
+se croyait disponible et apparaissait indisponible aux clients (corrigé le 14/10/2026). L'écriture
+de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
+
+**Thème clair** (Réglages) : `src/lib/theme.js`, réappliqué au démarrage (`main.jsx`). Il ne
+marchait pas : l'inversion des couleurs était posée sur `body` et sur `#root`, donc appliquée deux
+fois — l'écran restait sombre — et le choix n'était pas relu à l'ouverture. Elle vit sur `<html>`
+seul, le seul élément où un filtre ne décroche pas les éléments fixes.
 
 **Téléphone : la barre du bas, le zoom** (14/10/2026, signalé par Alexandre). La mise en page
 mobile (barre du bas) ou ordinateur (menu latéral) se décide par `estMobile()`

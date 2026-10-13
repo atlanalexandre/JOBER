@@ -4,6 +4,10 @@ import { createRoot } from 'react-dom/client'
 import * as Sentry from "@sentry/react"
 import './index.css'
 import App, { ErrorBoundary } from './App.jsx'
+import { appliquerTheme, themeClairEnregistre } from './lib/theme.js'
+
+// Le thème choisi dans les Réglages, avant le premier affichage.
+appliquerTheme(themeClairEnregistre())
 
 // ── Sentry — error tracking en production ─────────────────────────────────────
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;

@@ -12,6 +12,8 @@ import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
 import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
+import { activerNotifications, etatNotifications, LIBELLE_NOTIFICATIONS, notifierLocalement } from "../lib/push.js";
+import { choisirTheme, themeClairEnregistre } from "../lib/theme.js";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp, finPremierJourMs } from "../../api/_temps.js";
@@ -302,12 +304,17 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     if (error) { setPassMsg({ err: true, text: error.message }); }
     else { setPassMsg({ err: false, text: "Mot de passe modifié ✓" }); setNewPass(""); setTimeout(() => setShowPassModal(false), 1500); }
   };
-  const [lightMode, setLightMode] = useState(()=>{ try { return localStorage.getItem("alane_light_mode")==="1"; } catch(e) { return false; } });
-  const toggleTheme = (v) => {
-    try { localStorage.setItem("alane_light_mode", v ? "1" : "0"); } catch(e) {}
-    document.documentElement.setAttribute("data-alane-theme", v ? "light" : "dark");
-    setLightMode(v);
+  // L'état réel des notifications : la ligne affichait « Activées » en dur.
+  const [notifEtat, setNotifEtat] = useState(etatNotifications);
+  const [notifEnCours, setNotifEnCours] = useState(false);
+  const activerNotif = async () => {
+    setNotifEnCours(true);
+    try { setNotifEtat(await activerNotifications()); }
+    catch (e) { showToast(e.message, "error"); }
+    setNotifEnCours(false);
   };
+  const [lightMode, setLightMode] = useState(themeClairEnregistre);
+  const toggleTheme = (v) => { choisirTheme(v); setLightMode(v); };
   const [clientMeta, setClientMeta] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [cpAdresse, setCpAdresse]     = useState("");
@@ -502,7 +509,8 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     {
       title:"Application",
       items:[
-        { icon:"🔔", label:"Notifications", value:"Activées" },
+        { icon:"🔔", label:"Notifications", value:notifEnCours ? "Activation…" : LIBELLE_NOTIFICATIONS[notifEtat],
+          action: notifEtat === "a_activer" && !notifEnCours ? activerNotif : undefined, chevron: notifEtat === "a_activer" },
         { icon:"🌍", label:"Langue", value:"Français" },
         { icon:"📄", label:"CGU & Politique de confidentialité", action:()=>onNavigate("legal","cgu"), chevron:true },
         { icon:"⚖️", label:"Mentions légales", action:()=>onNavigate("mentions_legales"), chevron:true },
@@ -1148,7 +1156,16 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <button onClick={()=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
             <button onClick={()=>{
-              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles prestations.",icon:"/favicon.svg"}); });
+              // Abonnement complet, enregistré côté serveur : la demande
+              // d'autorisation seule n'abonnait pas l'appareil, et
+              // `new Notification()` lève une erreur sur téléphone (14/10/2026).
+              try { localStorage.setItem("alane_notif_asked","1"); } catch { /* stockage indisponible : la question reviendra */ }
+              setNotifAsked(false);
+              activerNotifications().then(etat => {
+                if (etat === "actives") showToast("Notifications activées", "success");
+                else if (etat === "installer") showToast("Sur iPhone, ajoutez d'abord ALANE à l'écran d'accueil (Partager › Sur l'écran d'accueil)", "info");
+                else if (etat === "bloquees") showToast("Notifications bloquées : réactivez-les dans les réglages du téléphone", "info");
+              }).catch(e => showToast(e.message, "error"));
             }} style={{ background:C.violet, border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Activer</button>
           </div>
         </div>
@@ -6759,7 +6776,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
           const dist = haversineKm(missionCoords.lat, missionCoords.lng, d.lat, d.lng);
           if (dist < 0.5 && "Notification" in window && Notification.permission === "granted") {
             approachNotifSentRef.current.add(selected.id);
-            new Notification("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m du lieu de la prestation.", icon: "/icon-192.png" });
+            notifierLocalement("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m du lieu de la prestation.", icon: "/icon-192.png" });
           }
         }
       }
@@ -9483,8 +9500,10 @@ export function AbonnementPrestaScreen({ onBack }) {
       if (p.id === "elite") {
         features[0] = limit >= 999 ? "Prestations illimitées" : `${limit} prestations/mois`;
       } else {
-        const launchSuffix = p.id === "free" && launchActive ? " (10 pendant le lancement)" : "";
-        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+        // Plus de mention « (10 pendant le lancement) » (14/10/2026) : l'offre
+        // de lancement donne 8 prestations, aux 100 premiers validés seulement
+        // (api/_offre.js), et la note de la carte le dit déjà.
+        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois`;
       }
     }
     return {
