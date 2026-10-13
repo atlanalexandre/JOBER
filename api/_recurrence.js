@@ -46,6 +46,12 @@ export function montantOccurrence(tarifHoraire, heures, frais) {
   return Math.round((part + calculerFrais("single", part, 1, frais)) * 100) / 100;
 }
 
+/** Durée réservée d'une semaine : `hours` moins les heures supplémentaires ajoutées en cours de route. */
+export function dureeReservee(m) {
+  const h = Number(m?.hours || 0) - Math.max(0, Number(m?.extra_hours_appliquees) || 0);
+  return h > 0 ? Math.round(h * 100) / 100 : Number(m?.hours || 0);
+}
+
 const dateFr = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("fr-FR", {
   weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris",
 });
@@ -61,7 +67,7 @@ const dateFr = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("fr-FR",
 export async function programmerOccurrenceSuivante(missionId, supabaseUrl, headers) {
   const lr = await fetch(
     `${supabaseUrl}/rest/v1/missions?id=eq.${missionId}`
-    + "&select=id,client_id,prestataire_id,sector,metier,titre,date,hours,heure_debut,adresse,ville,description,tarif_horaire,recurrence,stripe_payment_intent,status,retractation_renonciation_at,retractation_version&limit=1",
+    + "&select=id,client_id,prestataire_id,sector,metier,titre,date,hours,extra_hours_appliquees,heure_debut,adresse,ville,description,tarif_horaire,recurrence,stripe_payment_intent,status,retractation_renonciation_at,retractation_version&limit=1",
     { headers }
   );
   const lignes = await lr.json().catch(() => null);
@@ -86,7 +92,12 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
 
   const date = dateSuivante(m.date, m.recurrence);
   const frais = await lireFraisService(supabaseUrl, headers);
-  const montant = montantOccurrence(m.tarif_horaire, m.hours, frais);
+  // La durée RÉSERVÉE, pas celle de cette semaine : des heures supplémentaires
+  // payées un mardi s'ajoutent à `hours` (prestation d'un jour), et la semaine
+  // suivante était créée — et prélevée — avec elles, sans que le client ait rien
+  // demandé (étude du 13/10/2026).
+  const heures = dureeReservee(m);
+  const montant = montantOccurrence(m.tarif_horaire, heures, frais);
   if (!date || !montant) {
     console.error(`[serie] ${missionId} : date (${m.date}, ${m.recurrence}) ou tarif (${m.tarif_horaire} × ${m.hours}) illisible.`);
     return { mode: "echec" };
@@ -101,7 +112,7 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
     body: JSON.stringify({
       id: nouvelleId, client_id: m.client_id, prestataire_id: null,
       sector: m.sector, metier: m.metier || null, titre: m.titre || null,
-      date, hours: m.hours, heure_debut: m.heure_debut || null,
+      date, hours: heures, heure_debut: m.heure_debut || null,
       adresse: m.adresse || null, ville: m.ville || null, description: m.description || null,
       tarif_horaire: m.tarif_horaire, montant_total: montant,
       recurrence: m.recurrence, parent_mission_id: m.id,

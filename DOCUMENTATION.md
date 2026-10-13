@@ -3491,6 +3491,12 @@ mesure, avec le délai des 48 h ». Le client ne paie jamais la série d'avance.
 | Versement | tâche planifiée | Règle commune : 48 h après la fin de **chaque** prestation |
 | Arrêt | client, « Arrêter la série » dans ses prestations | Action `arreter_serie` : `recurrence` remise à `null` sur la prestation et ses suivantes. Les semaines déjà payées restent prévues et s'annulent par l'annulation ordinaire |
 
+**La semaine suivante reprend la durée RÉSERVÉE** (étude du 13/10/2026, `e2e/17`). Des heures
+supplémentaires payées une semaine s'ajoutent à `hours` (prestation d'un jour) : la semaine
+suivante était créée — et prélevée sur la carte — avec elles, sans que le client ait rien demandé
+(10 h au lieu de 8 h en recette). `dureeReservee()` (`api/_recurrence.js`) retire
+`extra_hours_appliquees`.
+
 **Paiement refusé** (carte expirée, fonds insuffisants, authentification exigée par la
 banque) : rien n'est débité, la semaine créée passe en `cancelled`, la série s'arrête, et le
 client reçoit « Série hebdomadaire interrompue » avec la marche à suivre.
