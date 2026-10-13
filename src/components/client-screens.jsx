@@ -7469,8 +7469,8 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"approved" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ✅ Prolonger d'autant
@@ -7481,8 +7481,8 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"rejected" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ⏱ Fin à l'heure convenue
@@ -7497,7 +7497,13 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
           )}
           {selected.delay_status === "rejected" && selected.arrival_delay_minutes > 0 && (
             <div style={{ background:"rgba(242,94,94,0.06)", border:"1px solid rgba(242,94,94,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
-              ⏱ Fin à l'heure convenue — {selected.actual_hours} h facturées, soit le temps réalisé
+              {/* `actual_hours` n'est posé que sur une prestation d'un jour : sur
+                  plusieurs jours, le retard ne retire du temps qu'à une journée. */}
+              ⏱ Fin à l'heure convenue — {(() => {
+                const minutes = Math.round((Number(selected.hours) || 0) * 60 - selected.arrival_delay_minutes);
+                const h = Math.floor(minutes / 60), mn = minutes % 60;
+                return mn ? `${h} h ${String(mn).padStart(2, "0")}` : `${h} h`;
+              })()} facturées{selected.date_fin && String(selected.date_fin).slice(0, 10) > String(selected.date_debut || "").slice(0, 10) ? " pour cette journée" : ""}, soit le temps réalisé
             </div>
           )}
           {selected.status === "assigned" && (() => {

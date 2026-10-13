@@ -356,3 +356,13 @@ export function texteDelaiReponse(echeanceMs, nowMs = Date.now()) {
   const heure = new Date(echeanceMs).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" }).replace(":", " h ");
   return { phrase: `Vous avez ${duree} pour accepter ou refuser, soit jusqu'à ${heure}.` };
 }
+
+/**
+ * Une durée en heures, écrite comme on la dit : 7,666… → « 7 h 40 », 8 → « 8 h ».
+ * Un retard de vingt minutes s'annonçait « 7.67 h » (étude du 13/10/2026).
+ */
+export function dureeTexte(heures) {
+  const totalMin = Math.round((Number(heures) || 0) * 60);
+  const h = Math.floor(totalMin / 60), min = totalMin % 60;
+  return min ? `${h} h ${String(min).padStart(2, "0")}` : `${h} h`;
+}

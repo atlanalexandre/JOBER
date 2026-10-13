@@ -3,7 +3,7 @@ import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, se
 
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
-import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
+import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
@@ -1927,7 +1927,7 @@ export default async function handler(req, res) {
         // montantsDeCloture() retrouve le même plafond.
         body: JSON.stringify({
           status: "completed", montant_total: totalClient, validation_client: true,
-          ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
+          ...(ajustementRetard && !ajustementRetard.unJour ? { actual_hours: ajustementRetard.apres } : {}),
         }),
       });
       const completedRows = await completePatchRes.json().catch(() => []);
@@ -1996,7 +1996,8 @@ export default async function handler(req, res) {
             title: "Durée facturée ajustée ⏱",
             body: `La prestation « ${mission.metier || mission.sector || ""} » a démarré avec `
               + `${ajustementRetard.retard} min de décalage, non arbitré par le client. `
-              + `${ajustementRetard.apres} h ont été facturées au lieu de ${ajustementRetard.avant} h, `
+              + `${dureeTexte(ajustementRetard.apres)} ont été facturées au lieu de ${dureeTexte(ajustementRetard.avant)}`
+              + `${ajustementRetard.unJour ? " pour la journée concernée" : ""}, `
               + `soit le temps effectivement réalisé. Si ce décalage ne vous est pas imputable, `
               + `écrivez à direction@alane.fr : la prestation sera réexaminée.`,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
@@ -5094,7 +5095,7 @@ export default async function handler(req, res) {
       const { mission_id, response } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       if (!["approved", "rejected"].includes(response)) return res.status(400).json({ error: "response invalide" });
-      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre,tarif_horaire,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,date_debut,date_fin,montant_total,stripe_payment_intent`, { headers });
+      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre,tarif_horaire,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_perdues,date_debut,date_fin,montant_total,stripe_payment_intent`, { headers });
       const mData2 = await mr2.json();
       const m2 = Array.isArray(mData2) && mData2[0];
       if (!m2) return res.status(404).json({ error: "Prestation introuvable" });
@@ -5113,10 +5114,22 @@ export default async function handler(req, res) {
       // — qui déduit les frais de service de ce total — présenterait l'heure non
       // faite comme des frais. Écriture CONDITIONNELLE sur `delay_status` : une
       // seule réponse est enregistrée, donc un seul remboursement.
+      //
+      // `hours` — la durée RÉSERVÉE, colonne entière — ne bouge plus (étude du
+      // 13/10/2026). Y écrire 7,67 h après un retard de 20 minutes faisait
+      // refuser toute la réponse par la base : un refus de décalage n'aboutissait
+      // que pour un retard d'une heure pile. La durée retenue va dans
+      // `actual_hours` (une journée) ; sur plusieurs jours, le retard ne concerne
+      // que la journée où il a été mesuré et s'inscrit dans `heures_perdues`, que
+      // la clôture déduit une fois — `actual_hours` vaut pour chaque journée.
+      // `montant_total` reste le prix payé : la clôture en déduit les frais sur la
+      // durée réservée, et le ramène elle-même à ce que le client doit.
       const aRendre = response === "rejected" ? valeurHeuresRetirees(m2, plannedHours, actualHours) : 0;
-      const majDecalage = { delay_status: response, hours: actualHours, actual_hours: actualHours };
-      if (aRendre > 0 && Number(m2.montant_total) > 0) {
-        majDecalage.montant_total = Math.max(0, Math.round((Number(m2.montant_total) - aRendre) * 100) / 100);
+      const plusieursJours = nombreDeJours(m2) > 1;
+      const majDecalage = { delay_status: response };
+      if (!plusieursJours) majDecalage.actual_hours = actualHours;
+      else if (response === "rejected") {
+        majDecalage.heures_perdues = Math.round((Number(m2.heures_perdues || 0) + (plannedHours - actualHours)) * 100) / 100;
       }
       const decalageEcrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&delay_status=eq.pending`,
         majDecalage, headers, "reponse_decalage");
@@ -5136,7 +5149,8 @@ export default async function handler(req, res) {
             title: response === "approved" ? "Fin de prestation décalée ✅" : "Durée facturée ajustée ⏱",
             body: response === "approved"
               ? `Le client a accepté de décaler la fin de « ${label} » de ${delayMins} min. La durée initialement prévue reste due.`
-              : `La prestation « ${label} » prend fin à l'heure convenue : ${actualHours} h seront facturées au lieu de ${plannedHours} h, `
+              : `La prestation « ${label} » prend fin à l'heure convenue : ${dureeTexte(actualHours)} seront facturées au lieu de ${dureeTexte(plannedHours)}`
+                + `${plusieursJours ? " pour cette journée" : ""}, `
                 + `soit le temps effectivement réalisé après un démarrage décalé de ${delayMins} min. `
                 + `Si ce décalage ne vous est pas imputable, écrivez à direction@alane.fr : la prestation sera réexaminée.`,
           }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_delay] échec ignoré :", e?.message));

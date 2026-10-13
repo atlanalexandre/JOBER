@@ -4,7 +4,7 @@
 //       Valide 30 min — jamais le JWT Supabase en clair dans l'URL
 
 import crypto from "crypto";
-import { partHoraire } from "./_cloture.js";
+import { partHoraire, montantsDeCloture } from "./_cloture.js";
 
 function escHtml(str) {
   return String(str || "")
@@ -416,7 +416,14 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   // (06/10/2026) : un montant cumulé, à part de la durée par jour.
   const ajoutJournees = Math.max(0, Number(mission.montant_heures_ajoutees) || 0);
   const heuresAjoutees = Math.max(0, Number(mission.heures_ajoutees_total) || 0);
-  const htCalc = Math.round((partHoraire(mission, hours, nbJours) + ajoutJournees) * 100) / 100;
+  // Ce que la clôture retire de la part horaire : heures convenues comme non
+  // faites (journée écourtée d'une série) et retard non arbitré d'UNE journée
+  // d'une série. La facture les ignorait : elle annonçait les journées entières
+  // quand le prestataire n'était payé que de ce qu'il avait fait — or son
+  // montant doit être celui qui lui est versé (étude du 13/10/2026).
+  const { deductions } = montantsDeCloture(mission);
+  const deduction = Math.round(((deductions?.valeurPerdue || 0) + (deductions?.valeurRetardUnJour || 0)) * 100) / 100;
+  const htCalc = Math.max(0, Math.round((partHoraire(mission, hours, nbJours) + ajoutJournees - deduction) * 100) / 100);
   // Repli sur montant_total seulement s'il n'y a rien à calculer. Il inclut les frais
   // de service d'ALANE, qui ne relèvent pas de la facture du prestataire : c'est un
   // pis-aller, signalé pour qu'il ne passe pas inaperçu.
@@ -620,9 +627,10 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       ? `${metier} — ${hours - heuresSupp}h × ${eurTarif(tarifHoraire)} €/h`
         + ` + ${heuresSupp}h supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
       : `${metier} — ${hours}h × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
-  const ligneAjout = ajoutJournees > 0
+  const ligneAjout = (ajoutJournees > 0
     ? ` + ${heuresAjoutees}h ajoutées à certaines journées (${eurTarif(ajoutJournees)} €)`
-    : "";
+    : "")
+    + (deduction > 0 ? ` − heures non effectuées (${eurTarif(deduction)} €)` : "");
 
   // Build HTML
   const html = `<!DOCTYPE html>

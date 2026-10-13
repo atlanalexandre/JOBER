@@ -22,7 +22,7 @@
 // Les frais de service ne bougent pas : ils rémunèrent la mise en relation.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { partHoraire, nombreDeJours } from "./_cloture.js";
+import { partHoraire } from "./_cloture.js";
 import { plafonnerRemboursement } from "./_cashback.js";
 
 /**
@@ -32,8 +32,11 @@ import { plafonnerRemboursement } from "./_cashback.js";
  * @param {number} apres      heures retenues
  */
 export function valeurHeuresRetirees(m, avant, apres) {
-  const jours = nombreDeJours(m);
-  const ecart = partHoraire(m, avant, jours) - partHoraire(m, apres, jours);
+  // Le retard se mesure au démarrage, pointé une seule fois : il ne concerne
+  // qu'UNE journée, même sur une prestation de plusieurs jours. Multiplié par le
+  // nombre de jours, il rendait au client — et retirait au prestataire — le
+  // retard du lundi sur chaque journée de la série (étude du 13/10/2026).
+  const ecart = partHoraire(m, avant, 1) - partHoraire(m, apres, 1);
   return Math.max(0, Math.round(ecart * 100) / 100);
 }
 
