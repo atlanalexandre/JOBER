@@ -63,3 +63,43 @@ describe("gardeEcriture", () => {
     expect(gardeEcriture({ ...base, date: null }, { date: "2026-10-21" })).toContain("date.is.null");
   });
 });
+
+// Relecture du 13/10/2026 : l'écran envoie les valeurs qu'il affichait.
+import { champsPerimes, valeursNumeriquesInvalides } from "../../../api/_modification.js";
+import { readFileSync } from "node:fs";
+
+describe("champsPerimes", () => {
+  it("heures changées en base depuis l'ouverture de la liste : refus", () => {
+    expect(champsPerimes({ ...base, hours: 5 }, { hours: 4 }, { hours: 4 })).toEqual(["hours"]);
+  });
+  it("valeurs affichées encore à jour : rien de périmé", () => {
+    expect(champsPerimes({ ...base, hours: 4 }, { hours: 4, date: "2026-10-20" }, { hours: 6 })).toEqual([]);
+  });
+  it("un champ non modifié n'est pas comparé (la ville seule passe même si les heures ont bougé)", () => {
+    expect(champsPerimes({ ...base, hours: 6 }, { hours: 4 }, { ville: "Lyon" })).toEqual([]);
+  });
+  it("écran d'une version antérieure, sans `avant` : rien n'est comparé", () => {
+    expect(champsPerimes(base, undefined, { hours: 4 })).toEqual([]);
+  });
+});
+
+describe("valeursNumeriquesInvalides", () => {
+  it("refuse ce que Number() changerait en NaN — écrit null, donc un tarif effacé", () => {
+    expect(valeursNumeriquesInvalides({ tarif_horaire: "18,50" })).toMatch(/Tarif invalide/);
+    expect(valeursNumeriquesInvalides({ tarif_horaire: "abc" })).toMatch(/Tarif invalide/);
+    expect(valeursNumeriquesInvalides({ hours: "4.5" })).toMatch(/Heures invalides/);
+    expect(valeursNumeriquesInvalides({ hours: "-2" })).toMatch(/Heures invalides/);
+  });
+  it("accepte des valeurs correctes, ou absentes", () => {
+    expect(valeursNumeriquesInvalides({ hours: "6", tarif_horaire: "18.50" })).toBeNull();
+    expect(valeursNumeriquesInvalides({})).toBeNull();
+  });
+});
+
+describe("l'écran du back-office", () => {
+  const ecran = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+  it("n'envoie que les champs modifiés, avec les valeurs lues", () => {
+    expect(ecran).toContain("...changes, avant");
+    expect(ecran).not.toContain('mission_id:missionId, ...editMissionVals');
+  });
+});

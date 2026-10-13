@@ -43,6 +43,29 @@ export function champsModifies(actuelle, saisie) {
   return updates;
 }
 
+/**
+ * Heures et tarif : des nombres positifs (les heures entières, comme la
+ * colonne). Rend le message d'erreur, ou null.
+ */
+export function valeursNumeriquesInvalides({ hours, tarif_horaire }) {
+  if (fourni(hours) && !(Number.isInteger(Number(hours)) && Number(hours) > 0)) return "Heures invalides (nombre entier positif attendu)";
+  if (fourni(tarif_horaire) && !(Number.isFinite(Number(tarif_horaire)) && Number(tarif_horaire) > 0)) return "Tarif invalide (nombre positif attendu, avec un point : 18.50)";
+  return null;
+}
+
+/**
+ * Champs modifiés dont la base ne vaut plus ce que l'écran affichait (`avant`).
+ * Sans `avant` (écran d'une version antérieure), rien n'est comparé.
+ */
+export function champsPerimes(actuelle, avant, updates) {
+  if (!avant || typeof avant !== "object") return [];
+  const perimes = [];
+  if ("date" in updates && "date" in avant && jour(avant.date) !== jour(actuelle.date)) perimes.push("date");
+  if ("hours" in updates && "hours" in avant && nombre(avant.hours) !== nombre(actuelle.hours)) perimes.push("hours");
+  if ("tarif_horaire" in updates && "tarif_horaire" in avant && nombre(avant.tarif_horaire) !== nombre(actuelle.tarif_horaire)) perimes.push("tarif_horaire");
+  return perimes;
+}
+
 /** La modification touche-t-elle à ce qui fixe le prix ou les journées ? */
 export function touchePrixOuJours(updates) {
   return "date" in updates || "hours" in updates || "tarif_horaire" in updates;

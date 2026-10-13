@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { champsModifies, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours } from "./_modification.js";
+import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
@@ -2992,7 +2992,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "update_mission") {
-      const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
+      const { mission_id, date, hours, tarif_horaire, ville, metier, avant } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const saisie = { date, hours, tarif_horaire, ville, metier };
@@ -3002,6 +3002,10 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: "Date invalide (attendu : AAAA-MM-JJ)" });
         }
       }
+      // « 18,50 » ou « abc » donnaient NaN, que JSON écrit `null` : le tarif
+      // était effacé avec une réponse 200 (relecture du 13/10/2026).
+      const erreurNombre = valeursNumeriquesInvalides({ hours, tarif_horaire });
+      if (erreurNombre) return res.status(400).json({ error: erreurNombre });
       // Le formulaire renvoie tous ses champs, lus à l'ouverture de la liste :
       // on compare à la base pour n'écrire que ce qui change vraiment. Une
       // heure supplémentaire payée entre-temps était sinon effacée par un
@@ -3022,6 +3026,12 @@ export default async function handler(req, res) {
       // changée la décale d'autant, sa durée conservée (relectures des 09 et 11/10).
       const updates = champsModifies(actuelle, saisie);
       if (!Object.keys(updates).length) return res.status(200).json({ success: true, misAJour: {} });
+      // L'écran envoie les valeurs qu'il affichait : si la base a changé
+      // depuis (autre administrateur, heures payées), on refuse plutôt que
+      // d'écraser une modification que l'administrateur n'a pas vue.
+      if (champsPerimes(actuelle, avant, updates).length) {
+        return res.status(409).json({ error: "La prestation a changé depuis l'ouverture de la liste (heures ajoutées ou autre modification) : rechargez la liste et recommencez." });
+      }
       // Des heures ajoutées sont rattachées à LEURS journées et à leur prix
       // (détail, paiement, remboursement étiqueté par jour) : déplacer la
       // prestation ou changer ses heures ou son tarif désaccorderait la clôture

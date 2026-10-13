@@ -4045,7 +4045,18 @@ export function BOMissions() {
   const handleUpdateMission = async (missionId) => {
     setDisputing(missionId + "_edit");
     try {
-      const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
+      // N'envoyer que les champs que l'administrateur a modifiés, avec les
+      // valeurs lues à l'ouverture de la liste : le serveur refuse si la base
+      // a changé depuis, au lieu d'écraser (relecture du 13/10/2026). Le
+      // formulaire renvoyait tous ses champs, y compris des heures périmées.
+      const lue = prestations.find(m => m.id === missionId) || {};
+      const changes = {};
+      for (const k of ["date","hours","tarif_horaire","ville","metier"]) {
+        if (String(editMissionVals[k] ?? "") !== String(lue[k] ?? "")) changes[k] = editMissionVals[k];
+      }
+      if (!Object.keys(changes).length) { setResult(r=>({...r,[missionId]:"ℹ️ Aucun changement"})); setEditingMission(null); setEditMissionVals({}); setDisputing(null); return; }
+      const avant = { date:lue.date ?? null, hours:lue.hours ?? null, tarif_horaire:lue.tarif_horaire ?? null };
+      const res = await boFetch({ action:"update_mission", mission_id:missionId, ...changes, avant });
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:data.misAJour&&!Object.keys(data.misAJour).length?"ℹ️ Aucun changement":"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...(data.misAJour||editMissionVals)}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
