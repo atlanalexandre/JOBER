@@ -3353,6 +3353,16 @@ vaille encore ce qui a été lu. Une modification concurrente (autre administrat
 suppression) fait échouer l'enregistrement avec « rechargez la liste et recommencez » au lieu
 d'écraser.
 
+**L'écran envoie ce qu'il affichait** (relecture du 13/10/2026). La comparaison à la base ne
+suffisait pas : une valeur périmée du formulaire, différente de la base, passait pour une
+intention de l'administrateur et était écrite — et une ville changée seule était refusée (409
+« heures ajoutées ») dès que la liste datait d'avant un paiement d'heures. Désormais l'écran
+n'envoie que les champs modifiés, avec `avant` (date, heures, tarif tels qu'affichés) ;
+`champsPerimes()` refuse (409 « rechargez la liste ») un champ modifié dont la base ne vaut plus
+la valeur affichée. Heures (entier positif) et tarif (nombre positif, avec un point) sont validés
+par `valeursNumeriquesInvalides()` : « 18,50 » donnait `NaN`, que JSON écrit `null`, et le tarif
+était effacé avec une réponse 200.
+
 Corrigé le 08/10/2026 : la liste s'arrêtait **sans le dire** aux 300 plus récentes ; le filtre
 « En litige » (`disputed`, absent de la liste blanche du serveur) affichait **toutes** les
 commandes ; les annulées n'avaient pas de filtre ; une commande sur plusieurs jours n'affichait
