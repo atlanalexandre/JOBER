@@ -4774,7 +4774,8 @@ barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Histo
 - **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
   doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
   doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre
-  (`mission_history` manquait à la liste des écrans qui la portent).
+  (`mission_history` manquait à la liste des écrans qui la portent). Sa flèche de retour vers
+  l'accueil, en doublon de la barre, a été retirée le 13/10/2026.
 
 Trois gardes s'appliquent automatiquement : sans session sur un écran protégé, on est renvoyé
 vers `/auth/signin` ; avec une session sur un écran de connexion, vers son espace ; et un
