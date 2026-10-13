@@ -119,11 +119,14 @@ export default async function handler(req, res) {
 
     const welcomeHtml = emailHtml(`
       <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
-      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. Notre équipe va valider votre compte et vous enverra un e-mail dès son approbation.</p>
-      <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
+      <p>Votre compte <strong>ALANE</strong> est ouvert : vous pouvez dès maintenant chercher un prestataire et réserver.</p>
+      <p>Si vous avez des questions, n'hésitez pas à contacter notre support.</p>
       <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
     `);
-    await sendEmail({ to: _welcomeCaller.email || email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
+        // Le compte d'un client est validé d'office à sa création (handle_new_user) :
+    // ce message lui annonçait une validation par l'équipe qui n'a jamais lieu
+    // (étude du 13/10/2026). L'objet n'est pas du HTML : pas d'échappement.
+    await sendEmail({ to: _welcomeCaller.email || email, subject: `Bienvenue sur ALANE, ${String(prenom).slice(0, 60)} !`, html: welcomeHtml });
 
     // L'alerte à l'administration n'est PAS envoyée ici.
     //

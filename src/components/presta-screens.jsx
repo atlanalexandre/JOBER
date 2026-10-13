@@ -13,6 +13,9 @@ import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
 
+// Quota mensuel de la formule Premium, depuis la seule liste qui fasse foi.
+const quotaPremium = () => ABONNEMENTS_PRESTA.find(p => p.id === "premium")?.missions ?? 8;
+
 // Mêmes formats que ceux qu'accepte le bucket `Documents` (allowed_mime_types :
 // PDF, JPEG, PNG, HEIC/HEIF). Le WebP était proposé ici et refusé par le
 // stockage : le prestataire recevait une erreur d'envoi sans comprendre pourquoi.
@@ -2231,7 +2234,10 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
     <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Prestations illimitées · Badge vérifié · Urgences</div>
+        {/* Ce que Premium change réellement (plans.js) : il annonçait « Prestations
+            illimitées · Badge vérifié · Urgences » — illimité, c'est Elite ; les
+            urgences sont ouvertes à tous (étude du 13/10/2026). */}
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{quotaPremium()} prestations/mois · Badge ✓ Certifié</div>
       </div>
       <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>{prixPlan("premium")}/mois ›</span>
     </div>
@@ -2817,7 +2823,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         {trialExhausted && userPlan === "free" ? (
                           <div style={{ background:`rgba(242,94,94,0.1)`, border:`1px solid rgba(242,94,94,0.35)`, borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
                             <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>⛔ Quota épuisé — acceptation impossible</div>
-                            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
+                            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter jusqu'à {quotaPremium()} prestations par mois</div>
                             <button onClick={()=>onNavigate&&onNavigate("abonnement_presta")} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                               💎 Passer Premium — {prixPlan("premium")}/mois
                             </button>
