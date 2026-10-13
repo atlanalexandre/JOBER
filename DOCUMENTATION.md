@@ -4757,9 +4757,20 @@ barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Histo
   résume ce qui attend une action (`ResumeDuJour` : demandes à accepter, prochaine prestation,
   litiges) ; la liste détaillée est dans Prestations, avec un sélecteur En cours · Terminées ·
   Clients ; le Profil a un sélecteur Mon profil · Documents, et y range l'abonnement et les
-  réglages, qui avaient chacun un onglet. La liste reste montée, invisible, sous l'accueil : elle
-  porte la détection d'arrivée (pointage automatique). Le guide de première connexion montre la
-  barre du bas (`ONGLETS_PRESTA_GUIDE`, aligné sur `PrestaNav`) ;
+  réglages, qui avaient chacun un onglet. Le guide de première connexion montre la barre du bas
+  (`ONGLETS_PRESTA_GUIDE`, aligné sur `PrestaNav`). **Une seule liste** (`PMissionsTab`) est montée
+  tant que le tableau de bord l'est — Accueil, Prestations, Revenus, Profil — et n'est visible que
+  dans Prestations › En cours : elle porte la détection d'arrivée (pointage automatique) et
+  alimente le résumé de l'accueil (`onResume` : demandes à accepter, remplacements proposés,
+  demandes ouvertes du métier, prochaine prestation — `prochainePrestation()`,
+  `src/lib/prochaine-prestation.js`, qui range une série commencée à aujourd'hui). Le résumé lisait
+  d'abord `my_missions` lui-même, en double de la liste ; or cette action expire les demandes
+  échues et prévient le client, qui l'était deux fois. L'expiration est en outre conditionnée
+  (`prestataire_id` et `pending_acceptance` encore en place) : seule la requête qui détache
+  réellement le prestataire prévient le client (relecture du 13/10/2026). Les avertissements à
+  lire avant d'accepter (IBAN manquant, quota du mois) sont aussi dans Prestations ; le retour
+  d'une facture ramène à l'écran d'où elle a été ouverte, celui du dépôt de pièces à Documents.
+  Le Planning reste hors du tableau de bord : le pointage automatique n'y tourne pas, comme avant ;
 - **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
   doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
   doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre

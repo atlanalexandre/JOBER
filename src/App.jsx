@@ -1099,6 +1099,9 @@ export default function App() {
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
   const [payslipData,setPayslipData]=useState(null);
+  // L'écran d'où la facture a été ouverte : le retour y ramène (13/10/2026 —
+  // il ramenait toujours au profil, depuis Revenus comme depuis Prestations).
+  const [retourPayslip,setRetourPayslip]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
   const handleToggleOnline = async () => {
     const next = !onlineStatus;
@@ -1703,9 +1706,9 @@ export default function App() {
     // Le tableau de bord prestataire peut être ouvert sur un onglet précis :
     // `navigate("p_dashboard", { onglet:"docs" })`. Remis à null autrement, sans
     // quoi un retour ultérieur rouvrirait toujours le même onglet.
-    if(to==="p_dashboard") setPrestaOnglet(data?.onglet || null);
+    if(to==="p_dashboard" || to==="p_missions") setPrestaOnglet(data?.onglet || null);
     if(to==="legal") setLegalType(data||"cgu");
-    if(to==="payslip") setPayslipData(data);
+    if(to==="payslip") { setPayslipData(data); setRetourPayslip(screen); }
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     if(to==="mission_history" || to==="p_missions") setNotifOpenMissionId(data?.openMissionId||null);
@@ -2108,7 +2111,7 @@ export default function App() {
       {screen==="cashback"          && <CashbackWalletScreen onBack={()=>setScreen("home")} onNavigate={navigate} />}
       {screen==="rating"            && <RatingScreen provider={selectedProvider} missionId={selectedProvider?._missionId} onSubmit={()=>setScreen("home")} onBack={()=>setScreen(selectedProvider?._fromHistory?"mission_history":"validation")} />}
       {screen==="client_pro_docs"       && <ClientProDocScreen onBack={()=>setScreen("settings")} />}
-      {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setScreen("p_dashboard"); }} />}
+      {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setPrestaOnglet("docs"); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="calendar"          && <CalendarScreen />}
@@ -2117,7 +2120,7 @@ export default function App() {
           mentions légales doivent être atteignables sans compte (LCEN art.
           6-III), et `/legal` seul retombe toujours sur les CGU. */}
       {screen==="mentions_legales"  && <LegalScreen type="mentions_legales" onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
-      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} prestation={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
+      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} prestation={payslipData} onBack={()=>{ if(retourPayslip==="p_missions") setPrestaOnglet("terminees"); setScreen(retourPayslip || (role==="prestataire"?"p_dashboard":"dashboard")); }} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {/* Quota épuisé : pas d'overlay global — restriction inline dans PMissionsTab uniquement */}

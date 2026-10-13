@@ -5495,16 +5495,22 @@ export default async function handler(req, res) {
       const stillPending = pendingList.filter(m => !m.acceptance_deadline || m.acceptance_deadline >= nowIso);
       if (expired.length > 0) {
         await Promise.all(expired.map(async m => {
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          // Écriture conditionnée : seule la requête qui détache RÉELLEMENT le
+          // prestataire prévient le client. Deux lectures simultanées (deux
+          // onglets, deux appareils) le prévenaient deux fois — notification
+          // et push en double (relecture du 13/10/2026).
+          const det = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
             // Statut volontairement inchangé : l'expiration d'une prestation payée
             // implique un remboursement, et cette écriture-là appartient au cron
             // (cron-reset-monthly), seul endroit où la logique d'argent est tenue.
             // La laisser ici renvoyait la prestation en « open » sans rembourser.
             body: JSON.stringify({ prestataire_id: null }),
-          });
+          }).catch(e => { console.error("[missions/my_missions] expiration impossible :", e?.message); return null; });
+          const detaches = det?.ok ? await det.json().catch(() => []) : [];
+          if (det && !det.ok) console.error("[missions/my_missions] expiration refusée :", det.status, await det.text().catch(() => ""));
           // Notifier le client que le prestataire n'a pas répondu dans les temps
-          if (m.client_id) {
+          if (m.client_id && Array.isArray(detaches) && detaches.length > 0) {
             await notifier({
                 user_id: m.client_id, type: "mission",
                 title: "Prestataire non disponible ⏱️",
