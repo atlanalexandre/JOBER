@@ -331,7 +331,7 @@ function BOComptes() {
     try {
       const res = await fetch("/api/verify-docs", {
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{ "Content-Type":"application/json", "Authorization": `Bearer ${sessionStorage.getItem("bo_token") || ""}` },
         // Le SIRET d'un prestataire est dans `siret` ; `kbis` n'est renseigné que
         // pour les clients professionnels. La vérification partait donc à vide sur
         // tous les prestataires, alors que c'est là qu'elle compte le plus.

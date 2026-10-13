@@ -1,3 +1,5 @@
+import { sessionBOValide } from "./_session_bo.js";
+
 function validateIBAN(iban) {
   const clean = iban.replace(/[\s-]/g, "").toUpperCase();
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(clean))
@@ -40,6 +42,10 @@ function validateSIRET(siret) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // Réservé au back-office (bouton « Vérifier IBAN / SIRET »). La fonction ne
+  // vérifiait aucun appelant : n'importe qui pouvait s'en servir comme relais
+  // vers l'annuaire SIRENE, au nom d'ALANE (étude du 13/10/2026).
+  if (!sessionBOValide(req.headers?.authorization)) return res.status(401).json({ error: "Non autorisé" });
 
   const { iban, siret } = req.body;
   const result = {};
