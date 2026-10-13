@@ -4777,6 +4777,9 @@ barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Histo
   `src/lib/planning.js`, qui suit `joursCouverts()`). Il ne lisait que `date_debut`, rempli
   pour les seules prestations sur plusieurs jours : une prestation d'un jour n'y apparaissait
   jamais (232 sur 303 en recette le 13/10/2026), et son erreur de lecture était ignorée ;
+  la même erreur ignorée vidait sans un mot le tableau de bord prestataire (chiffres, historique,
+  litiges, revenus), l'onglet Clients et le portefeuille cashback du client : chacun le dit
+  désormais (bandeau ou message) ;
 - **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
   doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
   doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre

@@ -6161,7 +6161,8 @@ export function PayslipScreen({ provider, prestation, onBack }) {
     supabase.auth.getUser().then(({data})=>{
       if(!data?.user) return;
       supabase.from("missions").select("montant_total,tarif_horaire,hours").eq("prestataire_id",data.user.id).eq("status","completed")
-        .then(({data:ms})=>{
+        .then(({data:ms, error})=>{
+          if(error) { console.error("[chiffre d'affaires] prestations illisibles :", error.message); return; }
           if(!Array.isArray(ms)) return;
           const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0)),0);
           setCaReel(Math.round(total*100)/100);
@@ -8572,12 +8573,18 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
       const user = data?.user;
       if (!user) { setWLoading(false); return; }
 
-      const [{ data: profile }, { data: completedMissions }] = await Promise.all([
+      const [{ data: profile, error: errProfil }, { data: completedMissions, error: errHisto }] = await Promise.all([
         supabase.from("profiles").select("cashback_balance,commandes_mois").eq("id", user.id).single(),
         supabase.from("missions").select("id,metier,sector,date,hours,tarif_horaire,montant_total,status")
           .eq("client_id", user.id).eq("status", "completed").order("created_at", { ascending: false }),
       ]);
 
+      // Un échec affichait un solde à 0 € et un historique vide, sans un mot
+      // (relecture du 13/10/2026).
+      if (errProfil || errHisto) {
+        console.error("[cashback] lecture impossible :", (errProfil || errHisto).message);
+        showToast("Votre cashback n'a pas pu être chargé : le solde et l'historique affichés peuvent être faux. Rechargez la page.");
+      }
       setWalletData({
         balance: profile?.cashback_balance || 0,
         missionsThisMonth: profile?.commandes_mois || 0,
