@@ -6430,7 +6430,7 @@ export function AttestationConformite({ data, onFermer }) {
   );
 }
 
-export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
+export function MissionHistoryScreen({ onNavigate, openMissionId }) {
   // Prolongation en attente de règlement. Le montant affiché vient de
   // `prixHeuresSupp`, la même fonction que le serveur : l'écran ne recalcule
   // rien de son côté.
@@ -8273,7 +8273,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
       {/* ── Header compact ── */}
       <div style={{ padding:"52px 18px 0", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.08)", border:"none", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", color:C.white, cursor:"pointer", fontSize:16, flexShrink:0 }}>←</button>
+        {/* Plus de flèche de retour : « Prestations » est un onglet de la
+            barre du bas depuis le 12/10/2026, la barre ramène à l'accueil. */}
         <div style={{ flex:1 }}>
           <div style={{ color:C.white, fontSize:18, fontWeight:800, lineHeight:1.2 }}>Mes prestations</div>
           <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>

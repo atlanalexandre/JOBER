@@ -51,6 +51,12 @@ describe("barre client", () => {
   it("Accueil, Chercher, Prestations, Compte — sans doublon de Réglages", () => {
     expect(barre).toEqual(["home", "search_filters", "mission_history", "dashboard"]);
   });
+  it("l'onglet Prestations n'a plus de flèche de retour (la barre la remplace)", () => {
+    const client = readFileSync(new URL("../components/client-screens.jsx", import.meta.url), "utf8");
+    const debut = client.indexOf("export function MissionHistoryScreen(");
+    const entete = client.slice(client.indexOf("Header compact", debut), client.indexOf("Mes prestations</div>", debut));
+    expect(entete).not.toContain("onClick={onBack}");
+  });
   it("l'onglet Prestations garde la barre affichée", () => {
     const ecrans = blocApres(app, "const clientScreens=");
     for (const id of barre) expect(ecrans, id).toContain(`"${id}"`);
