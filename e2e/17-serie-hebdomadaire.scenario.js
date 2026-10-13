@@ -148,3 +148,24 @@ test("une prestation unique n'est pas prise pour une série", async () => {
   await api("/api/missions", { action: "complete", mission_id: m.id }, c.jeton);
   expect((await suivante(m.id)).length).toBe(0);
 });
+
+// Étude du 13/10/2026 : des heures supplémentaires payées une semaine
+// s'ajoutent à `hours`. La semaine suivante était créée — et prélevée — avec
+// elles, sans que le client ait rien demandé.
+test("heures supplémentaires d'une semaine : la suivante garde la durée réservée", async () => {
+  const p = await prestataireOperationnel();
+  const c = await client();
+  const m = await reservationPayee({ prestataire: p, client: c, recurrence: "weekly" });
+  await semaineFaite(p, m);
+  // Deux heures ajoutées et réglées cette semaine-là (ce qu'écrit confirmer_heures_supp).
+  await sql(`update missions set hours = 10, extra_hours_appliquees = 2, extra_hours_tarif = 13,
+    extra_hours_status = 'accepted', montant_total = montant_total + 26.52 where id = '${m.id}'`);
+
+  const v = await api("/api/missions", { action: "complete", mission_id: m.id }, c.jeton);
+  expect(v.statut, v.texte.slice(0, 200)).toBe(200);
+  const [s] = await suivante(m.id);
+  expect(s, "la semaine suivante existe").toBeTruthy();
+  expect(Number(s.hours), "la durée réservée, sans la prolongation").toBe(8);
+  expect(Number(s.montant_total)).toBeCloseTo(110.98, 2);
+  expect((await paiementStripe(s.stripe_payment_intent)).preleve, "le prix d'une semaine ordinaire").toBe(11098);
+});

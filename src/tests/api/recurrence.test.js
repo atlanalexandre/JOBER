@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dateSuivante, montantOccurrence } from "../../../api/_recurrence.js";
+import { dateSuivante, montantOccurrence, dureeReservee } from "../../../api/_recurrence.js";
 
 // Série hebdomadaire (25/09/2026) : chaque semaine est payée à son tour, au même
 // tarif, avec les frais d'une prestation simple.
@@ -29,5 +29,17 @@ describe("montantOccurrence", () => {
   it("sans tarif ni durée : pas de montant, donc pas de prélèvement", () => {
     expect(montantOccurrence(0, 8)).toBeNull();
     expect(montantOccurrence(13, null)).toBeNull();
+  });
+});
+
+// Étude du 13/10/2026 : la semaine suivante reprenait les heures supplémentaires
+// de la semaine validée (ajoutées à `hours`), et les prélevait.
+describe("dureeReservee", () => {
+  it("retire les heures supplémentaires ajoutées en cours de route", () => {
+    expect(dureeReservee({ hours: 10, extra_hours_appliquees: 2 })).toBe(8);
+  });
+  it("sans prolongation : la durée telle quelle", () => {
+    expect(dureeReservee({ hours: 8 })).toBe(8);
+    expect(dureeReservee({ hours: 8, extra_hours_appliquees: null })).toBe(8);
   });
 });
