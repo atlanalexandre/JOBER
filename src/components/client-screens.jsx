@@ -43,7 +43,7 @@ const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
   return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ position:"fixed", overflowY:"auto", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"safe center", justifyContent:"safe center" }}>
       <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:560, width:"100%", maxHeight:"80vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexShrink:0 }}>
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
@@ -700,7 +700,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
 
       {/* Modal changement de mot de passe */}
       {showPassModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"safe center", justifyContent:"safe center", zIndex:1000, padding:20 }}>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:400, border:"1px solid rgba(255,255,255,0.12)" }}>
             <h3 style={{ color:C.text, fontSize:16, fontWeight:800, margin:"0 0 16px" }}>🔑 Changer le mot de passe</h3>
             <Input label="Nouveau mot de passe" type="password" placeholder="8 caractères minimum" value={newPass} onChange={e=>setNewPass(e.target.value)} />
@@ -4040,7 +4040,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
 
         {/* Modal contrat */}
         {showContractModal && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
             <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                 <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:0 }}>📄 Contrat de prestation</h3>
@@ -4144,7 +4144,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
 
         {/* Modal heures supplémentaires */}
         {extraHoursModal && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"safe center", justifyContent:"safe center" }}>
             <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
               {(() => {
                 const pd = planTrack && surPlusieursJours(planTrack) ? porteeDemande({ ...planTrack, started_at: startedAtTrack }, extraHoursPortee) : null;
@@ -4250,7 +4250,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           </div>
         )}
         {showTrackingCancel && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
             <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
               <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
               <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
@@ -6356,7 +6356,7 @@ const jourFr = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : null;
 export function AttestationConformite({ data, onFermer }) {
   if (!data) return null;
   return (
-    <div onClick={onFermer} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+    <div onClick={onFermer} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.6)", zIndex:900, display:"flex", alignItems:"safe center", justifyContent:"safe center", padding:16 }}>
       <div onClick={e=>e.stopPropagation()} style={{ background:C.white, color:"#0A1628", borderRadius:16, maxWidth:560, width:"100%", maxHeight:"88vh", overflowY:"auto", padding:"26px 26px 20px" }}>
         <div style={{ fontSize:11, fontWeight:800, color:C.violet, letterSpacing:0.4 }}>ALANE — ATTESTATION DE CONFORMITÉ</div>
         <h3 style={{ margin:"6px 0 14px", fontSize:18, fontWeight:800 }}>
@@ -7389,7 +7389,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
               prestataire est suspendu. Ce n'est pas un geste à faire par
               inadvertance sur un écran de téléphone. */}
           {confirmRefusIdentite && (
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
               <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                 <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⛔</div>
                 <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:10 }}>
@@ -7957,7 +7957,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
 
               {/* Modal annulation classique */}
               {showCancelConfirm && (
-                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
                     <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
@@ -8001,7 +8001,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
 
               {/* Modal arrêt en cours — prorata */}
               {showStopConfirm && (
-                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
                     <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>
@@ -8101,7 +8101,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
             const setDetail = (v) => setDisputeMsg((disputeMsg.split("||")[0] || "") + "||" + v);
             const isReady = selCats.length > 0;
             return (
-              <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.85)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(5,14,32,0.85)", zIndex:9000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
                 <div style={{ background:"linear-gradient(180deg,#0D1B3E,#0A1628)", borderRadius:"24px 24px 0 0", padding:"28px 20px 44px", width:"100%", maxWidth:480 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
                     <div style={{ fontSize:28 }}>🚨</div>
@@ -8155,7 +8155,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
           })()}
 
           {extraHoursModal && (
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"safe center", justifyContent:"safe center" }}>
               <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
                 {(() => {
                   const pd = surPlusieursJours(selected) ? porteeDemande(selected, extraHoursPortee) : null;
@@ -8504,7 +8504,7 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
       </div>
 
       {showDisputeModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:480 }}>
             <div style={{ fontWeight:800, color:"#F25E5E", fontSize:16, marginBottom:6 }}>⚠️ Signaler un problème</div>
             <div style={{ color:C.textSub, fontSize:12, marginBottom:16, lineHeight:1.5 }}>Décrivez le problème rencontré. ALANE examinera votre dossier sous 72h ouvrées et vous contactera.</div>
@@ -9548,7 +9548,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:40 }}>
       {pendingPlan && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"safe center", justifyContent:"safe center", padding:24 }}>
           <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:320, width:"100%", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:12 }}>🔄</div>
             <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:8 }}>Changer de plan ?</div>
@@ -10108,7 +10108,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const isLast = step === steps.length - 1;
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.97)", zIndex:9999, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
+    <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(5,14,32,0.97)", zIndex:9999, display:"flex", flexDirection:"column", alignItems:"safe center", justifyContent:"safe center", padding:28 }}>
       <div style={{ width:"100%", maxWidth:400 }}>
         <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:40 }}>
           {steps.map((_,i)=>(

@@ -176,7 +176,7 @@ function lireEnDataUrl(file) {
 function ContractModal({ title, contractText, onSign, onClose }) {
   const [accepted, setAccepted] = useState(false);
   return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ position:"fixed", overflowY:"auto", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"safe center", justifyContent:"safe center" }}>
       <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:560, width:"100%", maxHeight:"80vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexShrink:0 }}>
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
@@ -265,7 +265,7 @@ function RemplacementModal({ missionId, onClose, onEnvoye }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"safe center", justifyContent:"safe center" }}>
       <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:520, width:"100%", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6, flexShrink:0 }}>
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>Me faire remplacer</h3>
@@ -2685,7 +2685,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       )}
 
       {validatedSummary && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setValidatedSummary(null)}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"safe center", justifyContent:"safe center", padding:16 }} onClick={()=>setValidatedSummary(null)}>
           <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:380, width:"100%", border:"1px solid rgba(16,217,143,0.3)", boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }} onClick={e=>e.stopPropagation()}>
             <div style={{ textAlign:"center", marginBottom:20 }}>
               <div style={{ fontSize:48, marginBottom:8 }}>✅</div>
@@ -3708,7 +3708,7 @@ export function PrestaTour({ onDone, onOuvrirOnglet }) {
   const s = PRESTA_TOUR_STEPS[step];
   const isLast = step === PRESTA_TOUR_STEPS.length - 1;
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 22px", overflowY:"auto" }}>
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"safe center", justifyContent:"safe center", padding:"24px 22px", overflowY:"auto" }}>
       <div style={{ width:"100%", maxWidth:380, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
         <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
           {PRESTA_TOUR_STEPS.map((_,i) => (
@@ -4412,7 +4412,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ? (() => { try { return new Date(recapCard.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}); } catch(e) { return recapCard.date; } })()
           : "";
         return (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9990, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
+          <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"safe flex-end", justifyContent:"safe center", zIndex:9990, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
             <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"14px 20px 0", paddingBottom:"calc(96px + env(safe-area-inset-bottom, 16px))", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"80vh", overflowY:"auto" }}>
               <div style={{ width:36, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 14px" }} />
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12, marginBottom:10 }}>
@@ -4448,7 +4448,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         );
       })()}
       {ratingTarget && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:500, backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"safe flex-end", justifyContent:"safe center", zIndex:500, backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
           <div style={{ background:"#0D1B3E", borderRadius:"22px 22px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, border:`1px solid ${C.border}`, borderBottom:"none" }}>
             <div style={{ width:40, height:4, background:C.border, borderRadius:2, margin:"0 auto 20px" }} />
             <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 4px", textAlign:"center" }}>⭐ Noter le client</h3>

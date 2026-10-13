@@ -515,7 +515,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                       <>
                         {/* Modal info ACRE */}
                         {showAcreInfo && (
-                          <div onClick={()=>setShowAcreInfo(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", padding:"0 0 0 0" }}>
+                          <div onClick={()=>setShowAcreInfo(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"safe flex-end", padding:"0 0 0 0" }}>
                             <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"100%", maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
                               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                                 <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>🎁 L'ACRE — Exonération de charges</div>
@@ -914,7 +914,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
 
       {/* Modal CGPS */}
       {showCgpsModal && (
-        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
@@ -936,7 +936,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
 
       {/* Modal politique de confidentialité */}
       {showPrivacyModal && (
-        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
@@ -1320,7 +1320,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
 
       {/* Modal CGPS */}
       {showCgpsModal && (
-        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
@@ -1341,7 +1341,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       )}
 
       {showPrivacyModal && (
-        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>

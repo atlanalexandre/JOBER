@@ -1471,7 +1471,7 @@ function BOComptes() {
 
       {/* ── Modal prévisualisation document ── */}
       {previewDoc && (
-        <div onClick={()=>setPreviewDoc(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:2000, padding:16 }}>
+        <div onClick={()=>setPreviewDoc(null)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", flexDirection:"column", alignItems:"safe center", justifyContent:"safe center", zIndex:2000, padding:16 }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:16, width:"100%", maxWidth:700, maxHeight:"90vh", display:"flex", flexDirection:"column", overflow:"hidden", border:"1px solid rgba(255,255,255,0.1)" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontWeight:700, color:"#fff", fontSize:14 }}>{previewDoc.icon} {previewDoc.label}</div>
@@ -1538,7 +1538,7 @@ function BOComptes() {
         const userDocs = docs[docModal.profileId];
         const isLoading = docsLoading[docModal.profileId];
         return (
-          <div onClick={()=>setDocModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1500, padding:"0" }}>
+          <div onClick={()=>setDocModal(null)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"safe flex-end", justifyContent:"safe center", zIndex:1500, padding:"0" }}>
             <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:600, maxHeight:"88vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)", borderBottom:"none" }}>
               {/* Header */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)", flexShrink:0 }}>
@@ -1632,7 +1632,7 @@ function BOComptes() {
       })()}
 
       {contactModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"safe center", justifyContent:"safe center", zIndex:1000, padding:20 }}>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:440, border:`1px solid ${C.violet}44` }}>
             <h3 style={{ color:C.text, fontSize:15, fontWeight:800, margin:"0 0 4px" }}>📧 Contacter</h3>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 16px" }}>
@@ -1666,7 +1666,7 @@ function BOComptes() {
       )}
 
       {deleteModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+        <div style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"safe center", justifyContent:"safe center", zIndex:1000, padding:20 }}>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:400, border:"1px solid rgba(242,94,94,0.3)" }}>
             <h3 style={{ color:"#F25E5E", fontSize:15, fontWeight:800, margin:"0 0 8px" }}>Supprimer le compte</h3>
             <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:"0 0 16px" }}>
@@ -3939,7 +3939,7 @@ export function BODocuments() {
 
       {/* Modal prévisualisation */}
       {preview && (
-        <div onClick={()=>setPreview(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:9000, padding:16 }}>
+        <div onClick={()=>setPreview(null)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", flexDirection:"column", alignItems:"safe center", justifyContent:"safe center", zIndex:9000, padding:16 }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:16, width:"100%", maxWidth:780, maxHeight:"92vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontWeight:700, fontSize:14, color:C.text }}>{DOC_ICON[preview.type]||"📄"} {DOC_LABEL[preview.type]||preview.type} — {preview.name}</div>

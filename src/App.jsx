@@ -375,7 +375,7 @@ function RoleScreen({ onSelect, onBack, notice, info }) {
         </button>
       </div>
       {showCGU && (
-        <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+        <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"safe flex-end", justifyContent:"safe center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 {CGU.title}</div>
@@ -897,6 +897,10 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 }
 
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
+// Sur iPhone, 100vh vaut la hauteur SANS la barre d'adresse de Safari : la page
+// dépassait de l'écran, et le bas du contenu passait sous la barre du bas.
+// 100dvh suit la zone réellement visible (14/10/2026).
+const HAUTEUR_ECRAN = typeof CSS !== "undefined" && CSS.supports?.("height", "100dvh") ? "100dvh" : "100vh";
 function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline, unreadCount }) {
   const { isMobile } = useResponsive();
 
@@ -911,7 +915,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
   if (isMobile) {
     return (
-      <div style={{ width:"100%", height:"100vh", display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden" }}>
+      <div style={{ width:"100%", height:HAUTEUR_ECRAN, display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden" }}>
         {hybridBanner}
         {(showClientNav || showPrestaNav) && (
           <div style={{ flexShrink:0, padding:"10px 18px", borderBottom:`1px solid rgba(255,255,255,0.06)`, display:"flex", alignItems:"center", background:"#050E20" }}>
