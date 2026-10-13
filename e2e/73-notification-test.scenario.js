@@ -80,8 +80,14 @@ test("seuls les services des navigateurs sont acceptés, et le test rend leur r�
   }
 });
 
-test.describe("Réglages", () => {
-  test.use({ permissions: ["notifications"] });
+test.describe("Réglages, sur iPhone", () => {
+  // Un iPhone, application installée sur l'écran d'accueil (seul cas où il
+  // reçoit des notifications) : l'application ne demande rien seule à
+  // l'ouverture, l'activation passe par un appui dans les Réglages.
+  test.use({
+    permissions: ["notifications"],
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  });
 
   test("la ligne « Notification de test » envoie et rend compte", async ({ page }) => {
     const p = await prestataireOperationnel();
@@ -104,6 +110,15 @@ test.describe("Réglages", () => {
         PushManager.prototype.getSubscription = async () => abonnement;
         PushManager.prototype.subscribe = async () => (abonnement = await creer());
       }
+      // L'autorisation, comme sur un iPhone : une demande qui ne suit pas un
+      // appui de l'utilisateur est ignorée. (Le navigateur de recette, lui,
+      // affiche « refusé » quoi qu'on lui accorde.)
+      let permission = "default";
+      Object.defineProperty(Notification, "permission", { configurable: true, get: () => permission });
+      Notification.requestPermission = async () => {
+        if (navigator.userActivation?.isActive) permission = "granted";
+        return permission;
+      };
     }, { id: p.id, endpoint: google });
     await page.addLocatorHandler(page.getByText("Autoriser la géolocalisation", { exact: false }), () => page.getByRole("button", { name: "Annuler", exact: true }).click());
     try {
@@ -113,7 +128,16 @@ test.describe("Réglages", () => {
       await nav.getByText("Profil", { exact: true }).click();
       await page.getByRole("button", { name: /Réglages/ }).first().click();
 
+      // La demande partie seule à l'ouverture a été ignorée : il faut un appui.
+      const notifications = page.getByText("Désactivées — toucher pour activer", { exact: true });
+      await expect(notifications).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Notification de test", { exact: true })).toHaveCount(0);
+      const inscription = page.waitForResponse(r => r.url().includes("/api/missions") && (r.request().postData() || "").includes('"push_subscribe"'), { timeout: 30_000 });
+      await notifications.click();
+      expect((await inscription).status()).toBe(200);
       await expect(page.getByText("Activées", { exact: true })).toBeVisible({ timeout: 20_000 });
+      expect((await appareilsDe(p.id)).map(a => a.endpoint)).toEqual([google]);
+
       const ligne = page.getByText("Notification de test", { exact: true });
       await expect(ligne).toBeVisible();
       const reponse = page.waitForResponse(r => r.url().includes("/api/missions") && (r.request().postData() || "").includes('"push_test"'), { timeout: 60_000 });

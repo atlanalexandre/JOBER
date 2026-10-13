@@ -1199,8 +1199,10 @@ raison }] }` — le service, jamais l'adresse de l'appareil. L'écran le traduit
 (`messageTest()`). Un abonnement que le service déclare expiré (410) est retiré par le serveur, et
 l'écran en refait un neuf. `sendPushToUser()` rend ce même bilan à tous ses appelants (il ne
 rendait rien) et signale des appareils illisibles au lieu de les confondre avec « aucun ». Essai :
-`e2e/73` — aucun service réel n'étant joignable depuis la recette, l'appareil y est simulé avec
-une adresse Google inexistante.
+`e2e/73` — aucun service réel n'étant joignable depuis la recette, l'appareil y est simulé : un
+iPhone, application installée, dont l'autorisation n'est accordée qu'après un appui (comme le fait
+l'iPhone), avec une adresse Google inexistante — Google répond 410, ce qui prouve l'envoi. Le
+navigateur de recette affiche « refusé » quoi qu'on lui accorde : la permission y est simulée aussi.
 
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
