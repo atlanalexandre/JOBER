@@ -4246,7 +4246,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         .order("created_at", { ascending: false })
         .then(({ data, error }) => {
           // Une erreur silencieuse afficherait « aucune somme due » à quelqu'un
-          // à qui l'on retient la moitié de chaque versement (règle 1.2).
+          // qui en doit une (règle 1.2).
           if (error) { console.error("[presta] créances illisibles :", error.message); return; }
           setCreances(Array.isArray(data) ? data : []);
         });
@@ -4973,7 +4973,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     <div style={{ color:C.text, fontSize:13, fontWeight:700 }}>
                       {Number(c.montant_restant).toFixed(2).replace(".",",")} € restants
                       <span style={{ color:C.textMuted, fontWeight:400 }}> sur {Number(c.montant_initial).toFixed(2).replace(".",",")} €</span>
-                      {c.statut === "contestee" && <span style={{ color:"#E67E22", fontSize:11, fontWeight:700 }}> · contestée, retenue suspendue</span>}
+                      {c.statut === "contestee" && <span style={{ color:"#E67E22", fontSize:11, fontWeight:700 }}> · contestée, en cours d'examen</span>}
                     </div>
                     <div style={{ color:C.textSub, fontSize:12, marginTop:3 }}>{c.motif}</div>
                     {c.exigible_at && (

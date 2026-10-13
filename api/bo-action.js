@@ -2693,10 +2693,8 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           prestataire_id, montant_initial: m, montant_restant: m,
           motif: String(motif).trim(), mission_id: mission_id || null, statut: "active",
-          // Notifiée dans la foulée : l'article impose l'information préalable
-          // avec le détail du calcul AVANT la première retenue. Une créance
-          // créée sans notification ne serait jamais compensée — _creances.js
-          // l'écarte — et resterait à dormir sans que personne ne le voie.
+          // Notifiée dans la foulée : l'article 8B.3 impose d'informer le
+          // prestataire par écrit, avec le détail du calcul.
           notifiee_at: maintenant.toISOString(),
           exigible_at: dateExigibilite(maintenant.getTime()),
         }),
@@ -2712,9 +2710,13 @@ export default async function handler(req, res) {
       const exigibleLe = new Date(creance.exigible_at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
       await notifier({ user_id: prestataire_id, type: "system",
           title: "Somme due à ALANE",
+          // CGPS art. 8B.3 (version du 06/10/2026) : AUCUNE compensation
+          // unilatérale. Ce message annonçait encore une retenue sur chaque
+          // versement — ce que ni le contrat ni le code ne font
+          // (étude du 13/10/2026).
           body: `Une somme de ${euros(m)} est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
-              + `Elle sera récupérée sur vos versements à venir, dans la limite de la moitié de chacun d'eux. `
-              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/creer_creance] échec ignoré :", e?.message));
+              + `Aucune retenue n'est faite sur vos versements sans votre accord écrit : elle se règle d'accord avec ALANE. `
+              + `Vous pouvez la contester à direction@alane.fr sous quinze jours.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/creer_creance] échec ignoré :", e?.message));
 
       try {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
@@ -2727,13 +2729,13 @@ export default async function handler(req, res) {
               `<p>Bonjour,</p>`
               + `<p>Une somme de <strong>${euros(m)}</strong> est due à ALANE au titre de l'article 8B.3 des CGPS.</p>`
               + `<p><strong>Motif :</strong> ${esc(String(motif).trim())}</p>`
-              + `<p><strong>Comment elle sera récupérée :</strong> par compensation sur vos rémunérations à venir, `
-              + `<strong>dans la limite de la moitié de chaque versement</strong>, jusqu'à extinction. `
-              + `Chaque retenue vous sera indiquée en face de la prestation concernée.</p>`
-              + `<p>À défaut de rémunération à venir suffisante, la somme deviendra exigible le `
-              + `<strong>${exigibleLe}</strong>.</p>`
+              + `<p><strong>Comment la régler :</strong> nous vous invitons à la régler d'accord avec nous, `
+              + `en répondant à cet e-mail. <strong>Aucune retenue n'est faite sur vos versements sans votre accord `
+              + `exprès et écrit</strong>, qui précise un montant et un échéancier et que vous pouvez révoquer à tout moment `
+              + `(CGPS art. 8B.3).</p>`
+              + `<p>Échéance proposée : <strong>${exigibleLe}</strong>.</p>`
               + `<p>Vous pouvez contester cette créance en écrivant à <strong>direction@alane.fr</strong> dans un délai `
-              + `de quinze jours. La contestation suspend la compensation jusqu'à examen contradictoire.</p>`
+              + `de quinze jours : la demande est examinée de façon contradictoire.</p>`
             ),
           });
         }

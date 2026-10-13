@@ -4506,13 +4506,20 @@ une retenue sans fondement. La notification écrite au prestataire — motif et 
 avec la retenue, parce que l'article en fait une condition et non une politesse. La retenue
 se lève d'elle-même à `payout_hold_until` (90 jours au plus), sans qu'un humain ait à y penser.
 
-**Sommes dues** — `creances_prestataires`, avec `compensations_versements` en journal. Le
-calcul vit dans `api/_creances.js` et applique les trois limites de l'article : la moitié de
-chaque versement au maximum, l'arrêt à l'extinction, et l'interdiction de compenser une
-créance non notifiée ou contestée. Le plafond se calcule sur le versement **entier**, une
-seule fois — appliquer « la moitié » créance par créance retiendrait 75 % avec deux créances.
-Les imputations s'inscrivent **après** le virement : décrémenter une créance sur un virement
-qui n'est jamais parti reviendrait à réclamer deux fois la même somme.
+**Sommes dues** — `creances_prestataires`, avec `compensations_versements` en journal. Créées
+depuis l'écran Versements du back-office (`creer_creance`), notifiées au prestataire (notification
+et e-mail) et visibles dans son onglet Revenus. **Aucune compensation n'est faite sur les
+versements** : depuis le 06/10/2026, l'article 8B.3 des CGPS l'interdit sans l'accord exprès et
+écrit du prestataire (montant, échéancier, révocable). Le calcul de `api/_creances.js` (moitié de
+chaque versement au plus) date de l'ancienne rédaction et **n'est appelé par aucun traitement** —
+c'est conforme ; ne pas le brancher sans recueillir cet accord. Jusqu'au 13/10/2026, la
+notification et l'e-mail de la créance annonçaient pourtant une retenue de la moitié de chaque
+versement, contre le contrat et contre l'écran du prestataire, qui disait l'inverse : alignés sur
+l'article (étude du 13/10/2026).
+
+> **À savoir** : `creances_prestataires.prestataire_id` est en `ON DELETE CASCADE` vers
+> `auth.users` — la suppression du compte d'un prestataire efface les sommes qu'il doit. Voir
+> AUDIT-2026-10.md (décision à prendre).
 
 **Une contestation bancaire retient le versement** (décision d'Alexandre du 30/09/2026, CGPS
 art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` passe un versement

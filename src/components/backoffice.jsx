@@ -1831,7 +1831,7 @@ export function BOSupport() {
   );
 }
 
-// Écran des versements — CGPS art. 7.4 (retenue) et 8B.3 (compensation).
+// Écran des versements — CGPS art. 7.4 (retenue) et 8B.3 (sommes dues).
 //
 // Il n'existait rien : le versement au prestataire était devenu un traitement
 // automatique toutes les deux heures, sans aucune fenêtre pour voir ce qui
@@ -1999,7 +1999,7 @@ export function BOVersements() {
       const r = await boFetch({ action:"creer_creance", prestataire_id:m.prestataire_id,
                                 montant:Number(String(montant).replace(",", ".")), motif, mission_id:m.id });
       const d = await r.json();
-      if (d.success) { showToast("Créance enregistrée et notifiée. Elle sera retenue sur les versements à venir, moitié maximum.", "success"); load(); }
+      if (d.success) { showToast("Créance enregistrée et notifiée au prestataire. Elle se règle d'accord avec lui : aucune retenue sans son accord écrit (CGPS art. 8B.3).", "success"); load(); }
       else showToast(d.error || "Créance non enregistrée", "error");
     } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
     setBusyId(null);
@@ -2242,7 +2242,7 @@ export function BOVersements() {
               <div style={{ color:C.gray, fontSize:12, marginTop:3 }}>{c.motif}</div>
               <div style={{ color:C.gray, fontSize:12, marginTop:3 }}>
                 Notifiée le {jour(c.notifiee_at)} · exigible le {jour(c.exigible_at)}
-                {c.statut === "contestee" && " · contestée, compensation suspendue"}
+                {c.statut === "contestee" && " · contestée"}
               </div>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
