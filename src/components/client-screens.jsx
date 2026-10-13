@@ -1604,6 +1604,71 @@ let _providersCache = null;
 let _providersCacheTs = 0;
 let _providersCachePromise = null;
 
+// La fiche telle que les écrans la lisent, depuis une ligne de /api/prestataires.
+// Partagée par le chargement du catalogue et sa relecture fraîche.
+function mapperPrestataires(prestataires) {
+  const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
+  return (Array.isArray(prestataires) ? prestataires : []).map(p => {
+    const sectorInfo = SECTORS.find(s => s.id === p.secteur);
+    const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
+    return {
+      id:           p.id,
+      name:         p.name,
+      prenom:       p.prenom,
+      nom:          p.nom,
+      sector:       p.secteur,
+      jobTitle:     p.metier,
+      rateNum,
+      hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
+      available:             p.dispo_immediat !== false && !(p.trial_exhausted && (p.plan_abonnement || "free") === "free"),
+      dispon_jours:          p.dispon_jours || [],
+      dispon_jours_creneaux: p.dispon_jours_creneaux || null,
+      code_postal:  p.code_postal,
+      // La ville était renvoyée par l'API mais jamais reprise ici : le
+      // filtre par ville était donc impossible à écrire.
+      ville:        p.ville || null,
+      rating:       p.rating || 0,
+      reviews:      p.reviews || 0,
+      distance:     "—",
+      responseTime: "—",
+      avatar:       sectorInfo?.icon || "👷",
+      color:        sectorInfo?.color || "#7C6FE0",
+      niveau:       p.niveau,
+      plan:         p.plan_abonnement || "free",
+      planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
+      cv:           p.cv || null,
+      bio:          p.bio      || null,
+      langues:      Array.isArray(p.langues) ? p.langues : [],
+      role:         p.metier   || null,
+      skills:       (p.metiers_list || []).flatMap(m =>
+        (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
+      ),
+      metiers_list: p.metiers_list || [],
+      // Tous les métiers exercés, normalisés une fois pour toutes.
+      // `sector` et `jobTitle` ci-dessus ne portent que le premier :
+      // s'en contenter rendait un prestataire invisible dans ses
+      // autres secteurs, alors qu'il s'y est déclaré.
+      metiers:      metiersDuProfil(p),
+      photo_url:       p.photo_url || null,
+      missions_count:  p.missions_count || 0,
+      zone_km:         p.zone_km || 50,
+      trial_exhausted: p.trial_exhausted || false,
+    };
+  });
+}
+
+// Relecture FRAÎCHE du catalogue (la réponse ordinaire est gardée 30 s par le
+// réseau, et la liste 3 min dans la page). Pour un écran qui reçoit l'identifiant
+// d'un prestataire absent de la liste — activé depuis, par exemple — et qui ne
+// doit pas le perdre en silence (étude du 13/10/2026).
+export async function rechargerPrestataires() {
+  const { prestataires = [] } = await lireJsonAvecReprise(`/api/prestataires?frais=${Date.now()}`);
+  const mapped = mapperPrestataires(prestataires);
+  _providersCache = mapped;
+  _providersCacheTs = Date.now();
+  return mapped;
+}
+
 export function useProviders() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -1621,54 +1686,7 @@ export function useProviders() {
       // journalisé.
       _providersCachePromise = lireJsonAvecReprise("/api/prestataires")
         .then(({ prestataires = [] }) => {
-          const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
-          const mapped = prestataires.map(p => {
-            const sectorInfo = SECTORS.find(s => s.id === p.secteur);
-            const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
-            return {
-              id:           p.id,
-              name:         p.name,
-              prenom:       p.prenom,
-              nom:          p.nom,
-              sector:       p.secteur,
-              jobTitle:     p.metier,
-              rateNum,
-              hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
-              available:             p.dispo_immediat !== false && !(p.trial_exhausted && (p.plan_abonnement || "free") === "free"),
-              dispon_jours:          p.dispon_jours || [],
-              dispon_jours_creneaux: p.dispon_jours_creneaux || null,
-              code_postal:  p.code_postal,
-              // La ville était renvoyée par l'API mais jamais reprise ici : le
-              // filtre par ville était donc impossible à écrire.
-              ville:        p.ville || null,
-              rating:       p.rating || 0,
-              reviews:      p.reviews || 0,
-              distance:     "—",
-              responseTime: "—",
-              avatar:       sectorInfo?.icon || "👷",
-              color:        sectorInfo?.color || "#7C6FE0",
-              niveau:       p.niveau,
-              plan:         p.plan_abonnement || "free",
-              planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
-              cv:           p.cv || null,
-              bio:          p.bio      || null,
-              langues:      Array.isArray(p.langues) ? p.langues : [],
-              role:         p.metier   || null,
-              skills:       (p.metiers_list || []).flatMap(m =>
-                (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
-              ),
-              metiers_list: p.metiers_list || [],
-              // Tous les métiers exercés, normalisés une fois pour toutes.
-              // `sector` et `jobTitle` ci-dessus ne portent que le premier :
-              // s'en contenter rendait un prestataire invisible dans ses
-              // autres secteurs, alors qu'il s'y est déclaré.
-              metiers:      metiersDuProfil(p),
-              photo_url:       p.photo_url || null,
-              missions_count:  p.missions_count || 0,
-              zone_km:         p.zone_km || 50,
-              trial_exhausted: p.trial_exhausted || false,
-            };
-          });
+          const mapped = mapperPrestataires(prestataires);
           _providersCache = mapped;
           _providersCacheTs = Date.now();
           return mapped;
@@ -9902,6 +9920,8 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel: quitter
   const [candidatures, setCandidatures]   = useState([]);
   const [broadcasted, setBroadcasted]     = useState(false);
   const [loading, setLoading]             = useState(true);
+  const catalogueFrais    = useRef(null);
+  const derniereRelecture = useRef(0);
 
   // Spinner CSS
   useEffect(()=>{
@@ -9954,11 +9974,26 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel: quitter
         console.error("[diffusion] candidatures illisibles :", e.message);
       }
       if(Array.isArray(data)){
-        // Enrich with provider info from providers list
+        // La fiche vient du catalogue chargé à l'ouverture de la page. Un
+        // prestataire qui n'y figure pas — activé depuis, ou absent de la copie
+        // gardée par le réseau — voyait sa proposition écartée EN SILENCE : le
+        // client lisait « 0 candidat » avec deux propositions en base (recette,
+        // e2e/18, étude du 13/10/2026). On relit alors le catalogue, au plus une
+        // fois toutes les 30 s.
+        let liste = catalogueFrais.current || providers;
+        const manquants = data.filter(c => !liste.some(p => p.id === c.prestataire_id));
+        if (manquants.length && Date.now() - derniereRelecture.current > 30000) {
+          derniereRelecture.current = Date.now();
+          try { liste = catalogueFrais.current = await rechargerPrestataires(); }
+          catch (e) { console.error("[diffusion] catalogue non relu :", e.message); }
+        }
         const enriched = data.map(c => {
-          const prov = providers.find(p=>p.id===c.prestataire_id);
+          const prov = liste.find(p=>p.id===c.prestataire_id);
           return prov ? { provider:prov, candidature_id:c.id } : null;
         }).filter(Boolean);
+        if (enriched.length < data.length) {
+          console.error(`[diffusion] ${data.length - enriched.length} proposition(s) d'un prestataire absent du catalogue — non affichée(s).`);
+        }
         setCandidatures(enriched);
       }
       setLoading(false);
