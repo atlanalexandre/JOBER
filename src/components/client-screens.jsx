@@ -886,15 +886,14 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     const demandesOuvertes = fetch("/api/prestataires?action=demandes_ouvertes")
       .then(r => r.ok ? r.json() : { count: null })
       .catch(e => { console.error("[accueil] demandes ouvertes non comptées :", e?.message); return { count: null }; });
-    Promise.all([
-      demandesOuvertes,
-      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","completed"),
-    ]).then(([open, completed])=>{
+    // Les prestations réalisées viennent aussi du serveur : lues ici, la base
+    // ne rendait que celles du client lui-même (« 0 » pour tout nouveau client).
+    demandesOuvertes.then((open)=>{
       if (!mounted) return;
       setLiveStats({
         openMissions: open.count ?? 0,
-        dispoNow: providers.filter(p => p.dispo_immediat).length,
-        completedMonth: completed.count ?? 0,
+        dispoNow: providers.filter(p => p.available).length,
+        completedMonth: open.realisees ?? null,
       });
     });
     return ()=>{ mounted=false; };
@@ -1120,8 +1119,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ display:"flex", gap:8 }}>
             {[
               { icon:"📋", value: liveStats.openMissions, label:"prestations ouvertes" },
-              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
-              { icon:"✅", value: liveStats.completedMonth, label:"prestations réalisées" },
+              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.available).length, label:"pros dispo maintenant" },
+              { icon:"✅", value: liveStats.completedMonth ?? "—", label:"prestations réalisées" },
             ].map((s,i)=>(
               <div key={i} style={{
                 flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
@@ -1342,7 +1341,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               <span style={{ fontSize:11, color:"#10D98F", fontWeight:700, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:99, padding:"2px 8px" }}>{dispoNow.length} pro{dispoNow.length > 1 ? "s" : ""}</span>
             </div>
             <div style={{ display:"flex", gap:12, paddingLeft:22, paddingRight:22, overflowX:"auto", WebkitOverflowScrolling:"touch", scrollbarWidth:"none", msOverflowStyle:"none" }}>
-              {dispoNow.map(p => {
+              {/* Douze au plus : la rubrique n'était jamais affichée (champ manquant)
+                  et, réparée, aurait rendu d'un coup tous les prestataires
+                  disponibles — 1 330 en recette. Le compteur dit le total. */}
+              {dispoNow.slice(0, 12).map(p => {
                 const sector = SECTORS?.find?.(s => s.id === p.sector);
                 const initials = [p.prenom, p.nom].filter(Boolean).map(s => s[0]?.toUpperCase() || "").join("") || "?";
                 const name = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
@@ -1621,6 +1623,10 @@ function mapperPrestataires(prestataires) {
       rateNum,
       hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
       available:             p.dispo_immediat !== false && !(p.trial_exhausted && (p.plan_abonnement || "free") === "free"),
+      // Lu par l'accueil (« pros dispo maintenant », « Dispo maintenant ») : le
+      // champ n'était pas repris ici, si bien que l'accueil affichait toujours 0
+      // et ne montrait jamais la rubrique (étude du 13/10/2026).
+      dispo_immediat:        p.dispo_immediat !== false,
       dispon_jours:          p.dispon_jours || [],
       dispon_jours_creneaux: p.dispon_jours_creneaux || null,
       code_postal:  p.code_postal,
