@@ -1,6 +1,6 @@
 # ALANE — Ce que la plateforme sait faire aujourd'hui
 
-*Document de présentation — état au 17 août 2026*
+*Document de présentation — état au 17 août 2026, points devenus faux corrigés le 13 octobre 2026*
 
 Ce document décrit **les fonctionnalités réellement en place et testées**, pas la feuille de
 route. Ce qui n'est pas encore fait est regroupé à la fin, dans une section séparée, pour que
@@ -69,8 +69,9 @@ rechargement n'existe plus, et les soldes constitués restent remboursables à t
 - **Géolocalisation du prestataire** — visible sur une carte, uniquement d'**une heure avant**
   le début à **une heure après** la fin. En dehors de cette fenêtre, elle est coupée : hors
   prestation, une position n'est plus un trajet, c'est un domicile.
-- **Code de confirmation à 4 chiffres** — le client et le prestataire calculent le même code
-  sans avoir à communiquer, pour confirmer l'arrivée sur place.
+- **Vérifier la personne à l'arrivée** — le client voit la photo du prestataire, validée par
+  ALANE, et la position de son téléphone au pointage ; s'il répond « ce n'est pas la bonne
+  personne », il est intégralement remboursé et le prestataire suspendu le temps de l'examen.
 - **Notifications** dans l'application, par e-mail et en notification push (téléphone).
 - **Messagerie** entre le client et le prestataire de la prestation.
 - **Alerte de retard** — si le prestataire arrive avec plus de 15 minutes de retard, le client
@@ -105,15 +106,18 @@ rechargement n'existe plus, et les soldes constitués restent remboursables à t
   tant que son dossier n'est pas contrôlé.
 - Deux verrous distincts : le **compte validé**, et l'**accès aux prestations activé**. Les
   deux sont nécessaires pour apparaître dans le catalogue.
-- **Relance automatique de la RC Pro** 30 jours avant expiration, puis à l'échéance, puis
-  suspension de l'accès 30 jours après. Une attestation périmée ne passe pas inaperçue.
+- **Surveillance de la péremption de toutes les pièces** (RC Pro, URSSAF, identité, titre de
+  séjour, carte professionnelle…) : relance 30 jours avant, puis à l'échéance, puis suspension
+  de l'accès 30 jours après pour les pièces qui l'imposent. Une attestation périmée ne passe pas
+  inaperçue.
 - **Purge automatique des pièces d'identité** 30 jours après vérification : le fichier est
   supprimé, la trace de la vérification est conservée.
 
 ### Travailler
 
-- **Propositions de prestations** avec un délai de réponse imparti ; sans réponse, la
-  proposition passe automatiquement au candidat suivant.
+- **Propositions de prestations** avec un délai de réponse imparti ; sans réponse, le client est
+  intégralement remboursé — ou, quand c'est ALANE qui affecte (intervention chez un tiers), la
+  proposition passe au candidat suivant.
 - **Prestations ouvertes** auxquelles se porter candidat.
 - **Calendrier** des prestations acceptées.
 - **Pointage** : bouton « Je suis sur place » disponible 15 minutes avant l'heure, bouton
@@ -149,7 +153,7 @@ rechargement n'existe plus, et les soldes constitués restent remboursables à t
 | 4. Sollicitation | Le prestataire reçoit la proposition et a un délai pour répondre |
 | 5. Attribution | S'il accepte, la prestation lui est attribuée. S'il refuse ou ne répond pas, on passe au suivant |
 | 6. Veille | Notifications, rappels, géolocalisation ouverte 1 h avant |
-| 7. Arrivée | Pointage « sur place » 15 min avant, code de confirmation |
+| 7. Arrivée | Pointage « sur place » 15 min avant, photo vérifiée montrée au client |
 | 8. Exécution | Démarrage à l'heure, retard mesuré et arbitré par le client |
 | 9. Fin | Les deux valident. Relances automatiques si l'un des deux tarde |
 | 10. Argent | Cashback crédité au client, facture émise, versement au prestataire **48 h après la fin** |
@@ -218,14 +222,15 @@ remis à zéro chaque mois :
 | 🥇 Gold | 6 à 9 | 1 % |
 | 💎 Platinum | 10 et + | 1,5 % |
 
-**Le cashback se dépense en réduction du paiement.** Au moment de régler une prestation, le
-solde disponible est déduit automatiquement du montant à payer par carte. Le client voit la
-ligne dans son récapitulatif, et ne paie que la différence.
+**Le cashback se dépense en réduction du paiement, au choix du client.** Au moment de régler
+une prestation, une case « Utiliser mon cashback », décochée par défaut, déduit le solde du
+montant à payer par carte. Le client voit la ligne dans son récapitulatif, et ne paie que la
+différence.
 
 Trois garde-fous : un euro reste toujours à la charge de la carte (en dessous, Stripe refuse le
 paiement) ; le solde n'est prélevé **qu'une fois le paiement abouti**, si bien qu'un panier
-abandonné ne coûte rien ; et si la prestation est remboursée, le cashback consommé **revient au
-client** — la prestation n'a pas eu lieu, l'avantage n'a pas été utilisé.
+abandonné ne coûte rien ; et si la prestation est annulée avant d'avoir commencé, le cashback
+consommé **revient au client** ; une fois commencée, il est acquis.
 
 La réduction est une remise commerciale d'ALANE : elle ne change ni ce que touche le
 prestataire, ni les frais de service dus.
@@ -235,14 +240,15 @@ prestataire, ni les frais de service dus.
 | Plan | Prix | Prestations/mois | Ce qui change réellement |
 |---|---|---|---|
 | Gratuit | 0 € | 2 | Profil visible par les clients |
-| Premium | 29,99 € | 10 | Badge ✓ Certifié |
+| Premium | 29,99 € | 8 | Badge ✓ Certifié |
 | Elite | 79,99 € | illimité | Badge 👑 Elite, première position dans les résultats |
 
 Ce que l'abonnement change : le **quota mensuel**, le **badge** et le **classement** dans les
 résultats. Rien d'autre — les prestations urgentes sont ouvertes à tous les plans.
 
-**Offre de lancement en cours** : 10 prestations/mois offertes aux 100 premiers prestataires
-inscrits.
+**Offre de lancement** (si elle est ouverte dans les réglages) : 8 prestations/mois offertes aux
+100 premiers prestataires validés, à partir de leur première prestation acceptée et jusqu'à la
+fin de ce mois-là.
 
 ---
 
@@ -356,7 +362,7 @@ Pour que la liste précédente garde sa valeur, voici ce qui reste ouvert.
 | **Test Stripe de bout en bout** | Le seul point sérieux. La chaîne complète — paiement, prestation, validation, versement — n'a pas encore été jouée en conditions réelles avec les vraies clés en mode test |
 | **Immatriculation de la société** | Bloque le SIRET sur les factures, les mentions légales, le médiateur de la consommation et l'assurance ALANE |
 | **Architecture Stripe Connect** | Les fonds transitent aujourd'hui par ALANE avant d'être reversés. La cible est un encaissement direct pour le compte du prestataire, ce qui écarte toute question de statut d'établissement de paiement. Recommandé par le conseil juridique, à faire avant la mise en production commerciale |
-| **Messagerie** | Fonctionne, mais son modèle interne est fragile et doit être repris avant une montée en charge |
+| **Messagerie** | Refondue le 28/09/2026 (participants explicites, non-lus en base, temps réel) |
 | **Application mobile native** | Non prévue à ce stade — le site fonctionne sur mobile et les notifications push sont déjà en place |
 
 ---
