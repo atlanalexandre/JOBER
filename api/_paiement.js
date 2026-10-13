@@ -168,10 +168,12 @@ export async function verifierPaiementReservation({ intentId, missionId, clientI
     return refus(503, "base_illisible", "Le paiement ne peut pas être vérifié pour le moment. Il est bien enregistré : réessayez dans quelques minutes ou contactez-nous.");
   }
 
-  // Une prestation déjà rattachée à un paiement n'en change pas.
-  if (mission.stripe_payment_intent && mission.stripe_payment_intent !== id) {
-    return refus(409, "autre_paiement_deja_rattache", "Un autre paiement est déjà rattaché à cette prestation.");
-  }
+  // Une prestation déjà rattachée à un paiement n'en change pas. Mais celui-ci
+  // peut être un SECOND paiement réel du même client (deux onglets, affectation
+  // perdue puis nouvel essai) : il est alors contrôlé comme les autres, et
+  // l'appelant le rembourse (`doublon`). Il était refusé sans rien rendre, et le
+  // client restait débité deux fois (étude du 13/10/2026, `e2e/74`).
+  const autrePaiement = mission.stripe_payment_intent && mission.stripe_payment_intent !== id;
 
   let pi;
   try {
@@ -189,7 +191,100 @@ export async function verifierPaiementReservation({ intentId, missionId, clientI
     return refus(502, "stripe_injoignable", "Le paiement ne peut pas être vérifié pour le moment. Il est bien enregistré : réessayez dans quelques minutes ou contactez-nous.");
   }
 
+  if (autrePaiement) {
+    const c = controlerPaiement(pi, { missionId, clientId, mission });
+    if (!c.ok) return refus(409, "autre_paiement_deja_rattache", "Un autre paiement est déjà rattaché à cette prestation.");
+    return { ...refus(409, "doublon", "Cette réservation était déjà payée."), doublon: true, intentId: id };
+  }
+
   const c = controlerPaiement(pi, { missionId, clientId, mission });
   if (!c.ok) return refus(c.code, c.raison, c.message);
   return { ok: true, intentId: id, mission };
+}
+
+/** États d'un paiement Stripe qui engagent l'argent du client. */
+const ETATS_ENGAGES = ["succeeded", "processing", "requires_capture"];
+
+/**
+ * Le paiement de réservation déjà ABOUTI d'une prestation, qu'il soit rattaché
+ * ou non. Fonction pure, sur une liste de PaymentIntents relue chez Stripe.
+ *
+ * Un paiement entièrement remboursé ne compte plus : il n'engage plus rien.
+ */
+export function paiementAboutiParmi(liste, { missionId, clientId }) {
+  for (const pi of Array.isArray(liste) ? liste : []) {
+    const meta = pi?.metadata || {};
+    if (meta.mission !== missionId || meta.client !== clientId || meta.type) continue;
+    if (!ETATS_ENGAGES.includes(pi.status)) continue;
+    const charge = pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+    if (charge?.refunded) continue;
+    return pi.id;
+  }
+  return null;
+}
+
+/**
+ * Cherche chez Stripe un paiement de réservation déjà abouti pour cette
+ * prestation. `stripe-intent` ne refusait un second paiement que si le premier
+ * était RATTACHÉ — ce que fait l'affectation, juste après. Affectation perdue
+ * (réseau, application fermée), le client qui revenait payer avec une autre
+ * option recevait un nouveau paiement et était débité deux fois ; le premier
+ * n'était plus jamais remboursé (étude du 13/10/2026, `e2e/74`).
+ *
+ * Les paiements sont lus par CLIENT Stripe (liste immédiatement à jour) ; à
+ * défaut de client, par la recherche sur `metadata['mission']`, qui peut avoir
+ * une minute de retard.
+ *
+ * @returns {Promise<string|null>} identifiant du paiement abouti, ou null
+ * @throws si Stripe ne répond pas : on ne sait pas, on ne crée rien.
+ */
+export async function paiementDejaAbouti({ missionId, clientId, customerId, cle }) {
+  const url = customerId
+    ? `https://api.stripe.com/v1/payment_intents?customer=${encodeURIComponent(customerId)}&limit=100&expand[]=data.latest_charge`
+    : `https://api.stripe.com/v1/payment_intents/search?query=${encodeURIComponent(`metadata['mission']:'${missionId}'`)}&limit=100&expand[]=data.latest_charge`;
+  const r = await fetch(url, { headers: { "Authorization": `Bearer ${cle}` } });
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !Array.isArray(d?.data)) {
+    throw new Error(`lecture des paiements refusée (${r.status}) ${JSON.stringify(d?.error || {}).slice(0, 150)}`);
+  }
+  return paiementAboutiParmi(d.data, { missionId, clientId });
+}
+
+/**
+ * Rend en entier un paiement de réservation en double. La clé d'idempotence est
+ * celle du webhook (`rembourserDoublon`) : les deux chemins ne remboursent
+ * jamais deux fois le même paiement.
+ *
+ * @returns {Promise<boolean>} vrai si le paiement est (déjà) remboursé
+ */
+export async function rembourserDoublonPaiement(intentId, contexte) {
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!cle) {
+    console.error(`[${contexte}] ⚠️ DOUBLON ${intentId} NON remboursé : STRIPE_SECRET_KEY absente — à rendre à la main.`);
+    return false;
+  }
+  try {
+    const rr = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `refund-doublon-${intentId}` },
+      body: new URLSearchParams({ payment_intent: intentId, reason: "duplicate" }).toString(),
+    });
+    const rd = await rr.json().catch(() => null);
+    if (rd?.id || rd?.error?.code === "charge_already_refunded") {
+      console.error(`[${contexte}] DOUBLON ${intentId} remboursé.`);
+      return true;
+    }
+    console.error(`[${contexte}] ⚠️ DOUBLON ${intentId} NON remboursé :`, JSON.stringify(rd?.error || rd).slice(0, 200));
+    return false;
+  } catch (e) {
+    console.error(`[${contexte}] ⚠️ DOUBLON ${intentId} NON remboursé :`, e.message);
+    return false;
+  }
+}
+
+/** Message rendu au client dont le paiement en double a été traité. */
+export function messageDoublon(rembourse) {
+  return rembourse
+    ? "Cette réservation était déjà payée : ce second paiement vous a été intégralement remboursé (sous 5 à 10 jours ouvrés selon votre banque). Retrouvez la réservation dans « Mes prestations »."
+    : "Cette réservation était déjà payée : ce second paiement n'a pas pu être remboursé automatiquement — écrivez à direction@alane.fr, il vous sera restitué.";
 }
