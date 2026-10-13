@@ -79,5 +79,5 @@ test("décalage de 20 minutes refusé : la réponse est enregistrée, 20 minutes
   expect(t.statut, t.texte.slice(0, 200)).toBe(200);
   const facture = await appelApi(`/api/invoice?mission_id=${m.id}&token=${encodeURIComponent(t.json.token)}`);
   expect(facture.statut).toBe(200);
-  expect(facture.texte).toContain(`${Number(f.payout_amount).toFixed(2).replace(".", ",")} €`);
+  expect(facture.texte).toContain(`${Number(f.payout_amount).toFixed(2).replace(".", ",")}\u00a0€`);
 });
