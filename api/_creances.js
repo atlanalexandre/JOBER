@@ -2,6 +2,13 @@
 // Compensation d'une créance sur les rémunérations à venir — CGPS art. 8B.3
 // ═══════════════════════════════════════════════════════════════════════════
 //
+// ⚠️ NON BRANCHÉ (constaté le 13/10/2026). Depuis le 06/10/2026, l'article 8B.3
+// interdit toute compensation UNILATÉRALE : elle suppose l'accord exprès et
+// écrit du prestataire, sur un montant et un échéancier, révocable. Aucun
+// traitement n'appelle `repartirCompensation()` — et c'est conforme. Ne pas le
+// brancher sans recueillir et vérifier cet accord. Ce qui suit décrit l'ancienne
+// rédaction de l'article.
+//
 // POURQUOI CE FICHIER
 //
 // L'article 8B.3 laisse ALANE récupérer, sur les versements à venir, une somme

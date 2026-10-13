@@ -262,8 +262,9 @@ inscrits.
 - **Retenue sur versement** — cinq motifs limitativement prévus au contrat, notification écrite
   obligatoire au prestataire avec le motif et le montant, levée automatique au plus tard à
   90 jours.
-- **Sommes dues par un prestataire** — récupérables par imputation sur ses versements, dans la
-  limite de la moitié de chaque versement, jamais sur une créance non notifiée ou contestée.
+- **Sommes dues par un prestataire** — notifiées par écrit avec leur motif, contestables sous
+  quinze jours. Elles se règlent d'accord avec lui : aucune retenue sur ses versements sans son
+  accord exprès et écrit (CGPS art. 8B.3).
 
 ---
 
