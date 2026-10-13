@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { appliquerTheme, choisirTheme, themeClairEnregistre, CLE_THEME } from "../lib/theme.js";
-import { etatNotifications, LIBELLE_NOTIFICATIONS } from "../lib/push.js";
+import { etatNotifications, LIBELLE_NOTIFICATIONS, messageTest } from "../lib/push.js";
 
 const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
 const app = readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
@@ -72,5 +72,25 @@ describe("barre du bas prestataire", () => {
   it("allume l'onglet d'où l'on vient", () => {
     expect(app).toMatch(/abonnement_presta:"p_dashboard"/);
     expect(app).toMatch(/chat:"p_missions"/);
+  });
+});
+
+describe("notification de test", () => {
+  it("la ligne n'apparaît que notifications activées", () => {
+    expect(reglages).toMatch(/\.\.\.\(notifEtat === "actives" \? \[\{ icon:"📨", label:"Notification de test"/);
+  });
+
+  it("dit ce qui s'est passé, en une phrase", () => {
+    expect(messageTest({ appareils: 0 })).toMatchObject({ ok: false, texte: expect.stringMatching(/Aucun appareil enregistré/) });
+    expect(messageTest({ appareils: 1, acceptes: 1 })).toMatchObject({ ok: true, texte: expect.stringMatching(/^Notification envoyée\./) });
+    expect(messageTest({ appareils: 2, acceptes: 2 }).texte).toMatch(/à vos 2 appareils/);
+    expect(messageTest({ appareils: 1, echecs: [{ service: "web.push.apple.com", raison: "refus du service (403)" }] }))
+      .toMatchObject({ ok: false, texte: expect.stringMatching(/refus du service \(403\)/) });
+    expect(messageTest({ appareils: 1, expires: 1, reinscrit: true }).texte).toMatch(/réinscrit/);
+    expect(messageTest({ appareils: 1, expires: 1 }).texte).toMatch(/plus enregistré/);
+  });
+
+  it("un appareil reçu au moins une fois l'emporte sur les autres échecs", () => {
+    expect(messageTest({ appareils: 3, acceptes: 1, expires: 1, echecs: [{ service: "x", raison: "y" }] }).ok).toBe(true);
   });
 });

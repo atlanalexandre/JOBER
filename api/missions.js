@@ -1,5 +1,6 @@
 import { resendBody, sendEmail, euros } from "./_email.js";
-import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
+import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
+
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse } from "./_temps.js";
@@ -72,6 +73,9 @@ import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
 import { lireTout } from "./_lignes.js";
+
+// Délai avant l'envoi de la notification de test (`push_test`).
+const DELAI_NOTIFICATION_TEST_MS = 5000;
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -3216,11 +3220,13 @@ export default async function handler(req, res) {
         if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
           return res.status(400).json({ error: "Subscription invalide" });
         }
-        // Valider que l'endpoint est un HTTPS URL (évite injection via endpoint)
-        try {
-          const epUrl = new URL(subscription.endpoint);
-          if (epUrl.protocol !== "https:") return res.status(400).json({ error: "Endpoint invalide — HTTPS requis" });
-        } catch { return res.status(400).json({ error: "Endpoint invalide" }); }
+        // Seuls les services de notification des navigateurs (api/_push.js).
+        // Toute adresse en https était acceptée, et le serveur y envoyait
+        // ensuite chaque notification du compte (14/10/2026).
+        if (!serviceDeNotificationReconnu(subscription.endpoint)) {
+          console.error("[push_subscribe] service de notification non reconnu :", serviceDe(subscription.endpoint));
+          return res.status(400).json({ error: "Service de notification non reconnu" });
+        }
         // UN APPAREIL N'APPARTIENT QU'À UN COMPTE À LA FOIS.
         //
         // L'abonnement (`endpoint`) identifie une installation du site dans un
@@ -3260,6 +3266,29 @@ export default async function handler(req, res) {
         await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${caller.id}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`, { method: "DELETE", headers });
       }
       return res.status(200).json({ success: true });
+    }
+
+    // ── Notification de test (Réglages, 14/10/2026) ──────────────────────
+    //
+    // Écrit à tous les appareils du compte appelant — à eux seuls — et rend ce
+    // que chaque service de notification a répondu. Sans ce bouton, personne ne
+    // pouvait savoir si son téléphone recevait : une notification qui n'arrive
+    // pas ne prévient de rien. Le départ attend cinq secondes, le temps de
+    // quitter l'application : un téléphone n'affiche pas toujours une
+    // notification de l'application ouverte devant soi.
+    if (action === "push_test") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      await new Promise(r => setTimeout(r, DELAI_NOTIFICATION_TEST_MS));
+      const bilan = await sendPushToUser(caller.id, {
+        title: "🔔 Notification de test",
+        body: "Les notifications ALANE arrivent bien sur cet appareil.",
+        url: "/",
+        tag: "alane-test",
+      }, SUPABASE_URL, headers);
+      if (bilan.illisible) return res.status(502).json({ error: "Vos appareils n'ont pas pu être lus, réessayez" });
+      const { appareils, acceptes, expires, echecs } = bilan;
+      return res.status(200).json({ success: true, appareils, acceptes, expires, echecs });
     }
 
     // ── Envoi d'un message ────────────────────────────────────────────
