@@ -4708,6 +4708,18 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 
 ## 7. Navigation et URLs
 
+**Téléphone : la barre du bas, le zoom** (14/10/2026, signalé par Alexandre). La mise en page
+mobile (barre du bas) ou ordinateur (menu latéral) se décide par `estMobile()`
+(`src/hooks/useResponsive.js`), une requête média sur la largeur de mise en page — et non plus
+`innerWidth`, qui suit le zoom sur iPhone : un grand téléphone à l'horizontale ou une page
+zoomée passaient en mise en page d'ordinateur, sans barre du bas. Un écran tactile de moins de
+500 px de haut reste un téléphone. Sur iOS, les champs de saisie sont forcés à 16 px
+(`src/index.css`) : en dessous, Safari zoome à la saisie et ne dézoome pas ensuite. Le conteneur
+mobile prend `100dvh` (la hauteur visible, barre d'adresse comprise). Enfin, toute fenêtre plein
+écran (`position:"fixed"`, `inset:0`) se centre en `safe center` et défile : centrée sans cela,
+une fenêtre plus haute que l'écran en perdait le haut et le bas — le tutoriel prestataire cachait
+« Passer le tutoriel » sur un petit iPhone. `src/tests/affichage-mobile.test.js` le vérifie.
+
 L'application n'utilise pas de bibliothèque de routage. L'écran affiché vient d'un état
 `screen` dans `App.jsx`, et [`src/lib/routes.js`](src/lib/routes.js) le reflète dans l'URL,
 dans les deux sens.

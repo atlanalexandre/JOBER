@@ -502,7 +502,7 @@ export function ConfirmModal() {
   // Chaque appelant traite lui-même la saisie vide (motif obligatoire, etc.).
   const choose = (v) => { setState(null); resolveRef.current?.(v); };
   return (
-    <div onClick={() => choose(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+    <div onClick={() => choose(false)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"safe center", justifyContent:"safe center", padding:24 }}>
       <div onClick={e => e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:380, border:"1px solid rgba(124,111,224,0.25)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
         <p style={{ color:"#F0F0F5", fontSize:15, lineHeight:1.6, margin:"0 0 24px", whiteSpace:"pre-wrap" }}>{state.msg}</p>
         <div style={{ display:"flex", gap:10 }}>
@@ -537,7 +537,7 @@ export function PromptModal() {
   // Chaque appelant traite lui-même la saisie vide (motif obligatoire, etc.).
   const choose = (v) => { setState(null); resolveRef.current?.(v); };
   return (
-    <div onClick={() => choose(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+    <div onClick={() => choose(null)} style={{ position:"fixed", overflowY:"auto", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"safe center", justifyContent:"safe center", padding:24 }}>
       <div onClick={e => e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:380, border:"1px solid rgba(124,111,224,0.25)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
         <p style={{ color:"#F0F0F5", fontSize:15, lineHeight:1.6, margin:"0 0 16px", whiteSpace:"pre-wrap" }}>{state.msg}</p>
         <input

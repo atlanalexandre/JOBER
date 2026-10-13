@@ -290,6 +290,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | Retrouver un compte par son e-mail | `/auth/v1/admin/users?email=…` **ne filtre pas** : le paramètre est ignoré et la réponse commence par le compte le plus récent. La réinitialisation du mot de passe changeait ainsi celui du dernier inscrit (01/10/2026). Toujours `utilisateurParEmail()` de `api/_auth.js`, qui compare l'adresse |
 | `current_user` dans une fonction `SECURITY DEFINER` | Vaut **toujours** le propriétaire (`postgres`). Une garde qui exempte « `current_user = 'service_role'` » laisse tout passer — c'était le cas de `missions_creation_guard`, puis de `profiles_privileges_guard` jusqu'au 01/10/2026. Lire le rôle du jeton : `auth.role()` |
 | Règles RLS | Elles vivent dans la base : aucun contrôle du dépôt ne les voit. `npm run rls` imprime les sept requêtes de relecture — à passer avant toute mise en production |
+| Fenêtre plein écran sur téléphone | Toute fenêtre `position:"fixed"` + `inset:0` se centre en `"safe center"` et porte `overflowY:"auto"` : centrée sans `safe`, une fenêtre plus haute que l'écran perd son haut et son bas, sans défilement — il fallait dézoomer (13/10/2026). Et un champ de saisie sous 16 px fait zoomer l'iPhone : `src/index.css` les force à 16 px sur iOS, ne pas l'enlever. `src/tests/affichage-mobile.test.js` le vérifie |
 
 ---
 

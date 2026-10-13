@@ -37,6 +37,18 @@ html, body {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* ── iPhone : pas de zoom à la saisie ──
+   Safari agrandit la page dès qu'on touche un champ écrit en moins de 16 px, et
+   ne la réduit pas en le quittant : il fallait dézoomer à la main pour revoir
+   tout l'écran, et la barre du bas sortait du champ de vision (13/10/2026). La
+   règle ne vise que iOS (-webkit-touch-callout n'existe que là) : ailleurs, les
+   champs gardent leur taille. Le pincement pour zoomer reste possible. */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ── Animations ── */
 @keyframes shimmer {
   0%   { left: -100%; }
