@@ -2734,6 +2734,21 @@ payer deux fois ; le webhook du second paiement écrasait la trace du premier, j
 et passait la prestation « acceptée » sans réponse du prestataire. Le complément d'heures, paiement
 distinct, n'est pas concerné.
 
+*Le paiement abouti mais pas encore rattaché* (étude du 13/10/2026, `e2e/74`) : le refus
+précédent ne voyait un paiement qu'une fois **rattaché** à la prestation, ce que fait
+l'affectation juste après. Affectation perdue (réseau coupé, application fermée), le client qui
+revenait payer en changeant une option (« mémoriser ma carte », cashback) recevait un second
+paiement — débité deux fois — et le premier n'était plus jamais rendu ; constaté en recette.
+`/api/stripe-intent` cherche désormais chez Stripe un paiement de réservation déjà abouti pour
+cette prestation et ce client (`paiementDejaAbouti()` de `api/_paiement.js` : liste des paiements
+du client Stripe, à défaut recherche sur `metadata['mission']`) ; trouvé, il répond 409
+`deja_payee` avec son identifiant, et le tunnel achève l'affectation avec lui au lieu de faire
+payer. Stripe illisible : 503, rien n'est créé. Et si deux paiements ont tout de même abouti (deux
+onglets), l'affectation du second le **rembourse en entier** (`rembourserDoublonPaiement()`, clé
+`refund-doublon-{paiement}`, la même que le webhook) au lieu de le refuser sans rien rendre ;
+l'écriture de l'affectation est conditionnée à « aucun paiement rattaché, ou celui-ci »
+(`filtrePaiementLibre()`), pour que deux affectations simultanées ne s'écrasent pas.
+
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
 l'application juste après, qui le fait. Un client qui fermait l'application à cet instant, ou

@@ -7,6 +7,7 @@ import { nombreDeJours } from "./_cloture.js";
 import { reductionCashback } from "./_cashback.js";
 import { appUrl } from "./_url.js";
 import { messageErreurStripe } from "./_stripe_erreur.js";
+import { paiementDejaAbouti } from "./_paiement.js";
 
 /** Empreinte courte et stable des paramètres d'un PaymentIntent (clé d'idempotence). */
 export function empreinteParametres(params) {
@@ -364,6 +365,28 @@ export default async function handler(req, res) {
     }
     if (dejaPayee) {
       return res.status(409).json({ code: "deja_payee", error: "Cette réservation est déjà payée. Retrouvez-la dans vos prestations." });
+    }
+  }
+  // Un paiement peut avoir ABOUTI sans être encore rattaché : c'est l'affectation,
+  // juste après, qui le rattache. Perdue (réseau, application fermée), le client
+  // qui revenait payer en changeant une option recevait un second paiement, et le
+  // premier n'était plus jamais rendu (étude du 13/10/2026, `e2e/74`). On le
+  // cherche chez Stripe ; trouvé, il est rendu au tunnel, qui achève l'affectation
+  // avec lui au lieu de faire payer une seconde fois.
+  if (!estComplement && !mission.stripe_payment_intent) {
+    let clientStripe = null;
+    try { clientStripe = await clientStripeDuCompte(callerPi, SUPABASE_URL_PI, SERVICE_ROLE_PI); }
+    catch (e) { console.error(`[stripe-intent] client Stripe indisponible pour ${callerPi.id} :`, e.message); }
+    let abouti;
+    try {
+      abouti = await paiementDejaAbouti({ missionId: intentMissionId, clientId: callerPi.id, customerId: clientStripe, cle: STRIPE_SECRET_KEY });
+    } catch (e) {
+      console.error(`[stripe-intent] paiements de ${intentMissionId} illisibles :`, e.message);
+      return res.status(503).json({ error: "Vérification du paiement impossible pour le moment. Réessayez dans un instant." });
+    }
+    if (abouti) {
+      console.error(`[stripe-intent] ${intentMissionId} : paiement ${abouti} déjà abouti, non rattaché — rendu au tunnel au lieu d'un second paiement.`);
+      return res.status(409).json({ code: "deja_payee", intentId: abouti, error: "Votre paiement pour cette réservation a déjà été reçu. Nous finalisons la réservation." });
     }
   }
   // Le secteur doit être ouvert AVANT que le moindre euro ne bouge.

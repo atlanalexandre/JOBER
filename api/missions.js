@@ -8,7 +8,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
-import { verifierPaiementReservation, delaiReponseMinutes } from "./_paiement.js";
+import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
   detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits, dureeMaxDesJournees } from "./_heures_supp.js";
@@ -370,6 +370,27 @@ function suffixeRemboursement({ rembourse }) {
   return rembourse
     ? " Vous n'avez pas été débité : le paiement a été intégralement remboursé (sous 5 à 10 jours ouvrés selon votre banque)."
     : " Votre paiement n'a pas pu être remboursé automatiquement — écrivez à direction@alane.fr, le montant vous sera restitué.";
+}
+
+// Condition d'écriture : la prestation n'a encore aucun paiement, ou c'est
+// celui-ci (une seconde affectation du même paiement reste sans effet nouveau).
+export function filtrePaiementLibre(intentId) {
+  return `&or=(stripe_payment_intent.is.null,stripe_payment_intent.eq.${encodeURIComponent(intentId)})`;
+}
+
+// Après une écriture conditionnelle qui n'a touché aucune ligne : est-ce parce
+// qu'un AUTRE paiement vient d'être rattaché ? Lecture impossible → non : on ne
+// rembourse jamais sur une supposition.
+async function autrePaiementRattache(missionId, intentId, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`, { headers });
+    const d = await r.json().catch(() => null);
+    const pi = r.ok && Array.isArray(d) && d[0]?.stripe_payment_intent;
+    return !!pi && pi !== intentId;
+  } catch (e) {
+    console.error(`[doublon] prestation ${missionId} illisible :`, e.message);
+    return false;
+  }
 }
 
 // Limite mensuelle de prestations d'un prestataire, offre de lancement comprise.
@@ -2656,6 +2677,11 @@ export default async function handler(req, res) {
         supabaseUrl: SUPABASE_URL, headers, contexte: "assign_after_payment",
       });
       if (!paiement.ok) {
+        // Second paiement réel d'une réservation déjà réglée : rendu en entier.
+        if (paiement.doublon) {
+          const rendu = await rembourserDoublonPaiement(paiement.intentId, "assign_after_payment");
+          return res.status(409).json({ code: "doublon", error: messageDoublon(rendu) });
+        }
         // Paiement réel de cette prestation, mais d'un montant qui ne lui
         // correspond pas : on ne l'affecte pas, et on ne garde pas l'argent.
         if (paiement.raison.startsWith("montant_")) {
@@ -2824,8 +2850,11 @@ export default async function handler(req, res) {
         console.error(`[assign_after_payment] signature du contrat NON transmise pour ${mission_id}`);
       }
 
-      // Filtre sur le statut : ne pas écraser une prestation traitée entre-temps
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+      // Filtre sur le statut : ne pas écraser une prestation traitée entre-temps.
+      // Et sur le paiement : deux affectations simultanées avec deux paiements
+      // différents écrivaient l'une après l'autre, et la seconde effaçait la
+      // trace du premier paiement, jamais rendu (étude du 13/10/2026).
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)${filtrePaiementLibre(stripe_payment_intent)}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify(patch),
@@ -2834,6 +2863,10 @@ export default async function handler(req, res) {
       if (!Array.isArray(patched) || patched.length === 0) {
         const txt = patchRes.ok ? "" : await patchRes.text().catch(() => "");
         console.error("[assign_after_payment] échec du PATCH:", patchRes.status, txt);
+        if (patchRes.ok && await autrePaiementRattache(mission_id, stripe_payment_intent, SUPABASE_URL, headers)) {
+          const rendu = await rembourserDoublonPaiement(stripe_payment_intent, "assign_after_payment");
+          return res.status(409).json({ code: "doublon", error: messageDoublon(rendu) });
+        }
         return res.status(500).json({ error: "Affectation impossible" });
       }
       await prevenirNouvelleDemande(mission_id, SUPABASE_URL, headers);
@@ -5149,6 +5182,11 @@ export default async function handler(req, res) {
         supabaseUrl: SUPABASE_URL, headers, contexte: "affecter_tiers",
       });
       if (!paiement.ok) {
+        // Second paiement réel d'une réservation déjà réglée : rendu en entier.
+        if (paiement.doublon) {
+          const rendu = await rembourserDoublonPaiement(paiement.intentId, "affecter_tiers");
+          return res.status(409).json({ code: "doublon", error: messageDoublon(rendu) });
+        }
         if (paiement.raison.startsWith("montant_")) {
           const r = await rembourserRefusApresPaiement(mission_id, String(payload.stripe_payment_intent), "montant incohérent", SUPABASE_URL, headers);
           return res.status(paiement.code).json({ error: paiement.message + suffixeRemboursement(r) });
@@ -5229,11 +5267,16 @@ export default async function handler(req, res) {
         // « Écriture après un paiement »). Elle ne l'était pas — un refus de la
         // base laissait une prestation payée, sans statut de diffusion ni trace
         // du paiement, et le client lisait « diffusion » quand même.
-        const diffRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+        const diffRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)${filtrePaiementLibre(stripe_payment_intent)}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ ...patch, status: "open", prestataire_id: null }),
         });
         const diffRows = await diffRes.json().catch(() => null);
+        if (diffRes.ok && Array.isArray(diffRows) && diffRows.length === 0
+            && await autrePaiementRattache(mission_id, stripe_payment_intent, SUPABASE_URL, headers)) {
+          const rendu = await rembourserDoublonPaiement(stripe_payment_intent, "affecter_tiers");
+          return res.status(409).json({ code: "doublon", error: messageDoublon(rendu) });
+        }
         if (!diffRes.ok || !Array.isArray(diffRows) || diffRows.length === 0) {
           console.error(`[affecter_tiers] diffusion NON enregistrée pour ${mission_id} (paiement ${stripe_payment_intent}) : `
             + `${diffRes.status} ${JSON.stringify(diffRows || {}).slice(0, 200)}`);
@@ -5252,11 +5295,16 @@ export default async function handler(req, res) {
       patch.prestataire_id = candidats[0];
       const fraisT = await lireFraisService(SUPABASE_URL, headers);
       patch.acceptance_deadline = new Date(Date.now() + delaiReponseMinutes(paiement.mission, fraisT) * 60000).toISOString();
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)${filtrePaiementLibre(stripe_payment_intent)}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify(patch),
       });
       const rows = await patchRes.json().catch(() => []);
+      if (patchRes.ok && Array.isArray(rows) && rows.length === 0
+          && await autrePaiementRattache(mission_id, stripe_payment_intent, SUPABASE_URL, headers)) {
+        const rendu = await rembourserDoublonPaiement(stripe_payment_intent, "affecter_tiers");
+        return res.status(409).json({ code: "doublon", error: messageDoublon(rendu) });
+      }
       if (!patchRes.ok || !Array.isArray(rows) || rows.length === 0) {
         console.error(`[affecter_tiers] affectation refusée pour ${mission_id} : ${patchRes.status}`);
         return res.status(500).json({ error: "Affectation impossible" });

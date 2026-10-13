@@ -615,7 +615,14 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
             headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
             body: JSON.stringify({ mode: mode || undefined, amount: total, currency: "eur", mission_id: missionId, utiliser_cashback: reductionRef.current > 0, metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
           });
-          const { clientSecret, error: intentErr } = await r.json();
+          const { clientSecret, error: intentErr, code: codeIntent, intentId: dejaRecu } = await r.json();
+          // Paiement déjà reçu pour cette réservation (affectation perdue) : on
+          // l'achève avec lui, sans débiter une seconde fois.
+          if (codeIntent === "deja_payee" && dejaRecu) {
+            ev.complete("success"); clearDraft(); setDone(true); setProcessing(false);
+            onSuccess && onSuccess(dejaRecu);
+            return;
+          }
           if (intentErr || !clientSecret) { ev.complete("fail"); setStripeError(intentErr || "Erreur création paiement"); setProcessing(false); return; }
           const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, { payment_method: ev.paymentMethod.id }, { handleActions: false });
           if (error) { ev.complete("fail"); setStripeError(error.message); setProcessing(false); return; }
@@ -710,7 +717,17 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           metadata: { prestataire: providers[0]?.id || "", description: description || "" },
         }),
       });
-      const { clientSecret, error: intentErr } = await r.json();
+      const { clientSecret, error: intentErr, code: codeIntent, intentId: dejaRecu } = await r.json();
+      // Le serveur a trouvé un paiement déjà reçu pour cette réservation, que
+      // l'affectation n'avait pas rattaché (réseau coupé, application fermée) :
+      // la réservation s'achève avec lui. Sans cela, le client payait deux fois
+      // (étude du 13/10/2026).
+      if (codeIntent === "deja_payee" && dejaRecu) {
+        clearDraft();
+        setDone(true); setProcessing(false);
+        onSuccess && onSuccess(dejaRecu);
+        return;
+      }
       if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
 
       // `redirect: "if_required"` garde le client sur ALANE quand la banque ne
