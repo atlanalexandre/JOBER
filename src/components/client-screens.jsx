@@ -19,6 +19,7 @@ import { prixHeuresSupp, surPlusieursJours, porteeDemande } from "../../api/_heu
 import { libelleConstat } from "../../api/_localisation.js";
 import { joursCouverts, premiereIndisponibilite } from "../../api/_creneaux.js";
 import { lireJsonAvecReprise } from "../lib/lecture.js";
+import { prestationsDuMois } from "../lib/planning.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 // Un prestataire exerce-t-il dans ce secteur, ce métier ?
@@ -5090,6 +5091,7 @@ export function CalendarScreen() {
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-based
   const [meta, setMeta]           = useState(null);
   const [prestations, setMissions]   = useState([]);
+  const [erreurPlanning, setErreurPlanning] = useState(false);
   const [selected, setSelected]   = useState(null);
 
   useEffect(() => {
@@ -5099,13 +5101,20 @@ export function CalendarScreen() {
       // Charger les prestations depuis la DB
       // Table "prestations" inexistante → PostgREST répondait 404 et la liste
       // restait vide en silence. Les colonnes ci-dessous sont toutes sur missions.
-      const { data: m } = await supabase
+      //
+      // `date` (premier jour) en plus de `date_debut` : seule une prestation sur
+      // plusieurs jours a une période (13/10/2026). `open` retiré : une demande
+      // ouverte n'a pas de prestataire ; `disputed` ajouté : un litige en cours
+      // reste une journée travaillée.
+      const { data: m, error } = await supabase
         .from("missions")
-        .select("id,titre,client_nom,date_debut,date_fin,status,montant_total")
+        .select("id,titre,metier,client_nom,date,date_debut,date_fin,heure_debut,status,montant_total")
         .eq("prestataire_id", u.id)
-        .in("status", ["assigned","open","completed"])
-        .order("date_debut", { ascending: true });
-      if (m) setMissions(m);
+        .in("status", ["assigned","completed","disputed"])
+        .order("date", { ascending: true });
+      // L'échec était ignoré : le planning disait « Aucune prestation ce mois ».
+      if (error) { console.error("[planning] prestations illisibles :", error.message); setErreurPlanning(true); return; }
+      setMissions(m || []);
     });
   }, []);
 
@@ -5136,17 +5145,8 @@ export function CalendarScreen() {
     (meta?.dispon_jours || []).map(j => JOURS_TO_DOW[j]).filter(x => x !== undefined)
   );
 
-  // Prestations sur ce mois
-  const missionsByDay = {};
-  prestations.forEach(m => {
-    if (!m.date_debut) return;
-    const d = new Date(m.date_debut);
-    if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
-      const day = d.getDate();
-      if (!missionsByDay[day]) missionsByDay[day] = [];
-      missionsByDay[day].push(m);
-    }
-  });
+  // Prestations sur ce mois, chaque journée couverte comptée
+  const { parJour: missionsByDay, duMois } = prestationsDuMois(prestations, viewYear, viewMonth);
 
   const isToday = (d) => d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
   const dow = (d) => (new Date(viewYear, viewMonth, d).getDay() + 6) % 7;
@@ -5155,11 +5155,7 @@ export function CalendarScreen() {
   const moisLabel = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
 
   // Prestations du mois sélectionné à afficher
-  const moisMissions = prestations.filter(m => {
-    if (!m.date_debut) return false;
-    const d = new Date(m.date_debut);
-    return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
-  });
+  const moisMissions = duMois;
 
   const selectedMissions = selected ? (missionsByDay[selected] || []) : [];
 
@@ -5245,7 +5241,7 @@ export function CalendarScreen() {
               <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderTop:i>0?`1px solid ${C.border}`:"none" }}>
                 <div style={{ width:4, height:36, borderRadius:2, background:couleurStatut(m, C), flexShrink:0 }} />
                 <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Prestation"}</div>
+                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || m.metier || "Prestation"}</div>
                   <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                 </div>
                 <Badge color={couleurStatut(m, C)} small>{statusLabel(m)}</Badge>
@@ -5262,15 +5258,15 @@ export function CalendarScreen() {
         {moisMissions.length > 0 ? (
           <>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Prestations de {MONTH_NAMES[viewMonth]}</div>
-            {moisMissions.map((m,i) => {
-              const d = new Date(m.date_debut);
-              const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+            {moisMissions.map(({ m, premierJour, nbJours },i) => {
+              const d = new Date(`${premierJour}T12:00:00`);
+              const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}${nbJours > 1 ? ` (+${nbJours - 1} j)` : ""}`;
               return (
                 <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:4, height:44, borderRadius:2, background:couleurStatut(m, C), flexShrink:0 }} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Prestation"}</div>
-                    <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || m.metier || "Prestation"}</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}{m.heure_debut ? ` · ${String(m.heure_debut).slice(0,5)}` : ""}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{label}</div>
@@ -5280,6 +5276,10 @@ export function CalendarScreen() {
               );
             })}
           </>
+        ) : erreurPlanning ? (
+          <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:14, padding:"16px", fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
+            Vos prestations n'ont pas pu être chargées. Rechargez la page ; elles restent visibles dans l'onglet <strong>Prestations</strong>.
+          </div>
         ) : (
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:14, padding:"28px", textAlign:"center" }}>
             <div style={{ fontSize:32, marginBottom:10 }}>📅</div>

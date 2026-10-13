@@ -4773,6 +4773,10 @@ barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Histo
   Le Planning s'affiche dans le tableau de bord depuis le 13/10/2026 (`VUE_PAR_ECRAN.calendar`,
   écran passé par `planning`) : affiché à part, il démontait la liste, et le pointage automatique
   s'arrêtait sur un onglet principal de la barre ;
+  il range chaque prestation sur **toutes ses journées** (`prestationsDuMois()`,
+  `src/lib/planning.js`, qui suit `joursCouverts()`). Il ne lisait que `date_debut`, rempli
+  pour les seules prestations sur plusieurs jours : une prestation d'un jour n'y apparaissait
+  jamais (232 sur 303 en recette le 13/10/2026), et son erreur de lecture était ignorée ;
 - **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
   doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
   doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre
