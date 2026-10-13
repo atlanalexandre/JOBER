@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
+import { activerNotifications, estIOS, etatNotifications } from "./lib/push.js";
 import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier, tauxCashback, formatMontant } from "./constants/plans.js";
@@ -699,7 +700,14 @@ function ClientNav({ active, onNavigate, unreadCount }) {
   );
 }
 
-function PrestaNav({ active, onNavigate, unreadCount }) {
+// Onglet allumé dans la barre quand l'écran ouvert n'en est pas un.
+const ONGLET_PARENT_PRESTA = {
+  abonnement_presta:"p_dashboard", presta_profile_edit:"p_dashboard", doc_upload:"p_dashboard",
+  micro_entreprise:"p_dashboard", settings:"p_dashboard", chat:"p_missions",
+};
+
+function PrestaNav({ active: ecran, onNavigate, unreadCount }) {
+  const active = ONGLET_PARENT_PRESTA[ecran] || ecran;
   const tabs = [
     // Une seule barre, dans l'ordre d'une journée : aujourd'hui, mon travail,
     // mon agenda, mon argent, moi (12/10/2026). L'abonnement et les réglages
@@ -924,7 +932,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             </button>
           </div>
         )}
-        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", WebkitOverflowScrolling:"touch" }}>
+        {/* La barre du bas est posée par-dessus : sans cette marge, le bas des
+            écrans qui ne la prévoyaient pas passait dessous. */}
+        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", WebkitOverflowScrolling:"touch", paddingBottom:(showClientNav || showPrestaNav) ? 84 : 0 }}>
           {children}
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
@@ -1038,13 +1048,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 // ── ABONNEMENT PRESTATAIRE ────────────────────────────────────────
 // ── MISSION BROADCAST SCREEN ─────────────────────────────────────
 // ── APP ROOT ──────────────────────────────────────────────────────
-function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-}
-
 export default function App() {
   const [screen,setScreen]=useState(()=>{
     try {
@@ -1522,34 +1525,15 @@ export default function App() {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  // Web Push — enregistre le SW et s'abonne pour clients ET prestataires
+  // Web Push — abonne l'appareil, clients ET prestataires (src/lib/push.js).
+  // Sur iPhone, la demande d'autorisation n'est acceptée qu'après un geste :
+  // partie d'ici, elle était ignorée. On n'y fait donc que rafraîchir un
+  // abonnement déjà accordé ; l'activation passe par les Réglages.
   useEffect(() => {
     if (!supaUser || !role) return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!VAPID_PUBLIC) return;
-
-    const subscribe = async () => {
-      try {
-        const reg = await navigator.serviceWorker.register("/sw.js");
-        await navigator.serviceWorker.ready;
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") return;
-        const existing = await reg.pushManager.getSubscription();
-        const sub = existing || await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-        });
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        fetch("/api/missions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-          body: JSON.stringify({ action: "push_subscribe", subscription: sub.toJSON() }),
-        }).catch(() => {});
-      } catch {}
-    };
-    subscribe();
+    if (etatNotifications() !== "actives" && etatNotifications() !== "a_activer") return;
+    activerNotifications({ demander: !estIOS() })
+      .catch(e => console.error("[push] abonnement automatique échoué :", e.message));
   }, [supaUser, role]);
 
   // Appelé quand l'utilisateur clique "Commencer" sur le splash
@@ -1722,7 +1706,11 @@ export default function App() {
   // `mission_history` manquait : l'onglet « Prestations » de la barre faisait
   // disparaître la barre elle-même (12/10/2026).
   const clientScreens=["home","catalogue","search_filters","mission_history","dashboard","settings","contact_support","notifications"];
-  const prestaScreens=["p_home","p_missions","p_revenus","p_dashboard","calendar","settings","contact_support","notifications"];
+  // Les écrans ouverts depuis le Profil ou une prestation gardent la barre du
+  // bas : elle y disparaissait, et il fallait revenir en arrière pour changer
+  // d'onglet (décision d'Alexandre du 14/10/2026).
+  const prestaScreens=["p_home","p_missions","p_revenus","p_dashboard","calendar","settings","contact_support","notifications",
+    "abonnement_presta","presta_profile_edit","doc_upload","micro_entreprise","chat"];
   const showClientNav=role==="client"&&clientScreens.includes(screen);
   const showPrestaNav=role==="prestataire"&&prestaScreens.includes(screen);
 

@@ -291,7 +291,11 @@ export default async function handler(req, res) {
         secteurs:         secteursDuProfil(meta),
         dispon_jours:          meta.dispon_jours          || null,
         dispon_jours_creneaux: meta.dispon_jours_creneaux || null,
-        dispo_immediat:        meta.dispo_immediat        || false,
+        // Absent = disponible, comme l'interrupteur de son tableau de bord
+        // (`!== false`) : un compte qui ne l'avait jamais touché se voyait
+        // « Disponible maintenant » mais apparaissait indisponible aux clients
+        // (14/10/2026).
+        dispo_immediat:        meta.dispo_immediat !== false,
         code_postal:      meta.code_postal      || null,
         ville:            meta.ville            || null,
         // Le plan vient de `profiles`, jamais de user_metadata : celui-ci reçoit le

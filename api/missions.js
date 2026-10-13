@@ -3241,11 +3241,20 @@ export default async function handler(req, res) {
           { method: "DELETE", headers }
         ).catch(e => console.error("[push] anciens abonnements non retirés :", e.message));
 
-        await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
+        // Le résultat est lu (14/10/2026) : un refus de la base répondait
+        // « success » quand même, et l'écran annonçait des notifications
+        // activées qu'aucun envoi n'atteindrait.
+        // `on_conflict` : sans lui, la fusion portait sur l'identifiant, et le
+        // même appareil réenregistré heurtait l'unicité (user_id, endpoint).
+        const ins = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=user_id,endpoint`, {
           method: "POST",
           headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify({ user_id: caller.id, endpoint: subscription.endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth }),
         });
+        if (!ins.ok) {
+          console.error(`[push] abonnement non enregistré (${ins.status}) :`, (await ins.text().catch(() => "")).slice(0, 200));
+          return res.status(502).json({ error: "Abonnement aux notifications non enregistré" });
+        }
       } else {
         if (!subscription?.endpoint) return res.status(400).json({ error: "Endpoint manquant" });
         await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${caller.id}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`, { method: "DELETE", headers });

@@ -25,10 +25,11 @@ html, body {
   background: #050E20;
 }
 
-/* ── Light theme ── */
-[data-alane-theme="light"] body,
-[data-alane-theme="light"] #root {
-  background: #F4F5F9 !important;
+/* ── Light theme ──
+   Une seule inversion, sur <html> (src/lib/theme.js). Posée sur body ET #root,
+   elle s'appliquait deux fois et s'annulait : l'écran restait sombre. Le fond
+   reste sombre ici : c'est l'inversion qui le rend clair. */
+[data-alane-theme="light"] {
   filter: invert(1) hue-rotate(180deg);
 }
 [data-alane-theme="light"] img,
