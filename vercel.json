@@ -22,7 +22,7 @@
       "maxDuration": 30
     },
     "api/bo-action.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "headers": [
