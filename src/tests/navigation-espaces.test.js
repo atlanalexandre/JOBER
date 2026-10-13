@@ -29,12 +29,20 @@ describe("barre prestataire", () => {
     expect(presta).not.toMatch(/\{id:"historique",l:"Historique"\}/);
     expect(presta).not.toMatch(/tab===/);
   });
-  it("l'accueil n'affiche plus la liste en clair : il la résume", () => {
+  it("l'accueil résume ; une seule liste, visible dans Prestations › En cours", () => {
     const debut = presta.indexOf('{vue==="accueil" && <>');
     const bloc = presta.slice(debut, presta.indexOf("</>}", debut));
     expect(bloc).toContain("<ResumeDuJour");
-    // La liste n'y est montée que masquée (détection d'arrivée).
-    expect(bloc).toMatch(/display:"none"[^\n]*<PMissionsTab/);
+    expect(bloc).not.toContain("<PMissionsTab");
+    // Une seule instance dans le tableau de bord (deux lisaient my_missions en double).
+    const tableau = presta.slice(presta.indexOf("export function PrestaDashboard("));
+    expect((tableau.match(/<PMissionsTab /g) || []).length).toBe(1);
+    expect(tableau).toContain('display: listeVisible ? "block" : "none"');
+    expect(tableau).toContain("onResume={setResume}");
+  });
+  it("les avertissements d'acceptation sont aussi dans Prestations", () => {
+    const debut = presta.indexOf('{vue==="prestations" && sousPrestations==="en_cours" && <>');
+    expect(presta.slice(debut, presta.indexOf("</>}", debut))).toContain("{alertesAcceptation}");
   });
 });
 

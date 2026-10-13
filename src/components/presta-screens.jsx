@@ -11,6 +11,7 @@ import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../
 import { prixHeuresSupp, joursFactures } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
+import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
 
 // Mêmes formats que ceux qu'accepte le bucket `Documents` (allowed_mime_types :
 // PDF, JPEG, PNG, HEIC/HEIF). Le WebP était proposé ici et refusé par le
@@ -2301,7 +2302,11 @@ function ElapsedTimer({ startedAt, maxMs, onEnd }) {
   );
 }
 
-export function PMissionsTab({ onNavigate }) {
+export function PMissionsTab({ onNavigate, onResume }) {
+  // Comptes remontés par les listes filles (demandes ouvertes, remplacements
+  // proposés), pour le résumé de l'accueil (relecture du 13/10/2026).
+  const [nbOuvertes, setNbOuvertes] = useState(0);
+  const [nbRemplacements, setNbRemplacements] = useState(0);
   // Tarif proposé pour une prolongation, par prestation. Vide = le tarif
   // habituel du prestataire.
   const [tarifSupp, setTarifSupp] = useState({});
@@ -2456,6 +2461,11 @@ export function PMissionsTab({ onNavigate }) {
       setErreurChargement(true);
     }
   };
+  // Le résumé de l'accueil suit la liste : même lecture, même rafraîchissement.
+  useEffect(() => {
+    if (loading) return;
+    onResume?.({ demandes: pendingMissions.length, assigned: assignedMissions, ouvertes: nbOuvertes, remplacements: nbRemplacements, erreur: erreurChargement });
+  }, [loading, pendingMissions, assignedMissions, nbOuvertes, nbRemplacements, erreurChargement, onResume]);
 
   useEffect(() => {
     (async () => {
@@ -2644,10 +2654,10 @@ export function PMissionsTab({ onNavigate }) {
   return (
     <div>
       {/* Remplacements qu'un confrère propose à ce prestataire (CGPS art. 9) */}
-      <RemplacementsProposes onRepondu={()=>{ loadPending?.(); chargerRemplacements(); }} />
+      <RemplacementsProposes onRepondu={()=>{ loadPending?.(); chargerRemplacements(); }} onCompte={setNbRemplacements} />
 
       {/* Demandes diffusées par des clients qui n'ont désigné personne */}
-      <DemandesOuvertes onRepris={()=>loadPending?.()} />
+      <DemandesOuvertes onRepris={()=>loadPending?.()} onCompte={setNbOuvertes} />
 
       {/* Contrat électronique prestataire */}
       {/* Contrat de prestation — acceptation prestation */}
@@ -3378,7 +3388,7 @@ En signant ce contrat, je m'engage à réaliser la prestation dans les condition
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`;
 }
 
-export function DemandesOuvertes({ onRepris }) {
+export function DemandesOuvertes({ onRepris, onCompte }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
   const [erreur, setErreur]     = useState(null);
@@ -3403,6 +3413,7 @@ export function DemandesOuvertes({ onRepris }) {
     try {
       const j = await appel({ action: "list_open" });
       setDemandes(Array.isArray(j.demandes) ? j.demandes : []);
+      onCompte?.((Array.isArray(j.demandes) ? j.demandes : []).filter(d => !d.ma_candidature).length);
       setErreur(null);
     } catch (e) {
       console.error("[demandes ouvertes] chargement échoué :", e.message);
@@ -3476,7 +3487,7 @@ export function DemandesOuvertes({ onRepris }) {
   );
 }
 
-export function RemplacementsProposes({ onRepondu }) {
+export function RemplacementsProposes({ onRepondu, onCompte }) {
   const [demandes, setDemandes] = useState([]);
   const [enCours, setEnCours]   = useState(null);
   // Accepter de remplacer, c'est s'engager à exécuter la prestation : le
@@ -3493,7 +3504,9 @@ export function RemplacementsProposes({ onRepondu }) {
         body: JSON.stringify({ action: "mes_remplacements" }),
       });
       const j = await r.json().catch(() => ({}));
-      setDemandes((j.remplacements || []).filter(d => d.role === "entrant" && !d.deja_repondu));
+      const entrants = (j.remplacements || []).filter(d => d.role === "entrant" && !d.deja_repondu);
+      setDemandes(entrants);
+      onCompte?.(entrants.length);
     } catch (e) {
       console.error("[remplacements proposés] chargement échoué :", e.message);
     }
@@ -3824,19 +3837,6 @@ export function PrestaClientsTab() {
   );
 }
 
-// Instant du début prévu, tel que le navigateur le voit.
-//
-// `debutPrestationMs` n'est PAS utilisable ici : elle interprète une date naïve
-// dans le fuseau du runtime puis applique le décalage français. C'est juste sur
-// Vercel, qui tourne en UTC, et faux dans un navigateur déjà à l'heure de Paris.
-// Chaque côté calcule donc l'instant à sa façon ; seule la RÈGLE des fenêtres
-// est partagée.
-function debutLocalMs(m) {
-  if (!m?.date) return null;
-  const heure = String(m.heure_debut || "00:00").slice(0, 5);
-  const t = new Date(`${m.date}T${heure}`).getTime();
-  return Number.isNaN(t) ? null : t;
-}
 
 // Sélecteur à deux ou trois positions, pour les sous-parties d'une vue
 // (Prestations : en cours / terminées / clients ; Profil : profil / documents).
@@ -3861,42 +3861,13 @@ const fmtJourCourt = (iso) => {
 // Résumé de l'accueil : ce qui attend une action, en une carte par sujet. Le
 // détail et les boutons d'action restent dans « Prestations » ; l'accueil ne
 // fait qu'y conduire (12/10/2026 — il affichait auparavant la même liste).
-function ResumeDuJour({ onNavigate, actif, nbLitiges }) {
-  const [etat, setEtat] = useState({ charge:false, erreur:false, demandes:0, prochaine:null, nbAVenir:0 });
-  useEffect(() => {
-    if (!actif) return;
-    let annule = false;
-    (async () => {
-      try {
-        const { data: sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        if (!token) return;
-        const r = await fetch("/api/missions", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
-          body: JSON.stringify({ action:"my_missions" }),
-        });
-        if (!r.ok) throw new Error(`chargement refusé (${r.status})`);
-        const j = await r.json();
-        const demandes = (Array.isArray(j.pending) ? j.pending : []).filter(m => m.status !== "cancelled").length;
-        // Une prestation commencée reste « la prochaine » jusqu'à sa fin :
-        // on garde celles qui débutent au plus tôt il y a 12 h.
-        const depuis = Date.now() - 12 * 3600 * 1000;
-        const aVenir = (Array.isArray(j.assigned) ? j.assigned : [])
-          .filter(m => m.status !== "cancelled")
-          .map(m => ({ m, t: debutLocalMs(m), fin: m.date_fin ? new Date(`${String(m.date_fin).slice(0, 10)}T23:59:59`).getTime() : null }))
-          // Une série sur plusieurs jours reste à venir jusqu'à son dernier jour.
-          .filter(x => x.t == null || x.t >= depuis || (x.fin != null && x.fin >= Date.now()))
-          .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
-        if (!annule) setEtat({ charge:true, erreur:false, demandes, prochaine: aVenir[0]?.m || null, nbAVenir: aVenir.length });
-      } catch (e) {
-        console.error("[accueil prestataire] résumé indisponible :", e?.message);
-        if (!annule) setEtat(v => ({ ...v, charge:true, erreur:true }));
-      }
-    })();
-    return () => { annule = true; };
-  }, [actif]);
-
+//
+// Il ne lit rien lui-même : il reçoit ce qu'a lu la liste des prestations
+// (`resume`), qui se rafraîchit toutes les 30 s et en temps réel. Sa propre
+// lecture de `my_missions` doublait celle de la liste — l'action expire les
+// demandes échues et prévient le client, qui l'était deux fois — et ne se
+// rafraîchissait jamais (relecture du 13/10/2026).
+function ResumeDuJour({ onNavigate, actif, nbLitiges, resume }) {
   const carte = (couleur, icone, titre, sous, action) => (
     <div onClick={()=>onNavigate("p_missions")} role="button" style={{ background:`${couleur}14`, border:`1px solid ${couleur}55`, borderRadius:14, padding:"13px 14px", marginBottom:12, display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
       <span style={{ fontSize:22 }}>{icone}</span>
@@ -3907,25 +3878,33 @@ function ResumeDuJour({ onNavigate, actif, nbLitiges }) {
       <span style={{ color:couleur, fontSize:12, fontWeight:700, flexShrink:0 }}>{action} ›</span>
     </div>
   );
+  const pl = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const { prochaine, nb } = prochainePrestation(resume?.assigned);
+  const p = prochaine?.m;
+  const quand = p && (prochaine.enCours
+    ? `En cours jusqu'au ${fmtJourCourt(p.date_fin)}`
+    : `${fmtJourCourt(p.date_debut || p.date)}${p.heure_debut ? ` à ${String(p.heure_debut).slice(0,5)}` : ""}`);
+  const rien = resume && !resume.erreur && !resume.demandes && !resume.ouvertes && !resume.remplacements && !p;
 
   return <>
-    {nbLitiges > 0 && carte("#F2A65E", "⚠️", `${nbLitiges} litige${nbLitiges>1?"s":""} en cours`, "Une réponse est attendue de votre part.", "Voir")}
-    {actif && etat.erreur && (
+    {nbLitiges > 0 && carte("#F2A65E", "⚠️", `${pl(nbLitiges, "litige")} en cours`, "Une réponse est attendue de votre part.", "Voir")}
+    {actif && resume?.erreur && (
       <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"11px 14px", marginBottom:12, fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
         Le résumé de vos prestations n'a pas pu être chargé. Ouvrez l'onglet <strong>Prestations</strong> pour les voir.
       </div>
     )}
-    {actif && etat.charge && !etat.erreur && <>
-      {etat.demandes > 0 && carte(C.accent, "🔔", `${etat.demandes} demande${etat.demandes>1?"s":""} attend${etat.demandes>1?"ent":""} votre réponse`, "Le délai de réponse est limité : passé ce délai, elle est proposée à un autre prestataire.", "Répondre")}
-      {etat.prochaine
-        ? carte(C.success, "📅", "Prochaine prestation",
-            `${fmtJourCourt(etat.prochaine.date_debut || etat.prochaine.date)}${etat.prochaine.heure_debut ? ` à ${String(etat.prochaine.heure_debut).slice(0,5)}` : ""} · ${etat.prochaine.titre || etat.prochaine.metier || "Prestation"}${etat.prochaine.ville ? ` · ${etat.prochaine.ville}` : ""}${etat.nbAVenir > 1 ? ` (+${etat.nbAVenir - 1} autre${etat.nbAVenir > 2 ? "s" : ""})` : ""}`,
-            "Voir")
-        : etat.demandes === 0 && (
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:12, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-            📭 Aucune prestation à venir pour l'instant. Les nouvelles demandes arrivent dans l'onglet <strong>Prestations</strong>, et une notification vous prévient.
-          </div>
-        )}
+    {actif && resume && !resume.erreur && <>
+      {resume.demandes > 0 && carte(C.accent, "🔔", `${pl(resume.demandes, "demande")} attend${resume.demandes>1?"ent":""} votre réponse`, "Le délai de réponse est limité : passé ce délai, elle est proposée à un autre prestataire.", "Répondre")}
+      {resume.remplacements > 0 && carte(C.violet, "🤝", `${pl(resume.remplacements, "remplacement")} proposé${resume.remplacements>1?"s":""} par un confrère`, "Acceptez ou refusez dans l'onglet Prestations.", "Voir")}
+      {resume.ouvertes > 0 && carte(C.success, "📢", `${pl(resume.ouvertes, "demande ouverte")} dans votre métier`, "Des clients attendent qu'un prestataire se propose.", "Voir")}
+      {p && carte(C.success, "📅", prochaine.enCours ? "Prestation en cours" : "Prochaine prestation",
+        `${quand} · ${p.titre || p.metier || "Prestation"}${p.ville ? ` · ${p.ville}` : ""}${nb > 1 ? ` (+${nb - 1} autre${nb > 2 ? "s" : ""})` : ""}`,
+        "Voir")}
+      {rien && (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:12, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          📭 Aucune prestation à venir pour l'instant. Les nouvelles demandes arrivent dans l'onglet <strong>Prestations</strong>, et une notification vous prévient.
+        </div>
+      )}
     </>}
   </>;
 }
@@ -3997,7 +3976,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   // les sous-parties d'une vue se choisissent par un sélecteur à deux ou trois
   // positions.
   const vue = VUE_PAR_ECRAN[activeScreen] || "accueil";
-  const [sousPrestations,setSousPrestations]=useState("en_cours");
+  const [sousPrestations,setSousPrestations]=useState(ongletInitial === "terminees" ? "terminees" : "en_cours");
+  // Ce que la liste des prestations a lu : le résumé de l'accueil en vit.
+  const [resume,setResume]=useState(null);
   const [sousProfil,setSousProfil]=useState(ongletInitial === "docs" ? "docs" : "profil");
   // L'IBAN du prestataire. Le bandeau d'alerte plus bas était branché sur un
   // état que PERSONNE ne mettait jamais à vrai : il ne s'est donc jamais
@@ -4148,7 +4129,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setSousProfil(ongletInitial === "docs" ? "docs" : "profil");
-    if(activeScreen==="p_missions") setSousPrestations("en_cours");
+    if(activeScreen==="p_missions") setSousPrestations(ongletInitial === "terminees" ? "terminees" : "en_cours");
   },[activeScreen, ongletInitial]);
   useEffect(()=>{
     (async()=>{
@@ -4372,6 +4353,37 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     try { localStorage.setItem(seenKey, JSON.stringify(capped)); } catch { /* ignore */ }
     setRecapCard(null);
   };
+
+  const listeVisible = vue==="prestations" && sousPrestations==="en_cours";
+  const alertesAcceptation = <>
+          {ribCharge && !userRib && (
+      <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
+        🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
+      </div>
+    )}
+    {planLoaded && (() => {
+      const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
+      // La constante ne sert que de repli le temps que le serveur réponde.
+      const limitBrute = limiteMensuelle != null ? limiteMensuelle : plan.missions;
+      const limit = limitBrute >= 999 ? null : limitBrute;
+      if(!limit) return null;
+      const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
+      const remaining = Math.max(0, limit - missionsUsedMonth);
+      return (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${remaining===0?"#F25E5E44":C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:12, color:C.textSub }}>Prestations ce mois</span>
+            <span style={{ fontSize:12, fontWeight:700, color:remaining===0?"#F25E5E":C.text }}>{missionsUsedMonth}/{limit}</span>
+          </div>
+          <div style={{ height:5, borderRadius:99, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
+            <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:remaining===0?"#F25E5E":C.violet, transition:"width .3s" }} />
+          </div>
+          {remaining===0 && <div style={{ marginTop:6, fontSize:11, color:"#F25E5E" }}>Limite atteinte — passez en {planActuel==="free"?"Premium":"Elite"} pour continuer</div>}
+          {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} prestation{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
+        </div>
+      );
+    })()}
+  </>;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -4617,7 +4629,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </div>
             );
           })}
-          {!missionsEnabled ? (
+          {/* Les avertissements à lire AVANT d'accepter : ils n'étaient plus
+              qu'à l'accueil depuis le 12/10/2026, alors que c'est ici qu'on
+              accepte (relecture du 13/10/2026). */}
+          {alertesAcceptation}
+          {!missionsEnabled && (
             <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
               <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux prestations en attente</div>
@@ -4629,24 +4645,31 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 📎 Compléter mon dossier
               </button>
             </div>
-          ) : (
-            <PMissionsTab onNavigate={onNavigate} />
           )}
         </>}
+        {/* UNE seule liste, montée tant que le tableau de bord l'est (Accueil,
+            Prestations, Revenus, Profil), visible seulement dans
+            Prestations › En cours. Elle porte la détection d'arrivée
+            (pointage automatique) et alimente le résumé de l'accueil : une
+            seule lecture de `my_missions`, rafraîchie toutes les 30 s et en
+            temps réel. Deux instances (accueil + onglet) appelaient
+            `my_missions` en double — et cette action expire les demandes
+            échues en prévenant le client (relecture du 13/10/2026). */}
+        {missionsEnabled && (
+          <div style={{ display: listeVisible ? "block" : "none" }} aria-hidden={!listeVisible}>
+            <PMissionsTab onNavigate={onNavigate} onResume={setResume} />
+          </div>
+        )}
         {vue==="accueil" && <>
           {/* L'accueil résume ce qui attend une action ; le détail vit dans
               « Prestations ». Avant le 12/10/2026, il affichait la même liste
               que l'onglet Prestations. */}
-          <ResumeDuJour onNavigate={onNavigate} actif={missionsEnabled} nbLitiges={litiges.length} />
-          {/* La liste reste montée, invisible : c'est elle qui détecte
-              l'arrivée sur place (pointage automatique). Sur l'accueil, elle
-              tournait jusqu'ici en plein écran ; la retirer aurait coupé ce
-              pointage tant que le prestataire n'ouvre pas « Prestations ». */}
-          {missionsEnabled && <div style={{ display:"none" }} aria-hidden="true"><PMissionsTab onNavigate={onNavigate} /></div>}
+          <ResumeDuJour onNavigate={onNavigate} actif={missionsEnabled} nbLitiges={litiges.length} resume={resume} />
           <CarteVirements />
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <AlerteTitresACompleter onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
+          {alertesAcceptation}
           {/* Bandeau « Prestations urgentes activées — vous êtes prioritaire »
               retiré le 17/08/2026 : aucune priorité de ce genre n'existe.
               `candidatsPourMission` classe par distance puis par charge du mois,
@@ -4655,33 +4678,6 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               donnerait prise au reproche d'un pouvoir de direction déguisé
               (CGPS art. 5.2). Annoncer une priorité qui n'existe pas la vendait
               deux fois : au prestataire, et contre la défense de la plateforme. */}
-          {ribCharge && !userRib && (
-            <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
-              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
-            </div>
-          )}
-          {planLoaded && (() => {
-            const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
-            // La constante ne sert que de repli le temps que le serveur réponde.
-            const limitBrute = limiteMensuelle != null ? limiteMensuelle : plan.missions;
-            const limit = limitBrute >= 999 ? null : limitBrute;
-            if(!limit) return null;
-            const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
-            const remaining = Math.max(0, limit - missionsUsedMonth);
-            return (
-              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${remaining===0?"#F25E5E44":C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:12, color:C.textSub }}>Prestations ce mois</span>
-                  <span style={{ fontSize:12, fontWeight:700, color:remaining===0?"#F25E5E":C.text }}>{missionsUsedMonth}/{limit}</span>
-                </div>
-                <div style={{ height:5, borderRadius:99, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
-                  <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:remaining===0?"#F25E5E":C.violet, transition:"width .3s" }} />
-                </div>
-                {remaining===0 && <div style={{ marginTop:6, fontSize:11, color:"#F25E5E" }}>Limite atteinte — passez en {planActuel==="free"?"Premium":"Elite"} pour continuer</div>}
-                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} prestation{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
-              </div>
-            );
-          })()}
         </>}
         {vue==="profil" && sousProfil==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {vue==="prestations" && sousPrestations==="clients" && <PrestaClientsTab />}
