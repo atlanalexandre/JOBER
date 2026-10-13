@@ -3672,6 +3672,16 @@ Se fier à ce que le navigateur affirme reviendrait à laisser le client s'accor
 gratuitement. Le montant du PaymentIntent est lui aussi calculé côté serveur, depuis la
 proposition enregistrée — jamais depuis ce que l'écran envoie.
 
+**Le tarif des heures supplémentaires d'une prestation se fixe à la première prolongation
+réglée** (étude du 13/10/2026, `e2e/75`). Sur une prestation d'un jour, toutes les heures
+supplémentaires réglées sont versées au tarif `extra_hours_tarif`, un seul. Accepter une seconde
+demande à un autre tarif le réécrivait **dès l'acceptation, avant tout paiement** : une heure réglée
+20 € par le client était versée 60 € si le prestataire acceptait ensuite une heure de plus à 60 €/h —
+que le client la paie ou non. `respond_extra_hours` refuse désormais (409 `tarif_heures_supp_fixe`)
+un autre tarif que celui des heures déjà réglées (`tarifSuppFixe()`, `api/_heures_supp.js`) ; l'écran
+du prestataire l'affiche en lecture seule. Les prestations de plusieurs jours, qui gardent un tarif
+par journée (`heures_ajoutees_detail`), ne sont pas concernées.
+
 **Les frais de service du complément ne comportent que leur part proportionnelle.** La part
 fixe rémunère la mise en relation : elle a déjà eu lieu, et elle est déjà payée. La part
 proportionnelle, elle, reste due — les CGPS disent qu'elle « couvre notamment les frais

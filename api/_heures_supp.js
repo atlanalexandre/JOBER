@@ -291,3 +291,15 @@ export function dureeMaxDesJournees(m, journees) {
   }
   return Math.round(max * 100) / 100;
 }
+
+/**
+ * Tarif des heures supplémentaires déjà RÉGLÉES sur une prestation d'un jour,
+ * ou null. Elles sont toutes versées à `extra_hours_tarif` (`partHoraire()`) :
+ * accepter une nouvelle prolongation à un autre tarif réécrivait le prix
+ * d'heures déjà payées par le client, avant même qu'il paie la suivante (étude
+ * du 13/10/2026). Ce tarif ne change donc plus. Partagé par le serveur
+ * (`respond_extra_hours`) et l'écran du prestataire.
+ */
+export function tarifSuppFixe(m) {
+  return Number(m?.extra_hours_appliquees) > 0 && Number(m?.extra_hours_tarif) > 0 ? Number(m.extra_hours_tarif) : null;
+}

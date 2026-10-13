@@ -11,7 +11,7 @@ import { calculerFrais, lireFraisService } from "./_montant.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
-  detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits, dureeMaxDesJournees } from "./_heures_supp.js";
+  detailAjouts, journeesCouvertes, cumulsAjouts, ajoutsNonFaits, dureeMaxDesJournees, tarifSuppFixe } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -5973,7 +5973,10 @@ export default async function handler(req, res) {
       const { mission_id, extra_hours } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       const eh = Number(extra_hours);
-      if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
+      // Un nombre ENTIER d'heures : sur une prestation d'un jour, elles s'ajoutent à
+      // `hours`, colonne entière. 1,5 h passait ici et faisait échouer
+      // l'application APRÈS le paiement du client (étude du 13/10/2026).
+      if (!eh || !Number.isInteger(eh) || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (nombre entier d'heures, de 1 à 8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at,heures_ajoutees_dernier_jour,heures_ajoutees_detail`, { headers });
@@ -6097,7 +6100,7 @@ export default async function handler(req, res) {
       if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
       // Vérifier que le prestataire est bien assigné à cette mission
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date,date_debut,date_fin,heure_debut,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee,extra_hours_journee,heures_ajoutees_detail`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date,date_debut,date_fin,heure_debut,extra_hours_requested,extra_hours_status,extra_hours_jours,extra_hours_portee,extra_hours_journee,heures_ajoutees_detail,extra_hours_appliquees,extra_hours_tarif`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -6118,12 +6121,28 @@ export default async function handler(req, res) {
         // prix (CGPS art. 6.1), et une prolongation imprévue n'a pas de raison
         // d'être vendue au tarif d'un créneau réservé à l'avance. La durée ne
         // bouge qu'au paiement du client, dans `confirmer_heures_supp`.
+        //
+        // Sur une prestation d'un jour, les heures supplémentaires DÉJÀ réglées
+        // sont versées au tarif `extra_hours_tarif` — un seul pour toutes. Le
+        // réécrire ici, avant tout paiement, changeait le prix d'heures déjà
+        // payées par le client : une heure réglée 20 € était versée 60 € si le
+        // prestataire acceptait une seconde demande à 60 €/h, payée ou non (étude
+        // du 13/10/2026, `e2e/75`). Le tarif des heures supplémentaires de la
+        // prestation est donc celui de la première prolongation réglée.
+        const tarifFixe = tarifSuppFixe(mission);
         const tarif = payload.tarif_horaire == null
-          ? Number(mission.tarif_horaire || 0)
+          ? (tarifFixe ?? Number(mission.tarif_horaire || 0))
           : Number(payload.tarif_horaire);
         tarifAnnonce = tarif;
         if (!tarifSuppValide(tarif)) {
           return res.status(400).json({ error: `Tarif horaire invalide (entre ${TARIF_SUPP_MIN} et ${TARIF_SUPP_MAX} €).` });
+        }
+        if (tarifFixe !== null && Math.abs(tarif - tarifFixe) > 0.001) {
+          return res.status(409).json({
+            code: "tarif_heures_supp_fixe", tarif: tarifFixe,
+            error: `Les heures supplémentaires de cette prestation ont déjà été réglées à ${euros(tarifFixe)}/h : `
+              + "une nouvelle prolongation se fait à ce même tarif.",
+          });
         }
         // Même plafond qu'à la demande : la journée visée la plus chargée.
         const enCoursR = porteeDemande(mission, "jour");
