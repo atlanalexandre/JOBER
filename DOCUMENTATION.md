@@ -4770,7 +4770,9 @@ barre d'onglets sous la photo (Prestations · Profil · Docs · Revenus · Histo
   réellement le prestataire prévient le client (relecture du 13/10/2026). Les avertissements à
   lire avant d'accepter (IBAN manquant, quota du mois) sont aussi dans Prestations ; le retour
   d'une facture ramène à l'écran d'où elle a été ouverte, celui du dépôt de pièces à Documents.
-  Le Planning reste hors du tableau de bord : le pointage automatique n'y tourne pas, comme avant ;
+  Le Planning s'affiche dans le tableau de bord depuis le 13/10/2026 (`VUE_PAR_ECRAN.calendar`,
+  écran passé par `planning`) : affiché à part, il démontait la liste, et le pointage automatique
+  s'arrêtait sur un onglet principal de la barre ;
 - **client** — Accueil · Chercher · Prestations · Compte (`ClientNav`). « Réglages » faisait
   doublon avec « Compte », qui le proposait déjà ; le raccourci « Mes prestations » de Compte
   doublait l'onglet voisin. L'onglet Prestations faisait en outre disparaître la barre

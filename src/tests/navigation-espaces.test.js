@@ -22,6 +22,12 @@ describe("barre prestataire", () => {
       expect(ecrans, id).toContain(`"${id}"`);
     }
   });
+  it("chaque onglet de la barre est une vue du tableau de bord (la liste, donc le pointage, y reste montée)", () => {
+    const vues = blocApres(presta, "const VUE_PAR_ECRAN", "};");
+    for (const id of barre) expect(vues, id).toContain(`${id}:`);
+    expect(app).toContain('screen==="calendar"||screen==="p_revenus"');
+    expect(app).toContain("planning={<CalendarScreen />}");
+  });
   it("le guide montre la même barre", () => {
     expect(idsDe(blocApres(presta, "const ONGLETS_PRESTA_GUIDE"))).toEqual(barre);
   });

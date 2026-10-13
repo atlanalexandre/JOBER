@@ -3611,7 +3611,10 @@ const ONGLETS_PRESTA_GUIDE = [
 ];
 
 // Chaque vue du tableau de bord, selon l'écran ouvert par la barre du bas.
-const VUE_PAR_ECRAN = { p_home:"accueil", p_missions:"prestations", p_revenus:"revenus", p_dashboard:"profil" };
+// « Planning » en fait partie depuis le 13/10/2026 : affiché hors du tableau de
+// bord, il démontait la liste des prestations — et avec elle le pointage
+// automatique à l'arrivée, alors que c'est un onglet principal de la barre.
+const VUE_PAR_ECRAN = { p_home:"accueil", p_missions:"prestations", calendar:"planning", p_revenus:"revenus", p_dashboard:"profil" };
 const TITRE_VUE = { prestations:"Mes prestations", revenus:"Mes revenus", profil:"Mon profil" };
 
 // Ce qu'ouvre chaque étape du guide : [écran, onglet du profil].
@@ -3909,7 +3912,7 @@ function ResumeDuJour({ onNavigate, actif, nbLitiges, resume }) {
   </>;
 }
 
-export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0, ongletInitial=null }) {
+export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0, ongletInitial=null, planning=null }) {
   // Opposition à une proposition de résolution (CGPS art. 17.1). Même geste
   // que côté client, même endpoint : c'est le serveur qui vérifie que
   // l'appelant est bien partie au litige.
@@ -4493,7 +4496,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         </div>
       )}
       {showTour && <PrestaTour onDone={dismissTour} onOuvrirOnglet={(cible)=>{ const [ecran, onglet] = CIBLES_GUIDE[cible] || ["p_home"]; onNavigate(ecran, onglet ? { onglet } : undefined); if(ecran==="p_dashboard") setSousProfil(onglet==="docs"?"docs":"profil"); }} />}
-      {vue!=="accueil" ? (
+      {/* Le planning porte son propre en-tête. */}
+      {vue==="planning" ? planning : vue!=="accueil" ? (
         <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"44px 22px 20px", borderRadius:"0 0 26px 26px", display:"flex", alignItems:"center", gap:12 }}>
           <div style={{ flex:1 }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0 }}>Espace prestataire</p>
