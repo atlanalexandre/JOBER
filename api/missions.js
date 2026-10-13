@@ -5973,7 +5973,10 @@ export default async function handler(req, res) {
       const { mission_id, extra_hours } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       const eh = Number(extra_hours);
-      if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
+      // Un nombre ENTIER d'heures : sur une prestation d'un jour, elles s'ajoutent à
+      // `hours`, colonne entière. 1,5 h passait ici et faisait échouer
+      // l'application APRÈS le paiement du client (étude du 13/10/2026).
+      if (!eh || !Number.isInteger(eh) || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (nombre entier d'heures, de 1 à 8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,date_debut,date_fin,heure_debut,started_at,heures_ajoutees_dernier_jour,heures_ajoutees_detail`, { headers });

@@ -186,3 +186,12 @@ describe("respond_extra_hours ne réécrit pas un tarif déjà réglé", () => {
     expect(bloc).toMatch(/tarif_heures_supp_fixe/);
   });
 });
+
+describe("request_extra_hours : un nombre entier d'heures", () => {
+  it("1,5 h est refusé avant tout paiement (hours est une colonne entière)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+    const bloc = src.slice(src.indexOf('if (action === "request_extra_hours")'), src.indexOf('if (action === "respond_extra_hours")'));
+    expect(bloc).toMatch(/Number\.isInteger\(eh\)/);
+  });
+});
