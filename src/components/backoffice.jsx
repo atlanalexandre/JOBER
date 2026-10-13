@@ -2491,6 +2491,83 @@ export function BOLitiges() {
   );
 }
 
+// E-mail d'information à tous les inscrits — clients et prestataires, validés
+// ou non (api/_diffusion.js). Aperçu du nombre, test à l'adresse de
+// l'administration, puis envoi confirmé sur ce nombre exact.
+function InfoMailSection() {
+  const [sujet, setSujet]     = useState("Des nouvelles d'ALANE");
+  const [message, setMessage] = useState("");
+  const [inclureNonConfirmees, setInclure] = useState(false);
+  const [apercu, setApercu]   = useState(null);
+  const [enCours, setEnCours] = useState(null);
+  const [result, setResult]   = useState(null);
+  const pret = sujet.trim() && message.trim();
+  const appel = async (mode, extra = {}) => {
+    const r = await boFetch({ action:"send_info_mail", mode, sujet, message, inclureNonConfirmees, ...extra });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Erreur ${r.status}`);
+    return j;
+  };
+  const lancer = async (mode) => {
+    setEnCours(mode); setResult(null);
+    try {
+      if (mode === "test") {
+        const j = await appel("test");
+        setResult({ ok:true, msg:`Test envoyé à ${j.test}. Vérifiez-le avant l'envoi à tous.` });
+      } else if (mode === "envoi") {
+        const a = await appel("apercu");
+        setApercu(a);
+        if (!await showConfirm(`Envoyer cet e-mail à ${a.destinataires} inscrit(s) ? Cet envoi ne peut pas être annulé.`)) { setEnCours(null); return; }
+        const j = await appel("envoi", { attendus: a.destinataires });
+        setResult({ ok:!j.echecs, msg: j.echecs ? `${j.envoyes} envoyé(s), ${j.echecs} en échec : ${j.erreur}` : `E-mail envoyé à ${j.envoyes} inscrit(s).` });
+        if (!j.echecs) setMessage("");
+      }
+    } catch (e) { setResult({ ok:false, msg:e.message || "Erreur réseau" }); }
+    setEnCours(null);
+  };
+  const compter = async () => {
+    setEnCours("apercu"); setResult(null);
+    try { setApercu(await appel("apercu")); }
+    catch (e) { setResult({ ok:false, msg:e.message || "Erreur réseau" }); }
+    setEnCours(null);
+  };
+  const champ = { width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 };
+  const bouton = (fond, actif) => ({ padding:"10px 16px", borderRadius:10, border:"none", background:fond, color:C.white, fontWeight:700, fontSize:12, cursor:actif?"pointer":"default", fontFamily:"inherit", opacity:actif?1:0.5 });
+  return (
+    <>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>✉️ E-mail à tous les inscrits</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <div style={{ color:C.gray, fontSize:11, lineHeight:1.6, marginBottom:10 }}>
+          Part à <strong>tous les inscrits</strong>, clients et prestataires, comptes validés ou non
+          (sauf refusés et suspendus), un e-mail par personne. Réservé à l'<strong>information sur le
+          service</strong> (ouverture, changement important) : aucune offre ni promotion, qui relèvent
+          de la Communication globale ci-dessus.
+        </div>
+        <input value={sujet} onChange={e=>setSujet(e.target.value)} placeholder="Objet de l'e-mail" maxLength={150} style={champ} />
+        <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Message (une ligne vide sépare deux paragraphes)…" rows={7} style={{ ...champ, resize:"vertical" }} />
+        <label style={{ display:"flex", gap:8, alignItems:"flex-start", color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:10, cursor:"pointer" }}>
+          <input type="checkbox" checked={inclureNonConfirmees} onChange={e=>{ setInclure(e.target.checked); setApercu(null); }} style={{ marginTop:2 }} />
+          <span>Inclure les adresses jamais confirmées. Déconseillé : une adresse mal saisie fait rejeter l'e-mail, et trop de rejets envoient tous les e-mails d'ALANE en indésirables.</span>
+        </label>
+        {apercu && (
+          <div style={{ color:C.text, fontSize:12, marginBottom:10 }}>
+            <strong>{apercu.destinataires}</strong> destinataire(s).
+            {apercu.ecartees?.non_confirmees > 0 && ` ${apercu.ecartees.non_confirmees} adresse(s) jamais confirmée(s) écartée(s).`}
+            {apercu.ecartees?.refusees_ou_suspendues > 0 && ` ${apercu.ecartees.refusees_ou_suspendues} compte(s) refusé(s) ou suspendu(s) écarté(s).`}
+            {apercu.ecartees?.bannies > 0 && ` ${apercu.ecartees.bannies} compte(s) banni(s) écarté(s).`}
+          </div>
+        )}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <button onClick={compter} disabled={!!enCours} style={bouton("rgba(124,111,224,0.28)", !enCours)}>{enCours==="apercu"?"Calcul…":"👥 Combien de destinataires ?"}</button>
+          <button onClick={()=>lancer("test")} disabled={!!enCours||!pret} style={bouton("rgba(124,111,224,0.28)", !enCours&&pret)}>{enCours==="test"?"Envoi…":"🧪 M'envoyer un test"}</button>
+          <button onClick={()=>lancer("envoi")} disabled={!!enCours||!pret} style={bouton(C.violet, !enCours&&pret)}>{enCours==="envoi"?"Envoi en cours…":"✉️ Envoyer à tous"}</button>
+        </div>
+        {result && <div style={{ marginTop:8, fontSize:12, color:result.ok?C.success:C.accent, fontWeight:600 }}>{result.ok?"✅":"❌"} {result.msg}</div>}
+      </div>
+    </>
+  );
+}
+
 function BroadcastNotifSection() {
   const [title, setTitle] = useState("");
   const [body, setBody]   = useState("");
@@ -2883,6 +2960,8 @@ export function BOModerationTab({ d }) {
         </button>
         {commResult && <div style={{ marginTop:8, fontSize:12, color:commResult.ok?C.success:C.accent, fontWeight:600 }}>{commResult.ok?"✅":"❌"} {commResult.msg}</div>}
       </div>
+
+      <InfoMailSection />
 
       <BroadcastNotifSection />
 

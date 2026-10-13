@@ -9,6 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
+import { destinatairesInformation, envoyerInformation, htmlInformation } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
@@ -1646,6 +1647,53 @@ export default async function handler(req, res) {
       }
       await journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
       return res.status(200).json({ success: true, sent });
+    }
+
+    // E-mail d'information à TOUS les inscrits — clients et prestataires,
+    // validés ou non (api/_diffusion.js). Trois temps : `mode: "apercu"` compte
+    // les destinataires, `mode: "test"` envoie à ADMIN_EMAIL seul, `mode:
+    // "envoi"` part pour de bon, et seulement si `attendus` vaut le nombre que
+    // l'aperçu a montré : un double clic ou une liste changée entre-temps ne
+    // part pas à l'aveugle.
+    if (action === "send_info_mail") {
+      const { mode, sujet, message, inclureNonConfirmees } = req.body;
+      if (!["apercu", "test", "envoi"].includes(mode)) return res.status(400).json({ error: "Mode inconnu" });
+      if (mode !== "apercu" && (!String(sujet || "").trim() || !String(message || "").trim())) {
+        return res.status(400).json({ error: "Objet et message requis" });
+      }
+      const contenu = { sujet: String(sujet || "").trim().slice(0, 150), html: htmlInformation(message) };
+      if (mode === "test") {
+        const adminEmail = process.env.ADMIN_EMAIL || "direction@alane.fr";
+        const r = await envoyerInformation([adminEmail], { ...contenu, sujet: `[TEST] ${contenu.sujet}` });
+        if (r.envoyes !== 1) return res.status(502).json({ error: r.erreur || "Envoi du test refusé" });
+        return res.status(200).json({ ok: true, test: adminEmail });
+      }
+      let utilisateurs = [], profils;
+      try {
+        for (let page = 1; ; page++) {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+          const ud = await ur.json().catch(() => null);
+          if (!ur.ok || !Array.isArray(ud?.users)) throw new Error(`comptes illisibles (${ur.status}), page ${page}`);
+          utilisateurs = utilisateurs.concat(ud.users);
+          if (ud.users.length < 1000) break;
+        }
+        profils = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id,status`, headers);
+      } catch (e) {
+        console.error("[send_info_mail] destinataires illisibles :", e.message);
+        return res.status(502).json({ error: "Destinataires illisibles" });
+      }
+      const { adresses, ecartees } = destinatairesInformation(utilisateurs, profils, { inclureNonConfirmees: inclureNonConfirmees === true });
+      if (mode === "apercu") return res.status(200).json({ ok: true, destinataires: adresses.length, ecartees });
+      if (Number(req.body.attendus) !== adresses.length) {
+        return res.status(409).json({ error: `La liste a changé (${adresses.length} destinataires au lieu de ${req.body.attendus}) : relancez l'aperçu.` });
+      }
+      // Au-delà, l'envoi dépasserait la durée d'une fonction et s'arrêterait
+      // au milieu, sans qu'on sache qui l'a reçu.
+      if (adresses.length > 4000) return res.status(413).json({ error: "Plus de 4 000 destinataires : envoi groupé à découper, demander une évolution." });
+      const r = await envoyerInformation(adresses, contenu);
+      await journaliser("send_info_mail", { details: { destinataires: adresses.length, envoyes: r.envoyes, echecs: r.echecs, ecartees, sujet: contenu.sujet, extrait: String(message).slice(0, 200) } });
+      if (r.envoyes === 0) return res.status(502).json({ error: r.erreur || "Aucun e-mail accepté" });
+      return res.status(200).json({ ok: true, envoyes: r.envoyes, echecs: r.echecs, erreur: r.erreur });
     }
 
     // Rattrapage des clients restés « en attente ».
