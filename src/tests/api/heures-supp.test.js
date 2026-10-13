@@ -12,7 +12,7 @@
 // l'ancien comportement en croyant simplifier.
 
 import { describe, it, expect } from "vitest";
-import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "../../../api/_heures_supp.js";
+import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, tarifSuppFixe } from "../../../api/_heures_supp.js";
 import { montantsDeCloture } from "../../../api/_cloture.js";
 import { FRAIS_PAR_DEFAUT } from "../../../api/_montant.js";
 
@@ -163,5 +163,26 @@ describe("plancher de frais sur une prolongation", () => {
   it("reste nul quand la prolongation n'est pas calculable", () => {
     expect(prixHeuresSupp(0, 20, 1).fraisService).toBe(0);
     expect(prixHeuresSupp(2, 0, 1).fraisService).toBe(0);
+  });
+});
+
+// Étude du 13/10/2026 : accepter une seconde prolongation à un autre tarif
+// réécrivait le prix des heures déjà réglées (e2e/75).
+describe("tarifSuppFixe", () => {
+  it("fixe le tarif dès qu'une prolongation a été réglée", () => {
+    expect(tarifSuppFixe({ extra_hours_appliquees: 1, extra_hours_tarif: 20 })).toBe(20);
+  });
+  it("libre tant qu'aucune heure supplémentaire n'est réglée", () => {
+    expect(tarifSuppFixe({ extra_hours_appliquees: 0, extra_hours_tarif: 20 })).toBeNull();
+    expect(tarifSuppFixe({})).toBeNull();
+  });
+});
+describe("respond_extra_hours ne réécrit pas un tarif déjà réglé", () => {
+  it("le refus est dans l'action", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+    const bloc = src.slice(src.indexOf('if (action === "respond_extra_hours")'), src.indexOf('if (action === "confirmer_heures_supp")'));
+    expect(bloc).toMatch(/tarifSuppFixe\(mission\)/);
+    expect(bloc).toMatch(/tarif_heures_supp_fixe/);
   });
 });

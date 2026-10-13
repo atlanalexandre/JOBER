@@ -8,7 +8,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, P
 import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
-import { prixHeuresSupp, joursFactures } from "../../api/_heures_supp.js";
+import { prixHeuresSupp, joursFactures, tarifSuppFixe } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
@@ -2965,7 +2965,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                         <input
                           type="number" min={1} max={500} step="0.5"
-                          value={tarifSupp[m.id] ?? (m.tarif_horaire ?? "")}
+                          value={tarifSuppFixe(m) ?? tarifSupp[m.id] ?? (m.tarif_horaire ?? "")}
+                          readOnly={tarifSuppFixe(m) !== null}
                           onChange={e => setTarifSupp(t => ({ ...t, [m.id]: e.target.value }))}
                           style={{ width:110, padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:14, fontFamily:"inherit", textAlign:"center" }}
                         />
@@ -2974,6 +2975,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           Habituel : {Number(m.tarif_horaire || 0).toFixed(2).replace(".", ",")} €
                         </span>
                       </div>
+                      {/* Les heures supplémentaires déjà réglées sont versées à ce tarif :
+                          il ne change plus sur cette prestation (étude du 13/10/2026). */}
+                      {tarifSuppFixe(m) !== null && (
+                        <div style={{ color:C.textMuted, fontSize:11, marginTop:6 }}>
+                          Tarif des heures supplémentaires de cette prestation, déjà réglées par le client.
+                        </div>
+                      )}
                     </div>
 
                     {/* Ce que le prestataire va toucher, avant d'accepter.
@@ -2984,7 +2992,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         saisi pour une prolongation d'une heure sur cinq jours
                         représente 85 €. Même fonction que le serveur. */}
                     {(() => {
-                      const tarifSaisi = Number(tarifSupp[m.id] ?? m.tarif_horaire);
+                      const tarifSaisi = Number(tarifSuppFixe(m) ?? tarifSupp[m.id] ?? m.tarif_horaire);
                       const d = prixHeuresSupp(m.extra_hours_requested, tarifSaisi, joursFactures(m, nombreDeJours(m)));
                       const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
                       return d.partPrestataire > 0 ? (
@@ -3020,7 +3028,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <button onClick={async () => {
                         const { data: sd } = await supabase.auth.getSession();
                         const token = sd?.session?.access_token;
-                        const tarif = Number(tarifSupp[m.id] ?? m.tarif_horaire);
+                        const tarif = Number(tarifSuppFixe(m) ?? tarifSupp[m.id] ?? m.tarif_horaire);
                         const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept", tarif_horaire: tarif }) });
                         const d = await r.json().catch(() => ({}));
                         if (r.ok && d.ok) {
