@@ -3464,6 +3464,15 @@ demandes, **adresse et identifiant du client compris**, à tout compte connecté
 La prestation réservée est une **nouvelle** ligne de `missions` : la demande diffusée n'a ni
 prix ni prestataire, elle ne sert qu'à recueillir les propositions. Éprouvé par `e2e/18`.
 
+**Une proposition ne disparaît plus faute de fiche** (étude du 13/10/2026, `e2e/18`). L'écran
+« Demande diffusée » affiche chaque proposition avec la fiche du catalogue chargé à l'ouverture de
+la page — gardé 30 s par le réseau et 3 min par la page. La proposition d'un prestataire absent de
+cette liste (activé depuis, par exemple) était écartée **sans un mot** : le client lisait « 0
+candidat » avec deux propositions en base. L'écran relit alors le catalogue en version fraîche
+(`rechargerPrestataires()`, au plus une fois toutes les 30 s) et journalise ce qui reste absent. Et
+`get_candidatures` ne rend plus le nom complet que du prestataire retenu : les autres sont en
+« Prénom I. », comme au catalogue.
+
 **Cas particulier : la prestation déjà payée.** Une prestation affectée par la plateforme
 (client pro ou particulier chez un tiers, CGPS art. 5.2) repasse `open`, sans prestataire,
 quand plus aucun candidat ne répond (`affecterCandidatSuivant`, `affecter_tiers`). Elle apparaît

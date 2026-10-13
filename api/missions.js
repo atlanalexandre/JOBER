@@ -1540,10 +1540,16 @@ export default async function handler(req, res) {
         } catch (e) { console.error("[missions] notes moyennes illisibles :", e.message); }
       }
 
+      // Le nom complet ne sort qu'au client du prestataire RETENU (candidature
+      // acceptée) ; les autres sont en « Prénom I. », comme dans le catalogue
+      // depuis le 28/09/2026 — le nom complet partait ici à tout client, pour
+      // chaque prestataire qui s'était proposé (étude du 13/10/2026).
       const enriched = candidatures.map(c => ({
         ...c,
         prenom:  nameMap[c.prestataire_id]?.prenom || "",
-        nom:     nameMap[c.prestataire_id]?.nom    || "",
+        nom:     c.status === "accepted"
+          ? (nameMap[c.prestataire_id]?.nom || "")
+          : (nameMap[c.prestataire_id]?.nom ? `${nameMap[c.prestataire_id].nom.trim().charAt(0).toUpperCase()}.` : ""),
         rating:  ratingMap[c.prestataire_id]?.avg  || 0,
         reviews: ratingMap[c.prestataire_id]?.count || 0,
       }));
