@@ -2368,7 +2368,16 @@ navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de
 choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
 `status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
-postal, `avatar_url`, `rib`, `cv`.
+postal, `avatar_url`, `rib`, `cv`, `tel`, `siret`, `societe_nom`, les champs fiscaux DAC7 (`nif`,
+`nif_collecte_at`, `residence_fiscale`) et le consentement (`accepte_communications`, `_at`).
+
+**`created_at` ne l'est plus** (étude du 13/10/2026, migration
+`2026-10-13_secu_profils_date_inscription_non_modifiable.sql`, `e2e/77`). Le droit de colonne était
+resté ouvert : un prestataire réécrivait sa date d'inscription (prouvé en recette). Elle décide de
+l'offre de lancement (tri des 100 premiers, `estEligible()`) et de l'échéance de l'attestation
+URSSAF (`etatRegularisation()`) : antidatée, le quota Premium sans payer ; postdatée, plus jamais de
+suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) ; **production :
+à passer** (voir AUDIT-2026-10.md). Production lue le même jour : aucun profil à la date réécrite.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
