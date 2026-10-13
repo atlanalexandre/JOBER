@@ -2280,7 +2280,7 @@ ${(() => {
                   status: "completed", validation_client: true, validation_prestataire: true,
                   montant_total: totalClient, cashback_credited: true,
                   // Heures plafonnées pour décalage : la facture lit `actual_hours`.
-                  ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
+                  ...(ajustementRetard && !ajustementRetard.unJour ? { actual_hours: ajustementRetard.apres } : {}),
                   // Ce chemin ne programmait AUCUN virement : la prestation était
                   // clôturée, le prestataire recevait un e-mail lui annonçant un
                   // paiement « sous 3 à 5 jours ouvrés », et rien n'était jamais

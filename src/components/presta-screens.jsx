@@ -2696,7 +2696,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               {[
                 ["Prestation",   validatedSummary.metier || validatedSummary.sector || "—"],
                 ["Date",      validatedSummary.date || (validatedSummary.date_debut ? `${validatedSummary.date_debut} → ${validatedSummary.date_fin||""}` : "—")],
-                ["Durée",     validatedSummary.actual_hours != null ? `${validatedSummary.actual_hours}h (réelles)` : validatedSummary.hours ? `${validatedSummary.hours}h` : "—"],
+                ["Durée",     validatedSummary.actual_hours != null ? `${String(Math.round(validatedSummary.actual_hours * 100) / 100).replace(".", ",")} h (réelles)` : validatedSummary.hours ? `${validatedSummary.hours}h` : "—"],
                 ["Tarif",     validatedSummary.tarif_horaire ? `${formatMontant(validatedSummary.tarif_horaire)}/h` : "—"],
                 ["Montant",   validatedSummary.tarif_horaire && (validatedSummary.actual_hours ?? validatedSummary.hours) ? `${formatMontant((validatedSummary.actual_hours ?? validatedSummary.hours) * validatedSummary.tarif_horaire)} HT` : "—"],
                 ["Ville",     validatedSummary.ville || "—"],
