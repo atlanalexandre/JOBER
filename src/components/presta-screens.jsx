@@ -3756,6 +3756,7 @@ export function PrestaTour({ onDone, onOuvrirOnglet }) {
 
 export function PrestaClientsTab() {
   const [clients, setClients] = useState([]);
+  const [erreurClients, setErreurClients] = useState(false);
   const [blocked, setBlocked] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -3769,7 +3770,9 @@ export function PrestaClientsTab() {
       // le client existe bien — l'exclure le faisait disparaître du carnet
       // d'adresses, alors que c'est précisément le client qu'on veut retrouver
       // avant d'en accepter une seconde prestation.
-      const {data:prestations} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total,status").eq("prestataire_id",uid).in("status",["completed","assigned","closed"]).order("date",{ascending:false});
+      const {data:prestations, error} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total,status").eq("prestataire_id",uid).in("status",["completed","assigned","closed"]).order("date",{ascending:false});
+      // Un échec affichait « Aucun client pour le moment » (relecture du 13/10/2026).
+      if(error){ console.error("[clients] prestations illisibles :", error.message); setErreurClients(true); setLoading(false); return; }
       if(!prestations){ setLoading(false); return; }
       const seen = new Map();
       for(const m of prestations){
@@ -3809,7 +3812,11 @@ export function PrestaClientsTab() {
       <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
         👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses prestations.
       </div>
-      {clients.length === 0 ? (
+      {erreurClients ? (
+        <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+          Vos clients n'ont pas pu être chargés. Rechargez la page.
+        </div>
+      ) : clients.length === 0 ? (
         <div style={{ textAlign:"center", padding:"28px 16px", color:C.textSub, fontSize:13 }}>
           <div style={{ fontSize:36, marginBottom:10 }}>👥</div>
           Aucun client pour le moment
@@ -3982,6 +3989,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [sousPrestations,setSousPrestations]=useState(ongletInitial === "terminees" ? "terminees" : "en_cours");
   // Ce que la liste des prestations a lu : le résumé de l'accueil en vit.
   const [resume,setResume]=useState(null);
+  const [erreurTableau,setErreurTableau]=useState(false);
   const [sousProfil,setSousProfil]=useState(ongletInitial === "docs" ? "docs" : "profil");
   // L'IBAN du prestataire. Le bandeau d'alerte plus bas était branché sur un
   // état que PERSONNE ne mettait jamais à vrai : il ne s'est donc jamais
@@ -4166,7 +4174,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         else window.addEventListener("alane:accueil-termine", () => setShowTour(true), { once:true });
       }
       const token = session?.access_token || "";
-      const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
+      const [prof,{data:mData,error:mErr},{data:rData},planJson]=await Promise.all([
         fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({})}).then(async r=>{
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
@@ -4188,6 +4196,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (planJson?.limite_mensuelle != null) setLimiteMensuelle(Number(planJson.limite_mensuelle));
       setPlanLoaded(true);
       const getAmt = montantPrestataire;
+      // L'échec était ignoré : chiffres à 0, historique, litiges et revenus vides,
+      // sans un mot — la même faute que le Planning (relecture du 13/10/2026).
+      if(mErr) console.error("[tableau de bord] prestations illisibles :", mErr.message);
+      setErreurTableau(!!mErr);
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
       const refused=allM.filter(m=>m.status==="refused");
@@ -4593,6 +4605,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       </div>
       )}
       <div style={{ padding:"18px 18px 0" }}>
+        {erreurTableau && vue!=="profil" && vue!=="planning" && (
+          <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+            Vos prestations n'ont pas toutes pu être chargées : les chiffres, l'historique, les litiges et les revenus affichés peuvent être incomplets. Rechargez la page.
+          </div>
+        )}
         {vue==="accueil" && launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} ouverte={launchPhaseActive} />}
         {vue==="prestations" && (
           <SelecteurVue valeur={sousPrestations} onChange={setSousPrestations} options={[{id:"en_cours",l:"En cours"},{id:"terminees",l:"Terminées"},{id:"clients",l:"Clients"}]} />

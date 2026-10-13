@@ -30,3 +30,20 @@ describe("l'écran Planning", () => {
     expect(bloc).toContain("if (error)");
   });
 });
+
+// Même faute ailleurs : une lecture en échec affichait des écrans vides (13/10/2026).
+describe("les lectures en échec se voient", () => {
+  const presta = readFileSync(new URL("../components/presta-screens.jsx", import.meta.url), "utf8");
+  const client = readFileSync(new URL("../components/client-screens.jsx", import.meta.url), "utf8");
+  it("tableau de bord prestataire", () => {
+    expect(presta).toContain("{data:mData,error:mErr}");
+    expect(presta).toContain("setErreurTableau(!!mErr)");
+  });
+  it("onglet Clients du prestataire", () => {
+    expect(presta).toContain("setErreurClients(true)");
+  });
+  it("portefeuille cashback du client", () => {
+    expect(client).toContain("error: errHisto");
+    expect(client).toContain("Votre cashback n'a pas pu être chargé");
+  });
+});
