@@ -56,7 +56,7 @@ src/
                              (226 métiers, 7 secteurs, 210 codes ROME renseignés)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
-api/                         28 fonctions serverless
+api/                         21 fonctions serverless et 45 modules partagés (préfixe _)
 ```
 
 Les fichiers d'écrans sont volumineux (8000 lignes pour l'espace client). C'est un choix
@@ -1165,11 +1165,11 @@ désormais les lignes portant le même endpoint et un autre `user_id` avant d'in
 (migration `2026-08-18_un_appareil_un_compte.sql`). Plusieurs appareils par compte reste normal ;
 c'est l'inverse qui ne l'est pas.
 
-**L'abonnement d'un appareil** (14/10/2026) passe par `activerNotifications()` de
+**L'abonnement d'un appareil** (13/10/2026) passe par `activerNotifications()` de
 `src/lib/push.js`. La demande d'autorisation partait seule à l'ouverture de l'application :
 l'iPhone ne l'accepte qu'après un geste, et l'ignorait. Un iPhone ne s'abonnait que si l'accord
 avait été donné d'un appui ailleurs — le bandeau « Activer les notifications » de l'accueil client,
-que les prestataires n'ont pas (5 appareils Apple abonnés en production le 14/10/2026, dont 4
+que les prestataires n'ont pas (5 appareils Apple abonnés en production le 13/10/2026, dont 4
 clients ; cette page disait « aucun iPhone », c'était faux). Sur iPhone,
 l'ouverture ne fait plus que rafraîchir un abonnement déjà accordé ; l'activation se fait dans
 **Réglages › Notifications**, qui affiche l'état réel (`etatNotifications()` : activées, à
@@ -1180,7 +1180,7 @@ sur `id` et un appareil réabonné heurtait l'unicité, réponse « success » �
 notification locale (« votre prestataire arrive ») passe par `notifierLocalement()` : `new
 Notification()` lève une erreur sur téléphone.
 
-**Seuls les services de notification des navigateurs sont contactés** (14/10/2026) —
+**Seuls les services de notification des navigateurs sont contactés** (13/10/2026) —
 `serviceDeNotificationReconnu()` de `api/_push.js` : Apple (`*.push.apple.com`), Google
 (`fcm.googleapis.com`, `android.googleapis.com`), Mozilla (`*.push.services.mozilla.com`),
 Microsoft (`*.notify.windows.com`), en https sur le port normal. Toute adresse en https était
@@ -1190,10 +1190,10 @@ son choix (constaté en recette le 13/10/2026, où un faux téléphone a servi �
 règle joue à l'abonnement (`push_subscribe` répond 400 « Service de notification non reconnu ») **et
 à l'envoi** (`sendWebPush` rend `service_refuse` sans rien contacter) : un abonnement enregistré
 avant elle n'est plus jamais appelé, sans être supprimé — si un navigateur légitime manquait à la
-liste, l'élargir suffirait à le rétablir. En production le 14/10/2026 : 5 abonnements Apple,
+liste, l'élargir suffirait à le rétablir. En production le 13/10/2026 : 5 abonnements Apple,
 1 Google, tous couverts.
 
-**Notification de test** (Réglages, 14/10/2026) : action `push_test` de `/api/missions`. Elle
+**Notification de test** (Réglages, 13/10/2026) : action `push_test` de `/api/missions`. Elle
 réinscrit d'abord l'appareil (`envoyerNotificationTest()`, sans rien demander), attend **cinq
 secondes** — le temps de quitter l'application, un téléphone n'affichant pas toujours la
 notification de l'application ouverte — puis écrit à tous les appareils du compte appelant, à eux
@@ -1316,7 +1316,7 @@ Deux conséquences pratiques :
 
 ### Les fonctions serveur
 
-Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfixés `_` (compte du 23/09/2026 ; ce paragraphe annonçait 27). Les principaux :
+Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfixés `_` (compte du 13/10/2026 ; ce paragraphe en annonçait 44). Les principaux :
 
 | Fichier | Rôle |
 |---|---|
@@ -4474,9 +4474,12 @@ cela, le client pourrait accepter un remplaçant pour une prestation qui n'exist
 
 ### Paiement
 
-Le client paie via Stripe. Le webhook `stripe-webhook.js` confirme le paiement et fait passer
-la mission en `assigned`. À la validation finale, le prestataire est payé et le cashback client
-est crédité.
+Le client paie via Stripe ; l'application rattache aussitôt le paiement à la prestation
+(`assign_after_payment`, ou `affecter_tiers` chez un tiers), qui passe en `pending_acceptance`
+jusqu'à la réponse du prestataire. Le webhook n'y prend aucune part : `payment_intent.succeeded`
+n'est pas abonné (voir « Le webhook Stripe »). Ce paragraphe disait le contraire jusqu'au
+13/10/2026. À la validation finale, le versement du prestataire est programmé (48 h) et le cashback
+client est crédité.
 
 #### Le versement au prestataire
 
@@ -4807,7 +4810,7 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 
 ## 7. Navigation et URLs
 
-**La barre du bas reste sur les écrans secondaires du prestataire** (14/10/2026, décision
+**La barre du bas reste sur les écrans secondaires du prestataire** (13/10/2026, décision
 d'Alexandre) : Abonnement, Modifier mon profil, Dépôt d'un document, Micro-entreprise, Messagerie,
 Réglages. L'onglet d'origine reste allumé (`ONGLET_PARENT_PRESTA`, `App.jsx`), et la zone qui
 défile réserve la hauteur de la barre (`paddingBottom` de `ResponsiveLayout`).
@@ -4815,10 +4818,10 @@ défile réserve la hauteur de la barre (`paddingBottom` de `ResponsiveLayout`).
 **« Disponible maintenant »** (accueil du prestataire, `user_metadata.dispo_immediat`) : absent
 vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), mais
 `/api/prestataires` rendait `false` pour un compte qui ne l'avait jamais touché : le prestataire
-se croyait disponible et apparaissait indisponible aux clients (corrigé le 14/10/2026). L'écriture
+se croyait disponible et apparaissait indisponible aux clients (corrigé le 13/10/2026). L'écriture
 de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
 
-**Réglages › Notification de test** (14/10/2026) : ligne affichée quand les notifications sont
+**Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
 secondes après l'appui et dit ce que le service de notification a répondu (§4, `push_subscriptions`).
 
@@ -4827,7 +4830,7 @@ marchait pas : l'inversion des couleurs était posée sur `body` et sur `#root`,
 fois — l'écran restait sombre — et le choix n'était pas relu à l'ouverture. Elle vit sur `<html>`
 seul, le seul élément où un filtre ne décroche pas les éléments fixes.
 
-**Téléphone : la barre du bas, le zoom** (14/10/2026, signalé par Alexandre). La mise en page
+**Téléphone : la barre du bas, le zoom** (13/10/2026, signalé par Alexandre). La mise en page
 mobile (barre du bas) ou ordinateur (menu latéral) se décide par `estMobile()`
 (`src/hooks/useResponsive.js`), une requête média sur la largeur de mise en page — et non plus
 `innerWidth`, qui suit le zoom sur iPhone : un grand téléphone à l'horizontale ou une page
@@ -5125,6 +5128,57 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 | `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
 | `26` | accusé de réception de l'inscription : sans service d'envoi (recette), rien n'est marqué et l'envoi reste à faire ; un compte déjà validé n'est jamais pris ; les inscrits d'avant le 29/09 restent marqués. Le succès de l'envoi est couvert par `src/tests/api/accuse-inscription.test.js` |
+| `27` | Seule la photo validée par ALANE est montrée aux clients |
+| `28` | Remboursements d'une prestation réglée en partie en cashback |
+| `29` | Démarrage décalé : les heures non faites reviennent au client |
+| `30` | Back-office : rembourser, annuler, valider de force |
+| `31` | Un versement « échoué » se relance depuis le back-office (30/09/2026) |
+| `32` | Réessayer un paiement après avoir coché « mémoriser ma carte » (30/09/2026) |
+| `33` | Pas de facture pour une prestation qui n'a pas eu lieu |
+| `34` | Litige ouvert avant la validation, tranché « verser au prestataire » (30/09/2026) |
+| `35` | Suppression de compte |
+| `36` | Ouvrir l'accès aux prestations suppose les pièces obligatoires VALIDÉES |
+| `37` | Une pièce d'identité purgée (CGPS 14.4), puis redéposée : la nouvelle pièce doit à son tour être purgée |
+| `38` | Prestation jamais pointée |
+| `39` | Suspension d'un prestataire : ses prestations à venir |
+| `40` | Contestation bancaire reçue AVANT la clôture |
+| `41` | Courriel de confirmation de réservation |
+| `42` | Retrouver un compte par son adresse |
+| `43` | Prolongation d'une prestation : quel paiement la règle |
+| `44` | Interrompre une prestation « en cours » |
+| `45` | « Clôturer » une demande ouverte déjà payée |
+| `46` | Annulation par le prestataire |
+| `47` | Exécution d'un remplacement |
+| `48` | Prolongation : refus tardif et prestation close |
+| `49` | Une prestation sur plusieurs jours finit le DERNIER jour |
+| `50` | L'ancien désistement `cancel_prestataire` est fermé |
+| `51` | La déclaration d'intervention chez un tiers ne se réécrit pas |
+| `52` | Mot de passe oublié : une demande au plus toutes les dix minutes |
+| `53` | Alerte « nouvelle inscription » envoyée à la direction |
+| `54` | Accès direct à la table `missions` depuis le navigateur |
+| `55` | La signature du contrat par le client est enregistrée |
+| `56` | `/api/upload-document` (fonction en sursis) : jeton vérifié, type de pièce borné |
+| `57` | Prestataire : un échec du chargement de ses prestations se voit |
+| `58` | Onglet Support du back-office |
+| `59` | Première connexion : une seule fenêtre à la fois |
+| `60` | Une prestation commencée ne s'annule plus avec remboursement intégral |
+| `61` | Suivi GPS du prestataire quand le navigateur refuse d'enregistrer l'accord (navigation privée) — relecture du 03/10/2026 |
+| `62` | Le passage mensuel ne déclare plus « remboursée » une demande qu'il n'a pas remboursée |
+| `63` | Une réservation déjà payée n'accepte pas un second paiement |
+| `64` | La validation automatique ne clôture pas une prestation sans paiement |
+| `65` | Réservation payée mais jamais affectée : remboursée, pas annulée en silence |
+| `66` | Réservation chez un tiers restée sans réponse : la tâche planifiée passe au candidat suivant au lieu de rembourser |
+| `67` | Réaffectation d'une prestation au back-office |
+| `68` | Toutes les factures du mois en un seul document (04/10/2026) |
+| `69` | Double clic sur « accepter » une candidature : jamais d'affectation sans paiement (relecture du 05/10/2026). Les appels simultanés portent la même clé d'idempotence ; Stripe répond aux suivants « requête en cours » sans paiement, |
+| `70` | Heures supplémentaires sur plusieurs jours, et modification de la commande (06/10/2026) |
+| `71` | Réservation sur plusieurs jours par l'écran |
+| `72` | Un prestataire ne peut pas être réservé deux fois au même moment — journée par journée (06/10/2026) |
+| `73` | Notifications : seuls les services des navigateurs, et un bouton de test (14/10/2026) |
+| `74` | Deux paiements pour une réservation : le second n'est pas créé, ou il est remboursé à l'affectation |
+| `75` | Le tarif d'une prolongation déjà payée ne se réécrit pas |
+| `76` | Somme due par un prestataire : notifiée sans promettre de retenue |
+| `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
