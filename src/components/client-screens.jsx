@@ -8613,14 +8613,10 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         setHistory(completedMissions.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const montant = m.montant_total || ((m.hours||0) * (m.tarif_horaire||0));
-          const rate = getCashbackTier(profile?.commandes_mois || 0).rate;
-          const cashback = Math.round(montant * rate * 100) / 100;
           return {
             prestation: m.metier || sector?.label || "Prestation",
             date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
             amount: montant,
-            cashback,
-            status: "disponible",
           };
         }));
       }
@@ -8739,28 +8735,31 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           </div>
         )}
         {history.map((h,i)=>(
-          <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12, opacity:h.status==="expiré"?0.5:1 }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:h.status==="disponible"?`${C.success}15`:h.status==="utilisé"?`${C.violet}15`:`${C.textMuted}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
-              {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
+          <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:10, background:`${C.success}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
+              💰
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
               <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {formatMontant(h.amount)}</div>
             </div>
+            {/* Le montant affiché ici était RECALCULÉ — prix payé, frais compris, au
+                taux du palier d'aujourd'hui — et marqué « disponible » même une fois
+                dépensé. Le serveur crédite la part du prestataire au taux du palier
+                du jour de la validation, et ne garde pas ce montant par prestation :
+                plutôt qu'un chiffre faux, on dit ce qui est sûr (13/10/2026). */}
             <div style={{ textAlign:"right", flexShrink:0 }}>
-              <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
-                +{formatMontant(h.cashback)}
-              </div>
-              <Badge color={h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted} small>
-                {h.status}
-              </Badge>
+              <Badge color={C.success} small>cashback crédité</Badge>
             </div>
           </div>
         ))}
 
         {/* Info expiration */}
         <div style={{ background:"#162547", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque prestation. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
+          {/* Trois affirmations fausses jusqu'au 13/10/2026 : « crédité 24 h après
+              validation », « expire 6 mois après », « minimum 10 € ». Le cashback est
+              crédité à la validation, n'expire pas et n'a pas de minimum (CGPS 5B.1). */}
+          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>à la validation</strong> de chaque prestation, au taux de votre palier du mois. Au paiement d'une réservation, vous choisissez de l'utiliser ou non : il est alors déduit du montant, en laissant au moins 1 € à régler par carte. Il vous est rendu si la prestation qu'il a servi à payer est annulée avant d'avoir commencé.
         </div>
       </div>
     </div>

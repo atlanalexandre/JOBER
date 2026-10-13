@@ -78,7 +78,12 @@ choix du client** depuis le 28/09/2026 : une case « Utiliser mon cashback », d
 défaut, au paiement. Cochée, tout le solde est déduit en laissant au moins 1 € à la carte ;
 décochée, il continue de s'accumuler. Ce paragraphe
 annonçait encore le contraire jusqu'au 28/09/2026, et plusieurs écrans parlaient d'un « wallet »
-fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour.
+fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour. L'écran
+« Cashback » (`/cashback`) le répétait encore jusqu'au 13/10/2026, avec un crédit « 24 h après
+validation » et une expiration « à 6 mois » qui n'existent pas, et un historique dont chaque ligne
+était recalculée (prix frais compris, taux du palier du jour) et marquée « disponible » même
+dépensée : il dit désormais ce qui est sûr — cashback crédité à la validation, sans montant par
+ligne, le serveur ne le conservant pas par prestation.
 
 ### Prestataire
 Dépose ses documents, attend la validation par l'administration, reçoit des propositions,
