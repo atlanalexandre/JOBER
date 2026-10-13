@@ -3,6 +3,18 @@ import { sendWebPush, notifier } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 import { appUrl } from "./_url.js";
 import { tirerAuHasard } from "./_lots.js";
+
+/**
+ * Une relance « réservation non finalisée » n'a pas lieu d'être si la prestation
+ * du brouillon est payée, ou n'est plus une réservation en cours (annulée,
+ * close…). Un brouillon sans prestation reste relancé, comme avant.
+ */
+export function relanceSansObjet(draft, prestations) {
+  if (!draft?.mission_id) return false;
+  const m = prestations.get(draft.mission_id);
+  if (!m) return true; // prestation disparue : plus rien à finaliser
+  return !!m.stripe_payment_intent || !["open", "pending_acceptance"].includes(m.status);
+}
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
 // Pour chaque brouillon > 30 min non encore notifié :
@@ -262,8 +274,37 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, checked: 0, notified: 0 });
   }
 
+  // La réservation a-t-elle abouti depuis ? Le brouillon n'est effacé que par le
+  // navigateur, juste après le paiement (`clearDraft`, sans garantie) : un client
+  // qui avait PAYÉ recevait « vous n'avez pas finalisé votre réservation » (83
+  // relances de réservations payées sur la recette, étude du 13/10/2026). On
+  // relit les prestations des brouillons, par lots de 100.
+  const etatDesPrestations = new Map();
+  const ids = [...new Set(drafts.map(d => d.mission_id).filter(Boolean))];
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=in.(${ids.slice(i, i + 100).join(",")})&select=id,status,stripe_payment_intent`, { headers: hdrs });
+      const md = await mr.json().catch(() => null);
+      if (!mr.ok || !Array.isArray(md)) throw new Error(`lecture ${mr.status}`);
+      for (const m of md) etatDesPrestations.set(m.id, m);
+    } catch (e) {
+      // Sans savoir, on ne relance pas : mieux vaut une relance de moins qu'un
+      // « vous n'avez pas finalisé » à un client qui a payé.
+      console.error("[cron-abandon] prestations des brouillons illisibles — relances différées :", e.message);
+      return res.status(200).json({ ok: true, checked: drafts.length, notified: 0, error: "prestations illisibles" });
+    }
+  }
+
   let notified = 0;
   for (const draft of drafts) {
+    if (relanceSansObjet(draft, etatDesPrestations)) {
+      const fin = await fetch(`${SUPABASE_URL}/rest/v1/booking_drafts?id=eq.${draft.id}`, {
+        method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
+        body: JSON.stringify({ notified_at: new Date().toISOString() }),
+      }).catch(e => ({ ok: false, status: e.message }));
+      if (!fin.ok) console.error(`[cron-abandon] brouillon ${draft.id} (réservation aboutie) non marqué : ${fin.status}`);
+      continue;
+    }
     const presta = draft.prestataire_name ? esc(draft.prestataire_name) : null;
     const metier = draft.metier ? esc(draft.metier) : null;
 
@@ -275,8 +316,9 @@ export default async function handler(req, res) {
       );
       const subs = psRes.ok ? await psRes.json().catch(() => []) : [];
       if (Array.isArray(subs) && subs.length > 0) {
-        const pushBody = presta
-          ? `${presta} est toujours disponible — finalisez votre prestation en quelques secondes.`
+        // Texte brut : une notification n'est pas du HTML (« &amp; » s'y lisait tel quel).
+        const pushBody = draft.prestataire_name
+          ? `${String(draft.prestataire_name).slice(0, 80)} est toujours disponible — finalisez votre prestation en quelques secondes.`
           : "Votre demande n'a pas été finalisée — reprenez où vous en étiez.";
         await Promise.all(subs.map(s => sendWebPush(s, {
           title: "Vous n'avez pas finalisé votre réservation 🔔",

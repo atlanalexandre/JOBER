@@ -976,7 +976,10 @@ le solde du client aurait été débité deux fois.
 
 **`booking_drafts`** — réservations abandonnées en cours de tunnel. Écrites par
 `booking-draft.js` à l'entrée du tunnel et effacées à la fin ; `cron-abandon.js` les relit
-pour envoyer les relances.
+pour envoyer les relances. L'effacement dépend du navigateur (`clearDraft`, sans garantie) :
+depuis le 13/10/2026, `cron-abandon` relit la prestation du brouillon et ne relance pas une
+réservation **payée**, annulée ou disparue (`relanceSansObjet()`) — 83 clients de la recette
+avaient reçu « vous n'avez pas finalisé votre réservation » après avoir payé.
 
 **`contracts`** — contrats de prestation générés et signés (`client-screens.jsx:4756`).
 
