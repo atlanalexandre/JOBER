@@ -2642,6 +2642,18 @@ validation automatique, « Valider de force », et — depuis la relecture du 01
 règlement d'un litige ouvert avant la validation par « verser au prestataire »
 (`executerResolution`), qui payait les heures réduites sans rien rendre (`e2e/34`).
 
+**La durée réservée ne bouge pas** (étude du 13/10/2026, `e2e/29`). `respond_delay` écrivait la
+durée retenue dans `missions.hours`, une colonne **entière** : 7,67 h après vingt minutes de
+retard, et la base refusait toute la réponse (« n'a pas pu être enregistrée ») — un refus
+n'aboutissait que pour un retard d'une heure pile, le seul cas éprouvé. `hours` garde la durée
+réservée ; la durée retenue va dans `actual_hours` (prestation d'un jour), `montant_total` reste le
+prix payé (la clôture le ramène à ce qui est dû). **Sur plusieurs jours, le retard ne concerne que
+la journée où il a été mesuré** — le démarrage n'est pointé qu'une fois : il était retiré de la
+durée par jour, donc remboursé au client et retiré au prestataire sur chaque journée de la série.
+Un refus l'inscrit dans `heures_perdues` ; un retard non arbitré est déduit une fois par
+`montantsDeCloture()` (`ajustementRetard.unJour`, rien n'est réécrit) ; `valeurHeuresRetirees()`
+compte une journée. Les durées s'écrivent « 7 h 40 » (`dureeTexte()`, `api/_temps.js`).
+
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
 dans `presta-screens.jsx` — qui s'ancraient auparavant sur `started_at` seul.
@@ -4592,7 +4604,10 @@ le virement avait échoué avant le litige restait `failed`, le backoffice annon
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
 
 **La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
-donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`.
+donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`, **moins les heures non
+effectuées** (`heures_perdues` d'une journée écourtée, retard d'une journée d'une série), en ligne
+distincte. Elle les ignorait jusqu'au 13/10/2026 : après une journée écourtée, elle annonçait plus
+que le versement (aucune facture de production concernée, vérifié en lecture seule).
 
 Les frais de service **n'entrent pas dans ce total** et ne doivent jamais y entrer : le
 prestataire ne les encaisse pas, et les porter sur sa facture gonflerait son chiffre

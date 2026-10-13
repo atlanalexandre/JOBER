@@ -146,7 +146,7 @@ export async function executerResolution({
     // réduites et la différence restait chez ALANE (relecture du 01/10/2026).
     const premiereCloture = mission.payout_amount == null;
     if (premiereCloture) complement.payout_amount = partPrestataire;
-    if (premiereCloture && ajustementRetard) complement.actual_hours = ajustementRetard.apres;
+    if (premiereCloture && ajustementRetard && !ajustementRetard.unJour) complement.actual_hours = ajustementRetard.apres;
     if (!mission.payout_due_at) complement.payout_due_at = new Date().toISOString();
     if (mission.payout_amount == null && !(partPrestataire > 0)) {
       console.error(`[resolution] part du prestataire nulle ou incalculable sur ${mission.id} — versement à fixer à la main.`);

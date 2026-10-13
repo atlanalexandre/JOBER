@@ -10,8 +10,10 @@ describe("valeurHeuresRetirees()", () => {
   it("une heure à 13 € sur une journée : 13 €", () => {
     expect(valeurHeuresRetirees({ tarif_horaire: 13 }, 8, 7)).toBe(13);
   });
-  it("sur trois jours, la réduction vaut pour chaque jour", () => {
-    expect(valeurHeuresRetirees({ tarif_horaire: 13, date_debut: "2026-10-01", date_fin: "2026-10-03" }, 8, 7)).toBe(39);
+  // Étude du 13/10/2026 : le retard se mesure au démarrage, pointé une seule
+  // fois. Il ne concerne qu'une journée — il était rendu sur chacune.
+  it("sur trois jours, la réduction ne vaut que pour la journée du retard", () => {
+    expect(valeurHeuresRetirees({ tarif_horaire: 13, date_debut: "2026-10-01", date_fin: "2026-10-03" }, 8, 7)).toBe(13);
   });
   it("la prolongation acceptée n'est pas touchée : la base absorbe la réduction", () => {
     // 8 h dont 2 h de prolongation à 17 € ; 1 h retirée → une heure de BASE (13 €).

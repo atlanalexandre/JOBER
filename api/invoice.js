@@ -4,7 +4,8 @@
 //       Valide 30 min — jamais le JWT Supabase en clair dans l'URL
 
 import crypto from "crypto";
-import { partHoraire } from "./_cloture.js";
+import { partHoraire, montantsDeCloture } from "./_cloture.js";
+import { dureeTexte } from "./_temps.js";
 
 function escHtml(str) {
   return String(str || "")
@@ -416,7 +417,14 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   // (06/10/2026) : un montant cumulé, à part de la durée par jour.
   const ajoutJournees = Math.max(0, Number(mission.montant_heures_ajoutees) || 0);
   const heuresAjoutees = Math.max(0, Number(mission.heures_ajoutees_total) || 0);
-  const htCalc = Math.round((partHoraire(mission, hours, nbJours) + ajoutJournees) * 100) / 100;
+  // Ce que la clôture retire de la part horaire : heures convenues comme non
+  // faites (journée écourtée d'une série) et retard non arbitré d'UNE journée
+  // d'une série. La facture les ignorait : elle annonçait les journées entières
+  // quand le prestataire n'était payé que de ce qu'il avait fait — or son
+  // montant doit être celui qui lui est versé (étude du 13/10/2026).
+  const { deductions } = montantsDeCloture(mission);
+  const deduction = Math.round(((deductions?.valeurPerdue || 0) + (deductions?.valeurRetardUnJour || 0)) * 100) / 100;
+  const htCalc = Math.max(0, Math.round((partHoraire(mission, hours, nbJours) + ajoutJournees - deduction) * 100) / 100);
   // Repli sur montant_total seulement s'il n'y a rien à calculer. Il inclut les frais
   // de service d'ALANE, qui ne relèvent pas de la facture du prestataire : c'est un
   // pis-aller, signalé pour qu'il ne passe pas inaperçu.
@@ -617,12 +625,13 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   const lineItem = htCalc <= 0
     ? metier
     : heuresSupp > 0
-      ? `${metier} — ${hours - heuresSupp}h × ${eurTarif(tarifHoraire)} €/h`
-        + ` + ${heuresSupp}h supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
-      : `${metier} — ${hours}h × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
-  const ligneAjout = ajoutJournees > 0
+      ? `${metier} — ${dureeTexte(hours - heuresSupp)} × ${eurTarif(tarifHoraire)} €/h`
+        + ` + ${dureeTexte(heuresSupp)} supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
+      : `${metier} — ${dureeTexte(hours)} × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
+  const ligneAjout = (ajoutJournees > 0
     ? ` + ${heuresAjoutees}h ajoutées à certaines journées (${eurTarif(ajoutJournees)} €)`
-    : "";
+    : "")
+    + (deduction > 0 ? ` − heures non effectuées (${eurTarif(deduction)} €)` : "");
 
   // Build HTML
   const html = `<!DOCTYPE html>
@@ -913,7 +922,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
           <div class="line-desc-main">${escHtml(lineItem + ligneAjout)}</div>
           ${secteur ? `<div class="line-desc-detail">Secteur : ${escHtml(secteur)}</div>` : ""}
           ${missionDate ? `<div class="line-desc-detail">Date : ${escHtml(missionDate)}${heureDebut ? " à " + escHtml(heureDebut) : ""}</div>` : ""}
-          ${hours > 0 ? `<div class="line-desc-detail">Durée : ${hours}h</div>` : ""}
+          ${hours > 0 ? `<div class="line-desc-detail">Durée : ${escHtml(dureeTexte(hours))}</div>` : ""}
           ${ville ? `<div class="line-desc-detail">Ville : ${escHtml(ville)}</div>` : ""}
           ${adresse ? `<div class="line-desc-detail">Adresse : ${escHtml(adresse)}</div>` : ""}
         </div>

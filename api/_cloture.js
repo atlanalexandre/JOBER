@@ -67,7 +67,8 @@ export function partHoraire(m, heures, jours) {
  * @returns {{
  *   heuresEffectives:number, jours:number, partPrestataire:number,
  *   fraisService:number, totalClient:number,
- *   ajustementRetard:{avant:number, apres:number, retard:number}|null
+ *   ajustementRetard:{avant:number, apres:number, retard:number, unJour?:boolean}|null,
+ *   deductions:{heuresPerdues:number, valeurPerdue:number, valeurRetardUnJour:number}
  * }}
  */
 export function montantsDeCloture(m) {
@@ -78,17 +79,31 @@ export function montantsDeCloture(m) {
 
   // Décalage d'horaire jamais arbitré par le client : la prestation est facturée
   // jusqu'à l'heure de fin initialement prévue, pas au-delà. Un refus explicite
-  // (`rejected`) a déjà ajusté `hours` et `actual_hours` en amont.
+  // (`rejected`) a déjà ajusté `actual_hours` (un jour) ou `heures_perdues`
+  // (plusieurs jours) en amont — `hours`, la durée réservée, ne bouge pas.
   //
   // L'ajustement est renvoyé plutôt qu'appliqué en silence : une réduction que
   // l'intéressé découvre sans explication ni recours n'est plus un ajustement de
   // prix, c'est une sanction.
+  //
+  // Sur plusieurs jours, le retard ne touche que LA journée où il a été mesuré
+  // (le démarrage n'est pointé qu'une fois) : il se déduit une fois, en montant,
+  // et non de la durée par jour — qui l'aurait retiré à chaque journée (étude du
+  // 13/10/2026 : une heure de retard le lundi coûtait cinq heures sur cinq jours).
+  // Rien n'est alors réécrit en base par les appelants (`unJour`) : le calcul
+  // reste le même à chaque relecture tant que le décalage n'est pas arbitré.
+  let valeurRetardUnJour = 0;
   if (m?.delay_status === "pending") {
     const retardH = (Number(m.arrival_delay_minutes) || 0) / 60;
-    const plafonnees = Math.max(0, Math.round((Number(m.hours || 0) - retardH) * 100) / 100);
+    const plafonnees = Math.max(0, Math.round((Number(m.hours || 0) - retardH) * 10000) / 10000);
     if (plafonnees < heuresEffectives) {
       ajustementRetard = { avant: heuresEffectives, apres: plafonnees, retard: Number(m.arrival_delay_minutes) || 0 };
-      heuresEffectives = plafonnees;
+      if (jours > 1) {
+        ajustementRetard.unJour = true;
+        valeurRetardUnJour = Math.round((partHoraire(m, heuresEffectives, 1) - partHoraire(m, plafonnees, 1)) * 100) / 100;
+      } else {
+        heuresEffectives = plafonnees;
+      }
     }
   }
 
@@ -112,7 +127,7 @@ export function montantsDeCloture(m) {
 
   const partPrestataire = Math.max(
     0,
-    Math.round((partHoraire(m, heuresEffectives, jours) + ajoutJournees - valeurPerdue) * 100) / 100
+    Math.round((partHoraire(m, heuresEffectives, jours) + ajoutJournees - valeurPerdue - valeurRetardUnJour) * 100) / 100
   );
 
   // Frais de service réellement encaissés : ce qui a été payé, moins la part
@@ -128,5 +143,7 @@ export function montantsDeCloture(m) {
 
   const totalClient = Math.round((partPrestataire + fraisService) * 100) / 100;
 
-  return { heuresEffectives, jours, partPrestataire, fraisService, totalClient, ajustementRetard };
+  // Ce qui est retiré de la part horaire, en montant : la facture le montre.
+  const deductions = { heuresPerdues, valeurPerdue, valeurRetardUnJour };
+  return { heuresEffectives, jours, partPrestataire, fraisService, totalClient, ajustementRetard, deductions };
 }

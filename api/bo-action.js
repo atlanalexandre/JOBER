@@ -2849,7 +2849,7 @@ export default async function handler(req, res) {
           validation_prestataire: true, validation_client: true,
           // Heures plafonnées pour décalage : la facture lit `actual_hours`
           // (comme la validation par le client et le cron).
-          ...(ajustementRetard ? { actual_hours: ajustementRetard.apres } : {}),
+          ...(ajustementRetard && !ajustementRetard.unJour ? { actual_hours: ajustementRetard.apres } : {}),
           // Ce chemin ne programmait aucun virement : la prestation était clôturée,
           // le prestataire recevait « votre paiement est en cours », et rien n'était
           // jamais émis. Il suit désormais la même règle que les autres — versement
