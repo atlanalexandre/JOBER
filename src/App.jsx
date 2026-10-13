@@ -2114,7 +2114,10 @@ export default function App() {
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setPrestaOnglet("docs"); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
-      {screen==="calendar"          && <CalendarScreen />}
+      {/* Côté prestataire, le planning s'affiche DANS le tableau de bord (plus
+          bas) : la liste des prestations y reste montée, et le pointage
+          automatique continue de tourner (13/10/2026). */}
+      {screen==="calendar" && role!=="prestataire" && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
       {/* Écran distinct du précédent parce qu'il a sa PROPRE adresse : les
           mentions légales doivent être atteignables sans compte (LCEN art.
@@ -2236,9 +2239,9 @@ export default function App() {
         </div>
       )}
 
-      {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_revenus"||screen==="p_dashboard") && (
+      {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="calendar"||screen==="p_revenus"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} ongletInitial={prestaOnglet} onNavigate={(to,data)=>{
+          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} ongletInitial={prestaOnglet} planning={<CalendarScreen />} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
             else if(to==="legal") navigate("legal",data);
             else navigate(to,data);
