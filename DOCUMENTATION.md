@@ -2618,7 +2618,7 @@ Deux boutons « Signaler un problème » existent, à deux moments différents. 
 
 | Où | Ce qu'il fait |
 |---|---|
-| Écran de validation (`ValidationScreen`) | Appelle l'action `dispute`. **Corrigé le 12/08** : il se contentait auparavant de créer un ticket de support |
+| Écran de validation (`ValidationScreen`) | Appelle l'action `dispute`. **Corrigé le 12/08** : il se contentait auparavant de créer un ticket de support. **Réécrit le 13/10/2026** : écran du client seul — il validait aussi pour le prestataire, sur le téléphone du client ; la note était écrite dans `missions` depuis le navigateur (refusé par la RLS, donc perdue) ; et il annonçait un virement déjà fait, même quand le serveur refusait. Il valide par `complete` (si la prestation est encore `assigned`) puis dépose l'avis par `submit_rating` ; le suivi ne l'ouvre qu'une fois la prestation terminée |
 | Historique des prestations (`MissionHistoryScreen`) | Appelle l'action `dispute` — correct depuis toujours |
 | Carte d'une prestation terminée (bouton « Signaler un problème ») | Appelle l'action `dispute` **depuis le 21/08/2026** — elle appelait auparavant `raise_dispute` |
 

@@ -4287,189 +4287,166 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   );
 }
 
-export function ValidationScreen({ provider, role, missionId, onNavigate }) {
+export function ValidationScreen({ provider, missionId, onNavigate }) {
+  // ÉCRAN DU CLIENT SEUL (13/10/2026).
+  //
+  // Il présentait côte à côte la validation du client ET celle du prestataire,
+  // toutes deux sur le téléphone du client ; un curseur « heures réelles » qui
+  // n'était envoyé nulle part ; une note et un commentaire écrits directement
+  // dans `missions` depuis le navigateur — refusés par la base, donc perdus sans
+  // un mot ; et, au bout, l'annonce d'un paiement déjà versé au prestataire —
+  // affichée même quand le serveur refusait la validation, et fausse de toute façon : le
+  // versement part à la fin du délai de contestation de 48 h (CGPS art. 17.1).
+  //
+  // Désormais : le prestataire confirme depuis son propre espace ; ici, le
+  // client note, puis valide par /api/missions « complete », qui calcule les
+  // heures et l'argent. L'avis passe par « submit_rating », une fois la
+  // prestation terminée. Rien n'est annoncé que le serveur n'a pas confirmé.
   const p = provider;
-  if (!p) return null;
-  const [clientValidated,setClientValidated]=useState(false);
-  const [prestaValidated,setPrestaValidated]=useState(false);
+  const [mission,setMission]=useState(null);
+  const [lectureKo,setLectureKo]=useState(false);
   const [clientRating,setClientRating]=useState(0);
-  const [prestaRating,setPrestaRating]=useState(0);
   const [clientComment,setClientComment]=useState("");
-  const [prestaComment,setPrestaComment]=useState("");
-  const [hoursActual,setHoursActual]=useState(8);
-  const [missionHours,setMissionHours]=useState(12); // plafond chargé depuis DB
+  const [validating,setValidating]=useState(false);
+  const [resultat,setResultat]=useState(null); // { avisEnregistre, erreurAvis }
   const [dispute,setDispute]=useState(false);
-
-  useEffect(()=>{
-    if(!missionId) return;
-    supabase.from("missions").select("hours").eq("id",missionId).single().then(({data})=>{
-      if(data?.hours) { setMissionHours(Number(data.hours)); setHoursActual(Number(data.hours)); }
-    });
-  },[missionId]);
   const [disputeMsg,setDisputeMsg]=useState("");
   const [disputeSending,setDisputeSending]=useState(false);
   const [disputeDone,setDisputeDone]=useState(false);
-  const [paid,setPaid]=useState(false);
-
-  const bothValidated = clientValidated && prestaValidated;
-  const totalClientPrice = p.rateNum * hoursActual;
-  const totalNetPresta   = p.tarifNet * hoursActual;
-
-  const persistValidation = async (side, rating, comment) => {
-    if (!missionId) return;
-    const patch = side === "client"
-      ? { validation_client: true, client_rating: rating, client_comment: comment }
-      : { validation_prestataire: true, presta_rating: rating, presta_comment: comment };
-    await supabase.from("missions").update(patch).eq("id", missionId);
-  };
 
   useEffect(()=>{
-    if(!bothValidated || paid) return;
-    let mounted = true;
-    const finalize = async () => {
-      if (missionId) {
-        // Clôture entièrement déléguée au serveur (S-06). Le front écrivait ici
-        // lui-même le statut de la mission ET le solde de cashback : les taux
-        // venaient de plans.js au lieu de platform_settings, la lecture-écriture
-        // du solde n'était pas atomique, et surtout cela imposait que la RLS
-        // autorise un client à modifier son propre cashback_balance.
-        // /api/missions action "complete" fait tout correctement — crédit atomique
-        // par RPC, garde anti-double-crédit, et les deux notifications.
-        const { data:sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        if (token) {
-          try {
-            const r = await fetch("/api/missions", {
-              method:"POST",
-              headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
-              body: JSON.stringify({ action:"complete", mission_id: missionId }),
-            });
-            if (!r.ok) {
-              const err = await r.json().catch(()=>({}));
-              console.error("[validation] clôture de prestation refusée :", r.status, err?.error || "");
-            }
-          } catch (err) {
-            console.error("[validation] clôture de prestation injoignable :", err.message);
-          }
-        } else {
-          console.error("[validation] pas de session — clôture de prestation impossible");
-        }
-      }
-      if (mounted) setPaid(true);
-    };
-    const t = setTimeout(finalize, 1500);
-    return ()=>{ mounted=false; clearTimeout(t); };
-  },[bothValidated, paid]);
+    if(!missionId) return;
+    supabase.from("missions").select("id,status,validation_prestataire,started_at,metier,date,heure_debut").eq("id",missionId).single()
+      .then(({ data, error })=>{
+        if(error){ console.error("[validation] prestation illisible :", error.message); setLectureKo(true); return; }
+        setMission(data);
+      });
+  },[missionId]);
 
-  if(paid) return (
+  if (!p) return null;
+
+  const appelApi = async (corps) => {
+    const { data:sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    if (!token) throw new Error("Votre session a expiré — reconnectez-vous.");
+    const r = await fetch("/api/missions", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+      body: JSON.stringify(corps),
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || j.success === false) throw new Error(j.error || `Erreur ${r.status}`);
+    return j;
+  };
+
+  const valider = async () => {
+    if (!missionId || clientRating === 0) return;
+    setValidating(true);
+    // Le suivi n'ouvre cet écran qu'une fois la prestation terminée : il ne
+    // reste alors que l'avis à déposer. Sinon, on valide d'abord.
+    const aValider = mission?.status === "assigned";
+    if (aValider) {
+      try {
+        await appelApi({ action:"complete", mission_id: missionId });
+      } catch (e) {
+        console.error("[validation] clôture refusée :", e.message);
+        showToast(e.message || "La validation n'a pas pu être enregistrée. Réessayez.");
+        setValidating(false);
+        return;
+      }
+    }
+    // La prestation est validée. L'avis se dépose ensuite : un échec ici ne
+    // remet pas la validation en cause, mais il se dit.
+    let avisEnregistre = false, erreurAvis = null;
+    try {
+      await appelApi({ action:"submit_rating", mission_id: missionId, rating: clientRating, comment: clientComment.trim() || null });
+      avisEnregistre = true;
+    } catch (e) {
+      console.error("[validation] avis non enregistré :", e.message);
+      erreurAvis = e.message;
+    }
+    if (!aValider && !avisEnregistre) {
+      // Rien d'autre n'a été fait : l'échec de l'avis se dit sur place.
+      showToast(erreurAvis || "Votre avis n'a pas pu être enregistré. Réessayez.");
+      setValidating(false);
+      return;
+    }
+    setResultat({ avisEnregistre, erreurAvis, valide: aValider });
+    setValidating(false);
+  };
+
+  if (resultat) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1e8449)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
-      <div style={{ fontSize:80, marginBottom:20 }}>💶</div>
-      <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
-      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{formatMontant(totalNetPresta)}</strong> ont été virés sur le compte de {p.name}.</p>
-      <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
-        {["✅ Prestation validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
-          <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
-        ))}
-      </div>
+      <div style={{ fontSize:72, marginBottom:20 }}>✅</div>
+      <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>{resultat.valide ? "Prestation validée" : "Merci pour votre avis"}</h2>
+      {resultat.valide && (
+        <p style={{ color:"rgba(255,255,255,0.85)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 16px" }}>
+          Vous disposez encore de 48 heures pour signaler un problème depuis l'onglet <strong>Prestations</strong>. Le versement à {p.name} part à l'issue de ce délai.
+        </p>
+      )}
+      <p style={{ color:"rgba(255,255,255,0.85)", fontSize:13, lineHeight:1.6, maxWidth:300, margin:"0 auto 24px" }}>
+        {resultat.avisEnregistre
+          ? "⭐ Votre avis est enregistré."
+          : `⚠️ Votre avis n'a pas pu être enregistré${resultat.erreurAvis ? ` (${resultat.erreurAvis})` : ""}. Vous pourrez le déposer depuis l'onglet Prestations.`}
+      </p>
       <Btn full variant="secondary" onClick={()=>onNavigate("home")} style={{ color:C.success }}>Retour à l'accueil</Btn>
-      <button onClick={()=>onNavigate("rating",p)} style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:12, padding:"11px 24px", color:"rgba(255,255,255,0.9)", cursor:"pointer", marginTop:10, fontSize:13, fontFamily:"inherit", width:"100%", fontWeight:600 }}>⭐ Noter {p.name}</button>
     </div>
   );
 
+  const statut = mission?.status;
+  const terminee = statut === "completed" || statut === "closed";
+  // Annulée, refusée, en litige : ni validation ni avis ici.
+  const horsValidation = !!statut && statut !== "assigned" && !terminee;
+  // Même règle que le serveur : sans confirmation du prestataire, seule une
+  // prestation jamais pointée peut être validée par le client. Le serveur
+  // tranche ; l'écran prévient simplement.
+  const attentePresta = statut === "assigned" && !mission?.validation_prestataire && !!mission?.started_at;
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <StepHeader title="Validation de prestation" subtitle="Les deux parties doivent valider pour déclencher le paiement" onBack={()=>onNavigate("home")} />
+      <StepHeader title="Validation de prestation" subtitle="Confirmez que la prestation s'est bien déroulée" onBack={()=>onNavigate("home")} />
       <div style={{ padding:"22px 18px" }}>
         {/* Info prestation */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
+          <div style={{ display:"flex", gap:12, alignItems:"center" }}>
             <div style={{ fontSize:32 }}>{p.avatar}</div>
-            <div><div style={{ fontWeight:800, color:C.text }}>{p.name}</div><div style={{ color:C.textSub, fontSize:13 }}>{p.role}</div></div>
-          </div>
-          <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {missionHours}h prévues)</label>
-            <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
-          </div>
-          <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
-            💳 Montant client : <strong>{formatMontant(totalClientPrice)}</strong>
+            <div>
+              <div style={{ fontWeight:800, color:C.text }}>{p.name}</div>
+              <div style={{ color:C.textSub, fontSize:13 }}>{mission?.metier || p.role}</div>
+            </div>
           </div>
         </div>
 
-        {/* Validation CLIENT */}
-        <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`2px solid ${clientValidated?C.success:C.grayLight}`, transition:"border 0.3s" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <span style={{ fontSize:20 }}>🏢</span>
-              <div>
-                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Validation Client</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez que la prestation est terminée</div>
-              </div>
-            </div>
-            {clientValidated ? <Badge color={C.success} small>✓ Validé</Badge> : <Badge color={C.gray} small>En attente</Badge>}
+        {lectureKo && (
+          <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+            La prestation n'a pas pu être chargée. Vous pouvez la valider depuis l'onglet <strong>Prestations</strong>.
           </div>
-          {!clientValidated ? <>
+        )}
+
+        {horsValidation ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"16px", textAlign:"center", color:C.textSub, fontSize:13, lineHeight:1.6 }}>
+            Cette prestation ne peut pas être validée ici. Retrouvez-la dans l'onglet <strong>Prestations</strong>.
+          </div>
+        ) : (
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`2px solid ${C.grayLight}` }}>
+            {attentePresta && (
+              <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:12, color:C.text, lineHeight:1.5 }}>
+                ⏳ Le prestataire n'a pas encore confirmé la fin de la prestation. Vous pourrez valider dès qu'il l'aura fait ; sans réponse, la validation se fait automatiquement.
+              </div>
+            )}
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Notez le prestataire :</div>
               <div style={{ display:"flex", gap:6, justifyContent:"center" }}>
-                {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setClientRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=clientRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
+                {[1,2,3,4,5].map(i=><span key={i} role="button" aria-label={`${i} étoile${i>1?"s":""}`} onClick={()=>setClientRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=clientRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
               </div>
             </div>
-            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
+            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} maxLength={1000} placeholder="Commentaire sur la prestation (facultatif)…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Signaler</button>
-              <Btn variant="success" disabled={clientRating===0} onClick={()=>{ persistValidation("client",clientRating,clientComment); setClientValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Valider</Btn>
+              <Btn variant="success" disabled={clientRating===0 || validating || attentePresta || !mission} onClick={valider} style={{ flex:2, padding:"10px", fontSize:13 }}>{validating ? "Envoi…" : terminee ? "⭐ Envoyer mon avis" : "✓ Valider"}</Btn>
             </div>
-          </> : (
-            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Prestation validée — Note : {"★".repeat(clientRating)}</div>
-          )}
-        </div>
-
-        {/* Validation PRESTATAIRE */}
-        <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`2px solid ${prestaValidated?C.success:C.grayLight}`, transition:"border 0.3s" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <span style={{ fontSize:20 }}>👷</span>
-              <div>
-                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Validation Prestataire</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez les heures effectuées</div>
-              </div>
-            </div>
-            {prestaValidated ? <Badge color={C.success} small>✓ Validé</Badge> : <Badge color={C.gray} small>En attente</Badge>}
           </div>
-          {!prestaValidated ? <>
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Notez le client :</div>
-              <div style={{ display:"flex", gap:6, justifyContent:"center" }}>
-                {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setPrestaRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=prestaRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
-              </div>
-            </div>
-            <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Litige</button>
-              <Btn variant="success" disabled={prestaRating===0} onClick={()=>{ persistValidation("presta",prestaRating,prestaComment); setPrestaValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Confirmer</Btn>
-            </div>
-          </> : (
-            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Confirmé — Note : {"★".repeat(prestaRating)}</div>
-          )}
-        </div>
-
-        {/* Statut paiement */}
-        <div style={{ background: bothValidated?`${C.success}15`:`${C.accentGold}15`, border:`2px solid ${bothValidated?C.success:C.accentGold}55`, borderRadius:16, padding:"16px", textAlign:"center" }}>
-          {bothValidated ? (
-            <div>
-              <div style={{ fontSize:32, marginBottom:8 }}>🚀</div>
-              <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>Les deux parties ont validé !</div>
-              <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {formatMontant(totalNetPresta)} en cours vers {p.name}…</div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>⏳ En attente de validation</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>
-                {!clientValidated && !prestaValidated ? "Les deux parties doivent valider" : !clientValidated ? "En attente du client" : "En attente du prestataire"}
-              </div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:6 }}>Si aucune réponse sous 48h → validation automatique</div>            </div>
-          )}
-        </div>
+        )}
 
         {/* Litige */}
         {dispute && (
