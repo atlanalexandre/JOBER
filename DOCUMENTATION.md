@@ -1353,6 +1353,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
+| `_annulation.js` | Annulation par le client : les frais de service sont-ils retenus ? `fraisRetenusAnnulationClient()`, `sansPrestataireTrouve()`. Non en cas de défaillance du prestataire (CGPS art. 8.2), ni quand personne n'a repris une réservation payée (`open`, `needs_replacement` — décision D2, 14/10/2026). Appelé par `cancel_client` |
 | `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
@@ -2479,8 +2480,17 @@ selon le sens le prestataire **ou** le client — le nom de la colonne est tromp
 **Les frais de service sont dus sur toute annulation à l'initiative du client**, quel que
 soit le délai — CGPS art. 8.1, « en principe retenus et non remboursables car ils couvrent des
 coûts déjà engagés ». Le serveur les remboursait pourtant au-delà de 24 h, alors que l'écran
-de confirmation annonçait déjà « hors frais de service ». Unique exception, CGPS art. 8.2 :
-la défaillance du prestataire, où le remboursement est intégral.
+de confirmation annonçait déjà « hors frais de service ». **Deux exceptions**, où le remboursement
+est intégral, frais compris — `fraisRetenusAnnulationClient()` de `api/_annulation.js` :
+
+- la **défaillance du prestataire**, CGPS art. 8.2 (son retard, ci-dessous) ;
+- **personne n'a repris une réservation payée** : elle est repartie en recherche (`open`, la
+  cascade des candidats ou l'affectation par ALANE n'a trouvé personne) ou attend un remplaçant
+  (`needs_replacement`). Décision D2 d'Alexandre, 14/10/2026 : la mise en relation n'a produit
+  personne, et la tâche planifiée rendait déjà tout à l'heure de début — le client qui annulait
+  avant, lui, perdait ses frais. L'écran propose « Annuler » dans ces deux états (il ne le
+  proposait pas en `needs_replacement`), l'annonce intégrale, et la politique d'annulation
+  affichée avant le paiement le dit. Éprouvé par `e2e/86`.
 
 **Retard du prestataire : le client peut annuler sans aucun frais.** Le seuil est
 proportionnel à la durée — `min(60 min, max(20 min, 25 % de la durée))`, soit 20 min pour une
@@ -5321,6 +5331,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `83` | Suppression d'un compte refusée tant qu'une somme due à ALANE est active ou contestée |
 | `84` | Compte supprimé : la somme due réglée et le rechargement restent au registre, sans lien vers le compte |
 | `85` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
+| `86` | Réservation payée que personne n'a reprise (`open`, `needs_replacement`) : le client annule, prix et frais de service lui sont rendus |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
