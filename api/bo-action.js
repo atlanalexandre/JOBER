@@ -803,7 +803,7 @@ export default async function handler(req, res) {
       const enCoursRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})`
         + `&status=in.(${STATUTS_EN_COURS.filter(st => st !== "disputed").join(",")})`
-        + `&select=id,client_id,prestataire_id,status,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector`,
+        + `&select=id,client_id,prestataire_id,status,started_at,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector`,
         { headers }
       );
       const enCours = await enCoursRes.json().catch(() => null);
@@ -819,6 +819,15 @@ export default async function handler(req, res) {
       const litiges = await litigesRes.json().catch(() => null);
       if (!litigesRes.ok || !Array.isArray(litiges)) return res.status(502).json({ error: "Litiges du compte illisibles : rien n'a été supprimé." });
       if (litiges.length) return res.status(409).json({ error: "Ce compte a une prestation en litige : tranchez-la avant de supprimer le compte." });
+      // Une prestation COMMENCÉE se termine d'abord, elle aussi (décision D3
+      // d'Alexandre, 14/10/2026). La suppression la remboursait en entier et
+      // l'annulait : le prestataire n'était pas payé du travail déjà fait. La
+      // suspension, elle, laisse déjà les prestations démarrées aller à leur terme.
+      const commencee = enCours.find(m => m.status === "assigned" && m.started_at);
+      if (commencee) {
+        return res.status(409).json({ error: `Ce compte a une prestation commencée (${commencee.id.slice(0, 8)}) : attendez qu'elle se termine, `
+          + "ou interrompez-la, avant de supprimer le compte. Rien n'a été supprimé." });
+      }
       // Une somme due à ALANE, active ou contestée, partait avec le compte
       // (étude du 13/10/2026) : on tranche d'abord, comme pour un litige.
       const dues = await creancesOuvertes(profileId, SUPABASE_URL, headers, ctx);
