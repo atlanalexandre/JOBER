@@ -2772,6 +2772,16 @@ export default async function handler(req, res) {
       try {
         const mTarifRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=tarif_horaire`, { headers });
         const tarifPaye = Number(((await mTarifRes.json().catch(() => []))[0] || {}).tarif_horaire || 0);
+        // Tarif nul ou absent : le contrôle du montant n'a rien à décomposer et
+        // laisse passer, et la comparaison ci-dessous était sautée. Un client
+        // payait 2 € de frais et engageait un prestataire, qui travaillait pour
+        // rien (étude du 14/10/2026, e2e/84). Une réservation directe porte
+        // toujours le tarif du prestataire : sans lui, on n'affecte pas.
+        if (mTarifRes.ok && !(tarifPaye > 0)) {
+          console.error(`[assign_after_payment] ${mission_id} : tarif horaire nul ou absent — affectation refusée`);
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "tarif absent", SUPABASE_URL, headers);
+          return res.status(400).json({ error: "Cette réservation ne porte pas de tarif horaire. Recommencez-la depuis la fiche du prestataire." + suffixeRemboursement(r) });
+        }
         if (tarifPaye > 0) {
           const urT = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
           const tarifReel = Number(((await urT.json().catch(() => ({}))).user_metadata || {}).tarif_net || 0);
