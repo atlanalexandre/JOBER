@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { destinatairesInformation, envoyerInformation, htmlInformation } from "./_diffusion.js";
+import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
@@ -1689,7 +1689,7 @@ export default async function handler(req, res) {
       }
       // Au-delà, l'envoi dépasserait la durée d'une fonction et s'arrêterait
       // au milieu, sans qu'on sache qui l'a reçu.
-      if (adresses.length > 4000) return res.status(413).json({ error: "Plus de 4 000 destinataires : envoi groupé à découper, demander une évolution." });
+      if (adresses.length > MAX_DESTINATAIRES) return res.status(413).json({ error: `Plus de ${MAX_DESTINATAIRES.toLocaleString("fr-FR")} destinataires : envoi groupé à découper, demander une évolution.` });
       const r = await envoyerInformation(adresses, contenu);
       await journaliser("send_info_mail", { details: { destinataires: adresses.length, envoyes: r.envoyes, echecs: r.echecs, ecartees, sujet: contenu.sujet, extrait: String(message).slice(0, 200) } });
       if (r.envoyes === 0) return res.status(502).json({ error: r.erreur || "Aucun e-mail accepté" });

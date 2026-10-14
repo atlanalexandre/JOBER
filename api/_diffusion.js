@@ -17,6 +17,15 @@ import { emailHtml, esc, resendBody } from "./_email.js";
 export const STATUTS_EXCLUS = ["rejected", "suspended"];
 // Resend accepte au plus 100 e-mails par appel à /emails/batch.
 export const TAILLE_LOT = 100;
+// Pause entre deux lots : Resend limite la cadence (2 appels par seconde par défaut).
+export const PAUSE_ENTRE_LOTS_MS = 600;
+// Au-delà, l'envoi ne tient plus dans la durée d'une fonction (60 s) : chaque
+// lot coûte la pause plus l'appel à Resend (jusqu'à une seconde), sans compter
+// la lecture des comptes. À 4 000 — le plafond d'origine —, 40 lots pouvaient
+// dépasser la minute : la fonction s'arrêtait au milieu, sans journal, et un
+// second appui renvoyait l'e-mail à ceux qui l'avaient reçu (relecture du
+// 14/10/2026). 2 000, soit 20 lots, laisse la marge.
+export const MAX_DESTINATAIRES = 2000;
 
 /**
  * Adresses à joindre : chaque compte Auth qui a une adresse, sauf les comptes
@@ -93,7 +102,7 @@ export async function envoyerInformation(adresses, { sujet, html }, { fetchImpl 
     }
     if (accepte) envoyes += lot.length; else echecs += lot.length;
     // Resend limite la cadence (2 appels par seconde par défaut).
-    await pause(600);
+    await pause(PAUSE_ENTRE_LOTS_MS);
   }
   return { envoyes, echecs, erreur: echecs ? `${echecs} adresse(s) non envoyée(s) — voir les journaux Vercel` : null };
 }

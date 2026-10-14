@@ -1346,7 +1346,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
-| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi (au-delà de 4 000 adresses, refus) |
+| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
 
 ### Comment l'appelant est vérifié
 
@@ -2663,6 +2663,15 @@ Un refus l'inscrit dans `heures_perdues` ; un retard non arbitré est déduit un
 `montantsDeCloture()` (`ajustementRetard.unJour`, rien n'est réécrit) ; `valeurHeuresRetirees()`
 compte une journée. Les durées s'écrivent « 7 h 40 » (`dureeTexte()`, `api/_temps.js`).
 
+**Tout ce qui suit un refus lit `actual_hours`** (relecture du 14/10/2026, `e2e/78`). Deux actions
+partaient encore de `hours` : l'**interruption en cours** (`cancel_in_progress`) rendait au client,
+une seconde fois, l'heure déjà remboursée — 8 h réservées, une heure de retard refusée, arrêt au bout
+de 3 h : 6 h rendues au lieu de 5, 3 h versées au prestataire, ALANE de sa poche d'une heure ; et
+une **prolongation payée** (`confirmer_heures_supp`, une journée) remettait `actual_hours` à vide,
+si bien que la clôture versait au prestataire l'heure rendue au client — et plaçait la fin de la
+prestation une heure trop tard. L'interruption prend désormais la durée retenue pour base de la
+journée ; la prolongation l'augmente des heures ajoutées.
+
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
 dans `presta-screens.jsx` — qui s'ancraient auparavant sur `started_at` seul.
@@ -2762,13 +2771,19 @@ revenait payer en changeant une option (« mémoriser ma carte », cashback) rec
 paiement — débité deux fois — et le premier n'était plus jamais rendu ; constaté en recette.
 `/api/stripe-intent` cherche désormais chez Stripe un paiement de réservation déjà abouti pour
 cette prestation et ce client (`paiementDejaAbouti()` de `api/_paiement.js` : liste des paiements
-du client Stripe, à défaut recherche sur `metadata['mission']`) ; trouvé, il répond 409
+du client Stripe, **puis**, rien n'y étant trouvé, recherche sur `metadata['mission']` — un paiement
+créé sans client Stripe, quand celui-ci était indisponible au premier essai, n'est que là ;
+relecture du 14/10/2026) ; trouvé, il répond 409
 `deja_payee` avec son identifiant, et le tunnel achève l'affectation avec lui au lieu de faire
 payer. Stripe illisible : 503, rien n'est créé. Et si deux paiements ont tout de même abouti (deux
 onglets), l'affectation du second le **rembourse en entier** (`rembourserDoublonPaiement()`, clé
 `refund-doublon-{paiement}`, la même que le webhook) au lieu de le refuser sans rien rendre ;
 l'écriture de l'affectation est conditionnée à « aucun paiement rattaché, ou celui-ci »
 (`filtrePaiementLibre()`), pour que deux affectations simultanées ne s'écrasent pas.
+Le refus d'un paiement après coup (`rembourserRefusApresPaiement()`, secteur fermé, zone, prestataire
+non activé…) porte la même condition sur l'annulation : un second paiement refusé pendant qu'un
+premier venait d'être rattaché annulait la réservation réglée par celui-ci, sans le rendre
+(relecture du 14/10/2026).
 
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
