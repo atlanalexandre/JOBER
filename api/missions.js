@@ -2,12 +2,13 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour } from "./_decalage.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour, retardAggraveApresRefus } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
@@ -2784,6 +2785,16 @@ export default async function handler(req, res) {
       try {
         const mTarifRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=tarif_horaire`, { headers });
         const tarifPaye = Number(((await mTarifRes.json().catch(() => []))[0] || {}).tarif_horaire || 0);
+        // Tarif nul ou absent : le contrôle du montant n'a rien à décomposer et
+        // laisse passer, et la comparaison ci-dessous était sautée. Un client
+        // payait 2 € de frais et engageait un prestataire, qui travaillait pour
+        // rien (étude du 14/10/2026, e2e/84). Une réservation directe porte
+        // toujours le tarif du prestataire : sans lui, on n'affecte pas.
+        if (mTarifRes.ok && !(tarifPaye > 0)) {
+          console.error(`[assign_after_payment] ${mission_id} : tarif horaire nul ou absent — affectation refusée`);
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "tarif absent", SUPABASE_URL, headers);
+          return res.status(400).json({ error: "Cette réservation ne porte pas de tarif horaire. Recommencez-la depuis la fiche du prestataire." + suffixeRemboursement(r) });
+        }
         if (tarifPaye > 0) {
           const urT = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
           const tarifReel = Number(((await urT.json().catch(() => ({}))).user_metadata || {}).tarif_net || 0);
@@ -3912,11 +3923,17 @@ export default async function handler(req, res) {
       // confirmation lui-même (« remboursement intégral hors frais de service »).
       // Seul le serveur disait le contraire au-delà de 24 h : il les remboursait.
       //
-      // Unique exception, celle des CGPS art. 8.2 : la défaillance du prestataire.
-      // Le client est alors intégralement remboursé, frais compris — il n'y est pour
-      // rien, et facturer une mise en relation qui n'a produit personne serait
-      // difficilement défendable.
-      const retenirFrais = !annulationPourRetard;
+      // Deux exceptions, où le client est intégralement remboursé, frais compris
+      // (api/_annulation.js) : la défaillance du prestataire, celle des CGPS
+      // art. 8.2, et une réservation payée que personne n'a reprise — repartie en
+      // recherche ou en attente d'un remplaçant (décision D2 d'Alexandre,
+      // 14/10/2026). Le client n'y est pour rien, et facturer une mise en relation
+      // qui n'a produit personne serait difficilement défendable. La tâche
+      // planifiée rendait déjà tout à l'heure de début ; le client qui annulait
+      // avant, lui, perdait ses frais.
+      const sansPrestataire = sansPrestataireTrouve(mission);
+      const retenirFrais = fraisRetenusAnnulationClient(mission, { retardPrestataire: annulationPourRetard });
+      if (sansPrestataire) console.log(`[cancel_client] personne n'a repris ${mission_id} (${mission.status}) — remboursement intégral, frais compris`);
       const refundAmount = retenirFrais
         ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
         : Math.round(payeCarte * 100);
@@ -4082,10 +4099,19 @@ export default async function handler(req, res) {
                 // 09/10/2026) : l'e-mail annonçait « 0,00 € » et « aucun montant
                 // n'est dû », en contradiction avec son objet.
                 ? "La modification de commande a été remboursée automatiquement. Elle apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés."
-                : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
+                : (mission.stripe_payment_intent
+                  ? (keptAmount > 0 ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun montant n'a été retenu.")
+                  : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${keptAmount > 0
                 ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur}) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
-                : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}
+                // Le motif du remboursement intégral, et lui seul : l'e-mail
+                // annonçait « votre prestataire ne s'est pas présenté » à toute
+                // annulation sans frais retenus — y compris d'une demande jamais payée.
+                : sansPrestataire
+                  ? `<p style="font-size:12px;color:#999">Personne n'avait encore été trouvé pour votre prestation : vous êtes intégralement remboursé, frais de service compris.</p>`
+                  : annulationPourRetard
+                    ? `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`
+                    : ""}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
@@ -7295,7 +7321,7 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut,delay_status,arrival_delay_minutes`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,date_debut,date_fin,heure_debut,delay_status,arrival_delay_minutes,hours,actual_hours,heures_perdues,tarif_horaire,montant_total,stripe_payment_intent,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable ou non assignée" });
@@ -7328,6 +7354,7 @@ export default async function handler(req, res) {
       // la fin d'autant, en silence et sans que le client ait son mot à dire. C'est
       // pourtant le démarrage qui détermine la fin, donc le service réellement rendu.
       const patchStart = { started_at: startedAt };
+      let aggrave = null;
       if (m.date && m.heure_debut && m.delay_status !== "approved") {
         try {
           // Conversion déportée dans _temps.js : la formule ne se recopie plus.
@@ -7337,7 +7364,11 @@ export default async function handler(req, res) {
           // On retient le décalage le plus défavorable au client : celui de l'arrivée
           // ou celui du démarrage, sans jamais l'effacer.
           const retardRetenu = Math.max(retardDemarrage, Number(m.arrival_delay_minutes) || 0);
-          if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
+          if (m.delay_status === "rejected") {
+            // Le client a déjà refusé de décaler la fin : on ne lui repose pas
+            // la question, on déduit et on rend l'écart (_decalage.js).
+            aggrave = retardAggraveApresRefus(m, retardDemarrage);
+          } else if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
             patchStart.arrival_delay_minutes = retardRetenu;
             patchStart.delay_status = "pending";
             console.log(`[start_mission] retard de ${retardDemarrage} min sur ${mission_id} — accord du client requis`);
@@ -7347,11 +7378,29 @@ export default async function handler(req, res) {
         }
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify(patchStart),
-      });
+      if (aggrave) {
+        // Écriture CONDITIONNELLE : un double appel ne déduit, ni ne rend, deux fois.
+        const ecrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&started_at=is.null`
+          + `&delay_status=eq.rejected&arrival_delay_minutes=eq.${Number(m.arrival_delay_minutes) || 0}`,
+          { ...patchStart, ...aggrave.maj }, headers, "start_mission/retard aggravé");
+        if (!ecrit) return res.status(500).json({ error: "Le démarrage n'a pas pu être enregistré. Réessayez." });
+        const rendu = await rembourserHeuresRetirees({ mission: m, euros: aggrave.aRendre, supabaseUrl: SUPABASE_URL,
+          headers, contexte: "start_mission/retard aggravé", suffixeCle: `demarrage-${aggrave.maj.arrival_delay_minutes}` });
+        if (m.client_id) {
+          const labelA = m.titre || m.metier || "votre prestation";
+          await notifier({ user_id: m.client_id, type: "mission", ref_id: m.id, title: "⏰ Démarrage en retard",
+            body: `Le prestataire a démarré « ${labelA} » ${aggrave.ecartMin} min plus tard encore que son arrivée. `
+              + "Comme vous l'avez choisi, la prestation prend fin à l'heure prévue"
+              + (rendu.centimes > 0 ? ` : ${euros(rendu.centimes / 100)} vous ${rendu.ok ? "sont rendus" : "seront rendus"}.` : "."),
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] retard aggravé non notifié :", e?.message));
+        }
+      } else {
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify(patchStart),
+        });
+      }
 
       // Le client est prévenu séparément : sans accord de sa part, la prestation
       // s'arrête à l'heure de fin initialement prévue.
