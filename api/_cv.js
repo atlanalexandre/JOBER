@@ -112,3 +112,15 @@ export function metiersSansExperience(cv, metiers) {
     return !mots.some(m => motsCorpus.has(m));
   });
 }
+
+/**
+ * Le CV a-t-il un contenu à montrer ? Un CV jamais rempli est enregistré comme
+ * objet vide — « vrai » en JavaScript. Le catalogue public ne rend plus que ce
+ * booléen ; le contenu se lit par `/api/prestataires?action=cv`, réservé aux
+ * clients connectés (décision d'Alexandre du 14/10/2026).
+ */
+export function cvPresent(cv) {
+  if (!cv || typeof cv !== "object") return false;
+  const liste = (x) => Array.isArray(x) && x.length > 0;
+  return !!(cv.titre || cv.accroche || cv.permis || liste(cv.experiences) || liste(cv.formations) || liste(cv.langues));
+}
