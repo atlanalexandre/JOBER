@@ -4599,6 +4599,14 @@ son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
 (décision d'Alexandre du 30/09/2026). La notification le dit ; elle annonçait « pour conserver
 votre accès » un accès déjà retiré.
+L'abonnement en impayé **garde sa référence** (`stripe_subscription_id`, étude d'octobre 2026,
+`abonnement-reference.test.js`) : le webhook l'effaçait dès l'impayé, que Stripe continue pourtant de
+relancer, et ne la rétablissait pas au paiement suivant. Le prestataire redevenait abonné sans
+référence : supprimer son compte ne résiliait plus l'abonnement (prélevé ensuite chaque mois),
+changer de formule en ouvrait un second, « Résilier » répondait « aucun abonnement ».
+`ecritureAbonnement()` (`api/stripe-webhook.js`) ne l'efface que sur un abonnement mort (supprimé,
+`canceled`, `incomplete_expired`) et la réinscrit quand il redevient actif. Aucun profil de production
+n'était dans ce cas (lecture seule, 14/10/2026).
 
 **Un refus de virement n'est plus définitif d'office** (30/09/2026). Le virement puise dans le
 solde *disponible* d'ALANE, où un paiement par carte n'entre qu'après quelques jours : à 48 h, un
