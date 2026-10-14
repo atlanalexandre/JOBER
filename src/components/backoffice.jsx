@@ -1104,12 +1104,27 @@ function BOComptes() {
                         } style={{ width:120, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
                         <input type="text" placeholder="Motif (optionnel)" value={cashbackAdj[p.id]?.reason||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],reason:e.target.value}}))} style={{ flex:1, minWidth:100, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
                         <button disabled={cashbackSaving===p.id||!cashbackAdj[p.id]?.delta} onClick={async()=>{
+                          // Confirmation explicite, et le résultat est lu (décision D6,
+                          // 14/10/2026) : l'ajustement partait au premier clic, et un
+                          // refus du serveur ne s'affichait pas.
                           const delta = parseFloat(String(cashbackAdj[p.id]?.delta||"").replace(",","."));
-                          if (isNaN(delta)) return;
+                          if (!Number.isFinite(delta) || delta === 0) { showToast("Montant invalide : positif pour créditer, négatif pour retirer.", "error"); return; }
+                          const qui = [p.prenom, p.nom].filter(Boolean).join(" ") || p.email || "ce client";
+                          const solde = Number(p.cashback_balance || 0);
+                          const apres = Math.round((solde + delta) * 100) / 100;
+                          if (apres < 0) { showToast(`Le retrait dépasse le solde de ${qui} (${formatMontant(solde)}).`, "error"); return; }
+                          if (!await showConfirm(`${delta > 0 ? `Créditer ${formatMontant(delta)} de cashback à` : `Retirer ${formatMontant(-delta)} du cashback de`} ${qui} ?\n\nSolde : ${formatMontant(solde)} → ${formatMontant(apres)}. Le client en est prévenu.`)) return;
                           setCashbackSaving(p.id);
-                          const res = await boFetch({ action:"adjust_cashback", profileId:p.id, delta, reason:cashbackAdj[p.id]?.reason||"" });
-                          const j = await res.json();
-                          if (j.ok) setCashbackAdj(a=>({...a,[p.id]:{delta:"",reason:""}}));
+                          try {
+                            const res = await boFetch({ action:"adjust_cashback", profileId:p.id, delta, reason:cashbackAdj[p.id]?.reason||"" });
+                            const j = await res.json().catch(() => ({}));
+                            if (res.ok && j.ok) {
+                              const nouveau = Number.isFinite(Number(j.solde)) ? Number(j.solde) : apres;
+                              setCashbackAdj(a=>({...a,[p.id]:{delta:"",reason:""}}));
+                              setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,cashback_balance:nouveau}:x));
+                              showToast(`Cashback de ${qui} : ${formatMontant(nouveau)}.`);
+                            } else showToast(j.error || `Ajustement refusé (${res.status}) : rien n'a été modifié.`, "error");
+                          } catch (e) { showToast(e?.message || "Erreur réseau : rien n'a été modifié.", "error"); }
                           setCashbackSaving(null);
                         }} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:cashbackSaving===p.id?0.5:1 }}>
                           {cashbackSaving===p.id?"…":"Appliquer"}
@@ -2576,6 +2591,10 @@ function BroadcastNotifSection() {
   const [result, setResult]   = useState(null);
   const send = async () => {
     if (!title.trim() || !body.trim()) return;
+    // Un envoi de masse ne part plus au premier clic (décision D6, 14/10/2026) :
+    // il arrive aussitôt sur les téléphones, et ne se rattrape pas.
+    const cible = { all:"tous les utilisateurs", clients:"tous les clients", prestataires:"tous les prestataires" }[target] || target;
+    if (!await showConfirm(`Envoyer « ${title.trim()} » à ${cible} ?\n\nLa notification part tout de suite sur les téléphones, et ne peut pas être retirée.`)) return;
     setSending(true); setResult(null);
     try {
       const r = await boFetch({ action:"broadcast_notification", title:title.trim(), body:body.trim(), target });
@@ -2805,6 +2824,8 @@ export function BOModerationTab({ d }) {
 
   const handleComm = async () => {
     if(!commMsg.trim()) return;
+    // Même règle que la notification à tous (décision D6, 14/10/2026).
+    if (!await showConfirm("Envoyer cette communication à tous les prestataires actifs qui ont accepté les communications ?\n\nElle part tout de suite et ne peut pas être rattrapée.")) return;
     setCommSending(true); setCommResult(null);
     try {
       const r = await boFetch({ action:"send_global_comm", message: commMsg });
@@ -4098,7 +4119,7 @@ export function BOMissions() {
   };
 
   const handleCancel = async (missionId, withRefund) => {
-    const reason = await showPrompt("Motif d'annulation (optionnel) :","Motif..."); if (reason === null) return;
+    const reason = await showPrompt("Motif, ajouté au message envoyé au client et au prestataire (optionnel) :","Motif..."); if (reason === null) return;
     setDisputing(missionId + "_cancel");
     try {
       const res = await boFetch({ action:"cancel_mission", mission_id:missionId, refund:withRefund, reason });
@@ -4225,6 +4246,9 @@ export function BOMissions() {
             {["completed","closed"].includes(m.status) && !result[m.id] && (
               <div style={{ marginTop:8 }}>
                 <button onClick={async()=>{
+                  // Geste d'argent : confirmé sur le montant et le client (décision D6).
+                  const montantRb = Number(m.montant_total) > 0 ? formatMontant(m.montant_total) : "le montant payé";
+                  if (!await showConfirm(`Rembourser intégralement ${m.client_name || "le client"} (${montantRb}) ?`)) return;
                   const reason = await showPrompt("Motif du remboursement (optionnel) :","Motif...");
                   if (reason === null) return;
                   setDisputing(m.id+"_manual");
@@ -4250,7 +4274,17 @@ export function BOMissions() {
             {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
             {!["cancelled","closed","completed"].includes(m.status) && !result[m.id] && (
               <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
-                <button onClick={async()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=await showConfirm("Cette prestation a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                <button onClick={async()=>{
+                  // « Annuler » arrête tout (décision D6, 14/10/2026). La question
+                  // « Rembourser le client en même temps ? » annulait la prestation
+                  // même quand on répondait « Annuler » — sans rembourser. Une
+                  // prestation payée qu'ALANE annule est remboursée.
+                  if (m.stripe_payment_intent) {
+                    const montant = Number(m.montant_total) > 0 ? formatMontant(m.montant_total) : "le montant payé";
+                    if (!await showConfirm(`Annuler cette prestation et rembourser intégralement ${m.client_name || "le client"} (${montant}) ?`)) return;
+                    handleCancel(m.id, true);
+                  } else handleCancel(m.id, false);
+                }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                   {disputing===m.id+"_cancel"?"…":"🚫 Annuler"}
                 </button>
                 <button onClick={()=>{ setReassignId(reassignId===m.id?null:m.id); setReassignEmail(""); setReassignReason(""); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(162,155,254,0.3)", background:"rgba(162,155,254,0.08)", color:C.violet, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>

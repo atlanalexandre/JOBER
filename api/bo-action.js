@@ -2993,8 +2993,12 @@ export default async function handler(req, res) {
           : "La prestation n'a pas pu être annulée. Réessayez." });
       }
       const notifs = [];
-      if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:reason||(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Un remboursement sera effectué sous 5-10 jours ouvrés.":"Votre prestation a été annulée par ALANE."), read:false });
-      if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:reason||"Une prestation vous a été retirée par ALANE.", read:false });
+      // Le motif s'AJOUTE au message (décision D6, 14/10/2026) : il le
+      // remplaçait, et le client perdait « remboursement sous 5 à 10 jours ».
+      const motif = String(reason || "").trim().slice(0, 300);
+      const suffixe = motif ? ` Motif : ${motif}` : "";
+      if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Vous êtes intégralement remboursé, sous 5 à 10 jours ouvrés selon votre banque.":"Votre prestation a été annulée par ALANE.") + suffixe, read:false });
+      if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:"Une prestation vous a été retirée par ALANE." + suffixe, read:false });
       // Insertion groupée conservée — deux lignes, un seul aller-retour — mais
       // les téléphones sont prévenus : une prestation annulée par ALANE est
       // exactement ce qu'on ne découvre pas en ouvrant l'application par hasard.
@@ -3135,9 +3139,12 @@ export default async function handler(req, res) {
         console.error(`[bo-action/adjust_cashback] ajustement refusé (${ajust?.status}) :`, txt.slice(0, 200));
         return res.status(502).json({ error: "Le cashback n'a pas pu être ajusté. Rien n'a été modifié." });
       }
+      // Le solde après ajustement, que l'écran affiche (increment_cashback le rend).
+      const lignesSolde = await ajust.json().catch(() => null);
+      const solde = Array.isArray(lignesSolde) && lignesSolde[0] ? Number(lignesSolde[0].cashback_balance) : null;
       await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, solde: Number.isFinite(solde) ? solde : null });
     }
 
     if (action === "broadcast_notification") {
