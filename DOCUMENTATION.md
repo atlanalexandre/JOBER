@@ -2381,8 +2381,10 @@ postal, `avatar_url`, `rib`, `cv`, `tel`, `siret`, `societe_nom`, les champs fis
 resté ouvert : un prestataire réécrivait sa date d'inscription (prouvé en recette). Elle décide de
 l'offre de lancement (tri des 100 premiers, `estEligible()`) et de l'échéance de l'attestation
 URSSAF (`etatRegularisation()`) : antidatée, le quota Premium sans payer ; postdatée, plus jamais de
-suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) ; **production :
-à passer** (voir AUDIT-2026-10.md). Production lue le même jour : aucun profil à la date réécrite.
+suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) **et en
+production le 14/10/2026** par Alexandre — vérifié en lecture seule : `created_at` n'est plus
+modifiable ni par `authenticated` ni par `anon`, et les 16 autres colonnes ouvertes au navigateur le
+restent, comme en recette. Production lue le 13/10 : aucun profil à la date réécrite.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
