@@ -349,7 +349,11 @@ async function rembourserRefusApresPaiement(missionId, intentId, motif, supabase
   // prestataire ni échéance la rendrait invisible de tous les traitements, et
   // elle resterait éternellement « en attente » sur l'écran du client.
   try {
-    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)`, {
+    // Seulement si aucun AUTRE paiement n'y est rattaché : un second paiement,
+    // refusé pendant qu'un premier venait d'être rattaché (deux onglets),
+    // annulait la réservation que le premier avait réglée — sans le rendre
+    // (relecture du 14/10/2026).
+    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)${filtrePaiementLibre(intentId)}`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ status: "cancelled", cancellation_reason: `Réservation refusée : ${motif}` }),
     });
