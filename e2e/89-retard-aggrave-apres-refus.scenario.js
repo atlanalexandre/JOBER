@@ -28,7 +28,7 @@ test("décalage refusé puis démarrage encore plus tard : l'écart est rendu, r
       arrival_delay_minutes = 20, delay_status = 'pending' where id = '${m.id}'`);
   const d = await api("/api/missions", { action: "respond_delay", mission_id: m.id, response: "rejected" }, c.jeton);
   expect(d.statut, d.texte.slice(0, 200)).toBe(200);
-  console.log("[85] refus :", d.texte.slice(0, 300));
+  console.log("[89] refus :", d.texte.slice(0, 300));
   expect((await paiementStripe(m.paymentIntent)).rembourse, "20 minutes rendues").toBe(500);
 
   // Vingt minutes passent : le prestataire démarre 40 minutes après l'heure prévue.
@@ -37,7 +37,7 @@ test("décalage refusé puis démarrage encore plus tard : l'écart est rendu, r
   expect(s.statut, s.texte.slice(0, 200)).toBe(200);
 
   const [f] = await sql(`select delay_status, arrival_delay_minutes, actual_hours from missions where id = '${m.id}'`);
-  console.log("[85] après démarrage :", JSON.stringify(f));
+  console.log("[89] après démarrage :", JSON.stringify(f));
   expect(f.delay_status, "le client a déjà répondu : la question n'est pas rouverte").toBe("rejected");
   const retard = Number(f.arrival_delay_minutes);
   expect(retard).toBeGreaterThanOrEqual(40);

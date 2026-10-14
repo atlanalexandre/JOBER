@@ -1014,7 +1014,7 @@ côté serveur à deux endroits, et il faut les deux :
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
   inférieur au `tarif_net` réellement annoncé par le prestataire affecté, et une prestation
   sans tarif (0 ou absent) n'est jamais affectée : le client est remboursé (14/10/2026,
-  `e2e/84` — 2 € payés suffisaient à engager un prestataire, qui n'aurait rien touché) ;
+  `e2e/88` — 2 € payés suffisaient à engager un prestataire, qui n'aurait rien touché) ;
 - `api/_paiement.js` — à l'affectation, le montant réellement encaissé par Stripe doit être
   celui de la prestation (prix plein, ou réduit du cashback retenu).
 
@@ -1432,7 +1432,7 @@ trois chemins — `stripe-intent` (`setup_card`, paiement de réservation), `str
 et **503** si le statut est illisible. Restent ouverts, volontairement : retirer sa carte,
 résilier, payer un complément d'heures déjà travaillées, le support (CGPS 16.2 : il présente
 ses observations), la suppression du compte, les pièces justificatives et le compte de
-versement (`stripe-connect` : les versements dus pour le travail fait). Éprouvé par `e2e/82`.
+versement (`stripe-connect` : les versements dus pour le travail fait). Éprouvé par `e2e/87`.
 
 ### Un endpoint sans authentification : le catalogue
 
@@ -2714,7 +2714,7 @@ notifié. Trois issues :
 Un décalage **déjà refusé** n'est jamais rouvert : si le démarrage est plus tardif encore que
 l'arrivée, l'écart est déduit (`actual_hours`, ou `heures_perdues` sur plusieurs jours) et rendu
 tout de suite, avec sa propre clé Stripe — `retardAggraveApresRefus()` (`api/_decalage.js`,
-14/10/2026, `e2e/85`). Le démarrage remettait `delay_status` en attente avec le retard total :
+14/10/2026, `e2e/89`). Le démarrage remettait `delay_status` en attente avec le retard total :
 accepté, il effaçait la réduction déjà rendue ; refusé, il retirait le retard une seconde fois.
 
 **Les heures retirées sont remboursées au client** (depuis le 30/09/2026, `api/_decalage.js`).
@@ -5343,6 +5343,10 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `84` | Compte supprimé : la somme due réglée et le rechargement restent au registre, sans lien vers le compte |
 | `85` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
 | `86` | Réservation payée que personne n'a reprise (`open`, `needs_replacement`) : le client annule, prix et frais de service lui sont rendus |
+| `87` | Compte suspendu : plus de carte, de paiement ni d'abonnement par un appel direct ; le support, la suppression et les pièces restent ouverts |
+| `88` | Réservation à 0 €/h payée : non affectée, client remboursé |
+| `89` | Décalage refusé, puis démarrage plus tardif encore : l'écart est déduit et rendu, la question n'est pas rouverte |
+| `90` | Prestation validée automatiquement : elle compte au quota mensuel du prestataire |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
