@@ -270,6 +270,23 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
 }
 
 /**
+ * Relance la tâche planifiée jusqu'à ce que `verifier()` réponde vrai, `max`
+ * passages au plus. Elle ne traite que 20 prestations par passage, tirées au
+ * hasard (`api/_lots.js`) : quand la recette en a accumulé davantage — 28
+ * demandes expirées le 14/10/2026, laissées par les scénarios de la nuit —, un
+ * seul passage peut ne pas toucher celle du scénario. En production, la tâche
+ * repasse toutes les quelques minutes : c'est le même comportement.
+ */
+export async function tachePlanifieeJusqua(verifier, { chemin, max = 4 } = {}) {
+  let dernier;
+  for (let i = 0; i < max; i++) {
+    dernier = await tachePlanifiee(chemin);
+    if (dernier.statut !== 200 || await verifier()) return dernier;
+  }
+  return dernier;
+}
+
+/**
  * Une réservation PAYÉE et affectée, par les mêmes points d'entrée que l'écran :
  *   1. insertion de la prestation avec le jeton du client (ce que fait App.jsx —
  *      la RLS et le verrou de création s'appliquent donc comme en vrai) ;
