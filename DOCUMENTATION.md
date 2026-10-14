@@ -1012,7 +1012,9 @@ côté serveur à deux endroits, et il faut les deux :
   06/08/2026 : un client pouvait créer sa prestation avec `montant_total = tarif × heures`, la
   régler depuis son portefeuille et ne payer aucun frais de service ;
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
-  inférieur au `tarif_net` réellement annoncé par le prestataire affecté ;
+  inférieur au `tarif_net` réellement annoncé par le prestataire affecté, et une prestation
+  sans tarif (0 ou absent) n'est jamais affectée : le client est remboursé (14/10/2026,
+  `e2e/84` — 2 € payés suffisaient à engager un prestataire, qui n'aurait rien touché) ;
 - `api/_paiement.js` — à l'affectation, le montant réellement encaissé par Stripe doit être
   celui de la prestation (prix plein, ou réduit du cashback retenu).
 
