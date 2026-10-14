@@ -8,7 +8,7 @@ import { tirerAuHasard } from "./_lots.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
@@ -1092,6 +1092,19 @@ export default async function handler(req, res) {
             }
             if (duRows.length > 0) {
               console.log(`[resiliation] ${p.id} reportée : versement encore dû`);
+              continue;
+            }
+
+            // Une somme due à ALANE partait avec le compte (étude du 13/10/2026).
+            // Reportée chaque jour tant qu'elle est ouverte : en erreur dans le
+            // journal, pour qu'elle soit tranchée au back-office.
+            const dues = await creancesOuvertes(p.id, SUPABASE_URL, headers, "resiliation");
+            if (!dues.lisible) {
+              console.error(`[resiliation] ${p.id} reportée : sommes dues illisibles`);
+              continue;
+            }
+            if (dues.nombre > 0) {
+              console.error(`[resiliation] ${p.id} reportée : ${dues.total} € dus à ALANE (active ou contestée) — à régler ou trancher au back-office`);
               continue;
             }
 
