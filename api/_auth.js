@@ -40,3 +40,46 @@ export async function utilisateurParEmail(email, supabaseUrl, serviceRoleKey, { 
   }
   throw new Error(`plus de ${pagesMax * 1000} comptes parcourus sans conclure`);
 }
+
+// Statuts de compte qui ferment l'accès à ce qui engage de l'argent.
+export const STATUTS_BLOQUES = ["suspended", "rejected"];
+
+/**
+ * Refuse la requête si le compte de `caller` est suspendu ou refusé ; rend
+ * true quand la réponse est déjà envoyée.
+ *
+ * `verifyUser` ne regarde que le jeton. Un compte suspendu est déconnecté par
+ * l'application, mais son jeton se rafraîchit indéfiniment auprès de Supabase :
+ * par un appel direct, il pouvait encore enregistrer une carte, payer une
+ * réservation ou souscrire un abonnement (étude du 13/10/2026). `missions`,
+ * lui, exigeait déjà un compte approuvé.
+ *
+ * Ne pas l'appeler partout : un compte suspendu doit pouvoir retirer sa carte,
+ * résilier son abonnement, régler des heures déjà faites, écrire au support
+ * (CGPS 16.2 : il présente ses observations) et supprimer son compte.
+ *
+ * Profil illisible → 503 : on ne laisse pas passer faute d'avoir pu lire.
+ */
+export async function refuserCompteBloque(res, caller, supabaseUrl, serviceRoleKey) {
+  let statut;
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(caller.id)}&select=status`, {
+      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}` },
+    });
+    if (!r.ok) throw new Error(`profil illisible (${r.status})`);
+    const lignes = await r.json();
+    statut = Array.isArray(lignes) ? lignes[0]?.status : undefined;
+  } catch (e) {
+    console.error(`[compte-bloque] statut de ${caller.id} illisible :`, e.message);
+    res.status(503).json({ error: "Vérification du compte impossible. Réessayez dans un instant." });
+    return true;
+  }
+  if (!STATUTS_BLOQUES.includes(statut)) return false;
+  res.status(403).json({
+    error: statut === "suspended"
+      ? "Votre compte est suspendu. Contactez support@alane.fr."
+      : "Votre compte a été refusé. Contactez support@alane.fr.",
+    code: "compte_bloque",
+  });
+  return true;
+}

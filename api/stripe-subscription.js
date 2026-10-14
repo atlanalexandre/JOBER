@@ -1,4 +1,5 @@
 import { appUrl } from "./_url.js";
+import { refuserCompteBloque } from "./_auth.js";
 import { messageErreurStripe } from "./_stripe_erreur.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -34,6 +35,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Erreur d'authentification" });
   }
   if (!userId) return res.status(401).json({ error: "Utilisateur introuvable" });
+  // Compte suspendu ou refusé : pas de nouvel abonnement ; résilier (« free »)
+  // reste toujours possible.
+  if (plan !== "free" && await refuserCompteBloque(res, { id: userId }, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
 
   // DEUX NOMS POSSIBLES POUR LA MÊME VARIABLE.
   //

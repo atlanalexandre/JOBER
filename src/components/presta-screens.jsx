@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { enregistrerDocument, maPhoto, deposerPhoto } from "../lib/documents.js";
 import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
 import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
@@ -4150,7 +4150,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   // facultatif ».
   const [docsAttendus,setDocsAttendus]=useState(DOCS_REQUIS);
   const [verifiedDocIds,setVerifiedDocIds]=useState([]);
-  const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
+  const [launchPhaseActive,setLaunchPhaseActive]=useState(false);
   const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setSousProfil(ongletInitial === "docs" ? "docs" : "profil");
@@ -4160,21 +4160,30 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     (async()=>{
       const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
       const u = session?.user; if(!u) return;
-      setUserRib(u.user_metadata?.rib||null);
-      setRibCharge(true);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       // La photo déposée comme pièce — celle que les clients voient une fois
       // validée —, plus profiles.avatar_url (30/09/2026).
       maPhoto(u.id).then(ph => setDashPhotoUrl(ph.url));
-      supabase.from("profiles").select("mandat_facturation_at,mandat_encaissement_at").eq("id", u.id).single()
-        .then(({ data }) => {
+      // L'IBAN vit dans profiles.rib, jamais dans user_metadata (24/09/2026) : le
+      // bandeau « IBAN manquant » et la complétude du profil le lisaient encore
+      // dans le jeton, où l'écran de profil l'efface — tout prestataire en règle
+      // lisait « Ajoutez votre IBAN avant d'accepter une prestation » (étude
+      // d'octobre 2026). Illisible : ni bandeau ni pourcentage faux.
+      const m=u.user_metadata||{};
+      const completude=(ribPresent)=>{
+        const checks=[!!m.prenom,!!m.nom,!!m.telephone,ribPresent,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
+        setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
+      };
+      supabase.from("profiles").select("mandat_facturation_at,mandat_encaissement_at,rib").eq("id", u.id).single()
+        .then(({ data, error }) => {
+          if (error) { console.error("[espace prestataire] profil illisible :", error.message); return; }
           setMandatFacturation(data?.mandat_facturation_at || null);
           setMandatEncaissement(data?.mandat_encaissement_at || null);
+          setUserRib(data?.rib || null);
+          setRibCharge(true);
+          completude(!!data?.rib);
         });
-      const m=u.user_metadata||{};
-      const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
-      setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
       // Le guide des onglets vient APRÈS l'accueil (App.jsx), jamais par-dessus :
       // un nouveau prestataire voyait les deux fenêtres empilées (02/10/2026,
       // décision d'Alexandre). Accueil pas encore vu : le guide attend le signal
@@ -4333,9 +4342,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     // pas la même chose.
     // Le serveur décide et compte : réglage ouvert ET places restantes. Compter
     // ici de son côté, c'est la divergence qui s'est produite trois fois.
+    // Seule la réponse du serveur compte : une lecture directe de `launch_phase`,
+    // arrivée après elle, la réécrivait — l'offre s'affichait avec « 0 place
+    // restante sur 100 » (étude d'octobre 2026, constaté en recette).
     fetchOffreLancement().then(o => { setLaunchPhaseActive(o.ouverte); setSpotsLeft(o.restantes); });
-    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
-      .then(({data})=>{ if(data?.value!=null) setLaunchPhaseActive(Boolean(data.value)); });
   },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

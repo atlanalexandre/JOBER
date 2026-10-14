@@ -28,6 +28,35 @@ export const STATUTS_EN_COURS = ["open", "pending_acceptance", "assigned", "need
  */
 export const VERSEMENTS_DUS = ["pending", "processing", "held", "failed"];
 
+/**
+ * Une somme due à ALANE dans l'un de ces états n'est pas réglée. Supprimer le
+ * compte l'effaçait (`creances_prestataires` est rattachée au compte en
+ * cascade) : la dette disparaissait sans trace (étude du 13/10/2026).
+ */
+export const CREANCES_OUVERTES = ["active", "contestee"];
+
+/**
+ * Le total des sommes dues à ALANE par ce compte, encore ouvertes.
+ * @returns {Promise<{lisible: boolean, total: number}>} `lisible: false` si la
+ *   lecture échoue — on ne supprime pas un compte sans avoir pu vérifier.
+ */
+export async function creancesOuvertes(userId, supabaseUrl, headers, contexte) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/creances_prestataires?prestataire_id=eq.${userId}`
+      + `&statut=in.(${CREANCES_OUVERTES.join(",")})&select=montant_restant`, { headers });
+    const lignes = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(lignes)) {
+      console.error(`[${contexte}] sommes dues illisibles (${r.status}) pour ${userId}`);
+      return { lisible: false, total: 0 };
+    }
+    const total = Math.round(lignes.reduce((t, l) => t + (Number(l.montant_restant) || 0), 0) * 100) / 100;
+    return { lisible: true, total: lignes.length ? total : 0, nombre: lignes.length };
+  } catch (e) {
+    console.error(`[${contexte}] lecture des sommes dues impossible pour ${userId} :`, e.message);
+    return { lisible: false, total: 0 };
+  }
+}
+
 const cleStripe = () => (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
 
 /**

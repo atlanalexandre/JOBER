@@ -709,7 +709,12 @@ n'est pas explicitement fermé — une ligne absente vaut ouverte, comme dans `q
 Côté écrans, `fetchOffreLancement()` est la seule source. Auparavant la question se posait à
 trois endroits, chacun à sa façon — une constante du code, le réglage, le décompte des places —
 et ils ont divergé **trois fois**. Seul le message « Tarif transparent » du tunnel de
-réservation subsiste indépendamment : il ne promet rien de l'offre.
+réservation subsiste indépendamment : il ne promet rien de l'offre. **Ce n'était pas vrai partout jusqu'au 14/10/2026** (étude d'octobre 2026,
+constaté en recette, `e2e/82`) : l'accueil du prestataire relisait ensuite `launch_phase` et
+réécrivait la réponse du serveur — l'offre s'affichait avec « 0 place restante sur 100 » —,
+l'écran « Mon abonnement » et « Comment ça marche ? » ne lisaient que le réglage (« 100/100 — offre
+terminée »), et trois écrans l'annonçaient d'office le temps que le serveur réponde. L'écran
+d'abonnement disait en outre « 8 prestations/mois gratuites », sans le second temps de la règle.
 
 **Le réglage `launch_phase` gouverne l'annonce, pas seulement le quota** (16/09/2026). Constaté
 en relevant les réglages réels : `launch_phase` valait `false`, et les deux écrans d'inscription
@@ -1342,7 +1347,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
-| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
+| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1407,6 +1412,16 @@ panne affiche désormais « Connexion impossible pour le moment. Réessayez dans
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
 
+**Compte suspendu ou refusé : `refuserCompteBloque()`** (`_auth.js`, 14/10/2026). L'application
+déconnecte un tel compte, mais son jeton reste valable et se rafraîchit : par un appel direct,
+il enregistrait encore une carte, payait une réservation ou souscrivait un abonnement. Ces
+trois chemins — `stripe-intent` (`setup_card`, paiement de réservation), `stripe-subscription`
+(sauf `free`) et `booking-draft` (`save`) — répondent désormais **403** (`code: compte_bloque`),
+et **503** si le statut est illisible. Restent ouverts, volontairement : retirer sa carte,
+résilier, payer un complément d'heures déjà travaillées, le support (CGPS 16.2 : il présente
+ses observations), la suppression du compte, les pièces justificatives et le compte de
+versement (`stripe-connect` : les versements dus pour le travail fait). Éprouvé par `e2e/82`.
+
 ### Un endpoint sans authentification : le catalogue
 
 - **`get-profile.js`** — **authentifié**. Il recevait un `userId` dans le corps de la requête
@@ -1425,6 +1440,16 @@ du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
   avait fermé ce catalogue aux comptes connectés en retirant les policies RLS publiques : la
   restriction porte sur l'accès direct à la table, pas sur cet endpoint. La route allégée
   `?action=count` doit rester publique (écran d'accueil avant connexion).
+- **Le CV n'est plus dans le catalogue** (décision d'Alexandre du 14/10/2026). Le catalogue,
+  public et gardé 30 s par le réseau de Vercel, rendait le CV complet — parcours, employeurs,
+  diplômes — à tout visiteur, alors que l'écran ne le montre qu'à un client connecté. Il ne
+  rend plus que `a_cv` (un CV non vide existe, `cvPresent()` de `api/_cv.js`). Le contenu se
+  lit par **`GET /api/prestataires?action=cv&id=…`**, jeton requis : **client approuvé**
+  seulement (401 sans compte, 403 pour un prestataire ou un compte suspendu), prestataire
+  affiché au catalogue seulement (404 sinon), réponse `private, no-store`. Repli sur
+  `user_metadata.cv` pour un CV antérieur au 29/09/2026 (un compte en production le
+  14/10/2026). L'écran du parcours et la fenêtre de la réservation le chargent à l'ouverture
+  (`useCv`, `client-screens.jsx`). Éprouvé par `e2e/23`.
 
 Refermer le catalogue est une **décision produit** : il sert aussi les liens de partage
 `?profil=`, qui fonctionnent aujourd'hui sans compte.
@@ -1739,6 +1764,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 |---|---|
 | Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
+| Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` est en cascade sur le compte) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
 | `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
@@ -2016,7 +2042,10 @@ ne peut rien écrire. Ces deux écrans écrivaient eux-mêmes l'IBAN dans `user_
 **seulement** — donc dans chaque jeton, et jamais dans `profiles.rib` où le lisent le
 back-office et les virements. Ils écrivent désormais `profiles.rib` (clé MOD-97 vérifiée,
 résultat vérifié), et retirent l'IBAN du jeton (`rib: null`). La liste de tâches du
-prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Vérifié en
+prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Le bandeau « IBAN / RIB manquant — ajoutez
+votre IBAN avant d'accepter une prestation » de l'espace prestataire et sa jauge « Complétude du
+profil » le lisaient encore dans `user_metadata` jusqu'au 14/10/2026 : tout prestataire en règle
+voyait le bandeau (étude d'octobre 2026, `e2e/82`). Vérifié en
 production le 24/09/2026 (lecture seule) : aucun IBAN n'était resté dans un jeton seul.
 
 **`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
@@ -4611,6 +4640,14 @@ son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
 (décision d'Alexandre du 30/09/2026). La notification le dit ; elle annonçait « pour conserver
 votre accès » un accès déjà retiré.
+L'abonnement en impayé **garde sa référence** (`stripe_subscription_id`, étude d'octobre 2026,
+`abonnement-reference.test.js`) : le webhook l'effaçait dès l'impayé, que Stripe continue pourtant de
+relancer, et ne la rétablissait pas au paiement suivant. Le prestataire redevenait abonné sans
+référence : supprimer son compte ne résiliait plus l'abonnement (prélevé ensuite chaque mois),
+changer de formule en ouvrait un second, « Résilier » répondait « aucun abonnement ».
+`ecritureAbonnement()` (`api/stripe-webhook.js`) ne l'efface que sur un abonnement mort (supprimé,
+`canceled`, `incomplete_expired`) et la réinscrit quand il redevient actif. Aucun profil de production
+n'était dans ce cas (lecture seule, 14/10/2026).
 
 **Un refus de virement n'est plus définitif d'office** (30/09/2026). Le virement puise dans le
 solde *disponible* d'ALANE, où un paiement par carte n'entre qu'après quelques jours : à 48 h, un
@@ -5199,7 +5236,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `20` | cashback : utilisé seulement si le client l'accepte ; rendu si toute la prestation est annulée avant son début (faute de prestataire, back-office, client), perdu une fois démarrée |
 | `21` | catalogue public en « Prénom I. », nom complet au seul client de la prestation |
 | `22` | pointage localisé : sur place, éloigné (enregistré quand même), sans position ; constat fermé à l'écriture depuis le navigateur |
-| `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` par le catalogue |
+| `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` — par un client connecté seulement, le catalogue public ne disant que s'il existe |
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 | `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
 | `26` | accusé de réception de l'inscription : sans service d'envoi (recette), rien n'est marqué et l'envoi reste à faire ; un compte déjà validé n'est jamais pris ; les inscrits d'avant le 29/09 restent marqués. Le succès de l'envoi est couvert par `src/tests/api/accuse-inscription.test.js` |
@@ -5256,6 +5293,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 | `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
+| `82` | Espace prestataire : pas de bandeau « IBAN manquant » quand l'IBAN est enregistré, pas d'offre de lancement épuisée |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 | `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
 

@@ -3,6 +3,8 @@ import { PLACES_OFFRE } from "./_offre.js";
 import { justificatifsDe, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
 import { lireTout } from "./_lignes.js";
+import { verifyUser } from "./_auth.js";
+import { cvPresent } from "./_cv.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -129,6 +131,44 @@ export default async function handler(req, res) {
     } catch (e) {
       console.error("[prestataires/demandes_ouvertes] comptage impossible :", e.message);
       return res.status(200).json({ count: null });
+    }
+  }
+
+  // Le CV d'un prestataire — réservé aux CLIENTS CONNECTÉS (décision d'Alexandre
+  // du 14/10/2026). Le catalogue ci-dessous est public, sans compte, et gardé
+  // par le réseau de Vercel : il rendait le CV complet (parcours, employeurs,
+  // diplômes) à n'importe quel visiteur, alors que l'écran ne le montre qu'à un
+  // client connecté. Il ne rend plus que `a_cv` ; le contenu se lit ici.
+  if (req.query.action === "cv") {
+    res.setHeader("Cache-Control", "private, no-store");
+    const id = String(req.query.id || "");
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Identifiant invalide" });
+    const appelant = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (!appelant?.id) return res.status(401).json({ error: "Connectez-vous pour consulter le parcours." });
+    try {
+      const [rc, rp] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${appelant.id}&select=role,status`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}&role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=cv`, { headers }),
+      ]);
+      if (!rc.ok || !rp.ok) throw new Error(`lecture refusée (${rc.status}/${rp.status})`);
+      const [moi] = await rc.json();
+      if (moi?.role !== "client" || moi?.status !== "approved") {
+        return res.status(403).json({ error: "Le parcours des prestataires est réservé aux clients." });
+      }
+      const [presta] = await rp.json();
+      if (!presta) return res.status(404).json({ error: "Prestataire introuvable" });
+      let cv = presta.cv;
+      // Un CV antérieur au 29/09/2026 peut n'exister que dans user_metadata
+      // (un compte en production le 14/10/2026), comme le catalogue le lit.
+      if (!cvPresent(cv)) {
+        const ru = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+        if (!ru.ok) throw new Error(`compte illisible (${ru.status})`);
+        cv = (await ru.json())?.user_metadata?.cv || null;
+      }
+      return res.status(200).json({ cv: cvPresent(cv) ? cv : null });
+    } catch (e) {
+      console.error("[prestataires/cv] lecture impossible :", e.message);
+      return res.status(503).json({ error: "Parcours indisponible pour le moment. Réessayez." });
     }
   }
 
@@ -329,8 +369,10 @@ export default async function handler(req, res) {
         rating:           avgRating,
         reviews:          provRatings.length,
         missions_count:   missionCountByProvider[p.id] || 0,
-        // profiles.cv d'abord : le CV quitte le jeton (migration 2026-09-29_cv_hors_du_jeton).
-        cv:               p.cv || meta.cv || null,
+        // Seulement SI un CV existe : son contenu est réservé aux clients
+        // connectés (`?action=cv`, décision du 14/10/2026). profiles.cv fait foi
+        // depuis la migration 2026-09-29_cv_hors_du_jeton.
+        a_cv:             cvPresent(p.cv || meta.cv),
         // La photo validée par ALANE, et elle seule (api/_photos.js) — plus la
         // photo de profil, que le prestataire change sans contrôle (30/09/2026).
         // Toujours sous réserve de son accord d'affichage dans le catalogue.
