@@ -1,7 +1,7 @@
 import { utilisateurParEmail } from "./_auth.js";
 import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
-import { esc, hashPii, emailHtml, sendEmail, euros } from "./_email.js";
+import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
@@ -9,6 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
@@ -234,16 +235,7 @@ export default async function handler(req, res) {
       const authData = await authRes.json();
 
       // Construire les sets de hash pour lookup O(1)
-      const blData = blacklistRes || [];
-      const blSets = { email: new Set(), tel: new Set(), iban: new Set(), siret: new Set() };
-      if (Array.isArray(blData)) {
-        for (const entry of blData) {
-          if (entry.email_hash)     blSets.email.add(entry.email_hash);
-          if (entry.telephone_hash) blSets.tel.add(entry.telephone_hash);
-          if (entry.iban_hash)      blSets.iban.add(entry.iban_hash);
-          if (entry.siret_hash)     blSets.siret.add(entry.siret_hash);
-        }
-      }
+      const blSets = ensemblesListeNoire(Array.isArray(blacklistRes) ? blacklistRes : []);
 
       const authUsers = authData.users || [];
       const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
@@ -288,11 +280,8 @@ export default async function handler(req, res) {
         // `siret` pour un prestataire, `kbis` pour un client professionnel.
         const siretMeta = meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
-        const blacklisted =
-          (email && blSets.email.has(hashPii(email))) ||
-          (tel   && blSets.tel.has(hashPii(tel)))     ||
-          (iban  && blSets.iban.has(hashPii(iban)))   ||
-          (siret && blSets.siret.has(hashPii(siret)));
+        // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
+        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets);
         // L'IBAN ne quitte plus le serveur dans la liste.
         //
         // `list` renvoyait l'IBAN complet, en clair, de TOUS les comptes, à chaque
@@ -400,17 +389,12 @@ export default async function handler(req, res) {
 
         // Vérification dans les deux sens :
         // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
-        const orFilters = [];
-        if (userEmail) orFilters.push(`email_hash.eq.${hashPii(userEmail)}`);
-        if (tel2)      orFilters.push(`telephone_hash.eq.${hashPii(tel2)}`);
-        if (iban2)     orFilters.push(`iban_hash.eq.${hashPii(iban2)}`);
-        if (siret2)    orFilters.push(`siret_hash.eq.${hashPii(siret2)}`);
+        // Empreintes normalisées (api/_liste_noire.js, décision D4).
+        const filtreBl = filtreListeNoire(empreintes({ email: userEmail, telephone: tel2, iban: iban2, siret: siret2 }));
 
-        const allFilters = [...new Set(orFilters)];
-
-        if (allFilters.length > 0) {
+        if (filtreBl) {
           try {
-            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
+            const blParams = new URLSearchParams({ or: filtreBl, select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
             const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
             const blData = await blRes.json();
             if (Array.isArray(blData) && blData.length > 0) {
@@ -927,15 +911,12 @@ export default async function handler(req, res) {
         const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            email_hash:               hashPii(userEmail),
-            telephone_hash:           hashPii(telephone),
-            iban_hash:                hashPii(iban),
-            siret_hash:               hashPii(siret),
+          // Champs normalisés (api/_liste_noire.js, décision D4).
+          body: JSON.stringify(ligneListeNoire({ email: userEmail, telephone, iban, siret }, {
             reason:                   reason ? `account_deleted: ${reason}` : "account_deleted",
             missions_completed_month: savedProfile.missions_completed_month || 0,
             plan_abonnement:          savedProfile.plan_abonnement || "free",
-          }),
+          })),
         }).catch(e => ({ ok: false, status: e?.message }));
         if (!bl.ok) console.error(`[${ctx}] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${profileId}`);
       }
