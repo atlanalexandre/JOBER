@@ -701,6 +701,67 @@ async function toujoursRefusee(missionId, supabaseUrl, headers) {
   return false;
 }
 
+/**
+ * Compte une prestation réalisée dans le quota mensuel du prestataire, et
+ * marque l'essai épuisé quand un compte gratuit atteint sa limite.
+ *
+ * N'était appelé qu'à la validation par le client (`complete`). La validation
+ * AUTOMATIQUE (cron, 24 h sans réponse du client) ne comptait rien : la
+ * prestation quittait les « en cours » que check_prestataire_slot additionne
+ * au compteur, et la place se libérait — un compte gratuit dont les clients
+ * ne valident pas eux-mêmes n'avait plus de limite (étude du 14/10/2026).
+ */
+export async function compterAuQuota(prestataireId, jours, supabaseUrl, headers, contexte) {
+  try {
+    // Récupérer le compteur actuel du prestataire et son plan. La lecture de
+    // user_metadata a été retirée : elle ne servait qu'au repli sur le plan
+    // qu'elle annonce, désormais sans valeur — un appel de moins à l'API Auth.
+    const prMonthRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${prestataireId}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
+    const prMonthData = await prMonthRes.json();
+    const prProfile = Array.isArray(prMonthData) && prMonthData[0];
+    if (prProfile && !prProfile.trial_exhausted) {
+      const newCount = (prProfile.missions_completed_month || 0) + jours;
+      // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+      // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+      // et cette valeur était écrite telle quelle dans user_metadata. Comme
+      // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+      // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+      // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+      const plan = prProfile?.plan_abonnement || "free";
+
+      // Limite du plan, offre de lancement comprise — la même que celle
+      // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
+      // la limite réellement opposée au prestataire.
+      const planLimit = await limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers);
+
+      const patchBody = { missions_completed_month: newCount };
+      let justExhausted = false;
+      // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
+      if (plan === "free" && newCount >= planLimit) {
+        patchBody.trial_exhausted = true;
+        justExhausted = true;
+        console.log(`[${contexte}] Prestataire ${prestataireId} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
+      }
+      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${prestataireId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(patchBody),
+      }).catch(e => console.error(`[${contexte}] prestataire missions_completed_month update error :`, e.message));
+      // Notifier le prestataire qu'il a épuisé son quota gratuit
+      if (justExhausted) {
+        await notifier({
+            user_id: prestataireId,
+            type: "system",
+            title: "⛔ Quota mensuel épuisé",
+            body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
+          }, supabaseUrl, headers).catch(e => console.error(`[${contexte}] avis de quota épuisé non envoyé :`, e?.message));
+      }
+    }
+  } catch (e) {
+    console.error(`[${contexte}] prestataire quota non compté :`, e.message);
+  }
+}
+
 export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
   // L'heure de début est passée : solliciter quelqu'un d'autre n'a plus de
   // sens. La borne n'existait que dans la tâche planifiée ; un refus dans
@@ -2131,57 +2192,8 @@ export default async function handler(req, res) {
         }
       }
 
-      // Incrémenter missions_completed_month du prestataire + auto-marquer trial_exhausted si limite atteinte
-      if (mission.prestataire_id) {
-        try {
-          // Récupérer le compteur actuel du prestataire et son plan. La lecture de
-          // user_metadata a été retirée : elle ne servait qu'au repli sur le plan
-          // qu'elle annonce, désormais sans valeur — un appel de moins à l'API Auth.
-          const prMonthRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
-          const prMonthData = await prMonthRes.json();
-          const prProfile = Array.isArray(prMonthData) && prMonthData[0];
-          if (prProfile && !prProfile.trial_exhausted) {
-            const newCount = (prProfile.missions_completed_month || 0) + missionDayCount;
-            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
-            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
-            // et cette valeur était écrite telle quelle dans user_metadata. Comme
-            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
-            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
-            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
-            const plan = prProfile?.plan_abonnement || "free";
-
-            // Limite du plan, offre de lancement comprise — la même que celle
-            // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
-            // la limite réellement opposée au prestataire.
-            const planLimit = await limitePlanMensuelle(plan, mission.prestataire_id, SUPABASE_URL, headers);
-
-            const patchBody = { missions_completed_month: newCount };
-            let justExhausted = false;
-            // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
-            if (plan === "free" && newCount >= planLimit) {
-              patchBody.trial_exhausted = true;
-              justExhausted = true;
-              console.log(`[complete] Prestataire ${mission.prestataire_id} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
-            }
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}`, {
-              method: "PATCH",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify(patchBody),
-            }).catch(e => console.error("[complete] prestataire missions_completed_month update error:", e.message));
-            // Notifier le prestataire qu'il a épuisé son quota gratuit
-            if (justExhausted) {
-              await notifier({
-                  user_id: mission.prestataire_id,
-                  type: "system",
-                  title: "⛔ Quota mensuel épuisé",
-                  body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
-                }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
-            }
-          }
-        } catch (e) {
-          console.error("[complete] prestataire slot tracking error:", e.message);
-        }
-      }
+      // Le quota du mois — partagé avec la validation automatique (cron).
+      if (mission.prestataire_id) await compterAuQuota(mission.prestataire_id, missionDayCount, SUPABASE_URL, headers, "complete");
 
       return res.status(200).json({ success: true, montantTotal: partPrestataire, totalClient, cashbackEarned, newBalance });
     }

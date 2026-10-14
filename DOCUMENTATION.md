@@ -1064,7 +1064,12 @@ justifié, ni rapproché des encaissements Stripe.
 
 Cinq procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
-- `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
+- `check_prestataire_slot` — places restantes dans le **quota mensuel** du prestataire :
+  `p_limit − (missions_completed_month + prestations assigned ou pending_acceptance)`, sous
+  verrou de la ligne du profil. (Ce fichier la décrivait à tort comme un contrôle de créneau.)
+  `missions_completed_month` est incrémenté par `compterAuQuota()` (`api/missions.js`) à la
+  validation par le client **et**, depuis le 14/10/2026, à la validation automatique — qui ne
+  comptait rien : la place se libérait.
 - `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
   uniquement** : elle ne vérifie pas son appelant. Le 27/08/2026 une migration l'a supprimée
   puis recréée, et le verrou a disparu avec elle (un `DROP FUNCTION` perd les droits, un
