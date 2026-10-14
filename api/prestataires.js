@@ -108,7 +108,24 @@ export default async function handler(req, res) {
       if (!r.ok) throw new Error(`comptage refusé (${r.status})`);
       const plage = r.headers.get("content-range");
       const count = plage ? parseInt(plage.split("/")[1], 10) : null;
-      return res.status(200).json({ count: Number.isFinite(count) ? count : null });
+      // Les prestations réalisées sur la plateforme, pour le même bandeau.
+      // L'écran les comptait dans `missions` depuis le navigateur, que la base
+      // limite aux prestations DU client depuis le 01/10/2026 : il affichait
+      // « 0 prestations réalisées » à tout nouveau client (étude du 13/10/2026).
+      let realisees = null;
+      try {
+        const rr = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?status=in.(completed,closed)&select=id`,
+          { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
+        );
+        const pr = rr.ok ? rr.headers.get("content-range") : null;
+        const n = pr ? parseInt(pr.split("/")[1], 10) : NaN;
+        if (Number.isFinite(n)) realisees = n;
+        else console.error(`[prestataires/demandes_ouvertes] prestations réalisées non comptées (${rr.status})`);
+      } catch (e) {
+        console.error("[prestataires/demandes_ouvertes] prestations réalisées non comptées :", e.message);
+      }
+      return res.status(200).json({ count: Number.isFinite(count) ? count : null, realisees });
     } catch (e) {
       console.error("[prestataires/demandes_ouvertes] comptage impossible :", e.message);
       return res.status(200).json({ count: null });

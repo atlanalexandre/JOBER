@@ -4863,6 +4863,16 @@ vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), ma
 se croyait disponible et apparaissait indisponible aux clients (corrigé le 13/10/2026). L'écriture
 de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
 
+**L'accueil du client le reprend** (étude du 13/10/2026, `e2e/79`). Le bandeau « pros dispo
+maintenant » et la rubrique « Dispo maintenant » lisaient `dispo_immediat`, que la fiche du
+catalogue (`mapperPrestataires()`, `client-screens.jsx`) ne reprenait pas : 0 affiché, rubrique
+jamais montrée, alors que l'écran d'un secteur annonçait 1 330 disponibles en recette. La fiche le
+reprend ; la rubrique montre douze cartes au plus, le badge donne le total. « Prestations
+réalisées » comptait les prestations **du client** — la base ne lui montre que les siennes depuis
+le 01/10/2026 — soit 0 pour tout nouveau client, présenté comme un chiffre de la plateforme. Il
+vient désormais du serveur (`realisees` de `/api/prestataires?action=demandes_ouvertes` : toutes
+les prestations `completed` ou `closed`) ; illisible, l'écran affiche « — ».
+
 **Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
 secondes après l'appui et dit ce que le service de notification a répondu (§4, `push_subscriptions`).
@@ -5221,6 +5231,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `75` | Le tarif d'une prolongation déjà payée ne se réécrit pas |
 | `76` | Somme due par un prestataire : notifiée sans promettre de retenue |
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
+| `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
+| `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
