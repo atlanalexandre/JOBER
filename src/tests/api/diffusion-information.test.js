@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { destinatairesInformation, htmlInformation, enLots, envoyerInformation } from "../../../api/_diffusion.js";
+import { destinatairesInformation, htmlInformation, enLots, envoyerInformation, MAX_DESTINATAIRES, TAILLE_LOT, PAUSE_ENTRE_LOTS_MS } from "../../../api/_diffusion.js";
+import { readFileSync } from "node:fs";
 
 // 13/10/2026 : aucun envoi groupé du back-office ne joignait tous les inscrits
 // par e-mail. Celui-ci part à tous, validés ou non, sauf les comptes écartés.
@@ -92,5 +93,19 @@ describe("envoyerInformation()", () => {
 
   it("enLots découpe sans perte", () => {
     expect(enLots([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+});
+
+describe("plafond de l'envoi", () => {
+  it("tient dans la minute d'une fonction, appel à Resend compris (1 s par lot au pire)", () => {
+    const lots = Math.ceil(MAX_DESTINATAIRES / TAILLE_LOT);
+    const pire = lots * (PAUSE_ENTRE_LOTS_MS + 1000);
+    expect(pire, "marge de 15 s pour la lecture des comptes").toBeLessThanOrEqual(45_000);
+  });
+  it("bo-action applique ce plafond, et la fonction a bien 60 s", () => {
+    const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(bo).toMatch(/adresses\.length > MAX_DESTINATAIRES/);
+    const vercel = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8"));
+    expect(vercel.functions["api/bo-action.js"].maxDuration).toBe(60);
   });
 });
