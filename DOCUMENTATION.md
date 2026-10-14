@@ -1775,6 +1775,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 | Étape | Ce qui était faux |
 |---|---|
 | Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
+| Prestation **commencée** (back-office) | supprimer au back-office un compte dont une prestation avait démarré la **remboursait en entier et l'annulait** : le prestataire n'était pas payé du travail déjà fait. Refusée depuis le 14/10/2026 (décision D3 d'Alexandre, 409), comme un litige : on attend la fin ou on interrompt. L'utilisateur et la résiliation à l'échéance s'arrêtaient déjà à toute prestation en cours. Éprouvé par `e2e/91` |
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
 | Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` était en cascade sur le compte, jusqu'à la migration du 14/10/2026) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
@@ -5347,6 +5348,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `88` | Réservation à 0 €/h payée : non affectée, client remboursé |
 | `89` | Décalage refusé, puis démarrage plus tardif encore : l'écart est déduit et rendu, la question n'est pas rouverte |
 | `90` | Prestation validée automatiquement : elle compte au quota mensuel du prestataire |
+| `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
