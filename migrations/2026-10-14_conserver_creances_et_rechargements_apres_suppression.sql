@@ -19,6 +19,8 @@
 -- Rien n'est supprimé ni modifié dans les données : la colonne accepte
 -- désormais NULL, et la clé est recréée avec une autre règle de suppression.
 -- Production, lecture seule le 14/10/2026 : 0 créance, 0 rechargement.
+-- APPLIQUÉE : recette et production le 14/10/2026 (production passée par Alexandre),
+-- vérifiée des deux côtés : les deux clés finissent par ON DELETE SET NULL.
 --
 -- ORDRE : indifférent (le code ne dépend pas de cette migration).
 -- ═══════════════════════════════════════════════════════════════════════════
