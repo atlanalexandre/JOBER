@@ -4426,7 +4426,11 @@ export default async function handler(req, res) {
           ? {
               status: "completed",
               validation_client: true,
-              actual_hours: totalHours,
+              // Décalage non arbitré sur une journée : la durée plafonnée, comme à
+              // la validation (`complete`) — la facture lit `actual_hours`, et
+              // annonçait sinon une heure de plus que le versement.
+              actual_hours: partage.ajustementRetard && !partage.ajustementRetard.unJour
+                ? partage.ajustementRetard.apres : totalHours,
               heures_perdues: heuresPerduesTotal,
               ...majAjouts,
               montant_total: totalClient,

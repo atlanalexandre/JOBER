@@ -54,6 +54,8 @@ for (const [cas, arbitrage] of [["jamais arbitré", null], ["accepté", "approve
     const [f] = await sql(`select * from missions where id = '${m.id}'`);
     expect(Number(f.payout_amount), "versé au prestataire : 3 h").toBe(3 * tarif);
     expect(montantsDeCloture(f).partPrestataire).toBe(3 * tarif);
+    // La facture lit `actual_hours` moins les heures perdues : 3 h, comme le versement.
+    expect(Number(f.actual_hours) - Number(f.heures_perdues || 0), "heures facturées").toBe(3);
     // Le compte tombe juste : rendu + versé + frais = payé.
     expect(rendu + centimes(f.payout_amount) + centimes(frais)).toBe(centimes(prix));
   });

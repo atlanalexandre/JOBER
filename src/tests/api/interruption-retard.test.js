@@ -59,3 +59,11 @@ describe("cancel_in_progress", () => {
     expect(bloc).toMatch(/annulerReste && partage\.ajustementRetard[\s\S]{0,200}rembourserHeuresRetirees/);
   });
 });
+
+describe("la facture d'une interruption après un décalage non arbitré", () => {
+  const src = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+  it("inscrit la durée plafonnée, que lit la facture", () => {
+    const bloc = src.slice(src.indexOf('if (action === "cancel_in_progress")'), src.indexOf('if (action === "checkin_mission")'));
+    expect(bloc).toMatch(/actual_hours: partage\.ajustementRetard && !partage\.ajustementRetard\.unJour\s*\? partage\.ajustementRetard\.apres : totalHours/);
+  });
+});
