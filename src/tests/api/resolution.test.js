@@ -112,9 +112,12 @@ describe("exécution d'une résolution", () => {
       // La relecture de la prestation par executerResolution (30/09/2026) n'est
       // pas comptée : les tests ci-dessous portent sur ce qui est ÉCRIT.
       if (String(url).includes("select=*")) return { ok: true, json: async () => [{}] };
-      // La lecture du paiement chez Stripe (reste remboursable, 06/10/2026) non
-      // plus : muette ici, le plafond de la prestation s'applique seul.
-      if (String(url).includes("/v1/payment_intents/")) return { ok: false, status: 404, json: async () => ({}) };
+      // La lecture du paiement chez Stripe (reste remboursable, 06/10/2026 ;
+      // déjà rendu, octobre 2026) non plus : rien n'a encore été rendu, et le
+      // plafond de la prestation s'applique seul.
+      if (String(url).includes("/v1/payment_intents/")) {
+        return { ok: true, json: async () => ({ id: "pi_x", latest_charge: { amount_captured: 1e9, amount_refunded: 0 } }) };
+      }
       appels.push({ url: String(url), opts });
       if (String(url).includes("api.stripe.com")) {
         return { ok: true, json: async () => ({ id: "re_test" }) };
@@ -220,6 +223,9 @@ describe("exécution d'une résolution", () => {
 
   it("un refus de Stripe ne clôt pas la prestation", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+      if (String(url).includes("/v1/payment_intents/")) {
+        return { ok: true, json: async () => ({ id: "pi_4", latest_charge: { amount_captured: 1e9, amount_refunded: 0 } }) };
+      }
       if (String(url).includes("api.stripe.com")) {
         return { ok: false, json: async () => ({ error: { message: "carte expirée" } }) };
       }

@@ -2373,7 +2373,18 @@ navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de
 choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
 `status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
-postal, `avatar_url`, `rib`, `cv`.
+postal, `avatar_url`, `rib`, `cv`, `tel`, `siret`, `societe_nom`, les champs fiscaux DAC7 (`nif`,
+`nif_collecte_at`, `residence_fiscale`) et le consentement (`accepte_communications`, `_at`).
+
+**`created_at` ne l'est plus** (étude du 13/10/2026, migration
+`2026-10-13_secu_profils_date_inscription_non_modifiable.sql`, `e2e/77`). Le droit de colonne était
+resté ouvert : un prestataire réécrivait sa date d'inscription (prouvé en recette). Elle décide de
+l'offre de lancement (tri des 100 premiers, `estEligible()`) et de l'échéance de l'attestation
+URSSAF (`etatRegularisation()`) : antidatée, le quota Premium sans payer ; postdatée, plus jamais de
+suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) **et en
+production le 14/10/2026** par Alexandre — vérifié en lecture seule : `created_at` n'est plus
+modifiable ni par `authenticated` ni par `anon`, et les 16 autres colonnes ouvertes au navigateur le
+restent, comme en recette. Production lue le 13/10 : aucun profil à la date réécrite.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
@@ -4460,6 +4471,19 @@ est dû, on ne retient rien au consommateur.
 Le montant retenu est annoncé dans la proposition et dans la notification de clôture. Le taire
 ferait découvrir l'écart sur le relevé bancaire, ce qui rouvre le litige qu'on vient de fermer.
 
+**Ce qui a déjà été rendu ne se rend pas deux fois** (étude d'octobre 2026, `e2e/80`,
+`litige-deja-rendu.test.js`). Une partie du prix peut avoir été rendue avant le litige — heure de
+retard d'un décalage refusé, heures plafonnées à la validation, journée écourtée. Le dénouement
+« rembourser le client » l'ignorait. Constaté en recette (8 h à 13 €, 110,98 € payés, une heure de
+retard) : avant la validation, il demandait le prix entier, Stripe le plafonnait à ce qui restait —
+frais compris —, et le « reliquat » calculé sur le prix entier était versé au prestataire (110,98 €
+rendus **et** 6,02 € versés) ; après la validation, `montant_total` ayant été ramené au dû, les frais
+n'étaient plus reconnus et partaient avec le reste. `soldeDuLitige()` (`api/_resolution.js`) part
+désormais de ce que le client a **encore** réglé : clôturée (`payout_amount` figé), `montant_total`
+(le dû, déjà net) et des frais égaux à `montant_total − payout_amount` ; pas encore, le prix payé
+moins ce que Stripe a déjà rendu sur le paiement, relu avant d'exécuter (illisible : rien n'est
+exécuté). Le partage avec le prestataire (`resteAuPrestataire()`) part de la même base.
+
 ### Une prestation faite ne s'annule plus
 
 **Corrigé le 21/08/2026.** `presta_cancel` ne filtrait que sur le statut — `assigned` ou
@@ -5232,6 +5256,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 | `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
+| `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 | `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
