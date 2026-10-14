@@ -2,7 +2,7 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour } from "./_decalage.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour, retardAggraveApresRefus } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
@@ -7283,7 +7283,7 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut,delay_status,arrival_delay_minutes`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,date_debut,date_fin,heure_debut,delay_status,arrival_delay_minutes,hours,actual_hours,heures_perdues,tarif_horaire,montant_total,stripe_payment_intent,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable ou non assignée" });
@@ -7316,6 +7316,7 @@ export default async function handler(req, res) {
       // la fin d'autant, en silence et sans que le client ait son mot à dire. C'est
       // pourtant le démarrage qui détermine la fin, donc le service réellement rendu.
       const patchStart = { started_at: startedAt };
+      let aggrave = null;
       if (m.date && m.heure_debut && m.delay_status !== "approved") {
         try {
           // Conversion déportée dans _temps.js : la formule ne se recopie plus.
@@ -7325,7 +7326,11 @@ export default async function handler(req, res) {
           // On retient le décalage le plus défavorable au client : celui de l'arrivée
           // ou celui du démarrage, sans jamais l'effacer.
           const retardRetenu = Math.max(retardDemarrage, Number(m.arrival_delay_minutes) || 0);
-          if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
+          if (m.delay_status === "rejected") {
+            // Le client a déjà refusé de décaler la fin : on ne lui repose pas
+            // la question, on déduit et on rend l'écart (_decalage.js).
+            aggrave = retardAggraveApresRefus(m, retardDemarrage);
+          } else if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
             patchStart.arrival_delay_minutes = retardRetenu;
             patchStart.delay_status = "pending";
             console.log(`[start_mission] retard de ${retardDemarrage} min sur ${mission_id} — accord du client requis`);
@@ -7335,11 +7340,29 @@ export default async function handler(req, res) {
         }
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify(patchStart),
-      });
+      if (aggrave) {
+        // Écriture CONDITIONNELLE : un double appel ne déduit, ni ne rend, deux fois.
+        const ecrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&started_at=is.null`
+          + `&delay_status=eq.rejected&arrival_delay_minutes=eq.${Number(m.arrival_delay_minutes) || 0}`,
+          { ...patchStart, ...aggrave.maj }, headers, "start_mission/retard aggravé");
+        if (!ecrit) return res.status(500).json({ error: "Le démarrage n'a pas pu être enregistré. Réessayez." });
+        const rendu = await rembourserHeuresRetirees({ mission: m, euros: aggrave.aRendre, supabaseUrl: SUPABASE_URL,
+          headers, contexte: "start_mission/retard aggravé", suffixeCle: `demarrage-${aggrave.maj.arrival_delay_minutes}` });
+        if (m.client_id) {
+          const labelA = m.titre || m.metier || "votre prestation";
+          await notifier({ user_id: m.client_id, type: "mission", ref_id: m.id, title: "⏰ Démarrage en retard",
+            body: `Le prestataire a démarré « ${labelA} » ${aggrave.ecartMin} min plus tard encore que son arrivée. `
+              + "Comme vous l'avez choisi, la prestation prend fin à l'heure prévue"
+              + (rendu.centimes > 0 ? ` : ${euros(rendu.centimes / 100)} vous ${rendu.ok ? "sont rendus" : "seront rendus"}.` : "."),
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] retard aggravé non notifié :", e?.message));
+        }
+      } else {
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify(patchStart),
+        });
+      }
 
       // Le client est prévenu séparément : sans accord de sa part, la prestation
       // s'arrête à l'heure de fin initialement prévue.
