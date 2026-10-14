@@ -1407,6 +1407,16 @@ panne affiche désormais « Connexion impossible pour le moment. Réessayez dans
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
 
+**Compte suspendu ou refusé : `refuserCompteBloque()`** (`_auth.js`, 14/10/2026). L'application
+déconnecte un tel compte, mais son jeton reste valable et se rafraîchit : par un appel direct,
+il enregistrait encore une carte, payait une réservation ou souscrivait un abonnement. Ces
+trois chemins — `stripe-intent` (`setup_card`, paiement de réservation), `stripe-subscription`
+(sauf `free`) et `booking-draft` (`save`) — répondent désormais **403** (`code: compte_bloque`),
+et **503** si le statut est illisible. Restent ouverts, volontairement : retirer sa carte,
+résilier, payer un complément d'heures déjà travaillées, le support (CGPS 16.2 : il présente
+ses observations), la suppression du compte, les pièces justificatives et le compte de
+versement (`stripe-connect` : les versements dus pour le travail fait). Éprouvé par `e2e/82`.
+
 ### Un endpoint sans authentification : le catalogue
 
 - **`get-profile.js`** — **authentifié**. Il recevait un `userId` dans le corps de la requête
