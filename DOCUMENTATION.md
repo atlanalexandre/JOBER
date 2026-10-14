@@ -2706,6 +2706,12 @@ notifié. Trois issues :
 | `rejected` | heure initiale | réduites par `respond_delay` |
 | `pending` (sans réponse) | heure initiale | plafonnées à la clôture (`complete`, ou validation automatique du cron) |
 
+Un décalage **déjà refusé** n'est jamais rouvert : si le démarrage est plus tardif encore que
+l'arrivée, l'écart est déduit (`actual_hours`, ou `heures_perdues` sur plusieurs jours) et rendu
+tout de suite, avec sa propre clé Stripe — `retardAggraveApresRefus()` (`api/_decalage.js`,
+14/10/2026, `e2e/85`). Le démarrage remettait `delay_status` en attente avec le retard total :
+accepté, il effaçait la réduction déjà rendue ; refusé, il retirait le retard une seconde fois.
+
 **Les heures retirées sont remboursées au client** (depuis le 30/09/2026, `api/_decalage.js`).
 Elles ne l'étaient jamais : 110,98 € payés pour 8 h, 7 h facturées, prestataire payé 91 €, 0 €
 rendu — l'heure non faite restait à ALANE et la facture la présentait comme des frais de service.
