@@ -5,7 +5,7 @@
 // ouvre, en valide, en refuse : on contrôle en base ce que chaque bouton a vraiment
 // enregistré, et chez le prestataire ce qu'il en apprend.
 import { test, expect, request } from "@playwright/test";
-import { sql, RECETTE_REF } from "./outils.js";
+import { sql, RECETTE_REF, telephoneTest } from "./outils.js";
 import { inscrire, anon, bo, api, prestataireOperationnel } from "./fabrique.js";
 import { connexionBO, ficheBO } from "./parcours.js";
 
@@ -42,7 +42,7 @@ const ligneDoc = (page, libelle) =>
     .filter({ has: page.getByTitle("Refuser ce document") }).last();
 
 async function prestataireAvecPieces(types) {
-  const p = await inscrire({ role: "prestataire", prenom: "Dora", metadonnees: { telephone: "0698765432", metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
+  const p = await inscrire({ role: "prestataire", prenom: "Dora", metadonnees: { telephone: telephoneTest(), metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
   const a = await bo("approve", { profileId: p.id });
   expect(a.statut, a.texte.slice(0, 200)).toBe(200);
   for (const t of types) await deposer(p, t);

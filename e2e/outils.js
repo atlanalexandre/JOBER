@@ -83,4 +83,25 @@ export function emailTest(prefixe) {
   return `${prefixe}.${Date.now()}.${Math.floor(Math.random() * 1e4)}@recette.alane.test`;
 }
 
+/**
+ * Téléphone et IBAN propres à chaque compte de test. Supprimer un compte inscrit
+ * leur empreinte dans la liste anti-recréation (`account_blacklist`), et toute
+ * inscription qui les reprend naît « essai épuisé » : 0 prestation par mois en
+ * gratuit. Les comptes de recette partageaient tous le même téléphone et le même
+ * IBAN — une seule suppression (14/10/2026, 11 h 23) a fait refuser l'acceptation
+ * de prestation à tous les prestataires créés ensuite, et tomber les scénarios.
+ */
+const chiffres = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
+export function telephoneTest() {
+  return `06${chiffres(8)}`;
+}
+/** IBAN français valide (clé RIB et clé IBAN), banque et guichet de recette. */
+export function ibanTest() {
+  const banque = "30006", guichet = "00001", compte = chiffres(11);
+  const cleRib = 97 - Number((89n * BigInt(banque) + 15n * BigInt(guichet) + 3n * BigInt(compte)) % 97n);
+  const bban = `${banque}${guichet}${compte}${String(cleRib).padStart(2, "0")}`;
+  const cleIban = 98 - Number(BigInt(`${bban}152700`) % 97n); // F=15, R=27, puis « 00 »
+  return `FR${String(cleIban).padStart(2, "0")}${bban}`;
+}
+
 export const MOT_DE_PASSE = "Recette!2026-e2e";

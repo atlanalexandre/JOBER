@@ -1,7 +1,7 @@
 // Parcours réutilisés par plusieurs scénarios : ils jouent l'application comme un
 // utilisateur, par l'écran, et ne touchent la base que pour CONTRÔLER.
 import { expect } from "@playwright/test";
-import { MOT_DE_PASSE } from "./outils.js";
+import { MOT_DE_PASSE, telephoneTest } from "./outils.js";
 
 export async function fermerBandeauCookies(page) {
   const bouton = page.getByText("J'ai compris");
@@ -45,7 +45,7 @@ export async function remplirInscriptionClient(page, { email, motDePasse = MOT_D
   // Étape 1 — identité
   await page.getByPlaceholder("Jean").fill(prenom);
   await page.getByPlaceholder("Dupont").fill("Recette");
-  await page.getByPlaceholder("06 12 34 56 78").fill("0612345678");
+  await page.getByPlaceholder("06 12 34 56 78").fill(telephoneTest());
   await continuer(page);
 
   // Étape 2 — besoins
@@ -85,7 +85,7 @@ export async function remplirInscriptionPrestataire(page, { email, motDePasse = 
   // 1 — identité
   await page.getByPlaceholder("Jean").fill(prenom);
   await page.getByPlaceholder("Dupont").fill("Recette");
-  await page.getByPlaceholder("06 12 34 56 78").fill("0698765432");
+  await page.getByPlaceholder("06 12 34 56 78").fill(telephoneTest());
   await page.locator('input[type="date"]').fill("1990-05-15");
   await page.getByPlaceholder("12 rue de la Paix").fill("5 rue de Lyon");
   await page.getByPlaceholder("75001").fill("75012");
