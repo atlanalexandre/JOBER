@@ -45,7 +45,11 @@ test("accueil client : prestataires disponibles et prestations réalisées de la
   expect(Math.abs(realisees - n), `réalisées affichées : ${realisees}, en base : ${n}`).toBeLessThanOrEqual(3);
 
   // La rubrique est bornée : douze cartes au plus, le badge donne le total.
-  await expect(page.getByText(new RegExp(`^${dispo} pros?$`))).toBeVisible();
+  const entete = page.getByRole("heading", { name: "Dispo maintenant" }).locator("xpath=../..");
+  await expect(entete.getByText(new RegExp(`^${dispo} pros?$`))).toBeVisible();
+  const cartes = await entete.locator("xpath=following-sibling::div[1]/div").count();
+  expect(cartes, "cartes de la rubrique").toBeGreaterThan(0);
+  expect(cartes, "cartes de la rubrique").toBeLessThanOrEqual(12);
 
   // Rien ne déborde en largeur sur un petit écran.
   const largeur = await page.evaluate(() => document.documentElement.scrollWidth);
