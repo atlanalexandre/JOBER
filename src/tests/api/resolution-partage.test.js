@@ -11,15 +11,14 @@
 // quoi. Un test sur ce calcul vaut mieux qu'un test sur la plomberie.
 import { describe, it, expect } from "vitest";
 import { montantsDeCloture } from "../../../api/_cloture.js";
+import { soldeDuLitige, resteAuPrestataire } from "../../../api/_resolution.js";
 
-/** Le calcul de `executerResolution`, isolé. */
+/** Le calcul de `executerResolution` — ses propres fonctions, et non une copie. */
 function partAuPrestataire(mission, rembourseEuros) {
-  const { partPrestataire, fraisService } = montantsDeCloture(mission);
-  const paye  = Number(mission.montant_total || 0);
-  const rendu = rembourseEuros === null ? paye : rembourseEuros;
-  const brut  = Math.round((paye - rendu - fraisService) * 100) / 100;
-  const reste = Math.max(0, Math.min(brut, Math.round(partPrestataire * 100) / 100));
-  return { reste, aVerser: reste >= 1, fraisService, partPrestataire };
+  const s = soldeDuLitige(mission, 0);
+  const rendu = rembourseEuros === null ? s.net : rembourseEuros;
+  const { reste, aVerser } = resteAuPrestataire({ ...s, rendu });
+  return { reste, aVerser, fraisService: s.frais, partPrestataire: s.partMax };
 }
 
 // La prestation du 21/08/2026 : 1 h à 15 €, 5,20 € de frais, 20,20 € payés.

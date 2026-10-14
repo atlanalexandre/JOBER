@@ -49,17 +49,86 @@ export const DELAI_OPPOSITION_MS = 48 * 3600000;
 // Retourne { centimes, fraisRetenus } — ou { centimes: null } lorsque le
 // montant ne peut pas être établi. Dans ce cas l'appelant rembourse la totalité
 // : à défaut de savoir ce qui est dû, on ne retient rien au consommateur.
-export function montantRemboursable(m) {
-  const total = Number(m?.montant_total || 0);
-  if (!(total > 0)) return { centimes: null, fraisRetenus: 0 };
+export function montantRemboursable(m, dejaRenduCentimes = 0) {
+  const { net, frais } = soldeDuLitige(m, dejaRenduCentimes);
+  if (!(net > 0)) return { centimes: null, fraisRetenus: 0 };
+  if (!(frais > 0)) return { centimes: null, fraisRetenus: 0 };
 
-  const { fraisService } = montantsDeCloture(m);
-  if (!(fraisService > 0)) return { centimes: null, fraisRetenus: 0 };
-
-  const aRembourser = Math.round((total - fraisService) * 100) / 100;
+  const aRembourser = Math.round((net - frais) * 100) / 100;
   if (!(aRembourser > 0)) return { centimes: null, fraisRetenus: 0 };
 
-  return { centimes: Math.round(aRembourser * 100), fraisRetenus: fraisService };
+  return { centimes: Math.round(aRembourser * 100), fraisRetenus: frais };
+}
+
+// Ce que le client a encore réglé, et les frais de service qu'il en reste à
+// retenir, au moment où un litige se dénoue (étude d'octobre 2026).
+//
+// Une partie du prix peut déjà lui avoir été rendue : heure de retard d'un
+// décalage refusé (`respond_delay`), heures plafonnées à la validation, journée
+// écourtée. Le dénouement l'ignorait, et deux erreurs en sortaient, constatées
+// en recette (`e2e/80`) :
+//   - AVANT la validation, `montant_total` est encore le prix payé. On
+//     demandait à Stripe le prix entier, qu'il plafonnait à ce qui restait —
+//     frais de service compris —, et le « reliquat » calculé sur le prix entier
+//     était versé au prestataire : 110,98 € rendus et 6,02 € versés pour
+//     110,98 € encaissés ;
+//   - APRÈS la validation, `montant_total` a été ramené au dû (part du
+//     prestataire + frais) : les frais n'y étaient plus reconnus, puisque la
+//     part prévue se calcule sur la durée réservée, et ils étaient rendus.
+//
+// D'où deux lectures, selon que la clôture a eu lieu :
+//   - clôturée (`payout_amount` figé) : `montant_total` = part figée + frais,
+//     ce qui a été rendu à la clôture y est déjà déduit ;
+//   - pas encore : `montant_total` est le prix payé, et ce qui a déjà été rendu
+//     sur le paiement (`dejaRenduCentimes`, lu chez Stripe) s'en retranche.
+export function soldeDuLitige(m, dejaRenduCentimes = 0) {
+  const total = Number(m?.montant_total || 0);
+  const figee = m?.payout_amount !== null && m?.payout_amount !== undefined && m?.payout_amount !== "";
+  if (figee) {
+    const part = Number(m.payout_amount) || 0;
+    return {
+      net: total,
+      frais: Math.max(0, Math.round((total - part) * 100) / 100),
+      partMax: part,
+    };
+  }
+  const { fraisService, partPrestataire } = montantsDeCloture(m);
+  const deja = Math.max(0, Number(dejaRenduCentimes) || 0) / 100;
+  return {
+    net: Math.max(0, Math.round((total - deja) * 100) / 100),
+    frais: fraisService,
+    partMax: partPrestataire,
+  };
+}
+
+/**
+ * Ce qui revient au prestataire une fois le client remboursé.
+ * Règle d'Alexandre (24/08/2026) : prestataire = encore réglé − rendu − frais,
+ * jamais plus que sa part sans litige, et rien sous un euro (Stripe le refuse).
+ */
+export function resteAuPrestataire({ net, rendu, frais, partMax }) {
+  const brut = Math.round((Number(net) - Number(rendu) - Number(frais)) * 100) / 100;
+  const reste = Math.max(0, Math.min(brut, Math.round(Number(partMax) * 100) / 100));
+  return { brut, reste, aVerser: reste >= 1 };
+}
+
+// Ce qui a déjà été rendu sur le paiement de la réservation, en centimes.
+// null si Stripe ne répond pas : on ne sait pas, on n'exécute rien.
+async function dejaRenduSurLePaiement(intentId, stripeKey) {
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(intentId)}?expand[]=latest_charge`,
+      { headers: { "Authorization": `Bearer ${stripeKey}` } });
+    const pi = await r.json().catch(() => null);
+    if (!r.ok || !pi?.id) {
+      console.error(`[resolution] paiement ${intentId} illisible chez Stripe (${r.status}).`);
+      return null;
+    }
+    const charge = pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+    return Math.max(0, Number(charge?.amount_refunded) || 0);
+  } catch (e) {
+    console.error(`[resolution] paiement ${intentId} injoignable chez Stripe :`, e.message);
+    return null;
+  }
 }
 
 // Les deux seules propositions formulables. Toute autre valeur est refusée
@@ -176,11 +245,20 @@ export async function executerResolution({
   // que la carte a supporté, et c'est le montant rendu — pas le montant voulu —
   // qui décide de ce qu'il reste à répartir.
   let rembourseEuros = null;
+  // Ce qui a déjà été rendu sur le paiement, avant ce dénouement : il n'entre
+  // dans le calcul que si la prestation n'a pas encore été clôturée (voir
+  // soldeDuLitige). Lu chez Stripe ; illisible, on n'exécute rien.
+  let dejaRendu = 0;
 
   if (mission.stripe_payment_intent) {
     if (!stripeKey) {
       console.error(`[resolution] STRIPE_SECRET_KEY absente — remboursement impossible pour ${mission.id}`);
       return { ok: false, detail: "Stripe non configuré — remboursement impossible." };
+    }
+    if (String(mission.stripe_payment_intent).startsWith("pi_")) {
+      const lu = await dejaRenduSurLePaiement(mission.stripe_payment_intent, stripeKey);
+      if (lu === null) return { ok: false, detail: "Le paiement n'a pas pu être relu chez Stripe — rien n'a été exécuté. Réessayez." };
+      dejaRendu = lu;
     }
     try {
       // Les frais de service restent acquis : on ne rembourse que la part
@@ -198,7 +276,7 @@ export async function executerResolution({
       const surMesure = Number.isFinite(partiel) && partiel > 0;
       const { centimes, fraisRetenus } = surMesure
         ? { centimes: Math.round(partiel * 100), fraisRetenus: 0 }
-        : montantRemboursable(mission);
+        : montantRemboursable(mission, dejaRendu);
       if (surMesure) {
         console.log(`[resolution] remboursement partiel de ${partiel.toFixed(2)} €`
           + ` pour ${mission.id} — montant fixé lors de la proposition.`);
@@ -282,12 +360,11 @@ export async function executerResolution({
   //     calcul faux ne peut pas le sur-payer ;
   //   • en dessous d'un euro, le virement est refusé par Stripe : on annule
   //     plutôt que de programmer un versement qui échouera.
-  const { partPrestataire, fraisService } = montantsDeCloture(mission);
-  const paye  = Number(mission.montant_total || 0);
-  const rendu = rembourseEuros === null ? paye : rembourseEuros;
-  const brut  = Math.round((paye - rendu - fraisService) * 100) / 100;
-  const reste = Math.max(0, Math.min(brut, Math.round(partPrestataire * 100) / 100));
-  const aVerser = reste >= 1;
+  // « Payé » s'entend de ce que le client a encore réglé : ce qui lui avait
+  // déjà été rendu (décalage, heures plafonnées) n'est plus à partager.
+  const { net, frais: fraisService, partMax } = soldeDuLitige(mission, dejaRendu);
+  const rendu = rembourseEuros === null ? net : rembourseEuros;
+  const { brut, reste, aVerser } = resteAuPrestataire({ net, rendu, frais: fraisService, partMax });
 
   if (aVerser) {
     console.log(`[resolution] ${mission.id} : ${rendu.toFixed(2)} € rendus au client, `
