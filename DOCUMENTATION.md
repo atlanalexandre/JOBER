@@ -5261,8 +5261,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 | `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
-| `83` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
+| `83` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
