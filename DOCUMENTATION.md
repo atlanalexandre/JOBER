@@ -805,6 +805,8 @@ Le versement au prestataire se suit sur `payout_status`
 duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_hold_reason` / `payout_hold_at` / `payout_hold_until` (retenue de l'art. 7.4) et
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
+Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
+refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Voir « Le versement au prestataire » au §6.
 
 `cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le

@@ -1,3 +1,5 @@
+import { euros } from "./_email.js";
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Virement au prestataire : réessayer sans jamais payer deux fois
 // ═══════════════════════════════════════════════════════════════════════════
@@ -48,4 +50,32 @@ export async function virementDejaEmis({ destination, missionId, stripeKey, page
   }
   // Trop de virements pour tout parcourir : on ne sait pas, on n'émet pas.
   return { ok: false, detail: `plus de ${pagesMax * 100} virements vers ${destination} — vérification incomplète` };
+}
+
+/**
+ * Ce que le prestataire apprend de son virement. Il recevait « paiement
+ * programmé » à la validation, puis plus rien — que l'argent parte ou que
+ * Stripe le refuse (étude du 14/10/2026). Seul le versement programmé à la
+ * main par le back-office le prévenait.
+ *
+ * @param {object} m       la prestation (metier, sector, date)
+ * @param {number} montant en euros
+ * @param {"emis"|"refuse"} issue
+ */
+export function avisDeVersement(m, montant, issue) {
+  const quoi = `« ${m.metier || m.sector || "votre prestation"} »${m.date ? ` du ${String(m.date).slice(0, 10).split("-").reverse().join("/")}` : ""}`;
+  const somme = euros(montant);
+  if (issue === "emis") {
+    return {
+      title: "Virement envoyé 💶",
+      body: `Le virement de ${somme} pour ${quoi} est parti vers votre compte bancaire. `
+        + "Selon votre banque, il apparaît sous quelques jours ouvrés.",
+    };
+  }
+  return {
+    title: "Virement bloqué",
+    body: `Le virement de ${somme} pour ${quoi} n'a pas pu partir. Votre argent reste dû : `
+      + "notre équipe est prévenue et le relance dès que la cause est réglée. "
+      + "Si nous avons besoin de vous, nous vous écrirons. Une question : support@alane.fr.",
+  };
 }
