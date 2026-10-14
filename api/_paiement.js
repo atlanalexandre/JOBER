@@ -239,15 +239,28 @@ export function paiementAboutiParmi(liste, { missionId, clientId }) {
  * @throws si Stripe ne répond pas : on ne sait pas, on ne crée rien.
  */
 export async function paiementDejaAbouti({ missionId, clientId, customerId, cle }) {
-  const url = customerId
-    ? `https://api.stripe.com/v1/payment_intents?customer=${encodeURIComponent(customerId)}&limit=100&expand[]=data.latest_charge`
-    : `https://api.stripe.com/v1/payment_intents/search?query=${encodeURIComponent(`metadata['mission']:'${missionId}'`)}&limit=100&expand[]=data.latest_charge`;
-  const r = await fetch(url, { headers: { "Authorization": `Bearer ${cle}` } });
-  const d = await r.json().catch(() => null);
-  if (!r.ok || !Array.isArray(d?.data)) {
-    throw new Error(`lecture des paiements refusée (${r.status}) ${JSON.stringify(d?.error || {}).slice(0, 150)}`);
+  const lire = async (url) => {
+    const r = await fetch(url, { headers: { "Authorization": `Bearer ${cle}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(d?.data)) {
+      throw new Error(`lecture des paiements refusée (${r.status}) ${JSON.stringify(d?.error || {}).slice(0, 150)}`);
+    }
+    return d.data;
+  };
+  if (customerId) {
+    const parClient = paiementAboutiParmi(
+      await lire(`https://api.stripe.com/v1/payment_intents?customer=${encodeURIComponent(customerId)}&limit=100&expand[]=data.latest_charge`),
+      { missionId, clientId });
+    if (parClient) return parClient;
   }
-  return paiementAboutiParmi(d.data, { missionId, clientId });
+  // Un paiement créé SANS client Stripe n'apparaît pas dans la liste du client :
+  // c'est le cas quand le client Stripe était indisponible au premier essai
+  // (`stripe-intent` paie alors sans lui). Le second essai, client retrouvé, ne
+  // le voyait pas et faisait payer une seconde fois (relecture du 14/10/2026).
+  // La recherche par prestation le retrouve.
+  return paiementAboutiParmi(
+    await lire(`https://api.stripe.com/v1/payment_intents/search?query=${encodeURIComponent(`metadata['mission']:'${missionId}'`)}&limit=100&expand[]=data.latest_charge`),
+    { missionId, clientId });
 }
 
 /**

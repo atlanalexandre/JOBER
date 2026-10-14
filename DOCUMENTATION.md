@@ -56,7 +56,7 @@ src/
                              (226 métiers, 7 secteurs, 210 codes ROME renseignés)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
-api/                         28 fonctions serverless
+api/                         21 fonctions serverless et 45 modules partagés (préfixe _)
 ```
 
 Les fichiers d'écrans sont volumineux (8000 lignes pour l'espace client). C'est un choix
@@ -78,7 +78,12 @@ choix du client** depuis le 28/09/2026 : une case « Utiliser mon cashback », d
 défaut, au paiement. Cochée, tout le solde est déduit en laissant au moins 1 € à la carte ;
 décochée, il continue de s'accumuler. Ce paragraphe
 annonçait encore le contraire jusqu'au 28/09/2026, et plusieurs écrans parlaient d'un « wallet »
-fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour.
+fermé, avec un minimum de 10 € qui n'existait nulle part — corrigés le même jour. L'écran
+« Cashback » (`/cashback`) le répétait encore jusqu'au 13/10/2026, avec un crédit « 24 h après
+validation » et une expiration « à 6 mois » qui n'existent pas, et un historique dont chaque ligne
+était recalculée (prix frais compris, taux du palier du jour) et marquée « disponible » même
+dépensée : il dit désormais ce qui est sûr — cashback crédité à la validation, sans montant par
+ligne, le serveur ne le conservant pas par prestation.
 
 ### Prestataire
 Dépose ses documents, attend la validation par l'administration, reçoit des propositions,
@@ -1165,11 +1170,11 @@ désormais les lignes portant le même endpoint et un autre `user_id` avant d'in
 (migration `2026-08-18_un_appareil_un_compte.sql`). Plusieurs appareils par compte reste normal ;
 c'est l'inverse qui ne l'est pas.
 
-**L'abonnement d'un appareil** (14/10/2026) passe par `activerNotifications()` de
+**L'abonnement d'un appareil** (13/10/2026) passe par `activerNotifications()` de
 `src/lib/push.js`. La demande d'autorisation partait seule à l'ouverture de l'application :
 l'iPhone ne l'accepte qu'après un geste, et l'ignorait. Un iPhone ne s'abonnait que si l'accord
 avait été donné d'un appui ailleurs — le bandeau « Activer les notifications » de l'accueil client,
-que les prestataires n'ont pas (5 appareils Apple abonnés en production le 14/10/2026, dont 4
+que les prestataires n'ont pas (5 appareils Apple abonnés en production le 13/10/2026, dont 4
 clients ; cette page disait « aucun iPhone », c'était faux). Sur iPhone,
 l'ouverture ne fait plus que rafraîchir un abonnement déjà accordé ; l'activation se fait dans
 **Réglages › Notifications**, qui affiche l'état réel (`etatNotifications()` : activées, à
@@ -1180,7 +1185,7 @@ sur `id` et un appareil réabonné heurtait l'unicité, réponse « success » �
 notification locale (« votre prestataire arrive ») passe par `notifierLocalement()` : `new
 Notification()` lève une erreur sur téléphone.
 
-**Seuls les services de notification des navigateurs sont contactés** (14/10/2026) —
+**Seuls les services de notification des navigateurs sont contactés** (13/10/2026) —
 `serviceDeNotificationReconnu()` de `api/_push.js` : Apple (`*.push.apple.com`), Google
 (`fcm.googleapis.com`, `android.googleapis.com`), Mozilla (`*.push.services.mozilla.com`),
 Microsoft (`*.notify.windows.com`), en https sur le port normal. Toute adresse en https était
@@ -1190,10 +1195,10 @@ son choix (constaté en recette le 13/10/2026, où un faux téléphone a servi �
 règle joue à l'abonnement (`push_subscribe` répond 400 « Service de notification non reconnu ») **et
 à l'envoi** (`sendWebPush` rend `service_refuse` sans rien contacter) : un abonnement enregistré
 avant elle n'est plus jamais appelé, sans être supprimé — si un navigateur légitime manquait à la
-liste, l'élargir suffirait à le rétablir. En production le 14/10/2026 : 5 abonnements Apple,
+liste, l'élargir suffirait à le rétablir. En production le 13/10/2026 : 5 abonnements Apple,
 1 Google, tous couverts.
 
-**Notification de test** (Réglages, 14/10/2026) : action `push_test` de `/api/missions`. Elle
+**Notification de test** (Réglages, 13/10/2026) : action `push_test` de `/api/missions`. Elle
 réinscrit d'abord l'appareil (`envoyerNotificationTest()`, sans rien demander), attend **cinq
 secondes** — le temps de quitter l'application, un téléphone n'affichant pas toujours la
 notification de l'application ouverte — puis écrit à tous les appareils du compte appelant, à eux
@@ -1316,7 +1321,7 @@ Deux conséquences pratiques :
 
 ### Les fonctions serveur
 
-Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfixés `_` (compte du 23/09/2026 ; ce paragraphe annonçait 27). Les principaux :
+Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfixés `_` (compte du 13/10/2026 ; ce paragraphe en annonçait 44). Les principaux :
 
 | Fichier | Rôle |
 |---|---|
@@ -1341,7 +1346,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
-| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi (au-delà de 4 000 adresses, refus) |
+| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
 
 ### Comment l'appelant est vérifié
 
@@ -2667,6 +2672,15 @@ Un refus l'inscrit dans `heures_perdues` ; un retard non arbitré est déduit un
 `montantsDeCloture()` (`ajustementRetard.unJour`, rien n'est réécrit) ; `valeurHeuresRetirees()`
 compte une journée. Les durées s'écrivent « 7 h 40 » (`dureeTexte()`, `api/_temps.js`).
 
+**Tout ce qui suit un refus lit `actual_hours`** (relecture du 14/10/2026, `e2e/78`). Deux actions
+partaient encore de `hours` : l'**interruption en cours** (`cancel_in_progress`) rendait au client,
+une seconde fois, l'heure déjà remboursée — 8 h réservées, une heure de retard refusée, arrêt au bout
+de 3 h : 6 h rendues au lieu de 5, 3 h versées au prestataire, ALANE de sa poche d'une heure ; et
+une **prolongation payée** (`confirmer_heures_supp`, une journée) remettait `actual_hours` à vide,
+si bien que la clôture versait au prestataire l'heure rendue au client — et plaçait la fin de la
+prestation une heure trop tard. L'interruption prend désormais la durée retenue pour base de la
+journée ; la prolongation l'augmente des heures ajoutées.
+
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
 dans `presta-screens.jsx` — qui s'ancraient auparavant sur `started_at` seul.
@@ -2766,13 +2780,19 @@ revenait payer en changeant une option (« mémoriser ma carte », cashback) rec
 paiement — débité deux fois — et le premier n'était plus jamais rendu ; constaté en recette.
 `/api/stripe-intent` cherche désormais chez Stripe un paiement de réservation déjà abouti pour
 cette prestation et ce client (`paiementDejaAbouti()` de `api/_paiement.js` : liste des paiements
-du client Stripe, à défaut recherche sur `metadata['mission']`) ; trouvé, il répond 409
+du client Stripe, **puis**, rien n'y étant trouvé, recherche sur `metadata['mission']` — un paiement
+créé sans client Stripe, quand celui-ci était indisponible au premier essai, n'est que là ;
+relecture du 14/10/2026) ; trouvé, il répond 409
 `deja_payee` avec son identifiant, et le tunnel achève l'affectation avec lui au lieu de faire
 payer. Stripe illisible : 503, rien n'est créé. Et si deux paiements ont tout de même abouti (deux
 onglets), l'affectation du second le **rembourse en entier** (`rembourserDoublonPaiement()`, clé
 `refund-doublon-{paiement}`, la même que le webhook) au lieu de le refuser sans rien rendre ;
 l'écriture de l'affectation est conditionnée à « aucun paiement rattaché, ou celui-ci »
 (`filtrePaiementLibre()`), pour que deux affectations simultanées ne s'écrasent pas.
+Le refus d'un paiement après coup (`rembourserRefusApresPaiement()`, secteur fermé, zone, prestataire
+non activé…) porte la même condition sur l'annulation : un second paiement refusé pendant qu'un
+premier venait d'être rattaché annulait la réservation réglée par celui-ci, sans le rendre
+(relecture du 14/10/2026).
 
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
@@ -3472,6 +3492,15 @@ demandes, **adresse et identifiant du client compris**, à tout compte connecté
 
 La prestation réservée est une **nouvelle** ligne de `missions` : la demande diffusée n'a ni
 prix ni prestataire, elle ne sert qu'à recueillir les propositions. Éprouvé par `e2e/18`.
+
+**Une proposition ne disparaît plus faute de fiche** (étude du 13/10/2026, `e2e/18`). L'écran
+« Demande diffusée » affiche chaque proposition avec la fiche du catalogue chargé à l'ouverture de
+la page — gardé 30 s par le réseau et 3 min par la page. La proposition d'un prestataire absent de
+cette liste (activé depuis, par exemple) était écartée **sans un mot** : le client lisait « 0
+candidat » avec deux propositions en base. L'écran relit alors le catalogue en version fraîche
+(`rechargerPrestataires()`, au plus une fois toutes les 30 s) et journalise ce qui reste absent. Et
+`get_candidatures` ne rend plus le nom complet que du prestataire retenu : les autres sont en
+« Prénom I. », comme au catalogue.
 
 **Cas particulier : la prestation déjà payée.** Une prestation affectée par la plateforme
 (client pro ou particulier chez un tiers, CGPS art. 5.2) repasse `open`, sans prestataire,
@@ -4483,9 +4512,12 @@ cela, le client pourrait accepter un remplaçant pour une prestation qui n'exist
 
 ### Paiement
 
-Le client paie via Stripe. Le webhook `stripe-webhook.js` confirme le paiement et fait passer
-la mission en `assigned`. À la validation finale, le prestataire est payé et le cashback client
-est crédité.
+Le client paie via Stripe ; l'application rattache aussitôt le paiement à la prestation
+(`assign_after_payment`, ou `affecter_tiers` chez un tiers), qui passe en `pending_acceptance`
+jusqu'à la réponse du prestataire. Le webhook n'y prend aucune part : `payment_intent.succeeded`
+n'est pas abonné (voir « Le webhook Stripe »). Ce paragraphe disait le contraire jusqu'au
+13/10/2026. À la validation finale, le versement du prestataire est programmé (48 h) et le cashback
+client est crédité.
 
 #### Le versement au prestataire
 
@@ -4816,7 +4848,7 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 
 ## 7. Navigation et URLs
 
-**La barre du bas reste sur les écrans secondaires du prestataire** (14/10/2026, décision
+**La barre du bas reste sur les écrans secondaires du prestataire** (13/10/2026, décision
 d'Alexandre) : Abonnement, Modifier mon profil, Dépôt d'un document, Micro-entreprise, Messagerie,
 Réglages. L'onglet d'origine reste allumé (`ONGLET_PARENT_PRESTA`, `App.jsx`), et la zone qui
 défile réserve la hauteur de la barre (`paddingBottom` de `ResponsiveLayout`).
@@ -4824,10 +4856,20 @@ défile réserve la hauteur de la barre (`paddingBottom` de `ResponsiveLayout`).
 **« Disponible maintenant »** (accueil du prestataire, `user_metadata.dispo_immediat`) : absent
 vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), mais
 `/api/prestataires` rendait `false` pour un compte qui ne l'avait jamais touché : le prestataire
-se croyait disponible et apparaissait indisponible aux clients (corrigé le 14/10/2026). L'écriture
+se croyait disponible et apparaissait indisponible aux clients (corrigé le 13/10/2026). L'écriture
 de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
 
-**Réglages › Notification de test** (14/10/2026) : ligne affichée quand les notifications sont
+**L'accueil du client le reprend** (étude du 13/10/2026, `e2e/79`). Le bandeau « pros dispo
+maintenant » et la rubrique « Dispo maintenant » lisaient `dispo_immediat`, que la fiche du
+catalogue (`mapperPrestataires()`, `client-screens.jsx`) ne reprenait pas : 0 affiché, rubrique
+jamais montrée, alors que l'écran d'un secteur annonçait 1 330 disponibles en recette. La fiche le
+reprend ; la rubrique montre douze cartes au plus, le badge donne le total. « Prestations
+réalisées » comptait les prestations **du client** — la base ne lui montre que les siennes depuis
+le 01/10/2026 — soit 0 pour tout nouveau client, présenté comme un chiffre de la plateforme. Il
+vient désormais du serveur (`realisees` de `/api/prestataires?action=demandes_ouvertes` : toutes
+les prestations `completed` ou `closed`) ; illisible, l'écran affiche « — ».
+
+**Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
 secondes après l'appui et dit ce que le service de notification a répondu (§4, `push_subscriptions`).
 
@@ -4836,7 +4878,7 @@ marchait pas : l'inversion des couleurs était posée sur `body` et sur `#root`,
 fois — l'écran restait sombre — et le choix n'était pas relu à l'ouverture. Elle vit sur `<html>`
 seul, le seul élément où un filtre ne décroche pas les éléments fixes.
 
-**Téléphone : la barre du bas, le zoom** (14/10/2026, signalé par Alexandre). La mise en page
+**Téléphone : la barre du bas, le zoom** (13/10/2026, signalé par Alexandre). La mise en page
 mobile (barre du bas) ou ordinateur (menu latéral) se décide par `estMobile()`
 (`src/hooks/useResponsive.js`), une requête média sur la largeur de mise en page — et non plus
 `innerWidth`, qui suit le zoom sur iPhone : un grand téléphone à l'horizontale ou une page
@@ -5134,6 +5176,59 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 | `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
 | `26` | accusé de réception de l'inscription : sans service d'envoi (recette), rien n'est marqué et l'envoi reste à faire ; un compte déjà validé n'est jamais pris ; les inscrits d'avant le 29/09 restent marqués. Le succès de l'envoi est couvert par `src/tests/api/accuse-inscription.test.js` |
+| `27` | Seule la photo validée par ALANE est montrée aux clients |
+| `28` | Remboursements d'une prestation réglée en partie en cashback |
+| `29` | Démarrage décalé : les heures non faites reviennent au client |
+| `30` | Back-office : rembourser, annuler, valider de force |
+| `31` | Un versement « échoué » se relance depuis le back-office (30/09/2026) |
+| `32` | Réessayer un paiement après avoir coché « mémoriser ma carte » (30/09/2026) |
+| `33` | Pas de facture pour une prestation qui n'a pas eu lieu |
+| `34` | Litige ouvert avant la validation, tranché « verser au prestataire » (30/09/2026) |
+| `35` | Suppression de compte |
+| `36` | Ouvrir l'accès aux prestations suppose les pièces obligatoires VALIDÉES |
+| `37` | Une pièce d'identité purgée (CGPS 14.4), puis redéposée : la nouvelle pièce doit à son tour être purgée |
+| `38` | Prestation jamais pointée |
+| `39` | Suspension d'un prestataire : ses prestations à venir |
+| `40` | Contestation bancaire reçue AVANT la clôture |
+| `41` | Courriel de confirmation de réservation |
+| `42` | Retrouver un compte par son adresse |
+| `43` | Prolongation d'une prestation : quel paiement la règle |
+| `44` | Interrompre une prestation « en cours » |
+| `45` | « Clôturer » une demande ouverte déjà payée |
+| `46` | Annulation par le prestataire |
+| `47` | Exécution d'un remplacement |
+| `48` | Prolongation : refus tardif et prestation close |
+| `49` | Une prestation sur plusieurs jours finit le DERNIER jour |
+| `50` | L'ancien désistement `cancel_prestataire` est fermé |
+| `51` | La déclaration d'intervention chez un tiers ne se réécrit pas |
+| `52` | Mot de passe oublié : une demande au plus toutes les dix minutes |
+| `53` | Alerte « nouvelle inscription » envoyée à la direction |
+| `54` | Accès direct à la table `missions` depuis le navigateur |
+| `55` | La signature du contrat par le client est enregistrée |
+| `56` | `/api/upload-document` (fonction en sursis) : jeton vérifié, type de pièce borné |
+| `57` | Prestataire : un échec du chargement de ses prestations se voit |
+| `58` | Onglet Support du back-office |
+| `59` | Première connexion : une seule fenêtre à la fois |
+| `60` | Une prestation commencée ne s'annule plus avec remboursement intégral |
+| `61` | Suivi GPS du prestataire quand le navigateur refuse d'enregistrer l'accord (navigation privée) — relecture du 03/10/2026 |
+| `62` | Le passage mensuel ne déclare plus « remboursée » une demande qu'il n'a pas remboursée |
+| `63` | Une réservation déjà payée n'accepte pas un second paiement |
+| `64` | La validation automatique ne clôture pas une prestation sans paiement |
+| `65` | Réservation payée mais jamais affectée : remboursée, pas annulée en silence |
+| `66` | Réservation chez un tiers restée sans réponse : la tâche planifiée passe au candidat suivant au lieu de rembourser |
+| `67` | Réaffectation d'une prestation au back-office |
+| `68` | Toutes les factures du mois en un seul document (04/10/2026) |
+| `69` | Double clic sur « accepter » une candidature : jamais d'affectation sans paiement (relecture du 05/10/2026). Les appels simultanés portent la même clé d'idempotence ; Stripe répond aux suivants « requête en cours » sans paiement, |
+| `70` | Heures supplémentaires sur plusieurs jours, et modification de la commande (06/10/2026) |
+| `71` | Réservation sur plusieurs jours par l'écran |
+| `72` | Un prestataire ne peut pas être réservé deux fois au même moment — journée par journée (06/10/2026) |
+| `73` | Notifications : seuls les services des navigateurs, et un bouton de test (14/10/2026) |
+| `74` | Deux paiements pour une réservation : le second n'est pas créé, ou il est remboursé à l'affectation |
+| `75` | Le tarif d'une prolongation déjà payée ne se réécrit pas |
+| `76` | Somme due par un prestataire : notifiée sans promettre de retenue |
+| `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
+| `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
+| `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

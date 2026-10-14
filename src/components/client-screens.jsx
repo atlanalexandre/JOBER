@@ -886,15 +886,14 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     const demandesOuvertes = fetch("/api/prestataires?action=demandes_ouvertes")
       .then(r => r.ok ? r.json() : { count: null })
       .catch(e => { console.error("[accueil] demandes ouvertes non comptées :", e?.message); return { count: null }; });
-    Promise.all([
-      demandesOuvertes,
-      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","completed"),
-    ]).then(([open, completed])=>{
+    // Les prestations réalisées viennent aussi du serveur : lues ici, la base
+    // ne rendait que celles du client lui-même (« 0 » pour tout nouveau client).
+    demandesOuvertes.then((open)=>{
       if (!mounted) return;
       setLiveStats({
         openMissions: open.count ?? 0,
-        dispoNow: providers.filter(p => p.dispo_immediat).length,
-        completedMonth: completed.count ?? 0,
+        dispoNow: providers.filter(p => p.available).length,
+        completedMonth: open.realisees ?? null,
       });
     });
     return ()=>{ mounted=false; };
@@ -1120,8 +1119,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ display:"flex", gap:8 }}>
             {[
               { icon:"📋", value: liveStats.openMissions, label:"prestations ouvertes" },
-              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
-              { icon:"✅", value: liveStats.completedMonth, label:"prestations réalisées" },
+              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.available).length, label:"pros dispo maintenant" },
+              { icon:"✅", value: liveStats.completedMonth ?? "—", label:"prestations réalisées" },
             ].map((s,i)=>(
               <div key={i} style={{
                 flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
@@ -1342,7 +1341,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               <span style={{ fontSize:11, color:"#10D98F", fontWeight:700, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:99, padding:"2px 8px" }}>{dispoNow.length} pro{dispoNow.length > 1 ? "s" : ""}</span>
             </div>
             <div style={{ display:"flex", gap:12, paddingLeft:22, paddingRight:22, overflowX:"auto", WebkitOverflowScrolling:"touch", scrollbarWidth:"none", msOverflowStyle:"none" }}>
-              {dispoNow.map(p => {
+              {/* Douze au plus : la rubrique n'était jamais affichée (champ manquant)
+                  et, réparée, aurait rendu d'un coup tous les prestataires
+                  disponibles — 1 330 en recette. Le compteur dit le total. */}
+              {dispoNow.slice(0, 12).map(p => {
                 const sector = SECTORS?.find?.(s => s.id === p.sector);
                 const initials = [p.prenom, p.nom].filter(Boolean).map(s => s[0]?.toUpperCase() || "").join("") || "?";
                 const name = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
@@ -1604,6 +1606,75 @@ let _providersCache = null;
 let _providersCacheTs = 0;
 let _providersCachePromise = null;
 
+// La fiche telle que les écrans la lisent, depuis une ligne de /api/prestataires.
+// Partagée par le chargement du catalogue et sa relecture fraîche.
+function mapperPrestataires(prestataires) {
+  const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
+  return (Array.isArray(prestataires) ? prestataires : []).map(p => {
+    const sectorInfo = SECTORS.find(s => s.id === p.secteur);
+    const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
+    return {
+      id:           p.id,
+      name:         p.name,
+      prenom:       p.prenom,
+      nom:          p.nom,
+      sector:       p.secteur,
+      jobTitle:     p.metier,
+      rateNum,
+      hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
+      available:             p.dispo_immediat !== false && !(p.trial_exhausted && (p.plan_abonnement || "free") === "free"),
+      // Lu par l'accueil (« pros dispo maintenant », « Dispo maintenant ») : le
+      // champ n'était pas repris ici, si bien que l'accueil affichait toujours 0
+      // et ne montrait jamais la rubrique (étude du 13/10/2026).
+      dispo_immediat:        p.dispo_immediat !== false,
+      dispon_jours:          p.dispon_jours || [],
+      dispon_jours_creneaux: p.dispon_jours_creneaux || null,
+      code_postal:  p.code_postal,
+      // La ville était renvoyée par l'API mais jamais reprise ici : le
+      // filtre par ville était donc impossible à écrire.
+      ville:        p.ville || null,
+      rating:       p.rating || 0,
+      reviews:      p.reviews || 0,
+      distance:     "—",
+      responseTime: "—",
+      avatar:       sectorInfo?.icon || "👷",
+      color:        sectorInfo?.color || "#7C6FE0",
+      niveau:       p.niveau,
+      plan:         p.plan_abonnement || "free",
+      planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
+      cv:           p.cv || null,
+      bio:          p.bio      || null,
+      langues:      Array.isArray(p.langues) ? p.langues : [],
+      role:         p.metier   || null,
+      skills:       (p.metiers_list || []).flatMap(m =>
+        (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
+      ),
+      metiers_list: p.metiers_list || [],
+      // Tous les métiers exercés, normalisés une fois pour toutes.
+      // `sector` et `jobTitle` ci-dessus ne portent que le premier :
+      // s'en contenter rendait un prestataire invisible dans ses
+      // autres secteurs, alors qu'il s'y est déclaré.
+      metiers:      metiersDuProfil(p),
+      photo_url:       p.photo_url || null,
+      missions_count:  p.missions_count || 0,
+      zone_km:         p.zone_km || 50,
+      trial_exhausted: p.trial_exhausted || false,
+    };
+  });
+}
+
+// Relecture FRAÎCHE du catalogue (la réponse ordinaire est gardée 30 s par le
+// réseau, et la liste 3 min dans la page). Pour un écran qui reçoit l'identifiant
+// d'un prestataire absent de la liste — activé depuis, par exemple — et qui ne
+// doit pas le perdre en silence (étude du 13/10/2026).
+export async function rechargerPrestataires() {
+  const { prestataires = [] } = await lireJsonAvecReprise(`/api/prestataires?frais=${Date.now()}`);
+  const mapped = mapperPrestataires(prestataires);
+  _providersCache = mapped;
+  _providersCacheTs = Date.now();
+  return mapped;
+}
+
 export function useProviders() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -1621,54 +1692,7 @@ export function useProviders() {
       // journalisé.
       _providersCachePromise = lireJsonAvecReprise("/api/prestataires")
         .then(({ prestataires = [] }) => {
-          const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
-          const mapped = prestataires.map(p => {
-            const sectorInfo = SECTORS.find(s => s.id === p.secteur);
-            const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
-            return {
-              id:           p.id,
-              name:         p.name,
-              prenom:       p.prenom,
-              nom:          p.nom,
-              sector:       p.secteur,
-              jobTitle:     p.metier,
-              rateNum,
-              hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
-              available:             p.dispo_immediat !== false && !(p.trial_exhausted && (p.plan_abonnement || "free") === "free"),
-              dispon_jours:          p.dispon_jours || [],
-              dispon_jours_creneaux: p.dispon_jours_creneaux || null,
-              code_postal:  p.code_postal,
-              // La ville était renvoyée par l'API mais jamais reprise ici : le
-              // filtre par ville était donc impossible à écrire.
-              ville:        p.ville || null,
-              rating:       p.rating || 0,
-              reviews:      p.reviews || 0,
-              distance:     "—",
-              responseTime: "—",
-              avatar:       sectorInfo?.icon || "👷",
-              color:        sectorInfo?.color || "#7C6FE0",
-              niveau:       p.niveau,
-              plan:         p.plan_abonnement || "free",
-              planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
-              cv:           p.cv || null,
-              bio:          p.bio      || null,
-              langues:      Array.isArray(p.langues) ? p.langues : [],
-              role:         p.metier   || null,
-              skills:       (p.metiers_list || []).flatMap(m =>
-                (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
-              ),
-              metiers_list: p.metiers_list || [],
-              // Tous les métiers exercés, normalisés une fois pour toutes.
-              // `sector` et `jobTitle` ci-dessus ne portent que le premier :
-              // s'en contenter rendait un prestataire invisible dans ses
-              // autres secteurs, alors qu'il s'y est déclaré.
-              metiers:      metiersDuProfil(p),
-              photo_url:       p.photo_url || null,
-              missions_count:  p.missions_count || 0,
-              zone_km:         p.zone_km || 50,
-              trial_exhausted: p.trial_exhausted || false,
-            };
-          });
+          const mapped = mapperPrestataires(prestataires);
           _providersCache = mapped;
           _providersCacheTs = Date.now();
           return mapped;
@@ -8613,14 +8637,10 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         setHistory(completedMissions.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const montant = m.montant_total || ((m.hours||0) * (m.tarif_horaire||0));
-          const rate = getCashbackTier(profile?.commandes_mois || 0).rate;
-          const cashback = Math.round(montant * rate * 100) / 100;
           return {
             prestation: m.metier || sector?.label || "Prestation",
             date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
             amount: montant,
-            cashback,
-            status: "disponible",
           };
         }));
       }
@@ -8739,28 +8759,31 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           </div>
         )}
         {history.map((h,i)=>(
-          <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12, opacity:h.status==="expiré"?0.5:1 }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:h.status==="disponible"?`${C.success}15`:h.status==="utilisé"?`${C.violet}15`:`${C.textMuted}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
-              {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
+          <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:10, background:`${C.success}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
+              💰
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
               <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {formatMontant(h.amount)}</div>
             </div>
+            {/* Le montant affiché ici était RECALCULÉ — prix payé, frais compris, au
+                taux du palier d'aujourd'hui — et marqué « disponible » même une fois
+                dépensé. Le serveur crédite la part du prestataire au taux du palier
+                du jour de la validation, et ne garde pas ce montant par prestation :
+                plutôt qu'un chiffre faux, on dit ce qui est sûr (13/10/2026). */}
             <div style={{ textAlign:"right", flexShrink:0 }}>
-              <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
-                +{formatMontant(h.cashback)}
-              </div>
-              <Badge color={h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted} small>
-                {h.status}
-              </Badge>
+              <Badge color={C.success} small>cashback crédité</Badge>
             </div>
           </div>
         ))}
 
         {/* Info expiration */}
         <div style={{ background:"#162547", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque prestation. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
+          {/* Trois affirmations fausses jusqu'au 13/10/2026 : « crédité 24 h après
+              validation », « expire 6 mois après », « minimum 10 € ». Le cashback est
+              crédité à la validation, n'expire pas et n'a pas de minimum (CGPS 5B.1). */}
+          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>à la validation</strong> de chaque prestation, au taux de votre palier du mois. Au paiement d'une réservation, vous choisissez de l'utiliser ou non : il est alors déduit du montant, en laissant au moins 1 € à régler par carte. Il vous est rendu si la prestation qu'il a servi à payer est annulée avant d'avoir commencé.
         </div>
       </div>
     </div>
@@ -9902,6 +9925,8 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel: quitter
   const [candidatures, setCandidatures]   = useState([]);
   const [broadcasted, setBroadcasted]     = useState(false);
   const [loading, setLoading]             = useState(true);
+  const catalogueFrais    = useRef(null);
+  const derniereRelecture = useRef(0);
 
   // Spinner CSS
   useEffect(()=>{
@@ -9954,11 +9979,26 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel: quitter
         console.error("[diffusion] candidatures illisibles :", e.message);
       }
       if(Array.isArray(data)){
-        // Enrich with provider info from providers list
+        // La fiche vient du catalogue chargé à l'ouverture de la page. Un
+        // prestataire qui n'y figure pas — activé depuis, ou absent de la copie
+        // gardée par le réseau — voyait sa proposition écartée EN SILENCE : le
+        // client lisait « 0 candidat » avec deux propositions en base (recette,
+        // e2e/18, étude du 13/10/2026). On relit alors le catalogue, au plus une
+        // fois toutes les 30 s.
+        let liste = catalogueFrais.current || providers;
+        const manquants = data.filter(c => !liste.some(p => p.id === c.prestataire_id));
+        if (manquants.length && Date.now() - derniereRelecture.current > 30000) {
+          derniereRelecture.current = Date.now();
+          try { liste = catalogueFrais.current = await rechargerPrestataires(); }
+          catch (e) { console.error("[diffusion] catalogue non relu :", e.message); }
+        }
         const enriched = data.map(c => {
-          const prov = providers.find(p=>p.id===c.prestataire_id);
+          const prov = liste.find(p=>p.id===c.prestataire_id);
           return prov ? { provider:prov, candidature_id:c.id } : null;
         }).filter(Boolean);
+        if (enriched.length < data.length) {
+          console.error(`[diffusion] ${data.length - enriched.length} proposition(s) d'un prestataire absent du catalogue — non affichée(s).`);
+        }
         setCandidatures(enriched);
       }
       setLoading(false);

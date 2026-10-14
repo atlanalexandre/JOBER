@@ -349,7 +349,11 @@ async function rembourserRefusApresPaiement(missionId, intentId, motif, supabase
   // prestataire ni échéance la rendrait invisible de tous les traitements, et
   // elle resterait éternellement « en attente » sur l'écran du client.
   try {
-    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)`, {
+    // Seulement si aucun AUTRE paiement n'y est rattaché : un second paiement,
+    // refusé pendant qu'un premier venait d'être rattaché (deux onglets),
+    // annulait la réservation que le premier avait réglée — sans le rendre
+    // (relecture du 14/10/2026).
+    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)${filtrePaiementLibre(intentId)}`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ status: "cancelled", cancellation_reason: `Réservation refusée : ${motif}` }),
     });
@@ -1540,10 +1544,16 @@ export default async function handler(req, res) {
         } catch (e) { console.error("[missions] notes moyennes illisibles :", e.message); }
       }
 
+      // Le nom complet ne sort qu'au client du prestataire RETENU (candidature
+      // acceptée) ; les autres sont en « Prénom I. », comme dans le catalogue
+      // depuis le 28/09/2026 — le nom complet partait ici à tout client, pour
+      // chaque prestataire qui s'était proposé (étude du 13/10/2026).
       const enriched = candidatures.map(c => ({
         ...c,
         prenom:  nameMap[c.prestataire_id]?.prenom || "",
-        nom:     nameMap[c.prestataire_id]?.nom    || "",
+        nom:     c.status === "accepted"
+          ? (nameMap[c.prestataire_id]?.nom || "")
+          : (nameMap[c.prestataire_id]?.nom ? `${nameMap[c.prestataire_id].nom.trim().charAt(0).toUpperCase()}.` : ""),
         rating:  ratingMap[c.prestataire_id]?.avg  || 0,
         reviews: ratingMap[c.prestataire_id]?.count || 0,
       }));
@@ -4137,7 +4147,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4167,7 +4177,18 @@ export default async function handler(req, res) {
       //
       // On compte donc séparément les journées déjà accomplies et les heures
       // faites aujourd'hui.
-      const totalHours = Number(mission.hours) || 1;        // heures PAR JOUR
+      // Heures PAR JOUR. Un décalage refusé sur une prestation d'une journée
+      // inscrit la durée retenue dans `actual_hours` (`respond_delay`), et la
+      // différence avec `hours` a déjà été rendue au client. Partir de `hours`
+      // la lui rendait une seconde fois, et la clôture payait pourtant au
+      // prestataire les heures faites : 8 h réservées, une heure de retard
+      // refusée, arrêt au bout de 5 h — 4 h rendues en tout au lieu de 3,
+      // 5 h versées (relecture du 14/10/2026). Sur plusieurs jours, le retard
+      // passe par `heures_perdues` et `actual_hours` reste vide.
+      const totalHours = mission.actual_hours !== null && mission.actual_hours !== undefined
+        ? Math.max(0, Number(mission.actual_hours) || 0)
+        : (Number(mission.hours) || 1);
+
       const tarifHoraire = Number(mission.tarif_horaire) || 0;
       const joursPrestation = nombreDeJours(mission);
       const estRecurrente = joursPrestation > 1;
@@ -6249,7 +6270,7 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
         + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
-        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,`
+        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,actual_hours,`
         + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
         { headers }
       );
@@ -6378,7 +6399,14 @@ export default async function handler(req, res) {
             // la clôture recalcule tout au tarif de base et le prestataire perd
             // l'écart qu'il avait annoncé.
             extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
-            actual_hours: null,
+            // La durée retenue suit la durée réservée : un décalage refusé y
+            // avait déjà retiré des heures, rendues au client. La remettre à
+            // vide faisait payer au prestataire, à la clôture, ces heures
+            // remboursées (relecture du 14/10/2026). Sans décalage, elle reste
+            // vide et la clôture lit `hours`.
+            actual_hours: mission.actual_hours !== null && mission.actual_hours !== undefined
+              ? Math.max(0, Math.round((Number(mission.actual_hours) + (nouvellesHeures - Number(mission.hours || 0))) * 10000) / 10000)
+              : null,
           };
 
       // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
