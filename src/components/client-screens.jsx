@@ -4819,18 +4819,9 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       });
       const rEnvoi = await envoi.json().catch(() => ({}));
       if (!envoi.ok || !rEnvoi.success) throw new Error(rEnvoi.error || "erreur inconnue");
-      // Notifier le destinataire (in-app + SMS)
-      const { data: meData } = await supabase.auth.getUser();
-      const meMeta = meData?.user?.user_metadata || {};
-      const senderDisplayName = `${meMeta.prenom || ""} ${meMeta.nom || ""}`.trim() || (senderTag === "client" ? "Un client" : "Un prestataire");
-      supabase.auth.getSession().then(({ data: sd }) => {
-        const token = sd?.session?.access_token;
-        fetch("/api/missions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ action: "chat_notify", recipient_id: recipientId, sender_name: senderDisplayName, message_preview: content }),
-        }).catch(() => {});
-      });
+      // Le destinataire est prévenu par le serveur, à l'enregistrement du message
+      // (décision D5, 14/10/2026). Cet écran appelait ensuite `chat_notify` avec
+      // le nom et le texte de son choix, qu'ALANE envoyait tels quels par SMS.
     } catch (e) {
       console.error("[chat] envoi impossible :", e?.message);
       // Le message optimiste est retiré : le laisser afficherait un message envoyé

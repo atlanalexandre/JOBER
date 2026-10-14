@@ -3403,7 +3403,7 @@ elles-mêmes lisent la chaîne de caractères — c'est le point ouvert document
 
 L'action `envoyer_message` dérive désormais les deux **de la prestation partagée** : elle exige
 une prestation en commun entre l'auteur et le destinataire — le même contrôle que `chat_notify`
-appliquait déjà pour la notification, mais pas pour le message lui-même — puis construit la clé
+(neutralisée depuis, voir « le destinataire prévenu par le serveur ») appliquait déjà pour la notification, mais pas pour le message lui-même — puis construit la clé
 et le tag à partir de `client_id` et `prestataire_id`. Le navigateur n'envoie plus que le
 destinataire et le texte, tous deux bornés.
 
@@ -3433,6 +3433,29 @@ les fournit pas — sans lui, les contraintes auraient refusé tout message envo
 code entre la migration et le déploiement. Les
 messages déjà échangés dont la clé ne suit pas le format `prov{uuid}-user{uuid}` resteraient
 sans participants, donc illisibles : la vérification n° 1 de la migration doit rendre 0.
+
+### Messagerie : le destinataire prévenu par le serveur
+
+**Décision D5 d'Alexandre, 14/10/2026** (`api/_messagerie.js`, éprouvée par `e2e/92`). La notification
+d'un message partait d'un second appel, `chat_notify`, auquel le navigateur donnait le nom de
+l'expéditeur et le texte : ALANE les envoyait tels quels, à son nom, par e-mail **et SMS**, sans
+lien avec un message enregistré, autant de fois qu'on l'appelait — un SMS « ALANE » au texte de son
+choix (hameçonnage), chacun payé. `notify_client` faisait de même avec le nom du prestataire.
+
+Désormais `envoyer_message` prévient lui-même, après avoir enregistré le message :
+
+- l'expéditeur est lu dans **son profil** (« Prénom N. », `nomExpediteur()`), réduit à des lettres :
+  ni lien ni numéro ;
+- la notification dans l'application (doublée d'une push) suit **chaque** message ;
+- l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
+  (`texteSmsMessage()`) ;
+- e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
+  n'a pas lu le message précédent de cet expéditeur (rappel au-delà de 24 h), et pas plus d'un
+  par demi-heure dans une même conversation. Historique illisible : ni e-mail ni SMS.
+
+`chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
+version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
+sont annoncés au client par `respond_mission`, avec les données du serveur.
 
 ### Écrire à un prestataire après la prestation : l'équipe ALANE seulement
 
@@ -5349,6 +5372,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `89` | Décalage refusé, puis démarrage plus tardif encore : l'écart est déduit et rendu, la question n'est pas rouverte |
 | `90` | Prestation validée automatiquement : elle compte au quota mensuel du prestataire |
 | `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
+| `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
