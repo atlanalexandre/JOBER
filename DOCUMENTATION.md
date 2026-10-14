@@ -4448,6 +4448,19 @@ est dû, on ne retient rien au consommateur.
 Le montant retenu est annoncé dans la proposition et dans la notification de clôture. Le taire
 ferait découvrir l'écart sur le relevé bancaire, ce qui rouvre le litige qu'on vient de fermer.
 
+**Ce qui a déjà été rendu ne se rend pas deux fois** (étude d'octobre 2026, `e2e/80`,
+`litige-deja-rendu.test.js`). Une partie du prix peut avoir été rendue avant le litige — heure de
+retard d'un décalage refusé, heures plafonnées à la validation, journée écourtée. Le dénouement
+« rembourser le client » l'ignorait. Constaté en recette (8 h à 13 €, 110,98 € payés, une heure de
+retard) : avant la validation, il demandait le prix entier, Stripe le plafonnait à ce qui restait —
+frais compris —, et le « reliquat » calculé sur le prix entier était versé au prestataire (110,98 €
+rendus **et** 6,02 € versés) ; après la validation, `montant_total` ayant été ramené au dû, les frais
+n'étaient plus reconnus et partaient avec le reste. `soldeDuLitige()` (`api/_resolution.js`) part
+désormais de ce que le client a **encore** réglé : clôturée (`payout_amount` figé), `montant_total`
+(le dû, déjà net) et des frais égaux à `montant_total − payout_amount` ; pas encore, le prix payé
+moins ce que Stripe a déjà rendu sur le paiement, relu avant d'exécuter (illisible : rien n'est
+exécuté). Le partage avec le prestataire (`resteAuPrestataire()`) part de la même base.
+
 ### Une prestation faite ne s'annule plus
 
 **Corrigé le 21/08/2026.** `presta_cancel` ne filtrait que sur le statut — `assigned` ou
@@ -5208,6 +5221,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `75` | Le tarif d'une prolongation déjà payée ne se réécrit pas |
 | `76` | Somme due par un prestataire : notifiée sans promettre de retenue |
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
+| `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
