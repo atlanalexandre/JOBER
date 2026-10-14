@@ -1606,6 +1606,37 @@ let _providersCache = null;
 let _providersCacheTs = 0;
 let _providersCachePromise = null;
 
+// Le CV d'un prestataire, lu à la demande. Le catalogue public ne rend plus que
+// `a_cv` : le contenu est réservé aux clients connectés (décision d'Alexandre du
+// 14/10/2026), et se lit par `/api/prestataires?action=cv` avec le jeton.
+// `actif` permet de n'interroger qu'à l'ouverture (fenêtre de la réservation).
+function useCv(p, actif = true) {
+  const [etat, setEtat] = useState({ id: null, cv: null, statut: "chargement", erreur: "" });
+  const id = p?.id, aCv = !!p?.a_cv;
+  useEffect(() => {
+    if (!actif || !id || !aCv) return;
+    let vivant = true;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const r = await fetch(`/api/prestataires?action=cv&id=${encodeURIComponent(id)}`, {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `Parcours indisponible (${r.status})`);
+        if (vivant) setEtat({ id, cv: d.cv || null, statut: "pret", erreur: "" });
+      } catch (e) {
+        console.error("[cv] lecture du parcours impossible :", e.message);
+        if (vivant) setEtat({ id, cv: null, statut: "erreur", erreur: e.message });
+      }
+    })();
+    return () => { vivant = false; };
+  }, [id, aCv, actif]);
+  if (!aCv) return { cv: null, statut: "absent", erreur: "" };
+  if (etat.id !== id) return { cv: null, statut: "chargement", erreur: "" };
+  return etat;
+}
+
 // La fiche telle que les écrans la lisent, depuis une ligne de /api/prestataires.
 // Partagée par le chargement du catalogue et sa relecture fraîche.
 function mapperPrestataires(prestataires) {
@@ -1642,7 +1673,7 @@ function mapperPrestataires(prestataires) {
       niveau:       p.niveau,
       plan:         p.plan_abonnement || "free",
       planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
-      cv:           p.cv || null,
+      a_cv:         !!p.a_cv,
       bio:          p.bio      || null,
       langues:      Array.isArray(p.langues) ? p.langues : [],
       role:         p.metier   || null,
@@ -2282,7 +2313,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <div style={{ color:C.textSub, fontSize:13 }}>Revenez plus tard ou activez le mode urgence</div>
                 </div>
               ) : filteredProviders.map(p => {
-                const hasCv = !!p.cv;
+                const hasCv = !!p.a_cv;
                 return (
                   <div key={p.id} style={{
                     background:"#0D1B3E", borderRadius:r, marginBottom:11,
@@ -2504,8 +2535,9 @@ export function SearchFiltersScreen({ onNavigate }) {
 
 export function CVScreen({ provider, onBack, onNavigate }) {
   const p = provider;
+  const lu = useCv(p);
   if (!p) return null;
-  const cvBrut = p.cv;
+  const cvBrut = lu.cv;
   // Un CV jamais rempli est enregistré comme objet vide (presta-screens.jsx:1163),
   // et un objet vide est « vrai » en JavaScript : le garde-fou ci-dessous le
   // laissait passer, puis l'affichage plantait sur cv.experiences.map.
@@ -2519,9 +2551,11 @@ export function CVScreen({ provider, onBack, onNavigate }) {
   if(!cv) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
       <div style={{ fontSize:60, marginBottom:16 }}>📄</div>
-      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>Parcours non disponible</h3>
+      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>{lu.statut === "chargement" ? "Chargement du parcours…" : "Parcours non disponible"}</h3>
       <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:260, margin:"0 auto 28px" }}>
-        {p.name} n'a pas encore renseigné son parcours professionnel sur ALANE.
+        {lu.statut === "erreur" ? lu.erreur
+          : lu.statut === "chargement" ? ""
+          : `${p.name} n'a pas encore renseigné son parcours professionnel sur ALANE.`}
       </p>
       <Btn onClick={onBack} variant="ghost">← Retour au profil</Btn>
     </div>
@@ -2658,12 +2692,12 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
   const p = {
     rating: 0, reviews: 0, distance: "—", available: false,
     jobTitle: "", experience: "—", prestations: "—", responseTime: "—",
-    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
+    bio: null, langues: [], skills: [], metiers_list: [], a_cv: false,
     avatar: "👷", color: "#7C6FE0", photo_url: null,
     ...provider,
     ...(enriched || {}),
   };
-  const cv = p.cv;
+  const cv = p.a_cv;
 
   useEffect(()=>{
     if (!provider?.id) return;
@@ -2692,7 +2726,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             photo_url:   found.photo_url || provider.photo_url || null,
             color:       sectorInfo?.color || provider.color || "#7C6FE0",
             avatar:      sectorInfo?.icon  || provider.avatar || "👷",
-            cv:          found.cv         || null,
+            a_cv:        !!found.a_cv,
           });
         })
         .catch(()=>{});
@@ -2950,6 +2984,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [tooSoonError, setTooSoonError] = useState(false);
   const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
+  const cvLu = useCv(p, cvOpen);
   const [showClientContract, setShowClientContract] = useState(false);
   const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
   const [showCgpsFromContract, setShowCgpsFromContract] = useState(false);
@@ -3201,7 +3236,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
       {/* Overlay CV */}
       {cvOpen && (() => {
-        const cv = p.cv;
+        const cv = cvLu.cv;
         return (
           <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40, WebkitOverflowScrolling:"touch" }}>
             <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
@@ -3224,8 +3259,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               {!cv ? (
                 <div style={{ textAlign:"center", padding:"40px 20px", color:C.textSub, fontSize:14, lineHeight:1.7 }}>
                   <div style={{ fontSize:50, marginBottom:14 }}>📄</div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours en cours de rédaction</div>
-                  {p.name} n'a pas encore renseigné son parcours complet.<br/>Consultez son profil et ses avis pour vous décider.
+                  {cvLu.statut === "chargement" ? <div style={{ fontWeight:700, color:C.text, fontSize:16 }}>Chargement du parcours…</div>
+                  : cvLu.statut === "erreur" ? <><div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours indisponible</div>{cvLu.erreur}</>
+                  : <><div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours en cours de rédaction</div>
+                  {p.name} n'a pas encore renseigné son parcours complet.<br/>Consultez son profil et ses avis pour vous décider.</>}
                 </div>
               ) : (<>
                 <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
