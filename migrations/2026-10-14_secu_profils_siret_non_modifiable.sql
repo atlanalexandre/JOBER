@@ -2,7 +2,7 @@
 -- secu_profils_siret_non_modifiable
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- POURQUOI (étude d'octobre 2026, prouvé en recette par e2e/83)
+-- POURQUOI (étude d'octobre 2026, prouvé en recette par e2e/85)
 --
 -- Le navigateur pouvait modifier `profiles.siret` par un simple appel à l'API de
 -- la base avec son propre jeton (réponse 204). Or ce numéro :
@@ -27,6 +27,9 @@
 -- ORDRE : le code d'abord (inscription client sans SIRET), puis cette migration.
 -- Passée avant, l'inscription d'un client avec session ouverte verrait l'écriture
 -- de son profil refusée (rattrapée par /api/reparer-profil).
+-- APPLIQUÉE : recette et production le 14/10/2026 (production passée par Alexandre,
+-- après le déploiement de l'inscription client sans SIRET), vérifiée des deux côtés :
+-- siret n'est plus modifiable par authenticated ni par anon.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 REVOKE UPDATE (siret) ON public.profiles FROM authenticated, anon;
