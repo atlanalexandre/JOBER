@@ -2762,13 +2762,19 @@ revenait payer en changeant une option (« mémoriser ma carte », cashback) rec
 paiement — débité deux fois — et le premier n'était plus jamais rendu ; constaté en recette.
 `/api/stripe-intent` cherche désormais chez Stripe un paiement de réservation déjà abouti pour
 cette prestation et ce client (`paiementDejaAbouti()` de `api/_paiement.js` : liste des paiements
-du client Stripe, à défaut recherche sur `metadata['mission']`) ; trouvé, il répond 409
+du client Stripe, **puis**, rien n'y étant trouvé, recherche sur `metadata['mission']` — un paiement
+créé sans client Stripe, quand celui-ci était indisponible au premier essai, n'est que là ;
+relecture du 14/10/2026) ; trouvé, il répond 409
 `deja_payee` avec son identifiant, et le tunnel achève l'affectation avec lui au lieu de faire
 payer. Stripe illisible : 503, rien n'est créé. Et si deux paiements ont tout de même abouti (deux
 onglets), l'affectation du second le **rembourse en entier** (`rembourserDoublonPaiement()`, clé
 `refund-doublon-{paiement}`, la même que le webhook) au lieu de le refuser sans rien rendre ;
 l'écriture de l'affectation est conditionnée à « aucun paiement rattaché, ou celui-ci »
 (`filtrePaiementLibre()`), pour que deux affectations simultanées ne s'écrasent pas.
+Le refus d'un paiement après coup (`rembourserRefusApresPaiement()`, secteur fermé, zone, prestataire
+non activé…) porte la même condition sur l'annulation : un second paiement refusé pendant qu'un
+premier venait d'être rattaché annulait la réservation réglée par celui-ci, sans le rendre
+(relecture du 14/10/2026).
 
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
