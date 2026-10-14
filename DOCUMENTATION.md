@@ -1359,6 +1359,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_annulation.js` | Annulation par le client : les frais de service sont-ils retenus ? `fraisRetenusAnnulationClient()`, `sansPrestataireTrouve()`. Non en cas de défaillance du prestataire (CGPS art. 8.2), ni quand personne n'a repris une réservation payée (`open`, `needs_replacement` — décision D2, 14/10/2026). Appelé par `cancel_client` |
+| `_liste_noire.js` | Liste anti-recréation (`account_blacklist`, décision D4, 14/10/2026) — `empreintes()`, `filtreListeNoire()`, `ligneListeNoire()`, `comptesRecrees()`, `telephoneNormalise()`. Utilisé par l'inscription, la validation, la liste du back-office, les trois suppressions et la tâche des deux heures |
 | `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
@@ -1747,6 +1748,26 @@ Ajoutés au passage : `form-action 'self'` et `frame-ancestors 'none'`.
 
 ### Suppression de compte et anti-recréation
 
+**Décision D4 d'Alexandre, 14/10/2026** (`api/_liste_noire.js`, éprouvée par `e2e/94` et
+`src/tests/api/liste-noire.test.js`). Quatre trous laissaient revenir un compte supprimé ou exclu
+avec un quota gratuit neuf :
+
+- **l'IBAN n'était comparé qu'à l'inscription et à la validation**, avant que le prestataire le
+  saisisse (il l'écrit depuis son espace, directement dans `profiles.rib`) : il ne reconnaissait
+  personne. La tâche des deux heures (`cron-reset-monthly?action=reminders`) compare désormais
+  **tous les comptes**, IBAN compris (`comptesRecrees()`), et repose `trial_exhausted` où il manque ;
+- **le téléphone était haché tel que saisi** : « 06 12… », « 0612… » et « +33 6 12… » donnaient
+  trois empreintes. Il est inscrit sous une forme unique (`telephoneNormalise()`, « 0612345678 ») et
+  comparé sous toutes ses écritures, car les empreintes déjà enregistrées l'ont été sur le numéro
+  brut. Même chose pour l'IBAN (sans espaces, en majuscules) et le SIRET (chiffres seuls) ;
+- **la remise à zéro du 1er du mois rendait le quota gratuit à tous**, comptes recréés compris :
+  elle les écarte (leurs compteurs repartent de zéro, la pénalité reste). Liste illisible : la
+  remise vaut pour tous, et la tâche des deux heures repose la pénalité au passage suivant ;
+- **la résiliation à l'échéance n'inscrivait rien** — voir le tableau ci-dessous.
+
+L'inscription lit aussi le SIRET d'un prestataire (`siret`) : seul `kbis`, celui d'un client
+professionnel, l'était.
+
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
 supprimé se recrée pour retrouver un essai gratuit, et reste compatible avec le droit à
@@ -1758,6 +1779,7 @@ Deux chemins de suppression, et **un seul l'alimentait** jusqu'au 07/08/2026 :
 |---|---|---|
 | Suppression par l'administration | `bo-action.js` (`delete`) | Oui, depuis toujours |
 | Suppression par l'utilisateur | `support.js` (`delete_account`) | **Non — corrigé le 07/08/2026** |
+| Résiliation à l'échéance d'un préavis (exclusion décidée par ALANE) | `cron-reset-monthly.js` | **Non — corrigé le 14/10/2026** (décision D4) |
 
 Or c'est le second que les utilisateurs empruntent. Il suffisait de supprimer son compte
 depuis l'application puis de se réinscrire pour retrouver un essai gratuit, autant de fois
@@ -5391,6 +5413,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
 | `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
 | `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
+| `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
