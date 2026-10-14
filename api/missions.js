@@ -8,6 +8,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
@@ -3900,11 +3901,17 @@ export default async function handler(req, res) {
       // confirmation lui-même (« remboursement intégral hors frais de service »).
       // Seul le serveur disait le contraire au-delà de 24 h : il les remboursait.
       //
-      // Unique exception, celle des CGPS art. 8.2 : la défaillance du prestataire.
-      // Le client est alors intégralement remboursé, frais compris — il n'y est pour
-      // rien, et facturer une mise en relation qui n'a produit personne serait
-      // difficilement défendable.
-      const retenirFrais = !annulationPourRetard;
+      // Deux exceptions, où le client est intégralement remboursé, frais compris
+      // (api/_annulation.js) : la défaillance du prestataire, celle des CGPS
+      // art. 8.2, et une réservation payée que personne n'a reprise — repartie en
+      // recherche ou en attente d'un remplaçant (décision D2 d'Alexandre,
+      // 14/10/2026). Le client n'y est pour rien, et facturer une mise en relation
+      // qui n'a produit personne serait difficilement défendable. La tâche
+      // planifiée rendait déjà tout à l'heure de début ; le client qui annulait
+      // avant, lui, perdait ses frais.
+      const sansPrestataire = sansPrestataireTrouve(mission);
+      const retenirFrais = fraisRetenusAnnulationClient(mission, { retardPrestataire: annulationPourRetard });
+      if (sansPrestataire) console.log(`[cancel_client] personne n'a repris ${mission_id} (${mission.status}) — remboursement intégral, frais compris`);
       const refundAmount = retenirFrais
         ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
         : Math.round(payeCarte * 100);
@@ -4070,10 +4077,19 @@ export default async function handler(req, res) {
                 // 09/10/2026) : l'e-mail annonçait « 0,00 € » et « aucun montant
                 // n'est dû », en contradiction avec son objet.
                 ? "La modification de commande a été remboursée automatiquement. Elle apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés."
-                : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
+                : (mission.stripe_payment_intent
+                  ? (keptAmount > 0 ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun montant n'a été retenu.")
+                  : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${keptAmount > 0
                 ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur}) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
-                : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}
+                // Le motif du remboursement intégral, et lui seul : l'e-mail
+                // annonçait « votre prestataire ne s'est pas présenté » à toute
+                // annulation sans frais retenus — y compris d'une demande jamais payée.
+                : sansPrestataire
+                  ? `<p style="font-size:12px;color:#999">Personne n'avait encore été trouvé pour votre prestation : vous êtes intégralement remboursé, frais de service compris.</p>`
+                  : annulationPourRetard
+                    ? `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`
+                    : ""}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),

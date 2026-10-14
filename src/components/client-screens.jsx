@@ -3735,6 +3735,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 recevait 104 €. */}
             {[
               ["Annulation par le prestataire", "Remboursement intégral, frais compris", "#10D98F"],
+              // Décision D2 d'Alexandre (14/10/2026) : api/_annulation.js.
+              ["Aucun prestataire trouvé", "Remboursement intégral, frais compris", "#10D98F"],
               ["Annulation client ≥ 24h avant", "Prix remboursé, frais de service retenus", "#F0B429"],
               ["Annulation client < 24h avant", "Prix remboursé, frais de service retenus", "#F0B429"],
             ].map(([cas, regle, col]) => (
@@ -8046,7 +8048,10 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
 
             return (<>
               {/* Prestation pas encore démarrée : annulation classique */}
-              {(selected.status === "open" || selected.status === "pending_acceptance" ||
+              {/* « Remplaçant recherché » aussi : le client n'y pouvait qu'attendre
+                  l'heure de début, alors que le serveur accepte l'annulation — et
+                  la rembourse en entier depuis la décision D2 (14/10/2026). */}
+              {(selected.status === "open" || selected.status === "pending_acceptance" || selected.status === "needs_replacement" ||
                 (selected.status === "assigned" && !isStarted && !isEnded)) && (
                 <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ✕ Annuler la prestation
@@ -8075,6 +8080,15 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
                         const retardMin2 = mStart ? Math.floor((Date.now() - mStart.getTime()) / 60000) : 0;
                         const sansFrais = !selected.started_at && selected.prestataire_id
                           && retardMin2 >= seuilAnnulationRetardMin(selected.hours);
+                        // Personne n'a repris la réservation payée — repartie en
+                        // recherche, ou en attente d'un remplaçant : tout est rendu
+                        // (décision D2, api/_annulation.js).
+                        if (["open", "needs_replacement"].includes(selected.status)) return (
+                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>
+                            Personne n'a encore été trouvé pour votre prestation.
+                            <br/><strong style={{ color:"#10D98F" }}>Remboursement intégral</strong>, frais de service compris.
+                          </div>
+                        );
                         if (sansFrais) return (
                           <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>
                             Votre prestataire a {retardMin2} min de retard et n'a pas démarré la prestation.
