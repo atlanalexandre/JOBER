@@ -1,6 +1,6 @@
 // Inscription d'un prestataire : ce qu'il obtient, et surtout ce qu'il n'obtient pas.
 import { test, expect } from "@playwright/test";
-import { sql, emailTest, MOT_DE_PASSE } from "./outils.js";
+import { sql, emailTest, MOT_DE_PASSE, telephoneTest } from "./outils.js";
 import { remplirInscriptionPrestataire, connexion, continuer, ouvrir, fermerBandeauCookies } from "./parcours.js";
 
 async function compte(email) {
@@ -67,7 +67,7 @@ test.describe("inscription prestataire — refus attendus", () => {
     await page.getByText("Inscription", { exact: true }).first().click();
     await page.getByPlaceholder("Jean").fill("Léo");
     await page.getByPlaceholder("Dupont").fill("Recette");
-    await page.getByPlaceholder("06 12 34 56 78").fill("0698765432");
+    await page.getByPlaceholder("06 12 34 56 78").fill(telephoneTest());
     const il_y_a_15_ans = new Date(Date.now() - 15 * 365.25 * 864e5).toISOString().slice(0, 10);
     await page.locator('input[type="date"]').fill(il_y_a_15_ans);
     await page.getByPlaceholder("12 rue de la Paix").fill("5 rue de Lyon");

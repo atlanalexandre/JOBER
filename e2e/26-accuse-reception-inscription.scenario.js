@@ -12,15 +12,15 @@
 //
 // Prérequis : migration 2026-09-29_accuse_reception_inscription.sql.
 import { test, expect } from "@playwright/test";
-import { sql } from "./outils.js";
+import { sql, telephoneTest } from "./outils.js";
 import { inscrire, tachePlanifiee, bo } from "./fabrique.js";
 import { connexionBO, ficheBO } from "./parcours.js";
 
 test.describe.configure({ timeout: 240_000 });
 
 test("envoi impossible (recette) : rien n'est marqué, l'accusé reste à envoyer ; un compte validé n'est pas concerné", async () => {
-  const p = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765432", metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
-  const deja = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765433", metier: "Serveur(se)", secteur: "hotellerie" } });
+  const p = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: telephoneTest(), metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
+  const deja = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: telephoneTest(), metier: "Serveur(se)", secteur: "hotellerie" } });
   expect((await bo("approve", { profileId: deja.id })).statut).toBe(200);
 
   const t = await tachePlanifiee();
@@ -43,8 +43,8 @@ test("envoi impossible (recette) : rien n'est marqué, l'accusé reste à envoye
 
 // Le back-office le dit, sans ouvrir la base (30/09/2026).
 test("la fiche du back-office dit si l'accusé est parti", async ({ page }) => {
-  const attente = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765434", metier: "Serveur(se)", secteur: "hotellerie" } });
-  const parti = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: "0698765435", metier: "Serveur(se)", secteur: "hotellerie" } });
+  const attente = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: telephoneTest(), metier: "Serveur(se)", secteur: "hotellerie" } });
+  const parti = await inscrire({ role: "prestataire", prenom: "Accuse", metadonnees: { telephone: telephoneTest(), metier: "Serveur(se)", secteur: "hotellerie" } });
   await sql(`update profiles set accuse_inscription_at = '2026-09-30T08:15:00Z' where id = '${parti.id}'`);
 
   await connexionBO(page);

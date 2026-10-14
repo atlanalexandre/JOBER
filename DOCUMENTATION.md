@@ -1349,7 +1349,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
-| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
+| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1766,6 +1766,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 |---|---|
 | Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
+| Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` est en cascade sur le compte) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
 | `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
@@ -2712,6 +2713,18 @@ une **prolongation payée** (`confirmer_heures_supp`, une journée) remettait `a
 si bien que la clôture versait au prestataire l'heure rendue au client — et plaçait la fin de la
 prestation une heure trop tard. L'interruption prend désormais la durée retenue pour base de la
 journée ; la prolongation l'augmente des heures ajoutées.
+
+**Interrompre une prestation commencée en retard ne facture pas le retard** (étude d'octobre 2026,
+`e2e/81`, `interruption-retard.test.js`). `cancel_in_progress` compte les heures faites depuis
+l'heure de début **prévue** : le retard passait pour du travail fait. Constaté en recette (8 h à
+13 €, début prévu il y a 3 h 50, démarrage réel une heure plus tard) : 52 € rendus au lieu de 65 €,
+quel que soit l'arbitrage. `retardADeduireDuJour()` (`api/_decalage.js`) retranche le retard du temps
+écoulé, le jour du démarrage, quand il est réglé ailleurs : décalage **accepté** (fin repoussée) ou
+**refusé sur une journée** (durée retenue). Refusé sur plusieurs jours, il est déjà dans
+`heures_perdues` ; jamais arbitré, c'est la clôture qui plafonne — et l'interruption, qui clôt
+quand le client arrête tout, **rend désormais les heures retirées** comme les cinq autres
+clôtures (elle ne lisait même pas `delay_status` : rien n'était plafonné, le prestataire était payé
+du retard).
 
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
@@ -5288,6 +5301,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
 | `82` | Espace prestataire : pas de bandeau « IBAN manquant » quand l'IBAN est enregistré, pas d'offre de lancement épuisée |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
+| `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

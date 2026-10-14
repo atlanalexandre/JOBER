@@ -2,7 +2,7 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
@@ -4147,7 +4147,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence,arrival_delay_minutes,delay_status`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4206,7 +4206,12 @@ export default async function handler(req, res) {
       // perdait à la clôture. Le motif écrit lors du premier appel en fait foi.
       const dejaEcourtee = String(mission.cancellation_reason || "").includes(`Journée du ${aujourdHui} écourtée`);
       const debutDuJour = debutPrestationMs(aujourdHui, mission.heure_debut);
-      const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour);
+      // Un démarrage en retard ne compte pas le retard comme du travail fait,
+      // quand il est déjà réglé ailleurs : décalage accepté (fin repoussée) ou
+      // refusé sur une journée (durée retenue). Il était facturé au client
+      // comme une heure faite (étude d'octobre 2026, `e2e/81`).
+      const retardDuJourH = retardADeduireDuJour(mission, aujourdHui, estRecurrente, (ms) => dateDuJourFr(ms));
+      const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour - retardDuJourH * 3600000);
       const elapsedHours = elapsedMs / 3600000;
 
       // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h), au bénéfice du
@@ -4421,7 +4426,11 @@ export default async function handler(req, res) {
           ? {
               status: "completed",
               validation_client: true,
-              actual_hours: totalHours,
+              // Décalage non arbitré sur une journée : la durée plafonnée, comme à
+              // la validation (`complete`) — la facture lit `actual_hours`, et
+              // annonçait sinon une heure de plus que le versement.
+              actual_hours: partage.ajustementRetard && !partage.ajustementRetard.unJour
+                ? partage.ajustementRetard.apres : totalHours,
               heures_perdues: heuresPerduesTotal,
               ...majAjouts,
               montant_total: totalClient,
@@ -4443,6 +4452,21 @@ export default async function handler(req, res) {
           error: "Vous avez été remboursé, mais la prestation n'a pas pu être clôturée. "
                + "Écrivez à direction@alane.fr en indiquant la date : nous la fermons manuellement.",
         });
+      }
+
+      // Décalage jamais arbitré, prestation arrêtée : elle se clôt ICI, et la
+      // clôture plafonne les heures (`montantsDeCloture`). Comme les cinq autres
+      // clôtures, elle rend au client les heures retirées — celle-ci les gardait
+      // (étude d'octobre 2026, `e2e/81`). Clé d'idempotence de _decalage.js :
+      // une seule fois par prestation.
+      let renduRetard = 0;
+      if (annulerReste && partage.ajustementRetard) {
+        const rr = await rembourserHeuresRetirees({
+          mission: { ...mission, id: mission_id },
+          euros: valeurHeuresRetirees(mission, partage.ajustementRetard.avant, partage.ajustementRetard.apres),
+          supabaseUrl: SUPABASE_URL, headers, contexte: "cancel_in_progress/decalage",
+        });
+        if (rr.ok) renduRetard = (Number(rr.centimes) || 0) / 100;
       }
 
       // Le versement entre dans le circuit normal, avec son échéance.
@@ -4679,7 +4703,7 @@ export default async function handler(req, res) {
         billedHours,
         heuresDuJour,
         heuresPerdues: heuresPerduesTotal,
-        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur) * 100) / 100,
+        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur + renduRetard) * 100) / 100,
         remboursementHeuresAjoutees: ajoutsPerdus.valeur,
         proratedAmount,
       });
