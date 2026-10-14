@@ -844,7 +844,8 @@ rien rendre, et l'arbitre devait choisir celle qui lésait le moins mal. Comme t
 colonnes qui décident d'un montant, elle n'est pas modifiable depuis le navigateur.
 
 **`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
-leur reste à recouvrer, leur notification et leur date d'exigibilité.
+leur reste à recouvrer, leur notification et leur date d'exigibilité. `prestataire_id` est
+`NULL` pour une créance dont le compte a été supprimé (`ON DELETE SET NULL`, 14/10/2026).
 **`compensations_versements`** — le journal des retenues opérées sur chaque versement. Les
 deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; créer ou
 éteindre une créance passe par `/api`.
@@ -1054,7 +1055,8 @@ un déclencheur.
 
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
-recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
+recharge soit créditée deux fois. Lisible par le seul service role. `user_id` passe à `NULL` quand le compte est
+supprimé (`ON DELETE SET NULL` depuis le 14/10/2026 ; la ligne était effacée). Avant elle, l'argent
 entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
 justifié, ni rapproché des encaissements Stripe.
 
@@ -4602,9 +4604,13 @@ notification et l'e-mail de la créance annonçaient pourtant une retenue de la 
 versement, contre le contrat et contre l'écran du prestataire, qui disait l'inverse : alignés sur
 l'article (étude du 13/10/2026).
 
-> **À savoir** : `creances_prestataires.prestataire_id` est en `ON DELETE CASCADE` vers
-> `auth.users` — la suppression du compte d'un prestataire efface les sommes qu'il doit. Voir
-> AUDIT-2026-10.md (décision à prendre).
+> **À savoir** : une somme due **active ou contestée** bloque la suppression du compte
+> (`creancesOuvertes()`, 14/10/2026). Et depuis la migration
+> `2026-10-14_conserver_creances_et_rechargements_apres_suppression`,
+> `creances_prestataires.prestataire_id` est en `ON DELETE SET NULL` (et non plus `CASCADE`) :
+> une créance réglée survit au compte, sans lien vers lui. Même règle pour
+> `wallet_topups.user_id`. Avant, la suppression effaçait la dette et le registre. Éprouvé par
+> `e2e/83` et `e2e/84`.
 
 **Une contestation bancaire retient le versement** (décision d'Alexandre du 30/09/2026, CGPS
 art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` passe un versement
