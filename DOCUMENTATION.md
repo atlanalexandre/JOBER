@@ -2404,7 +2404,7 @@ navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de
 choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
 `status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
-postal, `avatar_url`, `rib`, `cv`, `tel`, `siret`, `societe_nom`, les champs fiscaux DAC7 (`nif`,
+postal, `avatar_url`, `rib`, `cv`, `tel`, `societe_nom`, les champs fiscaux DAC7 (`nif`,
 `nif_collecte_at`, `residence_fiscale`) et le consentement (`accepte_communications`, `_at`).
 
 **`created_at` ne l'est plus** (étude du 13/10/2026, migration
@@ -2414,8 +2414,19 @@ l'offre de lancement (tri des 100 premiers, `estEligible()`) et de l'échéance 
 URSSAF (`etatRegularisation()`) : antidatée, le quota Premium sans payer ; postdatée, plus jamais de
 suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) **et en
 production le 14/10/2026** par Alexandre — vérifié en lecture seule : `created_at` n'est plus
-modifiable ni par `authenticated` ni par `anon`, et les 16 autres colonnes ouvertes au navigateur le
+modifiable ni par `authenticated` ni par `anon`, et les autres colonnes ouvertes au navigateur le
 restent, comme en recette. Production lue le 13/10 : aucun profil à la date réécrite.
+
+**`siret` non plus** (étude d'octobre 2026, migration `2026-10-14_secu_profils_siret_non_modifiable.sql`,
+`e2e/85`). Un compte connecté réécrivait son propre SIRET (204 en recette). Or il décide de
+l'échéance de l'attestation URSSAF (immatriculation lue dans SIRENE + 60 jours) : remplacé par celui
+d'une entreprise créée la veille, il la repoussait autant de fois que voulu ; et il figure sur les
+factures émises au nom du prestataire. La base le pose à la création du compte (`handle_new_user`) ;
+le seul écran qui le renvoyait, l'inscription client, ne le fait plus (déployé avant la
+migration). Un changement de SIRET passe par le back-office. Production lue le 14/10 : aucun SIRET
+différent de celui déclaré à l'inscription. **Appliquée en recette et en production le 14/10/2026** —
+vérifié en lecture seule : `siret` n'est plus modifiable ni par `authenticated` ni par `anon`, et les
+15 colonnes qui restent ouvertes au navigateur sont les mêmes des deux côtés.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
@@ -5305,6 +5316,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
 | `83` | Suppression d'un compte refusée tant qu'une somme due à ALANE est active ou contestée |
 | `84` | Compte supprimé : la somme due réglée et le rechargement restent au registre, sans lien vers le compte |
+| `85` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
