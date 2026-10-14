@@ -20,7 +20,7 @@ test("prestation à 0 €/h payée : non affectée, client remboursé", async ()
   expect(cree.statut, `création : ${cree.texte}`).toBe(201);
 
   const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant: 2, prestataireId: p.id });
-  console.log("[84] paiement et affectation :", JSON.stringify(r));
+  console.log("[88] paiement et affectation :", JSON.stringify(r));
   // Si le paiement est déjà refusé en amont, c'est tout aussi bien : rien n'engage le prestataire.
   if (r.etape === "creation du paiement") return;
   expect(r.etape, "l'affectation doit être refusée").toBe("affectation");

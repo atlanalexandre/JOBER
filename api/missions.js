@@ -2788,7 +2788,7 @@ export default async function handler(req, res) {
         // Tarif nul ou absent : le contrôle du montant n'a rien à décomposer et
         // laisse passer, et la comparaison ci-dessous était sautée. Un client
         // payait 2 € de frais et engageait un prestataire, qui travaillait pour
-        // rien (étude du 14/10/2026, e2e/84). Une réservation directe porte
+        // rien (étude du 14/10/2026, e2e/88). Une réservation directe porte
         // toujours le tarif du prestataire : sans lui, on n'affecte pas.
         if (mTarifRes.ok && !(tarifPaye > 0)) {
           console.error(`[assign_after_payment] ${mission_id} : tarif horaire nul ou absent — affectation refusée`);

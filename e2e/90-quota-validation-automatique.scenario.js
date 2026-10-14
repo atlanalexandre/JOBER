@@ -30,6 +30,6 @@ test("validation automatique : la prestation compte au quota mensuel", async () 
   expect(await statut(), "validée automatiquement").toBe("completed");
 
   const [apres] = await sql(`select missions_completed_month n from profiles where id = '${p.id}'`);
-  console.log("[86] quota :", avant.n, "→", apres.n);
+  console.log("[90] quota :", avant.n, "→", apres.n);
   expect(Number(apres.n), "une journée de plus au compteur du mois").toBe(Number(avant.n || 0) + 1);
 });
