@@ -55,3 +55,27 @@ describe("dureeTexte", () => {
     expect(dureeTexte(7.75)).toBe("7 h 45");
   });
 });
+
+// Relecture du 14/10/2026 : deux actions lisaient encore `hours` après un
+// décalage refusé, et rendaient ou versaient une seconde fois l'heure retirée.
+describe("après un décalage refusé, la durée retenue fait foi", () => {
+  const source = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+  const blocDe = (debut, fin) => source.slice(source.indexOf(debut), source.indexOf(fin, source.indexOf(debut)));
+
+  it("l'interruption part de `actual_hours`", () => {
+    const bloc = blocDe('if (action === "cancel_in_progress")', "const tarifHoraire = Number(mission.tarif_horaire)");
+    expect(bloc).toMatch(/select=[^`]*\bactual_hours\b/);
+    expect(bloc).toMatch(/const totalHours = mission\.actual_hours !== null && mission\.actual_hours !== undefined/);
+  });
+
+  it("la prolongation garde la réduction au lieu de vider `actual_hours`", () => {
+    const bloc = blocDe('if (action === "confirmer_heures_supp")', "const up = await fetch(");
+    expect(bloc).toMatch(/select=[^;]*\bactual_hours\b/);
+    expect(bloc).not.toMatch(/actual_hours:\s*null\s*,/);
+  });
+
+  it("à la clôture, 4 h réservées, 1 h de retard refusée puis 1 h ajoutée : 4 h dues", () => {
+    const r = montantsDeCloture({ tarif_horaire: 13, hours: 5, actual_hours: 4, extra_hours_appliquees: 1, extra_hours_tarif: 20, delay_status: "rejected", montant_total: 100 });
+    expect(r.partPrestataire).toBe(3 * 13 + 20);
+  });
+});
