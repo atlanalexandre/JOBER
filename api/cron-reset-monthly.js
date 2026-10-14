@@ -22,7 +22,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
-import { cleVersement, virementDejaEmis } from "./_virement.js";
+import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
 
 /**
@@ -884,6 +884,8 @@ export default async function handler(req, res) {
                 if (!inscrit) console.error(`[versements] ${td.id} VERSÉ au prestataire ${m.prestataire_id} mais NON inscrit sur ${m.id} : `
                   + "passer payout_status à transferred et stripe_transfer_id à la main.");
 
+                await notifier({ user_id: m.prestataire_id, type: "system", ref_id: m.id, ...avisDeVersement(m, cents / 100, "emis") },
+                  SUPABASE_URL, headers).catch(e => console.error(`[versements] ${td.id} : prestataire non prévenu :`, e?.message));
                 emis++;
                 bilan.versements++;
                 console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
@@ -907,6 +909,8 @@ export default async function handler(req, res) {
                   { payout_status: "failed" }, headers, `versements/refus ${m.id}`);
                 console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status,
                   "— versement « échoué » : à relancer depuis le back-office (Versements) une fois la cause réglée.");
+                await notifier({ user_id: m.prestataire_id, type: "system", ref_id: m.id, ...avisDeVersement(m, cents / 100, "refuse") },
+                  SUPABASE_URL, headers).catch(e => console.error(`[versements] refus ${m.id} : prestataire non prévenu :`, e?.message));
               }
             } catch (e) {
               // On ne laisse jamais une prestation coincée en `processing` :
