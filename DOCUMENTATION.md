@@ -2663,7 +2663,7 @@ Un refus l'inscrit dans `heures_perdues` ; un retard non arbitré est déduit un
 `montantsDeCloture()` (`ajustementRetard.unJour`, rien n'est réécrit) ; `valeurHeuresRetirees()`
 compte une journée. Les durées s'écrivent « 7 h 40 » (`dureeTexte()`, `api/_temps.js`).
 
-**Tout ce qui suit un refus lit `actual_hours`** (relecture du 14/10/2026, `e2e/77`). Deux actions
+**Tout ce qui suit un refus lit `actual_hours`** (relecture du 14/10/2026, `e2e/78`). Deux actions
 partaient encore de `hours` : l'**interruption en cours** (`cancel_in_progress`) rendait au client,
 une seconde fois, l'heure déjà remboursée — 8 h réservées, une heure de retard refusée, arrêt au bout
 de 3 h : 6 h rendues au lieu de 5, 3 h versées au prestataire, ALANE de sa poche d'une heure ; et
