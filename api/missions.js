@@ -8,6 +8,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { alerteExterieureDue, nomExpediteur, texteSmsMessage } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
@@ -3412,7 +3413,85 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Votre message n'a pas pu être envoyé. Réessayez." });
       }
 
-      return res.status(200).json({ success: true, message: lignesMsg[0] });
+      // ── Le destinataire est prévenu ICI, depuis le message enregistré ──
+      //
+      // Décision D5 d'Alexandre (14/10/2026), api/_messagerie.js. La notification
+      // partait d'un second appel (`chat_notify`), auquel le navigateur donnait
+      // le nom et le texte : ALANE envoyait par e-mail et SMS, à son nom, un texte
+      // libre, sans limite. Désormais l'expéditeur vient de son profil, l'e-mail
+      // cite le message enregistré, le SMS ne contient aucun texte libre, et
+      // e-mail comme SMS sont plafonnés. Le message est enregistré quoi qu'il
+      // arrive : un échec de notification est journalisé, il n'annule rien.
+      const nouveau = lignesMsg[0];
+      try {
+        const [rProfil, rPrecedent, rDest] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/messages?conversation_key=eq.${encodeURIComponent(cle)}&sender_id=eq.${caller.id}`
+            + `&created_at=lt.${encodeURIComponent(nouveau.created_at)}&order=created_at.desc&limit=1&select=created_at,lu_at`, { headers }),
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers }),
+        ]);
+        const profils = rProfil.ok ? await rProfil.json().catch(() => null) : null;
+        if (!Array.isArray(profils)) console.error(`[message] profil de l'expéditeur illisible (${rProfil.status}) — nom générique`);
+        const nom = nomExpediteur(Array.isArray(profils) ? profils[0] : null, tag);
+
+        await notifier({
+          user_id: recipient_id,
+          type: "system",
+          title: `💬 Nouveau message de ${nom}`,
+          body: texte.slice(0, 100),
+          ref_id: caller.id,
+        }, SUPABASE_URL, headers);
+
+        const precedents = rPrecedent.ok ? await rPrecedent.json().catch(() => null) : null;
+        if (!Array.isArray(precedents)) {
+          // Sans l'historique, on ne sait pas si le destinataire vient d'être
+          // prévenu : le plafond l'emporte, ni e-mail ni SMS.
+          console.error(`[message] historique illisible (${rPrecedent.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
+        } else if (alerteExterieureDue(precedents[0] || null)) {
+          const dest = rDest.ok ? await rDest.json().catch(() => ({})) : {};
+          if (!rDest.ok) console.error(`[message] destinataire illisible (${rDest.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
+          const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+          const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+          if (RESEND_KEY && dest.email) {
+            const extrait = texte.length > 500 ? `${texte.slice(0, 500)}…` : texte;
+            const er = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+              body: resendBody({
+                from: RESEND_FROM,
+                to: [dest.email],
+                subject: `💬 Nouveau message de ${nom}`,
+                html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                  <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
+                  <p><strong>${esc(nom)}</strong> vous a envoyé un message :</p>
+                  <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;white-space:pre-wrap">${esc(extrait)}</div>
+                  <p>Connectez-vous à ALANE pour répondre.</p>
+                  <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+                </div>`,
+              }),
+            }).catch(e => { console.error("[message] e-mail non envoyé :", e.message); return null; });
+            if (er && !er.ok) console.error(`[message] e-mail refusé par Resend (${er.status}) pour ${nouveau.id}`);
+          }
+          const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
+          const telephone = dest.user_metadata?.telephone;
+          if (BREVO_KEY && telephone) {
+            const chiffres = String(telephone).replace(/\D/g, "");
+            const e164 = chiffres.startsWith("0") ? "33" + chiffres.slice(1) : chiffres.startsWith("33") ? chiffres : null;
+            if (e164) {
+              const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                method: "POST",
+                headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+                body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsClean(texteSmsMessage(nom)) }),
+              }).catch(e => { console.error("[message] SMS non envoyé :", e.message); return null; });
+              if (sr && !sr.ok) console.error(`[message] SMS refusé par Brevo (${sr.status}) pour ${nouveau.id}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`[message] destinataire non prévenu pour ${nouveau.id} :`, e.message);
+      }
+
+      return res.status(200).json({ success: true, message: nouveau });
     }
 
     // ── « Lu » : le destinataire a ouvert la conversation ─────────────
@@ -3444,91 +3523,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, lus: lus.length });
     }
 
+    // ── `chat_notify` : remplacée par `envoyer_message` (décision D5) ─────
+    //
+    // Le navigateur y donnait le nom de l'expéditeur et le texte, qu'ALANE
+    // envoyait par e-mail et SMS à son nom, sans lien avec un message enregistré
+    // ni limite : un SMS « ALANE » au texte de son choix, autant de fois que
+    // voulu (étude d'octobre 2026). Le destinataire est désormais prévenu à
+    // l'enregistrement du message. L'action reste acceptée, sans rien envoyer,
+    // pour les onglets encore ouverts sur une version antérieure de
+    // l'application : ils l'appellent juste après `envoyer_message`, qui a déjà
+    // prévenu.
     if (action === "chat_notify") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { recipient_id, sender_name, message_preview } = payload;
-      if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "recipient_id requis" });
-
-      // S-04: verify caller shares an active mission with recipient
-      const sharedMissionRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?or=(and(client_id.eq.${caller.id},prestataire_id.eq.${recipient_id}),and(client_id.eq.${recipient_id},prestataire_id.eq.${caller.id}))&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
-        { headers }
-      );
-      const sharedMissions = await sharedMissionRes.json().catch(() => []);
-      if (!Array.isArray(sharedMissions) || sharedMissions.length === 0) {
-        return res.status(403).json({ error: "Non autorisé — aucune prestation partagée active" });
-      }
-
-      // Fetch recipient info (email + phone)
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
-      const ud = await ur.json();
-      const recipientEmail = ud.email;
-      const phone = ud.user_metadata?.telephone;
-
-      // In-app notification (with ref_id = sender id for direct chat navigation)
-      await notifier({
-          user_id: recipient_id,
-          type: "system",
-          title: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
-          body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
-          ref_id: caller.id,
-        }, SUPABASE_URL, headers);
-
-      // Email Resend (quand app fermée)
-      const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
-      if (RESEND_KEY && recipientEmail) {
-        try {
-          const er = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-            body: resendBody({
-              from: RESEND_FROM,
-              to: [recipientEmail],
-              subject: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
-              html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-                <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
-                <p><strong>${esc(sender_name || "Votre contact")}</strong> vous a envoyé un message :</p>
-                <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${esc(message_preview || "")}</div>
-                <p>Connectez-vous à ALANE pour répondre.</p>
-                <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-              </div>`,
-            }),
-          });
-          const eb = await er.json().catch(() => ({}));
-          console.log("[chat_notify] email status:", er.status, JSON.stringify(eb));
-        } catch (e) { console.error("[chat_notify] email error:", e.message); }
-      } else {
-        console.log("[chat_notify] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!recipientEmail);
-      }
-
-      // SMS Brevo
-      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
-      console.log("[chat_notify] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      if (BREVO_KEY && phone) {
-        const digits = phone.replace(/\D/g, "");
-        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-        console.log("[chat_notify] sending SMS");
-        if (e164) {
-          try {
-            const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-              method: "POST",
-              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sender: "ALANE",
-                recipient: e164,
-                content: smsClean(`ALANE - Nouveau message de ${(sender_name || "votre contact").slice(0,50)} : ${(message_preview || "").slice(0, 80)} — alane.fr`),
-              }),
-            });
-            const sb = await sr.json().catch(() => ({}));
-            console.log("[chat_notify] SMS brevo status:", sr.status, JSON.stringify(sb));
-          } catch (e) { console.error("[chat_notify] SMS error:", e.message); }
-        }
-      } else {
-        console.log("[chat_notify] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      }
-
       return res.status(200).json({ success: true });
     }
 
@@ -5968,74 +5975,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // ── `notify_client` : plus aucun écran ne l'appelle (décision D5) ─────
+    //
+    // Elle envoyait au client un e-mail et un SMS « ALANE » dont le nom du
+    // prestataire et le libellé de la prestation venaient du navigateur, sans
+    // limite (étude d'octobre 2026). L'acceptation et le refus sont annoncés au
+    // client par `respond_mission`, avec les données du serveur. L'action reste
+    // acceptée, sans rien envoyer, pour les onglets d'une version antérieure.
     if (action === "notify_client") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { client_id, type, mission_label, presta_name } = payload;
-      if (!client_id || !isUuid(client_id)) return res.status(400).json({ error: "client_id requis" });
-
-      // Vérifier que le caller est bien le prestataire d'une mission de ce client
-      const relRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&client_id=eq.${client_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`,
-        { headers }
-      );
-      const relData = await relRes.json();
-      if (!Array.isArray(relData) || !relData[0]) return res.status(403).json({ error: "Non autorisé" });
-
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${client_id}`, { headers });
-      const ud = await ur.json();
-      const clientEmail = ud.email;
-      const phone = ud.user_metadata?.telephone;
-      const clientName = ud.user_metadata?.prenom || "Client";
-
-      const isAccepted = type === "accepted";
-      const subject = isAccepted
-        ? `✅ ${presta_name || "Votre prestataire"} a accepté la prestation !`
-        : `❌ ${presta_name || "Le prestataire"} a refusé la prestation`;
-      const smsText = smsClean(isAccepted
-        ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre prestation ${mission_label || ""}. Connectez-vous pour suivre la prestation. — alane.fr`
-        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre prestation ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`);
-
-      const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-      if (RESEND_KEY && clientEmail) {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-          body: resendBody({
-            from: RESEND_FROM,
-            to: [clientEmail],
-            subject,
-            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
-              <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":"Prestation refusée ❌"}</h2>
-              <p>Bonjour ${esc(clientName)},</p>
-              ${isAccepted
-                ? `<p><strong>${esc(presta_name || "Votre prestataire")}</strong> a accepté votre demande de prestation <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
-                : `<p><strong>${esc(presta_name || "Le prestataire")}</strong> a décliné votre demande pour la prestation <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
-              }
-              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-            </div>`,
-          }),
-        }).catch(e => console.error("[missions/notify_client] échec ignoré :", e?.message));
-      } else {
-        console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!clientEmail);
-      }
-
-      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
-      if (BREVO_KEY && phone) {
-        const digits = phone.replace(/\D/g, "");
-        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-        if (e164) {
-          await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-            method: "POST",
-            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-            body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsText }),
-          }).then(r => r.json()).then(d => console.log("[notify_client] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_client] SMS error:", e.message));
-        }
-      } else {
-        console.log("[notify_client] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      }
-
       return res.status(200).json({ success: true });
     }
 
