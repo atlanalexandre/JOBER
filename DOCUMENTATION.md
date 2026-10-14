@@ -844,7 +844,8 @@ rien rendre, et l'arbitre devait choisir celle qui lésait le moins mal. Comme t
 colonnes qui décident d'un montant, elle n'est pas modifiable depuis le navigateur.
 
 **`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
-leur reste à recouvrer, leur notification et leur date d'exigibilité.
+leur reste à recouvrer, leur notification et leur date d'exigibilité. `prestataire_id` est
+`NULL` pour une créance dont le compte a été supprimé (`ON DELETE SET NULL`, 14/10/2026).
 **`compensations_versements`** — le journal des retenues opérées sur chaque versement. Les
 deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; créer ou
 éteindre une créance passe par `/api`.
@@ -1054,7 +1055,8 @@ un déclencheur.
 
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
-recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
+recharge soit créditée deux fois. Lisible par le seul service role. `user_id` passe à `NULL` quand le compte est
+supprimé (`ON DELETE SET NULL` depuis le 14/10/2026 ; la ligne était effacée). Avant elle, l'argent
 entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
 justifié, ni rapproché des encaissements Stripe.
 
@@ -1764,7 +1766,7 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 |---|---|
 | Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
-| Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` est en cascade sur le compte) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
+| Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` était en cascade sur le compte, jusqu'à la migration du 14/10/2026) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
 | `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
@@ -4615,9 +4617,14 @@ notification et l'e-mail de la créance annonçaient pourtant une retenue de la 
 versement, contre le contrat et contre l'écran du prestataire, qui disait l'inverse : alignés sur
 l'article (étude du 13/10/2026).
 
-> **À savoir** : `creances_prestataires.prestataire_id` est en `ON DELETE CASCADE` vers
-> `auth.users` — la suppression du compte d'un prestataire efface les sommes qu'il doit. Voir
-> AUDIT-2026-10.md (décision à prendre).
+> **À savoir** : une somme due **active ou contestée** bloque la suppression du compte
+> (`creancesOuvertes()`, 14/10/2026). Et depuis la migration
+> `2026-10-14_conserver_creances_et_rechargements_apres_suppression` (**appliquée en recette et en
+> production le 14/10/2026**, vérifiée des deux côtés), `creances_prestataires.prestataire_id` est en
+> `ON DELETE SET NULL` (et non plus `CASCADE`) :
+> une créance réglée survit au compte, sans lien vers lui. Même règle pour
+> `wallet_topups.user_id`. Avant, la suppression effaçait la dette et le registre. Éprouvé par
+> `e2e/83` et `e2e/84`.
 
 **Une contestation bancaire retient le versement** (décision d'Alexandre du 30/09/2026, CGPS
 art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` passe un versement
@@ -5296,6 +5303,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `82` | Espace prestataire : pas de bandeau « IBAN manquant » quand l'IBAN est enregistré, pas d'offre de lancement épuisée |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 | `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
+| `83` | Suppression d'un compte refusée tant qu'une somme due à ALANE est active ou contestée |
+| `84` | Compte supprimé : la somme due réglée et le rechargement restent au registre, sans lien vers le compte |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
