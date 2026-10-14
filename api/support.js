@@ -3,7 +3,7 @@ import { verifyUser } from "./_auth.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
@@ -423,6 +423,19 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
         // rien : le silence coûterait de l'argent à quelqu'un.
         console.error(`[delete_account] contrôle des versements impossible (${versementsRes.status}) — suppression refusée pour ${userId}`);
         return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+
+      // Une somme due à ALANE, active ou contestée, partait avec le compte
+      // (étude du 13/10/2026). Elle se règle ou se tranche d'abord.
+      const dues = await creancesOuvertes(userId, SUPABASE_URL, hdrs, "delete_account");
+      if (!dues.lisible) {
+        return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+      if (dues.nombre > 0) {
+        return res.status(409).json({
+          error: `Impossible de supprimer votre compte : une somme de ${euros(dues.total)} reste due à ALANE. `
+            + "Écrivez à support@alane.fr pour la régler ou la contester ; votre compte pourra être supprimé ensuite.",
+        });
       }
 
       // L'abonnement d'abord : il n'était pas résilié, et Stripe continuait de
