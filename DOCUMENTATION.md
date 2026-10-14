@@ -2672,6 +2672,18 @@ si bien que la clôture versait au prestataire l'heure rendue au client — et p
 prestation une heure trop tard. L'interruption prend désormais la durée retenue pour base de la
 journée ; la prolongation l'augmente des heures ajoutées.
 
+**Interrompre une prestation commencée en retard ne facture pas le retard** (étude d'octobre 2026,
+`e2e/81`, `interruption-retard.test.js`). `cancel_in_progress` compte les heures faites depuis
+l'heure de début **prévue** : le retard passait pour du travail fait. Constaté en recette (8 h à
+13 €, début prévu il y a 3 h 50, démarrage réel une heure plus tard) : 52 € rendus au lieu de 65 €,
+quel que soit l'arbitrage. `retardADeduireDuJour()` (`api/_decalage.js`) retranche le retard du temps
+écoulé, le jour du démarrage, quand il est réglé ailleurs : décalage **accepté** (fin repoussée) ou
+**refusé sur une journée** (durée retenue). Refusé sur plusieurs jours, il est déjà dans
+`heures_perdues` ; jamais arbitré, c'est la clôture qui plafonne — et l'interruption, qui clôt
+quand le client arrête tout, **rend désormais les heures retirées** comme les cinq autres
+clôtures (elle ne lisait même pas `delay_status` : rien n'était plafonné, le prestataire était payé
+du retard).
+
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
 dans `presta-screens.jsx` — qui s'ancraient auparavant sur `started_at` seul.
@@ -5220,6 +5232,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 | `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
+| `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
