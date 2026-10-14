@@ -4443,6 +4443,23 @@ demandes en attente sans le savoir. L'échec affiche désormais « Vos prestatio
 
 Ces résumés ont été remplacés le même jour par un renvoi aux CGPS (voir « Les contrats ne recopient plus les CGPS »).
 
+### Back-office : gestes d'argent et envois de masse confirmés
+
+**Décision D6 d'Alexandre, 14/10/2026** (`src/tests/backoffice-confirmations.test.js`, `e2e/93`). Chaque
+geste d'argent et chaque envoi à un groupe passe par une confirmation qui dit **combien** et **à qui**,
+et « Annuler » y arrête tout :
+
+| Geste | Avant | Désormais |
+|---|---|---|
+| Ajustement du cashback (`adjust_cashback`) | parti au premier clic ; un refus ne s'affichait pas | montant, client et solde avant → après ; un retrait au-delà du solde est refusé ; le refus du serveur s'affiche ; le serveur rend le nouveau solde (`solde`) |
+| Annulation d'une prestation payée (`cancel_mission`) | « Rembourser le client en même temps ? » : répondre **Annuler** annulait quand même la prestation, **sans rembourser** | une seule question, « annuler et rembourser intégralement {client} ({montant}) ? » ; « Annuler » ne fait rien |
+| Remboursement manuel (`manual_refund`) | seul le motif était demandé | montant et client confirmés, puis le motif |
+| Notification à tous (`broadcast_notification`), communication aux prestataires (`send_global_comm`) | partaient au premier clic | confirmation sur la cible ; l'envoi ne se rattrape pas |
+
+L'e-mail à tous les inscrits (`send_info_mail`) confirmait déjà le nombre exact de destinataires.
+**Le motif d'une annulation s'ajoute au message** envoyé au client et au prestataire (« Motif : … ») :
+il le remplaçait, et le client perdait l'annonce de son remboursement sous 5 à 10 jours.
+
 ### Back-office, onglet Support : suppression confirmée, envoi expliqué
 
 **01/10/2026** (audit des écrans, `e2e/58`). « Supprimer » effaçait un ticket — et le message du
@@ -5373,6 +5390,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `90` | Prestation validée automatiquement : elle compte au quota mensuel du prestataire |
 | `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
 | `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
+| `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
