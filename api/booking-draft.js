@@ -1,7 +1,7 @@
 // Sauvegarde / suppression d'un brouillon de réservation abandonné
 // Appelé depuis le frontend au début (save) et à la fin (clear) du tunnel de paiement
 
-import { verifyUser } from "./_auth.js";
+import { verifyUser, refuserCompteBloque } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -22,6 +22,8 @@ export default async function handler(req, res) {
   const { action, prestataire_name, metier, date, ville, montant, mission_id } = req.body || {};
 
   if (action === "save") {
+    // Un compte suspendu ne réserve plus : pas de panier, donc pas de relance.
+    if (await refuserCompteBloque(res, user, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
     await fetch(`${SUPABASE_URL}/rest/v1/booking_drafts`, {
       method: "POST",
       headers: { ...hdrs, "Prefer": "resolution=merge-duplicates,return=minimal" },

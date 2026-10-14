@@ -837,7 +837,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
-  const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  const [launchPhaseHome, setLaunchPhaseHome] = useState(false);
   // Les places de l'offre, comptées comme la règle serveur les compte : à
   // l'ouverture de l'accès aux prestations, pas au nombre d'approuvés.
   const [placesHome, setPlacesHome] = useState(null);
@@ -1606,6 +1606,37 @@ let _providersCache = null;
 let _providersCacheTs = 0;
 let _providersCachePromise = null;
 
+// Le CV d'un prestataire, lu à la demande. Le catalogue public ne rend plus que
+// `a_cv` : le contenu est réservé aux clients connectés (décision d'Alexandre du
+// 14/10/2026), et se lit par `/api/prestataires?action=cv` avec le jeton.
+// `actif` permet de n'interroger qu'à l'ouverture (fenêtre de la réservation).
+function useCv(p, actif = true) {
+  const [etat, setEtat] = useState({ id: null, cv: null, statut: "chargement", erreur: "" });
+  const id = p?.id, aCv = !!p?.a_cv;
+  useEffect(() => {
+    if (!actif || !id || !aCv) return;
+    let vivant = true;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const r = await fetch(`/api/prestataires?action=cv&id=${encodeURIComponent(id)}`, {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `Parcours indisponible (${r.status})`);
+        if (vivant) setEtat({ id, cv: d.cv || null, statut: "pret", erreur: "" });
+      } catch (e) {
+        console.error("[cv] lecture du parcours impossible :", e.message);
+        if (vivant) setEtat({ id, cv: null, statut: "erreur", erreur: e.message });
+      }
+    })();
+    return () => { vivant = false; };
+  }, [id, aCv, actif]);
+  if (!aCv) return { cv: null, statut: "absent", erreur: "" };
+  if (etat.id !== id) return { cv: null, statut: "chargement", erreur: "" };
+  return etat;
+}
+
 // La fiche telle que les écrans la lisent, depuis une ligne de /api/prestataires.
 // Partagée par le chargement du catalogue et sa relecture fraîche.
 function mapperPrestataires(prestataires) {
@@ -1642,7 +1673,7 @@ function mapperPrestataires(prestataires) {
       niveau:       p.niveau,
       plan:         p.plan_abonnement || "free",
       planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
-      cv:           p.cv || null,
+      a_cv:         !!p.a_cv,
       bio:          p.bio      || null,
       langues:      Array.isArray(p.langues) ? p.langues : [],
       role:         p.metier   || null,
@@ -2282,7 +2313,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <div style={{ color:C.textSub, fontSize:13 }}>Revenez plus tard ou activez le mode urgence</div>
                 </div>
               ) : filteredProviders.map(p => {
-                const hasCv = !!p.cv;
+                const hasCv = !!p.a_cv;
                 return (
                   <div key={p.id} style={{
                     background:"#0D1B3E", borderRadius:r, marginBottom:11,
@@ -2504,8 +2535,9 @@ export function SearchFiltersScreen({ onNavigate }) {
 
 export function CVScreen({ provider, onBack, onNavigate }) {
   const p = provider;
+  const lu = useCv(p);
   if (!p) return null;
-  const cvBrut = p.cv;
+  const cvBrut = lu.cv;
   // Un CV jamais rempli est enregistré comme objet vide (presta-screens.jsx:1163),
   // et un objet vide est « vrai » en JavaScript : le garde-fou ci-dessous le
   // laissait passer, puis l'affichage plantait sur cv.experiences.map.
@@ -2519,9 +2551,11 @@ export function CVScreen({ provider, onBack, onNavigate }) {
   if(!cv) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
       <div style={{ fontSize:60, marginBottom:16 }}>📄</div>
-      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>Parcours non disponible</h3>
+      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>{lu.statut === "chargement" ? "Chargement du parcours…" : "Parcours non disponible"}</h3>
       <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:260, margin:"0 auto 28px" }}>
-        {p.name} n'a pas encore renseigné son parcours professionnel sur ALANE.
+        {lu.statut === "erreur" ? lu.erreur
+          : lu.statut === "chargement" ? ""
+          : `${p.name} n'a pas encore renseigné son parcours professionnel sur ALANE.`}
       </p>
       <Btn onClick={onBack} variant="ghost">← Retour au profil</Btn>
     </div>
@@ -2658,12 +2692,12 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
   const p = {
     rating: 0, reviews: 0, distance: "—", available: false,
     jobTitle: "", experience: "—", prestations: "—", responseTime: "—",
-    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
+    bio: null, langues: [], skills: [], metiers_list: [], a_cv: false,
     avatar: "👷", color: "#7C6FE0", photo_url: null,
     ...provider,
     ...(enriched || {}),
   };
-  const cv = p.cv;
+  const cv = p.a_cv;
 
   useEffect(()=>{
     if (!provider?.id) return;
@@ -2692,7 +2726,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             photo_url:   found.photo_url || provider.photo_url || null,
             color:       sectorInfo?.color || provider.color || "#7C6FE0",
             avatar:      sectorInfo?.icon  || provider.avatar || "👷",
-            cv:          found.cv         || null,
+            a_cv:        !!found.a_cv,
           });
         })
         .catch(()=>{});
@@ -2950,6 +2984,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [tooSoonError, setTooSoonError] = useState(false);
   const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
+  const cvLu = useCv(p, cvOpen);
   const [showClientContract, setShowClientContract] = useState(false);
   const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
   const [showCgpsFromContract, setShowCgpsFromContract] = useState(false);
@@ -3201,7 +3236,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
       {/* Overlay CV */}
       {cvOpen && (() => {
-        const cv = p.cv;
+        const cv = cvLu.cv;
         return (
           <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40, WebkitOverflowScrolling:"touch" }}>
             <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
@@ -3224,8 +3259,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               {!cv ? (
                 <div style={{ textAlign:"center", padding:"40px 20px", color:C.textSub, fontSize:14, lineHeight:1.7 }}>
                   <div style={{ fontSize:50, marginBottom:14 }}>📄</div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours en cours de rédaction</div>
-                  {p.name} n'a pas encore renseigné son parcours complet.<br/>Consultez son profil et ses avis pour vous décider.
+                  {cvLu.statut === "chargement" ? <div style={{ fontWeight:700, color:C.text, fontSize:16 }}>Chargement du parcours…</div>
+                  : cvLu.statut === "erreur" ? <><div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours indisponible</div>{cvLu.erreur}</>
+                  : <><div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours en cours de rédaction</div>
+                  {p.name} n'a pas encore renseigné son parcours complet.<br/>Consultez son profil et ses avis pour vous décider.</>}
                 </div>
               ) : (<>
                 <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
@@ -5491,7 +5528,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
-  const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: false });
   // Le nom garde son « Count » d'origine mais porte désormais les PLACES
   // RESTANTES, comptées à l'ouverture de l'accès aux prestations.
   const [prestaCountHIW, setPrestaCountHIW] = useState(null);
@@ -5499,11 +5536,15 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     Promise.all([
       supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
       supabase.from("platform_settings").select("value").eq("key","subscription_prices").single(),
-      supabase.from("platform_settings").select("value").eq("key","launch_phase").single(),
-    ]).then(([l, p, lp]) => {
-      setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
+    ]).then(([l, p]) => {
+      setPlanSettings(s => ({ ...s, limits: l.data?.value || null, prices: p.data?.value || null }));
     });
-    fetchOffreLancement().then(o => { if (o.restantes != null) setPrestaCountHIW(o.restantes); });
+    // L'offre ne s'annonce que si le serveur la dit ouverte (réglage ET places) :
+    // le réglage seul l'affichait une fois les 100 places prises (étude d'octobre 2026).
+    fetchOffreLancement().then(o => {
+      setPlanSettings(s => ({ ...s, launchPhase: o.ouverte === true }));
+      if (o.restantes != null) setPrestaCountHIW(o.restantes);
+    });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
@@ -5514,7 +5555,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
     { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre prestation en détail.", color:C.indigo },
-    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la prestation soit validée par les deux parties.", color:C.accentGold },
+    { icon:"💳", title:"Payez en sécurité", desc:"Vous payez en ligne à la réservation, par Stripe. Le prestataire n’est payé que 48 h après la fin de la prestation : un problème signalé d’ici là bloque son versement.", color:C.accentGold },
     { icon:"✅", title:"Validez & notez", desc:"Une fois la prestation terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
@@ -5538,7 +5579,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
-        {planSettings.launchPhase && (
+        {role==="prestataire" && planSettings.launchPhase && (
           <div style={{
             background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
             border:"1px solid rgba(16,217,143,0.35)",
@@ -5549,9 +5590,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire"
-                  ? `8 prestations gratuites · ${prestaCountHIW != null ? (prestaCountHIW > 0 ? `Plus que ${prestaCountHIW} place${prestaCountHIW > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers prestataires validés"}`
-                  : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
+                {`8 prestations le mois de votre 1re prestation acceptée · ${prestaCountHIW > 0 ? `Plus que ${prestaCountHIW} place${prestaCountHIW > 1 ? "s" : ""} sur 100` : "Réservé aux 100 premiers prestataires validés"}`}
               </div>
             </div>
           </div>
@@ -9466,7 +9505,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [endDate,setEndDate]=useState(null);
   const [planLimits,setPlanLimits]=useState(null);
   const [subPrices,setSubPrices]=useState(null);
-  const [launchActive,setLaunchActive]=useState(isLaunchPhase());
+  const [launchActive,setLaunchActive]=useState(false);
   const [hasStripeCustomer,setHasStripeCustomer]=useState(false);
   const [portalLoading,setPortalLoading]=useState(false);
   const [cancelLoading,setCancelLoading]=useState(false);
@@ -9490,8 +9529,10 @@ export function AbonnementPrestaScreen({ onBack }) {
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
     supabase.from("platform_settings").select("value").eq("key","subscription_prices").single()
       .then(({data})=>{ if(data?.value) setSubPrices(data.value); });
-    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
-      .then(({data})=>{ if(data?.value != null) setLaunchActive(Boolean(data.value)); });
+    // Le serveur décide : réglage ouvert ET places restantes (fetchOffreLancement).
+    // Le réglage seul annonçait l'offre une fois les 100 places prises (étude
+    // d'octobre 2026, constaté en recette).
+    fetchOffreLancement().then(o => setLaunchActive(o.ouverte));
   },[]);
 
   const handleBillingPortal = async () => {
@@ -9690,7 +9731,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires validés</strong> bénéficient de <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong>.<br/>La place est attribuée à l'ouverture de l'accès aux prestations, une fois le dossier vérifié. Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Réservée aux <strong style={{ color:C.white }}>100 premiers prestataires validés</strong> : <strong style={{ color:C.accentGold }}>8 prestations</strong> au lieu de 2 le mois de votre première prestation acceptée, jusqu'à la fin de ce mois-là, sans abonnement.<br/>Ensuite, plan Gratuit : 2 prestations/mois.</div>
               </div>
             </div>
           </div>

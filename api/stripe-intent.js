@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { verifyUser } from "./_auth.js";
+import { verifyUser, refuserCompteBloque } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 import { prixHeuresSupp, joursFactures } from "./_heures_supp.js";
@@ -96,6 +96,7 @@ export default async function handler(req, res) {
     const SERVICE_ROLE = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE);
     if (!caller) return res.status(401).json({ error: "Non authentifié" });
+    if (await refuserCompteBloque(res, caller, SUPABASE_URL, SERVICE_ROLE)) return;
 
     try {
       const customerId = await clientStripeDuCompte(caller, SUPABASE_URL, SERVICE_ROLE);
@@ -331,6 +332,9 @@ export default async function handler(req, res) {
   // Le complément a ses propres gardes, plus bas : prestation attribuée, et
   // proposition du prestataire en attente de règlement.
   const estComplement = req.body?.mode === "supplement";
+  // Compte suspendu ou refusé : plus de nouvelle réservation. Le complément
+  // reste payable — il règle des heures déjà travaillées.
+  if (!estComplement && await refuserCompteBloque(res, callerPi, SUPABASE_URL_PI, SERVICE_ROLE_PI)) return;
 
   if (!estComplement && !["open", "pending_acceptance"].includes(mission.status)) {
     return res.status(400).json({ error: "Un paiement ne peut être créé que pour une prestation ouverte ou en attente d'attribution" });

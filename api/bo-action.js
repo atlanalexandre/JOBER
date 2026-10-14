@@ -26,7 +26,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { restituerCashback } from "./_cashback.js";
 import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
@@ -819,6 +819,11 @@ export default async function handler(req, res) {
       const litiges = await litigesRes.json().catch(() => null);
       if (!litigesRes.ok || !Array.isArray(litiges)) return res.status(502).json({ error: "Litiges du compte illisibles : rien n'a été supprimé." });
       if (litiges.length) return res.status(409).json({ error: "Ce compte a une prestation en litige : tranchez-la avant de supprimer le compte." });
+      // Une somme due à ALANE, active ou contestée, partait avec le compte
+      // (étude du 13/10/2026) : on tranche d'abord, comme pour un litige.
+      const dues = await creancesOuvertes(profileId, SUPABASE_URL, headers, ctx);
+      if (!dues.lisible) return res.status(502).json({ error: "Sommes dues du compte illisibles : rien n'a été supprimé." });
+      if (dues.nombre > 0) return res.status(409).json({ error: `Ce compte doit encore ${euros(dues.total)} à ALANE (somme due active ou contestée) : réglez-la, éteignez-la ou abandonnez-la avant de supprimer le compte. Rien n'a été supprimé.` });
 
       const paiementCarte = (m) => /^pi_/.test(String(m.stripe_payment_intent || ""));
       // Un paiement qui n'est ni une carte ni rien — l'ancien portefeuille

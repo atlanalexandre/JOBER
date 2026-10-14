@@ -2,15 +2,15 @@
 // (demande d'Alexandre, 29/09/2026). Ils entrent dans leur espace pour déposer leurs
 // documents ; l'accès aux prestations, lui, reste fermé.
 import { test, expect } from "@playwright/test";
-import { sql } from "./outils.js";
+import { sql, telephoneTest } from "./outils.js";
 import { inscrire } from "./fabrique.js";
 import { connexionBO, confirmer } from "./parcours.js";
 
 test.describe.configure({ timeout: 240_000 });
 
 test("un clic valide tous les profils prestataires en attente, sans ouvrir les prestations", async ({ page }) => {
-  const a = await inscrire({ role: "prestataire", prenom: "Enattente", metadonnees: { telephone: "0698765432", metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
-  const b = await inscrire({ role: "prestataire", prenom: "Enattente", metadonnees: { telephone: "0698765433", metier: "Serveur(se)", secteur: "hotellerie" } });
+  const a = await inscrire({ role: "prestataire", prenom: "Enattente", metadonnees: { telephone: telephoneTest(), metier: "Femme/Valet de chambre", secteur: "hotellerie" } });
+  const b = await inscrire({ role: "prestataire", prenom: "Enattente", metadonnees: { telephone: telephoneTest(), metier: "Serveur(se)", secteur: "hotellerie" } });
   for (const p of [a, b]) {
     const [l] = await sql(`select status from profiles where id = '${p.id}'`);
     expect(l.status, "inscrit en attente").toBe("pending");

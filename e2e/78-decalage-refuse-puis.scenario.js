@@ -38,19 +38,23 @@ test("décalage refusé puis interruption : l'heure non faite n'est rendue qu'un
   // L'interruption compte les heures depuis l'heure de début du jour : il en faut
   // trois derrière nous, aujourd'hui.
   const heureParis = Number(new Date().toLocaleTimeString("fr-FR", { ...PARIS, hour: "2-digit", hour12: false }));
-  test.skip(heureParis < 3, "il faut trois heures écoulées depuis minuit, heure de Paris");
+  test.skip(heureParis < 5, "il faut quatre heures écoulées depuis minuit, heure de Paris");
 
   const { c, m, prix, tarif } = await decalageRefuse({ heures: 8 });
   expect((await paiementStripe(m.paymentIntent)).rembourse, "l'heure de retard rendue").toBe(centimes(tarif));
 
-  // Début prévu il y a 2 h 30 : 3 h dues (arrondi à l'heure supérieure).
-  const debut = new Date(Date.now() - 2.5 * 3600000);
+  // Début prévu il y a 3 h 50, démarrage réel une heure plus tard, il y a 2 h 50 :
+  // 3 h dues (arrondi à l'heure supérieure). L'heure de retard n'est pas du
+  // travail fait — elle a été rendue au refus (étude d'octobre 2026, `e2e/81`).
+  const debut = new Date(Date.now() - 230 * 60000);
   await sql(`update missions set date = '${debut.toLocaleDateString("fr-CA", PARIS)}', `
-    + `heure_debut = '${debut.toLocaleTimeString("fr-FR", { ...PARIS, hour: "2-digit", minute: "2-digit" })}' where id = '${m.id}'`);
+    + `heure_debut = '${debut.toLocaleTimeString("fr-FR", { ...PARIS, hour: "2-digit", minute: "2-digit" })}', `
+    + `started_at = now() - interval '170 minutes' where id = '${m.id}'`);
   const r = await api("/api/missions", { action: "cancel_in_progress", mission_id: m.id }, c.jeton);
   expect(r.statut, r.texte.slice(0, 300)).toBe(200);
 
-  // 8 h réservées, 1 h de retard rendue, 3 h faites : 4 h rendues en plus, pas 5.
+  // 8 h réservées, 1 h de retard rendue, 3 h faites : 4 h rendues en plus — l'heure
+  // de retard ne l'est pas une seconde fois, ni facturée comme faite.
   const rendu = (await paiementStripe(m.paymentIntent)).rembourse;
   expect(rendu, "1 h de retard + 4 h non faites").toBe(centimes(5 * tarif));
 
