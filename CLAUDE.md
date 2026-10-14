@@ -349,7 +349,12 @@ dashboard.
 
 ## 5. Ce qui reste ouvert
 
-Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En résumé :
+**L'étude complète d'octobre 2026 est dans [AUDIT-2026-10.md](AUDIT-2026-10.md)** : ce qui a
+été vérifié dans chaque domaine (argent, comptes, prestations, sécurité, écrans), ce qui a été
+corrigé, le SQL de production en attente et les décisions qui reviennent à Alexandre. La lire
+avant de reprendre un de ces sujets.
+
+Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'audit précédent. En résumé :
 
 - **S-06 est clos** (29/07/2026). Les trois insertions de notifications que le front faisait
   pour autrui passent par `/api`, et la policy est fermée — vérifié le 21/08/2026 : `src/`
