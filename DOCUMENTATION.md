@@ -709,7 +709,12 @@ n'est pas explicitement fermé — une ligne absente vaut ouverte, comme dans `q
 Côté écrans, `fetchOffreLancement()` est la seule source. Auparavant la question se posait à
 trois endroits, chacun à sa façon — une constante du code, le réglage, le décompte des places —
 et ils ont divergé **trois fois**. Seul le message « Tarif transparent » du tunnel de
-réservation subsiste indépendamment : il ne promet rien de l'offre.
+réservation subsiste indépendamment : il ne promet rien de l'offre. **Ce n'était pas vrai partout jusqu'au 14/10/2026** (étude d'octobre 2026,
+constaté en recette, `e2e/82`) : l'accueil du prestataire relisait ensuite `launch_phase` et
+réécrivait la réponse du serveur — l'offre s'affichait avec « 0 place restante sur 100 » —,
+l'écran « Mon abonnement » et « Comment ça marche ? » ne lisaient que le réglage (« 100/100 — offre
+terminée »), et trois écrans l'annonçaient d'office le temps que le serveur réponde. L'écran
+d'abonnement disait en outre « 8 prestations/mois gratuites », sans le second temps de la règle.
 
 **Le réglage `launch_phase` gouverne l'annonce, pas seulement le quota** (16/09/2026). Constaté
 en relevant les réglages réels : `launch_phase` valait `false`, et les deux écrans d'inscription
@@ -2016,7 +2021,10 @@ ne peut rien écrire. Ces deux écrans écrivaient eux-mêmes l'IBAN dans `user_
 **seulement** — donc dans chaque jeton, et jamais dans `profiles.rib` où le lisent le
 back-office et les virements. Ils écrivent désormais `profiles.rib` (clé MOD-97 vérifiée,
 résultat vérifié), et retirent l'IBAN du jeton (`rib: null`). La liste de tâches du
-prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Vérifié en
+prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Le bandeau « IBAN / RIB manquant — ajoutez
+votre IBAN avant d'accepter une prestation » de l'espace prestataire et sa jauge « Complétude du
+profil » le lisaient encore dans `user_metadata` jusqu'au 14/10/2026 : tout prestataire en règle
+voyait le bandeau (étude d'octobre 2026, `e2e/82`). Vérifié en
 production le 24/09/2026 (lecture seule) : aucun IBAN n'était resté dans un jeton seul.
 
 **`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
@@ -5244,6 +5252,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
 | `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
 | `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
+| `82` | Espace prestataire : pas de bandeau « IBAN manquant » quand l'IBAN est enregistré, pas d'offre de lancement épuisée |
 | `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus

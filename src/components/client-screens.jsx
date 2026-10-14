@@ -837,7 +837,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
-  const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  const [launchPhaseHome, setLaunchPhaseHome] = useState(false);
   // Les places de l'offre, comptées comme la règle serveur les compte : à
   // l'ouverture de l'accès aux prestations, pas au nombre d'approuvés.
   const [placesHome, setPlacesHome] = useState(null);
@@ -5491,7 +5491,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
-  const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: false });
   // Le nom garde son « Count » d'origine mais porte désormais les PLACES
   // RESTANTES, comptées à l'ouverture de l'accès aux prestations.
   const [prestaCountHIW, setPrestaCountHIW] = useState(null);
@@ -5499,11 +5499,15 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     Promise.all([
       supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
       supabase.from("platform_settings").select("value").eq("key","subscription_prices").single(),
-      supabase.from("platform_settings").select("value").eq("key","launch_phase").single(),
-    ]).then(([l, p, lp]) => {
-      setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
+    ]).then(([l, p]) => {
+      setPlanSettings(s => ({ ...s, limits: l.data?.value || null, prices: p.data?.value || null }));
     });
-    fetchOffreLancement().then(o => { if (o.restantes != null) setPrestaCountHIW(o.restantes); });
+    // L'offre ne s'annonce que si le serveur la dit ouverte (réglage ET places) :
+    // le réglage seul l'affichait une fois les 100 places prises (étude d'octobre 2026).
+    fetchOffreLancement().then(o => {
+      setPlanSettings(s => ({ ...s, launchPhase: o.ouverte === true }));
+      if (o.restantes != null) setPrestaCountHIW(o.restantes);
+    });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
@@ -5514,7 +5518,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
     { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre prestation en détail.", color:C.indigo },
-    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la prestation soit validée par les deux parties.", color:C.accentGold },
+    { icon:"💳", title:"Payez en sécurité", desc:"Vous payez en ligne à la réservation, par Stripe. Le prestataire n’est payé que 48 h après la fin de la prestation : un problème signalé d’ici là bloque son versement.", color:C.accentGold },
     { icon:"✅", title:"Validez & notez", desc:"Une fois la prestation terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
@@ -5538,7 +5542,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
-        {planSettings.launchPhase && (
+        {role==="prestataire" && planSettings.launchPhase && (
           <div style={{
             background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
             border:"1px solid rgba(16,217,143,0.35)",
@@ -5549,9 +5553,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire"
-                  ? `8 prestations gratuites · ${prestaCountHIW != null ? (prestaCountHIW > 0 ? `Plus que ${prestaCountHIW} place${prestaCountHIW > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers prestataires validés"}`
-                  : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
+                {`8 prestations le mois de votre 1re prestation acceptée · ${prestaCountHIW > 0 ? `Plus que ${prestaCountHIW} place${prestaCountHIW > 1 ? "s" : ""} sur 100` : "Réservé aux 100 premiers prestataires validés"}`}
               </div>
             </div>
           </div>
@@ -9466,7 +9468,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [endDate,setEndDate]=useState(null);
   const [planLimits,setPlanLimits]=useState(null);
   const [subPrices,setSubPrices]=useState(null);
-  const [launchActive,setLaunchActive]=useState(isLaunchPhase());
+  const [launchActive,setLaunchActive]=useState(false);
   const [hasStripeCustomer,setHasStripeCustomer]=useState(false);
   const [portalLoading,setPortalLoading]=useState(false);
   const [cancelLoading,setCancelLoading]=useState(false);
@@ -9490,8 +9492,10 @@ export function AbonnementPrestaScreen({ onBack }) {
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
     supabase.from("platform_settings").select("value").eq("key","subscription_prices").single()
       .then(({data})=>{ if(data?.value) setSubPrices(data.value); });
-    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
-      .then(({data})=>{ if(data?.value != null) setLaunchActive(Boolean(data.value)); });
+    // Le serveur décide : réglage ouvert ET places restantes (fetchOffreLancement).
+    // Le réglage seul annonçait l'offre une fois les 100 places prises (étude
+    // d'octobre 2026, constaté en recette).
+    fetchOffreLancement().then(o => setLaunchActive(o.ouverte));
   },[]);
 
   const handleBillingPortal = async () => {
@@ -9690,7 +9694,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires validés</strong> bénéficient de <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong>.<br/>La place est attribuée à l'ouverture de l'accès aux prestations, une fois le dossier vérifié. Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Réservée aux <strong style={{ color:C.white }}>100 premiers prestataires validés</strong> : <strong style={{ color:C.accentGold }}>8 prestations</strong> au lieu de 2 le mois de votre première prestation acceptée, jusqu'à la fin de ce mois-là, sans abonnement.<br/>Ensuite, plan Gratuit : 2 prestations/mois.</div>
               </div>
             </div>
           </div>
