@@ -94,3 +94,38 @@ export async function rembourserHeuresRetirees({ mission, euros, supabaseUrl, he
     return { ok: false, centimes };
   }
 }
+
+/**
+ * Heures de retard à NE PAS compter comme faites le jour d'une interruption.
+ *
+ * L'interruption (`cancel_in_progress`) compte les heures faites depuis l'heure
+ * de début PRÉVUE. Quand le prestataire a commencé en retard, ce retard passait
+ * pour du travail fait (étude d'octobre 2026, `e2e/81`) :
+ *   - décalage ACCEPTÉ : la fin est repoussée, les heures courent du démarrage
+ *     réel — le client payait le retard comme une heure faite ;
+ *   - décalage REFUSÉ sur une prestation d'un jour : la durée retenue
+ *     (`actual_hours`) l'exclut déjà, et il a été rendu au refus — il était
+ *     facturé une seconde fois.
+ * Deux cas où il ne faut rien retrancher :
+ *   - refusé sur PLUSIEURS jours : le retard est déjà dans `heures_perdues`,
+ *     et `hours` (durée d'une journée) le contient ; le retrancher ici le
+ *     compterait deux fois ;
+ *   - jamais arbitré : la clôture plafonne et rend le retard elle-même
+ *     (`montantsDeCloture`, puis `rembourserHeuresRetirees`).
+ * Et seulement le jour du démarrage : le retard ne concerne qu'une journée.
+ *
+ * @param {object} m           la prestation (arrival_delay_minutes, delay_status, started_at)
+ * @param {string} aujourdHui  date du jour, heure de Paris (AAAA-MM-JJ)
+ * @param {boolean} plusieursJours
+ * @param {(ms:number)=>string} jourParis  date de Paris d'un instant
+ * @returns {number} heures à retrancher du temps écoulé
+ */
+export function retardADeduireDuJour(m, aujourdHui, plusieursJours, jourParis) {
+  const retardH = (Number(m?.arrival_delay_minutes) || 0) / 60;
+  if (!(retardH > 0) || !m?.started_at) return 0;
+  const demarrage = Date.parse(m.started_at);
+  if (!Number.isFinite(demarrage) || jourParis(demarrage) !== aujourdHui) return 0;
+  if (m.delay_status === "approved") return retardH;
+  if (m.delay_status === "rejected" && !plusieursJours) return retardH;
+  return 0;
+}
