@@ -5,7 +5,7 @@ import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { tirerAuHasard } from "./_lots.js";
 
-import { montantsDeCloture } from "./_cloture.js";
+import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
 import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
@@ -16,7 +16,7 @@ import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
-import { affecteeParLaPlateforme, affecterCandidatSuivant } from "./missions.js";
+import { affecteeParLaPlateforme, affecterCandidatSuivant, compterAuQuota } from "./missions.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { restituerCashback } from "./_cashback.js";
@@ -2370,6 +2370,9 @@ ${(() => {
                 })(),
               ]);
               autoValidated++;
+              // Le quota du mois, comme à la validation par le client : sans lui,
+              // une prestation validée automatiquement ne comptait nulle part.
+              if (m.prestataire_id) await compterAuQuota(m.prestataire_id, nombreDeJours(m), SUPABASE_URL, headers, "cron/validation automatique");
               // Série hebdomadaire : même suite que la validation par le client
               // (`complete`). Sans elle, une semaine validée automatiquement
               // arrêtait la série sans que personne le sache.
