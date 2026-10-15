@@ -18,6 +18,16 @@
 //      monde, comptes recréés compris : elle les écarte désormais ;
 //   4. la résiliation à l'échéance d'un préavis — le chemin des exclusions
 //      décidées par ALANE — n'inscrivait rien sur la liste.
+//
+// Suites (relecture du 15/10/2026) :
+//   - une ligne inscrite APRÈS la création d'un compte ne le désigne pas : la
+//     suppression inscrit l'empreinte, puis peut échouer (« votre compte n'a
+//     pas été supprimé ») — le compte restait, et perdait son quota gratuit ;
+//   - le numéro modifié dans le profil est enregistré par paires
+//     (« 06 12 34 56 78 ») : les empreintes d'avant D4 l'ont haché ainsi ;
+//   - la remise à zéro mensuelle n'écarte plus les comptes recréés dans
+//     l'adresse : au-delà de 400 environ, la requête échouait — et la remise
+//     à zéro de tous avec elle (`remiseAZeroMensuelle`).
 // ═══════════════════════════════════════════════════════════════════════════
 import { hashPii } from "./_email.js";
 import { lireTout } from "./_lignes.js";
@@ -36,7 +46,15 @@ function ecrituresTelephone(tel) {
   const brut = tel == null ? "" : String(tel).trim();
   const n = telephoneNormalise(tel);
   const v = [n, brut];
-  if (n && /^0\d{9}$/.test(n)) v.push(`+33${n.slice(1)}`, `33${n.slice(1)}`, `0033${n.slice(1)}`);
+  if (n && /^0\d{9}$/.test(n)) {
+    const reste = n.slice(1);
+    v.push(`+33${reste}`, `33${reste}`, `0033${reste}`);
+    // Par paires, comme l'écran l'affiche et l'enregistre après une
+    // modification du profil (`formatPhone`), et ses variantes courantes.
+    const paires = n.match(/\d{2}/g);
+    for (const sep of [" ", ".", "-"]) v.push(paires.join(sep));
+    v.push(`+33 ${reste[0]} ${reste.slice(1).match(/\d{2}/g).join(" ")}`);
+  }
   return v;
 }
 
@@ -75,20 +93,33 @@ export function ligneListeNoire({ email, telephone, iban, siret }, extra = {}) {
   };
 }
 
-/** La liste chargée en mémoire, pour comparer beaucoup de comptes d'un coup. */
+/**
+ * La liste chargée en mémoire, pour comparer beaucoup de comptes d'un coup :
+ * pour chaque empreinte, la date de sa PREMIÈRE inscription (en ms, `-Infinity`
+ * si la ligne n'en porte pas — elle compte alors toujours).
+ */
 export function ensemblesListeNoire(lignes) {
-  const s = { email: new Set(), telephone: new Set(), iban: new Set(), siret: new Set() };
+  const s = { email: new Map(), telephone: new Map(), iban: new Map(), siret: new Map() };
   for (const l of lignes || []) {
-    if (l.email_hash) s.email.add(l.email_hash);
-    if (l.telephone_hash) s.telephone.add(l.telephone_hash);
-    if (l.iban_hash) s.iban.add(l.iban_hash);
-    if (l.siret_hash) s.siret.add(l.siret_hash);
+    const quand = Date.parse(l.created_at);
+    const ms = Number.isFinite(quand) ? quand : -Infinity;
+    for (const [champ, colonne] of [["email", "email_hash"], ["telephone", "telephone_hash"], ["iban", "iban_hash"], ["siret", "siret_hash"]]) {
+      const h = l[colonne];
+      if (h && !(s[champ].get(h) <= ms)) s[champ].set(h, ms);
+    }
   }
   return s;
 }
 
-export function correspond(e, s) {
-  return ["email", "telephone", "iban", "siret"].some((champ) => e[champ].some((h) => s[champ].has(h)));
+/**
+ * Le compte porte-t-il une empreinte de la liste ? `creeLeMs` : sa date de
+ * création. Donnée, seule compte une ligne inscrite AVANT elle — un compte
+ * recréé naît après la suppression de l'ancien ; une ligne postérieure est
+ * celle de sa propre suppression, manquée.
+ */
+export function correspond(e, s, creeLeMs = null) {
+  const borne = Number.isFinite(creeLeMs) ? creeLeMs : Infinity;
+  return ["email", "telephone", "iban", "siret"].some((champ) => e[champ].some((h) => s[champ].has(h) && s[champ].get(h) < borne));
 }
 
 /** Les comptes d'authentification, page par page (e-mail et métadonnées). */
@@ -104,19 +135,23 @@ export async function lireUtilisateurs(supabaseUrl, headers) {
   throw new Error("plus de 99 000 comptes : lecture interrompue");
 }
 
+/** Les colonnes de `profiles` qu'il faut à `comptesRecrees`. */
+export const COLONNES_PROFIL_LISTE_NOIRE = "id,rib,siret,tel,created_at";
+
 /**
  * Les profils dont une empreinte figure sur la liste — IBAN saisi après
- * l'inscription compris. `utilisateurs` : la table déjà chargée par l'appelant,
- * sinon relue. Lève une erreur si une lecture échoue : l'appelant décide.
+ * l'inscription compris. `utilisateurs` et `profils` (colonnes
+ * `COLONNES_PROFIL_LISTE_NOIRE`) : déjà chargés par l'appelant, sinon relus.
+ * Lève une erreur si une lecture échoue : l'appelant décide.
  */
-export async function comptesRecrees(supabaseUrl, headers, { utilisateurs = null } = {}) {
-  const liste = await lireTout(`${supabaseUrl}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash`, headers);
+export async function comptesRecrees(supabaseUrl, headers, { utilisateurs = null, profils = null } = {}) {
+  const liste = await lireTout(`${supabaseUrl}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash,created_at`, headers);
   const recrees = new Set();
   if (!liste.length) return recrees;
   const s = ensemblesListeNoire(liste);
   const users = utilisateurs || await lireUtilisateurs(supabaseUrl, headers);
-  const profils = await lireTout(`${supabaseUrl}/rest/v1/profiles?select=id,rib,siret,tel`, headers);
-  for (const p of profils) {
+  const lus = profils || await lireTout(`${supabaseUrl}/rest/v1/profiles?select=${COLONNES_PROFIL_LISTE_NOIRE}`, headers);
+  for (const p of lus) {
     const u = users[p.id] || { meta: {} };
     const e = empreintes({
       email: u.email,
@@ -124,7 +159,43 @@ export async function comptesRecrees(supabaseUrl, headers, { utilisateurs = null
       iban: p.rib,
       siret: p.siret || u.meta.siret || u.meta.kbis,
     });
-    if (correspond(e, s)) recrees.add(p.id);
+    if (correspond(e, s, Date.parse(p.created_at))) recrees.add(p.id);
   }
   return recrees;
+}
+
+/**
+ * La remise à zéro du 1er du mois : les compteurs de tous, et le quota gratuit
+ * rendu — sauf aux comptes recréés, dont la pénalité est reposée aussitôt.
+ *
+ * Elle écartait les comptes recréés dans l'adresse (`id=not.in.(…)`) : au-delà
+ * de 400 environ, la requête échouait (mesuré sur la recette le 15/10/2026), et
+ * la remise à zéro de TOUS les comptes avec elle. Tous sont remis à zéro, puis
+ * les comptes recréés repénalisés par lots de 100.
+ *
+ * Retourne { ok, status, detail } : ok à false si la remise à zéro elle-même
+ * est refusée — rien n'est alors repénalisé, personne n'ayant rien reçu.
+ */
+export async function remiseAZeroMensuelle(supabaseUrl, headers, recrees = new Set()) {
+  const r = await fetch(`${supabaseUrl}/rest/v1/profiles?or=(missions_completed_month.gt.0,commandes_mois.gt.0,trial_exhausted.is.true)`, {
+    method: "PATCH",
+    headers: { ...headers, "Prefer": "return=minimal" },
+    body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: false }),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    console.error(`[reset] remise à zéro refusée (${r.status}) :`, detail.slice(0, 200));
+    return { ok: false, status: r.status, detail };
+  }
+  const ids = [...recrees];
+  for (let i = 0; i < ids.length; i += 100) {
+    const rPen = await fetch(`${supabaseUrl}/rest/v1/profiles?id=in.(${ids.slice(i, i + 100).join(",")})`, {
+      method: "PATCH",
+      headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: true }),
+    });
+    if (!rPen.ok) console.error(`[reset] pénalité des comptes recréés non reposée (${rPen.status}) sur ${Math.min(100, ids.length - i)} compte(s) — `
+      + "la tâche des deux heures la reposera.");
+  }
+  return { ok: true, status: r.status };
 }
