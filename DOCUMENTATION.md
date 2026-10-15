@@ -1071,7 +1071,13 @@ Cinq procédures stockées sont appelées depuis le code, et n'existent donc que
   verrou de la ligne du profil. (Ce fichier la décrivait à tort comme un contrôle de créneau.)
   `missions_completed_month` est incrémenté par `compterAuQuota()` (`api/missions.js`) à la
   validation par le client **et**, depuis le 14/10/2026, à la validation automatique — qui ne
-  comptait rien : la place se libérait.
+  comptait rien : la place se libérait. Depuis le 15/10/2026 (`e2e/96`,
+  `src/tests/api/quota-clotures.test.js`), par toutes les clôtures qui paient le prestataire :
+  la validation forcée du back-office (qui tenait sa propre version : une journée quelle que
+  soit la durée, et le quota gratuit jamais marqué épuisé), l'arrêt complet d'une prestation
+  en cours (les journées faites, pas les journées annulées) et le dénouement d'un litige qui
+  verse quelque chose au prestataire — seulement s'il a été contesté avant la validation,
+  sans quoi elle l'avait déjà comptée. Un litige intégralement remboursé ne compte pas.
 - `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
   uniquement** : elle ne vérifie pas son appelant. Le 27/08/2026 une migration l'a supprimée
   puis recréée, et le verrou a disparu avec elle (un `DROP FUNCTION` perd les droits, un
@@ -5431,6 +5437,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
 | `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement |
 | `95` | Litige remboursé, clôture manquée puis reprise : un seul remboursement chez Stripe, frais de service retenus, litige clos |
+| `96` | Clôtures hors validation : validation forcée (chaque journée), série arrêtée en cours (les journées faites), litige versé au prestataire — toutes comptent au quota du mois |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

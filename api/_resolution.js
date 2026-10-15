@@ -29,7 +29,8 @@
 // raison. Ce module exécute une cause déjà constatée ; il ne l'apprécie pas.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { montantsDeCloture } from "./_cloture.js";
+import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
+import { compterAuQuota } from "./missions.js";
 import { plafonnerRemboursement, restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
@@ -275,6 +276,12 @@ export async function executerResolution({
         supabaseUrl, headers, contexte: "resolution/verser/decalage",
       });
     }
+    // Jamais clôturée : elle n'a jamais compté au quota du mois — contestée
+    // avant la validation. Déjà clôturée, la validation l'a comptée (relecture
+    // du 15/10/2026, `e2e/96`).
+    if (premiereCloture && mission.prestataire_id) {
+      await compterAuQuota(mission.prestataire_id, nombreDeJours(mission), supabaseUrl, headers, "resolution/verser");
+    }
     return { ok: true, statut: "completed" };
   }
 
@@ -424,6 +431,8 @@ export async function executerResolution({
   // « Payé » s'entend de ce que le client a encore réglé : ce qui lui avait
   // déjà été rendu (décalage, heures plafonnées) n'est plus à partager.
   const { net, frais: fraisService, partMax } = soldeDuLitige(mission, dejaRendu);
+  // Jamais clôturée avant le litige : la prestation n'a pas encore compté au quota.
+  const premiereClotureRemb = mission.payout_amount === null || mission.payout_amount === undefined || mission.payout_amount === "";
   const rendu = rembourseEuros === null ? net : rembourseEuros;
   const { brut, reste, aVerser } = resteAuPrestataire({ net, rendu, frais: fraisService, partMax });
 
@@ -457,6 +466,12 @@ export async function executerResolution({
     // Le remboursement est parti : le signaler franchement plutôt que de
     // laisser croire que rien ne s'est passé.
     return { ok: false, detail: "Le client a été remboursé mais la prestation n'a pas pu être close — à reprendre à la main." };
+  }
+  // Une part revient au prestataire : la prestation a eu lieu, et compte au
+  // quota si aucune validation ne l'a comptée (relecture du 15/10/2026).
+  // Intégralement remboursée, elle ne compte pas.
+  if (aVerser && premiereClotureRemb && mission.prestataire_id) {
+    await compterAuQuota(mission.prestataire_id, nombreDeJours(mission), supabaseUrl, headers, "resolution/rembourser");
   }
   return { ok: true, statut: aVerser ? "completed" : "closed", versementPrestataire: aVerser ? reste : 0 };
 }
