@@ -18,6 +18,7 @@ import { comparerPrix, resumeEcart } from "./_prix.js";
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
 import { montantsDeCloture } from "./_cloture.js";
+import { compterAuQuota } from "./missions.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
 import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
@@ -220,7 +221,7 @@ export default async function handler(req, res) {
         lireProfils(),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         // Lecture complète : au-delà de 1 000 entrées, un compte banni n'était plus reconnu.
-        lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash`, headers)
+        lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash,created_at`, headers)
           .catch(e => { console.error("[list] liste noire illisible :", e.message); return null; }),
         // Les pièces de chacun, pour dire AVANT le clic ce qui empêche d'ouvrir
         // l'accès. Illisibles : `null`, et l'écran n'affirme rien.
@@ -281,7 +282,9 @@ export default async function handler(req, res) {
         const siretMeta = meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
         // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
-        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets);
+        // Seule compte une ligne inscrite avant la création du compte : une ligne
+        // postérieure est celle de sa propre suppression, manquée (15/10/2026).
+        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets, Date.parse(p.created_at));
         // L'IBAN ne quitte plus le serveur dans la liste.
         //
         // `list` renvoyait l'IBAN complet, en clair, de TOUS les comptes, à chaque
@@ -2900,17 +2903,11 @@ export default async function handler(req, res) {
       }
       // Notification client
       await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
-      if (m.prestataire_id) {
-        const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
-        const prD = prQ?.ok ? await prQ.json().catch(() => []) : [];
-        const currentMC = Array.isArray(prD) && prD[0] ? (prD[0].missions_completed_month || 0) : 0;
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ missions_completed_month: currentMC + 1 }),
-        }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      }
+      // Le quota mensuel du prestataire, par la même fonction que la validation
+      // par le client et la validation automatique. Ce chemin en tenait sa propre
+      // version : une seule journée quelle que soit la durée, et le quota gratuit
+      // jamais marqué épuisé à la limite (relecture du 15/10/2026, `e2e/96`).
+      if (m.prestataire_id) await compterAuQuota(m.prestataire_id, jours, SUPABASE_URL, headers, "bo/force_complete");
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
     }

@@ -114,10 +114,14 @@ export default async function handler(req, res) {
       // L'écran les comptait dans `missions` depuis le navigateur, que la base
       // limite aux prestations DU client depuis le 01/10/2026 : il affichait
       // « 0 prestations réalisées » à tout nouveau client (étude du 13/10/2026).
+      // `completed` seul, comme le catalogue : `closed` n'est jamais une
+      // prestation faite — demande close sans prestataire, prestation ou litige
+      // remboursés. Il était compté aussi : 39 de trop en recette, dont 7 sans
+      // aucun prestataire (relecture du 15/10/2026).
       let realisees = null;
       try {
         const rr = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=in.(completed,closed)&select=id`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.completed&select=id`,
           { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
         );
         const pr = rr.ok ? rr.headers.get("content-range") : null;

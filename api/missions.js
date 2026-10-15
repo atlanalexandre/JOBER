@@ -8,7 +8,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
-import { alerteExterieureDue, nomExpediteur, texteSmsMessage } from "./_messagerie.js";
+import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
@@ -3424,10 +3424,16 @@ export default async function handler(req, res) {
       // arrive : un échec de notification est journalisé, il n'annule rien.
       const nouveau = lignesMsg[0];
       try {
+        // Les messages de l'expéditeur des dernières 24 h : la règle d'alerte s'y
+        // rejoue (api/_messagerie.js). Le seul message précédent ne disait pas si
+        // une alerte était partie.
+        const envoyeMs = Date.parse(nouveau.created_at);
+        const depuis = new Date((Number.isFinite(envoyeMs) ? envoyeMs : Date.now()) - DELAI_NON_LU_MS).toISOString();
         const [rProfil, rPrecedent, rDest] = await Promise.all([
           fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom`, { headers }),
           fetch(`${SUPABASE_URL}/rest/v1/messages?conversation_key=eq.${encodeURIComponent(cle)}&sender_id=eq.${caller.id}`
-            + `&created_at=lt.${encodeURIComponent(nouveau.created_at)}&order=created_at.desc&limit=1&select=created_at,lu_at`, { headers }),
+            + `&created_at=gte.${encodeURIComponent(depuis)}&created_at=lt.${encodeURIComponent(nouveau.created_at)}`
+            + `&limit=${HISTORIQUE_MAX}&order=created_at.asc&select=created_at,lu_at`, { headers }),
           fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers }),
         ]);
         const profils = rProfil.ok ? await rProfil.json().catch(() => null) : null;
@@ -3447,12 +3453,17 @@ export default async function handler(req, res) {
           // Sans l'historique, on ne sait pas si le destinataire vient d'être
           // prévenu : le plafond l'emporte, ni e-mail ni SMS.
           console.error(`[message] historique illisible (${rPrecedent.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
-        } else if (alerteExterieureDue(precedents[0] || null)) {
+        } else if (precedents.length >= HISTORIQUE_MAX) {
+          console.warn(`[message] ${precedents.length} messages en 24 h de ${caller.id} — ni e-mail ni SMS pour ${nouveau.id}`);
+        } else if (alerteExterieureDue(precedents, Number.isFinite(envoyeMs) ? envoyeMs : Date.now())) {
           const dest = rDest.ok ? await rDest.json().catch(() => ({})) : {};
           if (!rDest.ok) console.error(`[message] destinataire illisible (${rDest.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
           const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
           const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
-          if (RESEND_KEY && dest.email) {
+          // L'e-mail et le SMS partent ensemble : l'un après l'autre, l'expéditeur
+          // attendait les deux services avant de voir son message envoyé.
+          const envois = [];
+          if (RESEND_KEY && dest.email) envois.push((async () => {
             const extrait = texte.length > 500 ? `${texte.slice(0, 500)}…` : texte;
             const er = await fetch("https://api.resend.com/emails", {
               method: "POST",
@@ -3471,21 +3482,22 @@ export default async function handler(req, res) {
               }),
             }).catch(e => { console.error("[message] e-mail non envoyé :", e.message); return null; });
             if (er && !er.ok) console.error(`[message] e-mail refusé par Resend (${er.status}) pour ${nouveau.id}`);
-          }
+          })());
           const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
           const telephone = dest.user_metadata?.telephone;
           if (BREVO_KEY && telephone) {
             const chiffres = String(telephone).replace(/\D/g, "");
             const e164 = chiffres.startsWith("0") ? "33" + chiffres.slice(1) : chiffres.startsWith("33") ? chiffres : null;
-            if (e164) {
+            if (e164) envois.push((async () => {
               const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                 method: "POST",
                 headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
                 body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsClean(texteSmsMessage(nom)) }),
               }).catch(e => { console.error("[message] SMS non envoyé :", e.message); return null; });
               if (sr && !sr.ok) console.error(`[message] SMS refusé par Brevo (${sr.status}) pour ${nouveau.id}`);
-            }
+            })());
           }
+          await Promise.all(envois);
         }
       } catch (e) {
         console.error(`[message] destinataire non prévenu pour ${nouveau.id} :`, e.message);
@@ -4497,6 +4509,14 @@ export default async function handler(req, res) {
           error: "Vous avez été remboursé, mais la prestation n'a pas pu être clôturée. "
                + "Écrivez à direction@alane.fr en indiquant la date : nous la fermons manuellement.",
         });
+      }
+
+      // Prestation arrêtée : elle se clôt, et compte au quota du mois pour les
+      // journées faites — hier et aujourd'hui sur une série arrêtée le deuxième
+      // jour, pas les journées annulées. Elle quittait les « en cours » sans y
+      // être ajoutée : la place se libérait (relecture du 15/10/2026, `e2e/96`).
+      if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
+        await compterAuQuota(mission.prestataire_id, Math.max(1, joursPrestation - joursRestants), SUPABASE_URL, headers, "cancel_in_progress");
       }
 
       // Décalage jamais arbitré, prestation arrêtée : elle se clôt ICI, et la

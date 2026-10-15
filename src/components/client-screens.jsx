@@ -832,7 +832,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
-  const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
+  const [liveStats, setLiveStats] = useState({ openMissions: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
@@ -892,12 +892,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       if (!mounted) return;
       setLiveStats({
         openMissions: open.count ?? 0,
-        dispoNow: providers.filter(p => p.available).length,
         completedMonth: open.realisees ?? null,
       });
     });
     return ()=>{ mounted=false; };
-  }, [providers]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1119,7 +1118,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ display:"flex", gap:8 }}>
             {[
               { icon:"📋", value: liveStats.openMissions, label:"prestations ouvertes" },
-              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.available).length, label:"pros dispo maintenant" },
+              // Calculé à l'affichage, comme la rubrique « Dispo maintenant » : gardé
+              // dans `liveStats`, il valait le catalogue au moment où le comptage du
+              // serveur répondait — souvent encore vide — et affichait « 0 » pendant
+              // que la rubrique montrait déjà les prestataires (relecture du 15/10/2026).
+              { icon:"🟢", value: providers.filter(p=>p.available).length, label:"pros dispo maintenant" },
               { icon:"✅", value: liveStats.completedMonth ?? "—", label:"prestations réalisées" },
             ].map((s,i)=>(
               <div key={i} style={{
