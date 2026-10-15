@@ -1,0 +1,59 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- secu_profils_date_inscription_non_modifiable
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI (étude complète du 13/10/2026, prouvé en recette)
+--
+-- Le navigateur pouvait modifier `profiles.created_at` — la date d'inscription —
+-- par un simple appel à l'API de la base avec son propre jeton : le droit de
+-- colonne UPDATE lui avait été laissé, et `profiles_privileges_guard` ne la
+-- surveille pas. Constaté sur la recette : un prestataire a réécrit la sienne
+-- en « 2030-01-01 », réponse 200.
+--
+-- Or cette date décide :
+--   - de l'OFFRE DE LANCEMENT (api/_offre.js, `estEligible`) : les 100 premiers
+--     inscrits, triés sur `created_at`. Un prestataire qui antidatait son
+--     inscription entrait dans les 100 et prenait le quota Premium sans payer,
+--     en en chassant un autre ;
+--   - de l'ÉCHÉANCE DE L'ATTESTATION URSSAF (api/_documents.js,
+--     `etatRegularisation`) : inscription + 15 jours au minimum, inscription +
+--     60 jours quand la date d'immatriculation est inconnue. Une date future la
+--     repoussait indéfiniment : jamais de suspension faute d'attestation, alors
+--     que c'est l'obligation de vigilance que la plateforme doit tenir.
+--
+-- Aucun écran n'écrit cette colonne (relevé dans src/ et api/, CLAUDE.md 1.6).
+-- Production, lecture seule le 13/10/2026 : 169 profils, aucun dont la date
+-- s'écarte de plus d'une heure de celle du compte, aucun dans le futur — la
+-- faille n'a pas servi.
+--
+-- ORDRE : indifférent (le code ne change pas).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+REVOKE UPDATE (created_at) ON public.profiles FROM authenticated, anon;
+
+-- ── Vérifications ──────────────────────────────────────────────────────────
+--
+-- 1. Plus aucun droit d'écriture du navigateur sur la colonne — ATTENDU : 0 ligne.
+--
+-- SELECT a.attname, a.attacl::text
+-- FROM pg_attribute a
+-- WHERE a.attrelid = 'public.profiles'::regclass AND a.attname = 'created_at'
+--   AND (a.attacl::text LIKE '%authenticated=%w%' OR a.attacl::text LIKE '%anon=%w%');
+--
+-- 2. Les autres colonnes modifiables sont inchangées — ATTENDU : 16 colonnes
+--    (accepte_communications, accepte_communications_at, adresse, avatar_url,
+--     code_postal, cv, nif, nif_collecte_at, nom, prenom, residence_fiscale,
+--     rib, siret, societe_nom, tel, ville).
+--
+-- SELECT string_agg(a.attname, ', ' ORDER BY a.attname)
+-- FROM pg_attribute a
+-- WHERE a.attrelid = 'public.profiles'::regclass AND a.attacl::text LIKE '%authenticated=%w%';
+--
+-- 3. Aucun profil antidaté ou postdaté — ATTENDU : 0.
+--
+-- SELECT count(*) FROM public.profiles p JOIN auth.users u ON u.id = p.id
+-- WHERE abs(extract(epoch FROM (p.created_at - u.created_at))) > 3600;
+--
+-- ── Retour arrière ─────────────────────────────────────────────────────────
+--
+-- GRANT UPDATE (created_at) ON public.profiles TO authenticated;

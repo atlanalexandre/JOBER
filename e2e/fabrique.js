@@ -7,7 +7,7 @@
 // Supabase, /api/bo-action, /api/missions — sans jamais écrire directement en base
 // ce que l'application sait écrire elle-même.
 import { expect, request } from "@playwright/test";
-import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE, avecReprise } from "./outils.js";
+import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE, avecReprise, telephoneTest, ibanTest } from "./outils.js";
 import { calculerFrais } from "../api/_montant.js";
 import { VERSION_CONTRAT_CADRE } from "../src/constants/contrat-cadre-pro.js";
 
@@ -205,7 +205,7 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
     role: "prestataire", prenom: "Sam",
     // Mêmes clés que le signUp de l'écran d'inscription (auth.jsx).
     metadonnees: {
-      telephone: "0698765432", date_naissance: "1990-05-15",
+      telephone: telephoneTest(), date_naissance: "1990-05-15",
       adresse: "5 rue de Lyon", code_postal: "75012", ville: "Paris", zone_km: 50,
       secteur, metier, tarif_net: tarif, metiers_list: metiers,
       niveau: "Confirmé", experience_ans: 3, competences: [], langues: ["Français"],
@@ -216,7 +216,7 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
     },
   });
   // L'écran complète le profil juste après le signUp (completerProfil).
-  await sql(`update profiles set adresse='5 rue de Lyon', code_postal='75012', ville='Paris', rib='FR7630006000011234567890189' where id='${p.id}'`);
+  await sql(`update profiles set adresse='5 rue de Lyon', code_postal='75012', ville='Paris', rib='${ibanTest()}' where id='${p.id}'`);
   // L'écran de profil l'écrit dans profiles.cv ; `cv: null` sert à éprouver le refus.
   if (cv) await sql(`update profiles set cv = '${JSON.stringify(cv).replace(/'/g, "''")}'::jsonb where id='${p.id}'`);
 
@@ -243,7 +243,7 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
 export async function client({ professionnel = false } = {}) {
   const c = await inscrire({
     role: "client", prenom: "Camille",
-    metadonnees: { telephone: "0612345678", adresse: "10 rue de Rivoli", code_postal: "75004", ville: "Paris",
+    metadonnees: { telephone: telephoneTest(), adresse: "10 rue de Rivoli", code_postal: "75004", ville: "Paris",
       type_compte: professionnel ? "professionnel" : "particulier" },
   });
   if (professionnel) {
@@ -267,6 +267,23 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
   }), chemin);
   const texte = await res.text();
   return { statut: res.status(), texte };
+}
+
+/**
+ * Relance la tâche planifiée jusqu'à ce que `verifier()` réponde vrai, `max`
+ * passages au plus. Elle ne traite que 20 prestations par passage, tirées au
+ * hasard (`api/_lots.js`) : quand la recette en a accumulé davantage — 28
+ * demandes expirées le 14/10/2026, laissées par les scénarios de la nuit —, un
+ * seul passage peut ne pas toucher celle du scénario. En production, la tâche
+ * repasse toutes les quelques minutes : c'est le même comportement.
+ */
+export async function tachePlanifieeJusqua(verifier, { chemin, max = 4 } = {}) {
+  let dernier;
+  for (let i = 0; i < max; i++) {
+    dernier = await tachePlanifiee(chemin);
+    if (dernier.statut !== 200 || await verifier()) return dernier;
+  }
+  return dernier;
 }
 
 /**

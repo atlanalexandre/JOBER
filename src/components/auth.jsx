@@ -1084,7 +1084,11 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       const profileErr = await completerProfil(data.user.id, {
         accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(),
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
-        societe_nom: societeNom||null, siret: kbisNum||null,
+        // Pas de SIRET ici : la base le pose elle-même à la création du compte
+        // (`handle_new_user`, depuis `kbis`), et le navigateur perd le droit de
+        // le modifier (étude d'octobre 2026) — l'envoyer ferait refuser toute
+        // l'écriture.
+        societe_nom: societeNom||null,
       });
       if (profileErr) {
         // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.

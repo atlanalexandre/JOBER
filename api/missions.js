@@ -2,12 +2,14 @@ import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
+import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour, retardAggraveApresRefus } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { alerteExterieureDue, nomExpediteur, texteSmsMessage } from "./_messagerie.js";
+import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX, surPlusieursJours, porteeDemande, joursFactures,
@@ -349,7 +351,11 @@ async function rembourserRefusApresPaiement(missionId, intentId, motif, supabase
   // prestataire ni échéance la rendrait invisible de tous les traitements, et
   // elle resterait éternellement « en attente » sur l'écran du client.
   try {
-    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)`, {
+    // Seulement si aucun AUTRE paiement n'y est rattaché : un second paiement,
+    // refusé pendant qu'un premier venait d'être rattaché (deux onglets),
+    // annulait la réservation que le premier avait réglée — sans le rendre
+    // (relecture du 14/10/2026).
+    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)${filtrePaiementLibre(intentId)}`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ status: "cancelled", cancellation_reason: `Réservation refusée : ${motif}` }),
     });
@@ -695,6 +701,67 @@ async function toujoursRefusee(missionId, supabaseUrl, headers) {
     console.error(`[cascade] statut de ${missionId} illisible — remboursement NON fait, à vérifier :`, e.message);
   }
   return false;
+}
+
+/**
+ * Compte une prestation réalisée dans le quota mensuel du prestataire, et
+ * marque l'essai épuisé quand un compte gratuit atteint sa limite.
+ *
+ * N'était appelé qu'à la validation par le client (`complete`). La validation
+ * AUTOMATIQUE (cron, 24 h sans réponse du client) ne comptait rien : la
+ * prestation quittait les « en cours » que check_prestataire_slot additionne
+ * au compteur, et la place se libérait — un compte gratuit dont les clients
+ * ne valident pas eux-mêmes n'avait plus de limite (étude du 14/10/2026).
+ */
+export async function compterAuQuota(prestataireId, jours, supabaseUrl, headers, contexte) {
+  try {
+    // Récupérer le compteur actuel du prestataire et son plan. La lecture de
+    // user_metadata a été retirée : elle ne servait qu'au repli sur le plan
+    // qu'elle annonce, désormais sans valeur — un appel de moins à l'API Auth.
+    const prMonthRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${prestataireId}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
+    const prMonthData = await prMonthRes.json();
+    const prProfile = Array.isArray(prMonthData) && prMonthData[0];
+    if (prProfile && !prProfile.trial_exhausted) {
+      const newCount = (prProfile.missions_completed_month || 0) + jours;
+      // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+      // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+      // et cette valeur était écrite telle quelle dans user_metadata. Comme
+      // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+      // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+      // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+      const plan = prProfile?.plan_abonnement || "free";
+
+      // Limite du plan, offre de lancement comprise — la même que celle
+      // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
+      // la limite réellement opposée au prestataire.
+      const planLimit = await limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers);
+
+      const patchBody = { missions_completed_month: newCount };
+      let justExhausted = false;
+      // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
+      if (plan === "free" && newCount >= planLimit) {
+        patchBody.trial_exhausted = true;
+        justExhausted = true;
+        console.log(`[${contexte}] Prestataire ${prestataireId} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
+      }
+      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${prestataireId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(patchBody),
+      }).catch(e => console.error(`[${contexte}] prestataire missions_completed_month update error :`, e.message));
+      // Notifier le prestataire qu'il a épuisé son quota gratuit
+      if (justExhausted) {
+        await notifier({
+            user_id: prestataireId,
+            type: "system",
+            title: "⛔ Quota mensuel épuisé",
+            body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
+          }, supabaseUrl, headers).catch(e => console.error(`[${contexte}] avis de quota épuisé non envoyé :`, e?.message));
+      }
+    }
+  } catch (e) {
+    console.error(`[${contexte}] prestataire quota non compté :`, e.message);
+  }
 }
 
 export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
@@ -2127,57 +2194,8 @@ export default async function handler(req, res) {
         }
       }
 
-      // Incrémenter missions_completed_month du prestataire + auto-marquer trial_exhausted si limite atteinte
-      if (mission.prestataire_id) {
-        try {
-          // Récupérer le compteur actuel du prestataire et son plan. La lecture de
-          // user_metadata a été retirée : elle ne servait qu'au repli sur le plan
-          // qu'elle annonce, désormais sans valeur — un appel de moins à l'API Auth.
-          const prMonthRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
-          const prMonthData = await prMonthRes.json();
-          const prProfile = Array.isArray(prMonthData) && prMonthData[0];
-          if (prProfile && !prProfile.trial_exhausted) {
-            const newCount = (prProfile.missions_completed_month || 0) + missionDayCount;
-            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
-            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
-            // et cette valeur était écrite telle quelle dans user_metadata. Comme
-            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
-            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
-            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
-            const plan = prProfile?.plan_abonnement || "free";
-
-            // Limite du plan, offre de lancement comprise — la même que celle
-            // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
-            // la limite réellement opposée au prestataire.
-            const planLimit = await limitePlanMensuelle(plan, mission.prestataire_id, SUPABASE_URL, headers);
-
-            const patchBody = { missions_completed_month: newCount };
-            let justExhausted = false;
-            // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
-            if (plan === "free" && newCount >= planLimit) {
-              patchBody.trial_exhausted = true;
-              justExhausted = true;
-              console.log(`[complete] Prestataire ${mission.prestataire_id} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
-            }
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}`, {
-              method: "PATCH",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify(patchBody),
-            }).catch(e => console.error("[complete] prestataire missions_completed_month update error:", e.message));
-            // Notifier le prestataire qu'il a épuisé son quota gratuit
-            if (justExhausted) {
-              await notifier({
-                  user_id: mission.prestataire_id,
-                  type: "system",
-                  title: "⛔ Quota mensuel épuisé",
-                  body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
-                }, SUPABASE_URL, headers).catch(e => console.error("[missions/complete] échec ignoré :", e?.message));
-            }
-          }
-        } catch (e) {
-          console.error("[complete] prestataire slot tracking error:", e.message);
-        }
-      }
+      // Le quota du mois — partagé avec la validation automatique (cron).
+      if (mission.prestataire_id) await compterAuQuota(mission.prestataire_id, missionDayCount, SUPABASE_URL, headers, "complete");
 
       return res.status(200).json({ success: true, montantTotal: partPrestataire, totalClient, cashbackEarned, newBalance });
     }
@@ -2768,6 +2786,16 @@ export default async function handler(req, res) {
       try {
         const mTarifRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=tarif_horaire`, { headers });
         const tarifPaye = Number(((await mTarifRes.json().catch(() => []))[0] || {}).tarif_horaire || 0);
+        // Tarif nul ou absent : le contrôle du montant n'a rien à décomposer et
+        // laisse passer, et la comparaison ci-dessous était sautée. Un client
+        // payait 2 € de frais et engageait un prestataire, qui travaillait pour
+        // rien (étude du 14/10/2026, e2e/88). Une réservation directe porte
+        // toujours le tarif du prestataire : sans lui, on n'affecte pas.
+        if (mTarifRes.ok && !(tarifPaye > 0)) {
+          console.error(`[assign_after_payment] ${mission_id} : tarif horaire nul ou absent — affectation refusée`);
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "tarif absent", SUPABASE_URL, headers);
+          return res.status(400).json({ error: "Cette réservation ne porte pas de tarif horaire. Recommencez-la depuis la fiche du prestataire." + suffixeRemboursement(r) });
+        }
         if (tarifPaye > 0) {
           const urT = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
           const tarifReel = Number(((await urT.json().catch(() => ({}))).user_metadata || {}).tarif_net || 0);
@@ -3385,7 +3413,85 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Votre message n'a pas pu être envoyé. Réessayez." });
       }
 
-      return res.status(200).json({ success: true, message: lignesMsg[0] });
+      // ── Le destinataire est prévenu ICI, depuis le message enregistré ──
+      //
+      // Décision D5 d'Alexandre (14/10/2026), api/_messagerie.js. La notification
+      // partait d'un second appel (`chat_notify`), auquel le navigateur donnait
+      // le nom et le texte : ALANE envoyait par e-mail et SMS, à son nom, un texte
+      // libre, sans limite. Désormais l'expéditeur vient de son profil, l'e-mail
+      // cite le message enregistré, le SMS ne contient aucun texte libre, et
+      // e-mail comme SMS sont plafonnés. Le message est enregistré quoi qu'il
+      // arrive : un échec de notification est journalisé, il n'annule rien.
+      const nouveau = lignesMsg[0];
+      try {
+        const [rProfil, rPrecedent, rDest] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/messages?conversation_key=eq.${encodeURIComponent(cle)}&sender_id=eq.${caller.id}`
+            + `&created_at=lt.${encodeURIComponent(nouveau.created_at)}&order=created_at.desc&limit=1&select=created_at,lu_at`, { headers }),
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers }),
+        ]);
+        const profils = rProfil.ok ? await rProfil.json().catch(() => null) : null;
+        if (!Array.isArray(profils)) console.error(`[message] profil de l'expéditeur illisible (${rProfil.status}) — nom générique`);
+        const nom = nomExpediteur(Array.isArray(profils) ? profils[0] : null, tag);
+
+        await notifier({
+          user_id: recipient_id,
+          type: "system",
+          title: `💬 Nouveau message de ${nom}`,
+          body: texte.slice(0, 100),
+          ref_id: caller.id,
+        }, SUPABASE_URL, headers);
+
+        const precedents = rPrecedent.ok ? await rPrecedent.json().catch(() => null) : null;
+        if (!Array.isArray(precedents)) {
+          // Sans l'historique, on ne sait pas si le destinataire vient d'être
+          // prévenu : le plafond l'emporte, ni e-mail ni SMS.
+          console.error(`[message] historique illisible (${rPrecedent.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
+        } else if (alerteExterieureDue(precedents[0] || null)) {
+          const dest = rDest.ok ? await rDest.json().catch(() => ({})) : {};
+          if (!rDest.ok) console.error(`[message] destinataire illisible (${rDest.status}) — ni e-mail ni SMS pour ${nouveau.id}`);
+          const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+          const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+          if (RESEND_KEY && dest.email) {
+            const extrait = texte.length > 500 ? `${texte.slice(0, 500)}…` : texte;
+            const er = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+              body: resendBody({
+                from: RESEND_FROM,
+                to: [dest.email],
+                subject: `💬 Nouveau message de ${nom}`,
+                html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                  <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
+                  <p><strong>${esc(nom)}</strong> vous a envoyé un message :</p>
+                  <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;white-space:pre-wrap">${esc(extrait)}</div>
+                  <p>Connectez-vous à ALANE pour répondre.</p>
+                  <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+                </div>`,
+              }),
+            }).catch(e => { console.error("[message] e-mail non envoyé :", e.message); return null; });
+            if (er && !er.ok) console.error(`[message] e-mail refusé par Resend (${er.status}) pour ${nouveau.id}`);
+          }
+          const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
+          const telephone = dest.user_metadata?.telephone;
+          if (BREVO_KEY && telephone) {
+            const chiffres = String(telephone).replace(/\D/g, "");
+            const e164 = chiffres.startsWith("0") ? "33" + chiffres.slice(1) : chiffres.startsWith("33") ? chiffres : null;
+            if (e164) {
+              const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                method: "POST",
+                headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+                body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsClean(texteSmsMessage(nom)) }),
+              }).catch(e => { console.error("[message] SMS non envoyé :", e.message); return null; });
+              if (sr && !sr.ok) console.error(`[message] SMS refusé par Brevo (${sr.status}) pour ${nouveau.id}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`[message] destinataire non prévenu pour ${nouveau.id} :`, e.message);
+      }
+
+      return res.status(200).json({ success: true, message: nouveau });
     }
 
     // ── « Lu » : le destinataire a ouvert la conversation ─────────────
@@ -3417,91 +3523,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, lus: lus.length });
     }
 
+    // ── `chat_notify` : remplacée par `envoyer_message` (décision D5) ─────
+    //
+    // Le navigateur y donnait le nom de l'expéditeur et le texte, qu'ALANE
+    // envoyait par e-mail et SMS à son nom, sans lien avec un message enregistré
+    // ni limite : un SMS « ALANE » au texte de son choix, autant de fois que
+    // voulu (étude d'octobre 2026). Le destinataire est désormais prévenu à
+    // l'enregistrement du message. L'action reste acceptée, sans rien envoyer,
+    // pour les onglets encore ouverts sur une version antérieure de
+    // l'application : ils l'appellent juste après `envoyer_message`, qui a déjà
+    // prévenu.
     if (action === "chat_notify") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { recipient_id, sender_name, message_preview } = payload;
-      if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "recipient_id requis" });
-
-      // S-04: verify caller shares an active mission with recipient
-      const sharedMissionRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?or=(and(client_id.eq.${caller.id},prestataire_id.eq.${recipient_id}),and(client_id.eq.${recipient_id},prestataire_id.eq.${caller.id}))&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
-        { headers }
-      );
-      const sharedMissions = await sharedMissionRes.json().catch(() => []);
-      if (!Array.isArray(sharedMissions) || sharedMissions.length === 0) {
-        return res.status(403).json({ error: "Non autorisé — aucune prestation partagée active" });
-      }
-
-      // Fetch recipient info (email + phone)
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
-      const ud = await ur.json();
-      const recipientEmail = ud.email;
-      const phone = ud.user_metadata?.telephone;
-
-      // In-app notification (with ref_id = sender id for direct chat navigation)
-      await notifier({
-          user_id: recipient_id,
-          type: "system",
-          title: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
-          body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
-          ref_id: caller.id,
-        }, SUPABASE_URL, headers);
-
-      // Email Resend (quand app fermée)
-      const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
-      if (RESEND_KEY && recipientEmail) {
-        try {
-          const er = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-            body: resendBody({
-              from: RESEND_FROM,
-              to: [recipientEmail],
-              subject: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
-              html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-                <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
-                <p><strong>${esc(sender_name || "Votre contact")}</strong> vous a envoyé un message :</p>
-                <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${esc(message_preview || "")}</div>
-                <p>Connectez-vous à ALANE pour répondre.</p>
-                <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-              </div>`,
-            }),
-          });
-          const eb = await er.json().catch(() => ({}));
-          console.log("[chat_notify] email status:", er.status, JSON.stringify(eb));
-        } catch (e) { console.error("[chat_notify] email error:", e.message); }
-      } else {
-        console.log("[chat_notify] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!recipientEmail);
-      }
-
-      // SMS Brevo
-      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
-      console.log("[chat_notify] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      if (BREVO_KEY && phone) {
-        const digits = phone.replace(/\D/g, "");
-        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-        console.log("[chat_notify] sending SMS");
-        if (e164) {
-          try {
-            const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-              method: "POST",
-              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sender: "ALANE",
-                recipient: e164,
-                content: smsClean(`ALANE - Nouveau message de ${(sender_name || "votre contact").slice(0,50)} : ${(message_preview || "").slice(0, 80)} — alane.fr`),
-              }),
-            });
-            const sb = await sr.json().catch(() => ({}));
-            console.log("[chat_notify] SMS brevo status:", sr.status, JSON.stringify(sb));
-          } catch (e) { console.error("[chat_notify] SMS error:", e.message); }
-        }
-      } else {
-        console.log("[chat_notify] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      }
-
       return res.status(200).json({ success: true });
     }
 
@@ -3896,11 +3930,17 @@ export default async function handler(req, res) {
       // confirmation lui-même (« remboursement intégral hors frais de service »).
       // Seul le serveur disait le contraire au-delà de 24 h : il les remboursait.
       //
-      // Unique exception, celle des CGPS art. 8.2 : la défaillance du prestataire.
-      // Le client est alors intégralement remboursé, frais compris — il n'y est pour
-      // rien, et facturer une mise en relation qui n'a produit personne serait
-      // difficilement défendable.
-      const retenirFrais = !annulationPourRetard;
+      // Deux exceptions, où le client est intégralement remboursé, frais compris
+      // (api/_annulation.js) : la défaillance du prestataire, celle des CGPS
+      // art. 8.2, et une réservation payée que personne n'a reprise — repartie en
+      // recherche ou en attente d'un remplaçant (décision D2 d'Alexandre,
+      // 14/10/2026). Le client n'y est pour rien, et facturer une mise en relation
+      // qui n'a produit personne serait difficilement défendable. La tâche
+      // planifiée rendait déjà tout à l'heure de début ; le client qui annulait
+      // avant, lui, perdait ses frais.
+      const sansPrestataire = sansPrestataireTrouve(mission);
+      const retenirFrais = fraisRetenusAnnulationClient(mission, { retardPrestataire: annulationPourRetard });
+      if (sansPrestataire) console.log(`[cancel_client] personne n'a repris ${mission_id} (${mission.status}) — remboursement intégral, frais compris`);
       const refundAmount = retenirFrais
         ? Math.max(0, Math.round((payeCarte - fraisRetenus) * 100)) // en centimes
         : Math.round(payeCarte * 100);
@@ -4066,10 +4106,19 @@ export default async function handler(req, res) {
                 // 09/10/2026) : l'e-mail annonçait « 0,00 € » et « aucun montant
                 // n'est dû », en contradiction avec son objet.
                 ? "La modification de commande a été remboursée automatiquement. Elle apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés."
-                : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
+                : (mission.stripe_payment_intent
+                  ? (keptAmount > 0 ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun montant n'a été retenu.")
+                  : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${keptAmount > 0
                 ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur}) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
-                : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}
+                // Le motif du remboursement intégral, et lui seul : l'e-mail
+                // annonçait « votre prestataire ne s'est pas présenté » à toute
+                // annulation sans frais retenus — y compris d'une demande jamais payée.
+                : sansPrestataire
+                  ? `<p style="font-size:12px;color:#999">Personne n'avait encore été trouvé pour votre prestation : vous êtes intégralement remboursé, frais de service compris.</p>`
+                  : annulationPourRetard
+                    ? `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`
+                    : ""}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
@@ -4143,7 +4192,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour,heures_ajoutees_detail,extra_hours_tarif,heures_perdues,started_at,cancellation_reason,recurrence,arrival_delay_minutes,delay_status`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4173,7 +4222,18 @@ export default async function handler(req, res) {
       //
       // On compte donc séparément les journées déjà accomplies et les heures
       // faites aujourd'hui.
-      const totalHours = Number(mission.hours) || 1;        // heures PAR JOUR
+      // Heures PAR JOUR. Un décalage refusé sur une prestation d'une journée
+      // inscrit la durée retenue dans `actual_hours` (`respond_delay`), et la
+      // différence avec `hours` a déjà été rendue au client. Partir de `hours`
+      // la lui rendait une seconde fois, et la clôture payait pourtant au
+      // prestataire les heures faites : 8 h réservées, une heure de retard
+      // refusée, arrêt au bout de 5 h — 4 h rendues en tout au lieu de 3,
+      // 5 h versées (relecture du 14/10/2026). Sur plusieurs jours, le retard
+      // passe par `heures_perdues` et `actual_hours` reste vide.
+      const totalHours = mission.actual_hours !== null && mission.actual_hours !== undefined
+        ? Math.max(0, Number(mission.actual_hours) || 0)
+        : (Number(mission.hours) || 1);
+
       const tarifHoraire = Number(mission.tarif_horaire) || 0;
       const joursPrestation = nombreDeJours(mission);
       const estRecurrente = joursPrestation > 1;
@@ -4191,7 +4251,12 @@ export default async function handler(req, res) {
       // perdait à la clôture. Le motif écrit lors du premier appel en fait foi.
       const dejaEcourtee = String(mission.cancellation_reason || "").includes(`Journée du ${aujourdHui} écourtée`);
       const debutDuJour = debutPrestationMs(aujourdHui, mission.heure_debut);
-      const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour);
+      // Un démarrage en retard ne compte pas le retard comme du travail fait,
+      // quand il est déjà réglé ailleurs : décalage accepté (fin repoussée) ou
+      // refusé sur une journée (durée retenue). Il était facturé au client
+      // comme une heure faite (étude d'octobre 2026, `e2e/81`).
+      const retardDuJourH = retardADeduireDuJour(mission, aujourdHui, estRecurrente, (ms) => dateDuJourFr(ms));
+      const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour - retardDuJourH * 3600000);
       const elapsedHours = elapsedMs / 3600000;
 
       // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h), au bénéfice du
@@ -4406,7 +4471,11 @@ export default async function handler(req, res) {
           ? {
               status: "completed",
               validation_client: true,
-              actual_hours: totalHours,
+              // Décalage non arbitré sur une journée : la durée plafonnée, comme à
+              // la validation (`complete`) — la facture lit `actual_hours`, et
+              // annonçait sinon une heure de plus que le versement.
+              actual_hours: partage.ajustementRetard && !partage.ajustementRetard.unJour
+                ? partage.ajustementRetard.apres : totalHours,
               heures_perdues: heuresPerduesTotal,
               ...majAjouts,
               montant_total: totalClient,
@@ -4428,6 +4497,21 @@ export default async function handler(req, res) {
           error: "Vous avez été remboursé, mais la prestation n'a pas pu être clôturée. "
                + "Écrivez à direction@alane.fr en indiquant la date : nous la fermons manuellement.",
         });
+      }
+
+      // Décalage jamais arbitré, prestation arrêtée : elle se clôt ICI, et la
+      // clôture plafonne les heures (`montantsDeCloture`). Comme les cinq autres
+      // clôtures, elle rend au client les heures retirées — celle-ci les gardait
+      // (étude d'octobre 2026, `e2e/81`). Clé d'idempotence de _decalage.js :
+      // une seule fois par prestation.
+      let renduRetard = 0;
+      if (annulerReste && partage.ajustementRetard) {
+        const rr = await rembourserHeuresRetirees({
+          mission: { ...mission, id: mission_id },
+          euros: valeurHeuresRetirees(mission, partage.ajustementRetard.avant, partage.ajustementRetard.apres),
+          supabaseUrl: SUPABASE_URL, headers, contexte: "cancel_in_progress/decalage",
+        });
+        if (rr.ok) renduRetard = (Number(rr.centimes) || 0) / 100;
       }
 
       // Le versement entre dans le circuit normal, avec son échéance.
@@ -4664,7 +4748,7 @@ export default async function handler(req, res) {
         billedHours,
         heuresDuJour,
         heuresPerdues: heuresPerduesTotal,
-        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur) * 100) / 100,
+        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur + renduRetard) * 100) / 100,
         remboursementHeuresAjoutees: ajoutsPerdus.valeur,
         proratedAmount,
       });
@@ -5891,74 +5975,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // ── `notify_client` : plus aucun écran ne l'appelle (décision D5) ─────
+    //
+    // Elle envoyait au client un e-mail et un SMS « ALANE » dont le nom du
+    // prestataire et le libellé de la prestation venaient du navigateur, sans
+    // limite (étude d'octobre 2026). L'acceptation et le refus sont annoncés au
+    // client par `respond_mission`, avec les données du serveur. L'action reste
+    // acceptée, sans rien envoyer, pour les onglets d'une version antérieure.
     if (action === "notify_client") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { client_id, type, mission_label, presta_name } = payload;
-      if (!client_id || !isUuid(client_id)) return res.status(400).json({ error: "client_id requis" });
-
-      // Vérifier que le caller est bien le prestataire d'une mission de ce client
-      const relRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&client_id=eq.${client_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`,
-        { headers }
-      );
-      const relData = await relRes.json();
-      if (!Array.isArray(relData) || !relData[0]) return res.status(403).json({ error: "Non autorisé" });
-
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${client_id}`, { headers });
-      const ud = await ur.json();
-      const clientEmail = ud.email;
-      const phone = ud.user_metadata?.telephone;
-      const clientName = ud.user_metadata?.prenom || "Client";
-
-      const isAccepted = type === "accepted";
-      const subject = isAccepted
-        ? `✅ ${presta_name || "Votre prestataire"} a accepté la prestation !`
-        : `❌ ${presta_name || "Le prestataire"} a refusé la prestation`;
-      const smsText = smsClean(isAccepted
-        ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre prestation ${mission_label || ""}. Connectez-vous pour suivre la prestation. — alane.fr`
-        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre prestation ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`);
-
-      const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-      if (RESEND_KEY && clientEmail) {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-          body: resendBody({
-            from: RESEND_FROM,
-            to: [clientEmail],
-            subject,
-            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
-              <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":"Prestation refusée ❌"}</h2>
-              <p>Bonjour ${esc(clientName)},</p>
-              ${isAccepted
-                ? `<p><strong>${esc(presta_name || "Votre prestataire")}</strong> a accepté votre demande de prestation <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
-                : `<p><strong>${esc(presta_name || "Le prestataire")}</strong> a décliné votre demande pour la prestation <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
-              }
-              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-            </div>`,
-          }),
-        }).catch(e => console.error("[missions/notify_client] échec ignoré :", e?.message));
-      } else {
-        console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!clientEmail);
-      }
-
-      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
-      if (BREVO_KEY && phone) {
-        const digits = phone.replace(/\D/g, "");
-        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-        if (e164) {
-          await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-            method: "POST",
-            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-            body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsText }),
-          }).then(r => r.json()).then(d => console.log("[notify_client] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_client] SMS error:", e.message));
-        }
-      } else {
-        console.log("[notify_client] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
-      }
-
       return res.status(200).json({ success: true });
     }
 
@@ -6255,7 +6281,7 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
         + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
-        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,`
+        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,actual_hours,`
         + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
         { headers }
       );
@@ -6384,7 +6410,14 @@ export default async function handler(req, res) {
             // la clôture recalcule tout au tarif de base et le prestataire perd
             // l'écart qu'il avait annoncé.
             extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
-            actual_hours: null,
+            // La durée retenue suit la durée réservée : un décalage refusé y
+            // avait déjà retiré des heures, rendues au client. La remettre à
+            // vide faisait payer au prestataire, à la clôture, ces heures
+            // remboursées (relecture du 14/10/2026). Sans décalage, elle reste
+            // vide et la clôture lit `hours`.
+            actual_hours: mission.actual_hours !== null && mission.actual_hours !== undefined
+              ? Math.max(0, Math.round((Number(mission.actual_hours) + (nouvellesHeures - Number(mission.hours || 0))) * 10000) / 10000)
+              : null,
           };
 
       // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
@@ -7237,7 +7270,7 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut,delay_status,arrival_delay_minutes`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,date_debut,date_fin,heure_debut,delay_status,arrival_delay_minutes,hours,actual_hours,heures_perdues,tarif_horaire,montant_total,stripe_payment_intent,extra_hours_tarif,extra_hours_appliquees,montant_heures_ajoutees,heures_ajoutees_dernier_jour`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable ou non assignée" });
@@ -7270,6 +7303,7 @@ export default async function handler(req, res) {
       // la fin d'autant, en silence et sans que le client ait son mot à dire. C'est
       // pourtant le démarrage qui détermine la fin, donc le service réellement rendu.
       const patchStart = { started_at: startedAt };
+      let aggrave = null;
       if (m.date && m.heure_debut && m.delay_status !== "approved") {
         try {
           // Conversion déportée dans _temps.js : la formule ne se recopie plus.
@@ -7279,7 +7313,11 @@ export default async function handler(req, res) {
           // On retient le décalage le plus défavorable au client : celui de l'arrivée
           // ou celui du démarrage, sans jamais l'effacer.
           const retardRetenu = Math.max(retardDemarrage, Number(m.arrival_delay_minutes) || 0);
-          if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
+          if (m.delay_status === "rejected") {
+            // Le client a déjà refusé de décaler la fin : on ne lui repose pas
+            // la question, on déduit et on rend l'écart (_decalage.js).
+            aggrave = retardAggraveApresRefus(m, retardDemarrage);
+          } else if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
             patchStart.arrival_delay_minutes = retardRetenu;
             patchStart.delay_status = "pending";
             console.log(`[start_mission] retard de ${retardDemarrage} min sur ${mission_id} — accord du client requis`);
@@ -7289,11 +7327,29 @@ export default async function handler(req, res) {
         }
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify(patchStart),
-      });
+      if (aggrave) {
+        // Écriture CONDITIONNELLE : un double appel ne déduit, ni ne rend, deux fois.
+        const ecrit = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&started_at=is.null`
+          + `&delay_status=eq.rejected&arrival_delay_minutes=eq.${Number(m.arrival_delay_minutes) || 0}`,
+          { ...patchStart, ...aggrave.maj }, headers, "start_mission/retard aggravé");
+        if (!ecrit) return res.status(500).json({ error: "Le démarrage n'a pas pu être enregistré. Réessayez." });
+        const rendu = await rembourserHeuresRetirees({ mission: m, euros: aggrave.aRendre, supabaseUrl: SUPABASE_URL,
+          headers, contexte: "start_mission/retard aggravé", suffixeCle: `demarrage-${aggrave.maj.arrival_delay_minutes}` });
+        if (m.client_id) {
+          const labelA = m.titre || m.metier || "votre prestation";
+          await notifier({ user_id: m.client_id, type: "mission", ref_id: m.id, title: "⏰ Démarrage en retard",
+            body: `Le prestataire a démarré « ${labelA} » ${aggrave.ecartMin} min plus tard encore que son arrivée. `
+              + "Comme vous l'avez choisi, la prestation prend fin à l'heure prévue"
+              + (rendu.centimes > 0 ? ` : ${euros(rendu.centimes / 100)} vous ${rendu.ok ? "sont rendus" : "seront rendus"}.` : "."),
+          }, SUPABASE_URL, headers).catch(e => console.error("[missions/start_mission] retard aggravé non notifié :", e?.message));
+        }
+      } else {
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify(patchStart),
+        });
+      }
 
       // Le client est prévenu séparément : sans accord de sa part, la prestation
       // s'arrête à l'heure de fin initialement prévue.

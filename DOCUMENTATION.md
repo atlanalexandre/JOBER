@@ -709,7 +709,12 @@ n'est pas explicitement fermé — une ligne absente vaut ouverte, comme dans `q
 Côté écrans, `fetchOffreLancement()` est la seule source. Auparavant la question se posait à
 trois endroits, chacun à sa façon — une constante du code, le réglage, le décompte des places —
 et ils ont divergé **trois fois**. Seul le message « Tarif transparent » du tunnel de
-réservation subsiste indépendamment : il ne promet rien de l'offre.
+réservation subsiste indépendamment : il ne promet rien de l'offre. **Ce n'était pas vrai partout jusqu'au 14/10/2026** (étude d'octobre 2026,
+constaté en recette, `e2e/82`) : l'accueil du prestataire relisait ensuite `launch_phase` et
+réécrivait la réponse du serveur — l'offre s'affichait avec « 0 place restante sur 100 » —,
+l'écran « Mon abonnement » et « Comment ça marche ? » ne lisaient que le réglage (« 100/100 — offre
+terminée »), et trois écrans l'annonçaient d'office le temps que le serveur réponde. L'écran
+d'abonnement disait en outre « 8 prestations/mois gratuites », sans le second temps de la règle.
 
 **Le réglage `launch_phase` gouverne l'annonce, pas seulement le quota** (16/09/2026). Constaté
 en relevant les réglages réels : `launch_phase` valait `false`, et les deux écrans d'inscription
@@ -800,6 +805,8 @@ Le versement au prestataire se suit sur `payout_status`
 duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_hold_reason` / `payout_hold_at` / `payout_hold_until` (retenue de l'art. 7.4) et
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
+Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
+refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Voir « Le versement au prestataire » au §6.
 
 `cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le
@@ -839,7 +846,8 @@ rien rendre, et l'arbitre devait choisir celle qui lésait le moins mal. Comme t
 colonnes qui décident d'un montant, elle n'est pas modifiable depuis le navigateur.
 
 **`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
-leur reste à recouvrer, leur notification et leur date d'exigibilité.
+leur reste à recouvrer, leur notification et leur date d'exigibilité. `prestataire_id` est
+`NULL` pour une créance dont le compte a été supprimé (`ON DELETE SET NULL`, 14/10/2026).
 **`compensations_versements`** — le journal des retenues opérées sur chaque versement. Les
 deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; créer ou
 éteindre une créance passe par `/api`.
@@ -1004,7 +1012,9 @@ côté serveur à deux endroits, et il faut les deux :
   06/08/2026 : un client pouvait créer sa prestation avec `montant_total = tarif × heures`, la
   régler depuis son portefeuille et ne payer aucun frais de service ;
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
-  inférieur au `tarif_net` réellement annoncé par le prestataire affecté ;
+  inférieur au `tarif_net` réellement annoncé par le prestataire affecté, et une prestation
+  sans tarif (0 ou absent) n'est jamais affectée : le client est remboursé (14/10/2026,
+  `e2e/88` — 2 € payés suffisaient à engager un prestataire, qui n'aurait rien touché) ;
 - `api/_paiement.js` — à l'affectation, le montant réellement encaissé par Stripe doit être
   celui de la prestation (prix plein, ou réduit du cashback retenu).
 
@@ -1049,13 +1059,19 @@ un déclencheur.
 
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
-recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
+recharge soit créditée deux fois. Lisible par le seul service role. `user_id` passe à `NULL` quand le compte est
+supprimé (`ON DELETE SET NULL` depuis le 14/10/2026 ; la ligne était effacée). Avant elle, l'argent
 entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
 justifié, ni rapproché des encaissements Stripe.
 
 Cinq procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
-- `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
+- `check_prestataire_slot` — places restantes dans le **quota mensuel** du prestataire :
+  `p_limit − (missions_completed_month + prestations assigned ou pending_acceptance)`, sous
+  verrou de la ligne du profil. (Ce fichier la décrivait à tort comme un contrôle de créneau.)
+  `missions_completed_month` est incrémenté par `compterAuQuota()` (`api/missions.js`) à la
+  validation par le client **et**, depuis le 14/10/2026, à la validation automatique — qui ne
+  comptait rien : la place se libérait.
 - `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
   uniquement** : elle ne vérifie pas son appelant. Le 27/08/2026 une migration l'a supprimée
   puis recréée, et le verrou a disparu avec elle (un `DROP FUNCTION` perd les droits, un
@@ -1342,11 +1358,13 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
-| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
+| `_annulation.js` | Annulation par le client : les frais de service sont-ils retenus ? `fraisRetenusAnnulationClient()`, `sansPrestataireTrouve()`. Non en cas de défaillance du prestataire (CGPS art. 8.2), ni quand personne n'a repris une réservation payée (`open`, `needs_replacement` — décision D2, 14/10/2026). Appelé par `cancel_client` |
+| `_liste_noire.js` | Liste anti-recréation (`account_blacklist`, décision D4, 14/10/2026) — `empreintes()`, `filtreListeNoire()`, `ligneListeNoire()`, `comptesRecrees()`, `telephoneNormalise()`. Utilisé par l'inscription, la validation, la liste du back-office, les trois suppressions et la tâche des deux heures |
+| `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
-| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi (au-delà de 4 000 adresses, refus) |
+| `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
 
 ### Comment l'appelant est vérifié
 
@@ -1407,6 +1425,16 @@ panne affiche désormais « Connexion impossible pour le moment. Réessayez dans
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
 
+**Compte suspendu ou refusé : `refuserCompteBloque()`** (`_auth.js`, 14/10/2026). L'application
+déconnecte un tel compte, mais son jeton reste valable et se rafraîchit : par un appel direct,
+il enregistrait encore une carte, payait une réservation ou souscrivait un abonnement. Ces
+trois chemins — `stripe-intent` (`setup_card`, paiement de réservation), `stripe-subscription`
+(sauf `free`) et `booking-draft` (`save`) — répondent désormais **403** (`code: compte_bloque`),
+et **503** si le statut est illisible. Restent ouverts, volontairement : retirer sa carte,
+résilier, payer un complément d'heures déjà travaillées, le support (CGPS 16.2 : il présente
+ses observations), la suppression du compte, les pièces justificatives et le compte de
+versement (`stripe-connect` : les versements dus pour le travail fait). Éprouvé par `e2e/87`.
+
 ### Un endpoint sans authentification : le catalogue
 
 - **`get-profile.js`** — **authentifié**. Il recevait un `userId` dans le corps de la requête
@@ -1425,6 +1453,16 @@ du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
   avait fermé ce catalogue aux comptes connectés en retirant les policies RLS publiques : la
   restriction porte sur l'accès direct à la table, pas sur cet endpoint. La route allégée
   `?action=count` doit rester publique (écran d'accueil avant connexion).
+- **Le CV n'est plus dans le catalogue** (décision d'Alexandre du 14/10/2026). Le catalogue,
+  public et gardé 30 s par le réseau de Vercel, rendait le CV complet — parcours, employeurs,
+  diplômes — à tout visiteur, alors que l'écran ne le montre qu'à un client connecté. Il ne
+  rend plus que `a_cv` (un CV non vide existe, `cvPresent()` de `api/_cv.js`). Le contenu se
+  lit par **`GET /api/prestataires?action=cv&id=…`**, jeton requis : **client approuvé**
+  seulement (401 sans compte, 403 pour un prestataire ou un compte suspendu), prestataire
+  affiché au catalogue seulement (404 sinon), réponse `private, no-store`. Repli sur
+  `user_metadata.cv` pour un CV antérieur au 29/09/2026 (un compte en production le
+  14/10/2026). L'écran du parcours et la fenêtre de la réservation le chargent à l'ouverture
+  (`useCv`, `client-screens.jsx`). Éprouvé par `e2e/23`.
 
 Refermer le catalogue est une **décision produit** : il sert aussi les liens de partage
 `?profil=`, qui fonctionnent aujourd'hui sans compte.
@@ -1710,6 +1748,26 @@ Ajoutés au passage : `form-action 'self'` et `frame-ancestors 'none'`.
 
 ### Suppression de compte et anti-recréation
 
+**Décision D4 d'Alexandre, 14/10/2026** (`api/_liste_noire.js`, éprouvée par `e2e/94` et
+`src/tests/api/liste-noire.test.js`). Quatre trous laissaient revenir un compte supprimé ou exclu
+avec un quota gratuit neuf :
+
+- **l'IBAN n'était comparé qu'à l'inscription et à la validation**, avant que le prestataire le
+  saisisse (il l'écrit depuis son espace, directement dans `profiles.rib`) : il ne reconnaissait
+  personne. La tâche des deux heures (`cron-reset-monthly?action=reminders`) compare désormais
+  **tous les comptes**, IBAN compris (`comptesRecrees()`), et repose `trial_exhausted` où il manque ;
+- **le téléphone était haché tel que saisi** : « 06 12… », « 0612… » et « +33 6 12… » donnaient
+  trois empreintes. Il est inscrit sous une forme unique (`telephoneNormalise()`, « 0612345678 ») et
+  comparé sous toutes ses écritures, car les empreintes déjà enregistrées l'ont été sur le numéro
+  brut. Même chose pour l'IBAN (sans espaces, en majuscules) et le SIRET (chiffres seuls) ;
+- **la remise à zéro du 1er du mois rendait le quota gratuit à tous**, comptes recréés compris :
+  elle les écarte (leurs compteurs repartent de zéro, la pénalité reste). Liste illisible : la
+  remise vaut pour tous, et la tâche des deux heures repose la pénalité au passage suivant ;
+- **la résiliation à l'échéance n'inscrivait rien** — voir le tableau ci-dessous.
+
+L'inscription lit aussi le SIRET d'un prestataire (`siret`) : seul `kbis`, celui d'un client
+professionnel, l'était.
+
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
 supprimé se recrée pour retrouver un essai gratuit, et reste compatible avec le droit à
@@ -1721,6 +1779,7 @@ Deux chemins de suppression, et **un seul l'alimentait** jusqu'au 07/08/2026 :
 |---|---|---|
 | Suppression par l'administration | `bo-action.js` (`delete`) | Oui, depuis toujours |
 | Suppression par l'utilisateur | `support.js` (`delete_account`) | **Non — corrigé le 07/08/2026** |
+| Résiliation à l'échéance d'un préavis (exclusion décidée par ALANE) | `cron-reset-monthly.js` | **Non — corrigé le 14/10/2026** (décision D4) |
 
 Or c'est le second que les utilisateurs empruntent. Il suffisait de supprimer son compte
 depuis l'application puis de se réinscrire pour retrouver un essai gratuit, autant de fois
@@ -1738,7 +1797,9 @@ l'utilisateur, par le back-office et la résiliation à l'échéance d'un préav
 | Étape | Ce qui était faux |
 |---|---|
 | Prestations en cours (`STATUTS_EN_COURS`) | « à remplacer » et « en litige » n'étaient pas vues : on supprimait un compte en pleine contestation |
+| Prestation **commencée** (back-office) | supprimer au back-office un compte dont une prestation avait démarré la **remboursait en entier et l'annulait** : le prestataire n'était pas payé du travail déjà fait. Refusée depuis le 14/10/2026 (décision D3 d'Alexandre, 409), comme un litige : on attend la fin ou on interrompt. L'utilisateur et la résiliation à l'échéance s'arrêtaient déjà à toute prestation en cours. Éprouvé par `e2e/91` |
 | Versements dus (`VERSEMENTS_DUS`) | `held` et `failed` n'étaient pas vus : un virement retenu ou à relancer se perdait avec le compte |
+| Sommes dues à ALANE (`creancesOuvertes()`, `CREANCES_OUVERTES`) | une somme due **active ou contestée** partait avec le compte (`creances_prestataires` était en cascade sur le compte, jusqu'à la migration du 14/10/2026) : la dette disparaissait sans trace. Depuis le 14/10/2026 la suppression est refusée (409), la résiliation à l'échéance reportée avec une erreur au journal — on règle ou on tranche d'abord. Éprouvé par `e2e/83` |
 | `resilierAbonnement()` | l'utilisateur qui supprimait son compte **restait abonné** : Stripe le prélevait chaque mois. Un échec arrête désormais la suppression, avant tout effacement |
 | `anonymiserPrestations()` | le back-office **effaçait** les prestations (factures, virements, DAC7) ; elles sont anonymisées, comme par l'utilisateur |
 | `effacerPieces()` | le back-office effaçait les fiches mais **laissait les fichiers**, pièces d'identité comprises. Le dossier `{user_id}/` est aussi listé, pour les fichiers sans fiche. **Un échec arrête la suppression** avant celle du compte (relecture du 01/10/2026) : sans compte ni fiche, les fichiers restés en ligne n'auraient plus été retrouvables |
@@ -2016,7 +2077,10 @@ ne peut rien écrire. Ces deux écrans écrivaient eux-mêmes l'IBAN dans `user_
 **seulement** — donc dans chaque jeton, et jamais dans `profiles.rib` où le lisent le
 back-office et les virements. Ils écrivent désormais `profiles.rib` (clé MOD-97 vérifiée,
 résultat vérifié), et retirent l'IBAN du jeton (`rib: null`). La liste de tâches du
-prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Vérifié en
+prestataire ne compte l'IBAN comme renseigné que s'il est dans `profiles.rib`. Le bandeau « IBAN / RIB manquant — ajoutez
+votre IBAN avant d'accepter une prestation » de l'espace prestataire et sa jauge « Complétude du
+profil » le lisaient encore dans `user_metadata` jusqu'au 14/10/2026 : tout prestataire en règle
+voyait le bandeau (étude d'octobre 2026, `e2e/82`). Vérifié en
 production le 24/09/2026 (lecture seule) : aucun IBAN n'était resté dans un jeton seul.
 
 **`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
@@ -2373,7 +2437,29 @@ navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de
 choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
 `status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
-postal, `avatar_url`, `rib`, `cv`.
+postal, `avatar_url`, `rib`, `cv`, `tel`, `societe_nom`, les champs fiscaux DAC7 (`nif`,
+`nif_collecte_at`, `residence_fiscale`) et le consentement (`accepte_communications`, `_at`).
+
+**`created_at` ne l'est plus** (étude du 13/10/2026, migration
+`2026-10-13_secu_profils_date_inscription_non_modifiable.sql`, `e2e/77`). Le droit de colonne était
+resté ouvert : un prestataire réécrivait sa date d'inscription (prouvé en recette). Elle décide de
+l'offre de lancement (tri des 100 premiers, `estEligible()`) et de l'échéance de l'attestation
+URSSAF (`etatRegularisation()`) : antidatée, le quota Premium sans payer ; postdatée, plus jamais de
+suspension faute d'attestation. **Appliquée en recette le 13/10/2026** (403 vérifié) **et en
+production le 14/10/2026** par Alexandre — vérifié en lecture seule : `created_at` n'est plus
+modifiable ni par `authenticated` ni par `anon`, et les autres colonnes ouvertes au navigateur le
+restent, comme en recette. Production lue le 13/10 : aucun profil à la date réécrite.
+
+**`siret` non plus** (étude d'octobre 2026, migration `2026-10-14_secu_profils_siret_non_modifiable.sql`,
+`e2e/85`). Un compte connecté réécrivait son propre SIRET (204 en recette). Or il décide de
+l'échéance de l'attestation URSSAF (immatriculation lue dans SIRENE + 60 jours) : remplacé par celui
+d'une entreprise créée la veille, il la repoussait autant de fois que voulu ; et il figure sur les
+factures émises au nom du prestataire. La base le pose à la création du compte (`handle_new_user`) ;
+le seul écran qui le renvoyait, l'inscription client, ne le fait plus (déployé avant la
+migration). Un changement de SIRET passe par le back-office. Production lue le 14/10 : aucun SIRET
+différent de celui déclaré à l'inscription. **Appliquée en recette et en production le 14/10/2026** —
+vérifié en lecture seule : `siret` n'est plus modifiable ni par `authenticated` ni par `anon`, et les
+15 colonnes qui restent ouvertes au navigateur sont les mêmes des deux côtés.
 
 **`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
 backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
@@ -2422,8 +2508,17 @@ selon le sens le prestataire **ou** le client — le nom de la colonne est tromp
 **Les frais de service sont dus sur toute annulation à l'initiative du client**, quel que
 soit le délai — CGPS art. 8.1, « en principe retenus et non remboursables car ils couvrent des
 coûts déjà engagés ». Le serveur les remboursait pourtant au-delà de 24 h, alors que l'écran
-de confirmation annonçait déjà « hors frais de service ». Unique exception, CGPS art. 8.2 :
-la défaillance du prestataire, où le remboursement est intégral.
+de confirmation annonçait déjà « hors frais de service ». **Deux exceptions**, où le remboursement
+est intégral, frais compris — `fraisRetenusAnnulationClient()` de `api/_annulation.js` :
+
+- la **défaillance du prestataire**, CGPS art. 8.2 (son retard, ci-dessous) ;
+- **personne n'a repris une réservation payée** : elle est repartie en recherche (`open`, la
+  cascade des candidats ou l'affectation par ALANE n'a trouvé personne) ou attend un remplaçant
+  (`needs_replacement`). Décision D2 d'Alexandre, 14/10/2026 : la mise en relation n'a produit
+  personne, et la tâche planifiée rendait déjà tout à l'heure de début — le client qui annulait
+  avant, lui, perdait ses frais. L'écran propose « Annuler » dans ces deux états (il ne le
+  proposait pas en `needs_replacement`), l'annonce intégrale, et la politique d'annulation
+  affichée avant le paiement le dit. Éprouvé par `e2e/86`.
 
 **Retard du prestataire : le client peut annuler sans aucun frais.** Le seuil est
 proportionnel à la durée — `min(60 min, max(20 min, 25 % de la durée))`, soit 20 min pour une
@@ -2639,6 +2734,12 @@ notifié. Trois issues :
 | `rejected` | heure initiale | réduites par `respond_delay` |
 | `pending` (sans réponse) | heure initiale | plafonnées à la clôture (`complete`, ou validation automatique du cron) |
 
+Un décalage **déjà refusé** n'est jamais rouvert : si le démarrage est plus tardif encore que
+l'arrivée, l'écart est déduit (`actual_hours`, ou `heures_perdues` sur plusieurs jours) et rendu
+tout de suite, avec sa propre clé Stripe — `retardAggraveApresRefus()` (`api/_decalage.js`,
+14/10/2026, `e2e/89`). Le démarrage remettait `delay_status` en attente avec le retard total :
+accepté, il effaçait la réduction déjà rendue ; refusé, il retirait le retard une seconde fois.
+
 **Les heures retirées sont remboursées au client** (depuis le 30/09/2026, `api/_decalage.js`).
 Elles ne l'étaient jamais : 110,98 € payés pour 8 h, 7 h facturées, prestataire payé 91 €, 0 €
 rendu — l'heure non faite restait à ALANE et la facture la présentait comme des frais de service.
@@ -2662,6 +2763,27 @@ durée par jour, donc remboursé au client et retiré au prestataire sur chaque 
 Un refus l'inscrit dans `heures_perdues` ; un retard non arbitré est déduit une fois par
 `montantsDeCloture()` (`ajustementRetard.unJour`, rien n'est réécrit) ; `valeurHeuresRetirees()`
 compte une journée. Les durées s'écrivent « 7 h 40 » (`dureeTexte()`, `api/_temps.js`).
+
+**Tout ce qui suit un refus lit `actual_hours`** (relecture du 14/10/2026, `e2e/78`). Deux actions
+partaient encore de `hours` : l'**interruption en cours** (`cancel_in_progress`) rendait au client,
+une seconde fois, l'heure déjà remboursée — 8 h réservées, une heure de retard refusée, arrêt au bout
+de 3 h : 6 h rendues au lieu de 5, 3 h versées au prestataire, ALANE de sa poche d'une heure ; et
+une **prolongation payée** (`confirmer_heures_supp`, une journée) remettait `actual_hours` à vide,
+si bien que la clôture versait au prestataire l'heure rendue au client — et plaçait la fin de la
+prestation une heure trop tard. L'interruption prend désormais la durée retenue pour base de la
+journée ; la prolongation l'augmente des heures ajoutées.
+
+**Interrompre une prestation commencée en retard ne facture pas le retard** (étude d'octobre 2026,
+`e2e/81`, `interruption-retard.test.js`). `cancel_in_progress` compte les heures faites depuis
+l'heure de début **prévue** : le retard passait pour du travail fait. Constaté en recette (8 h à
+13 €, début prévu il y a 3 h 50, démarrage réel une heure plus tard) : 52 € rendus au lieu de 65 €,
+quel que soit l'arbitrage. `retardADeduireDuJour()` (`api/_decalage.js`) retranche le retard du temps
+écoulé, le jour du démarrage, quand il est réglé ailleurs : décalage **accepté** (fin repoussée) ou
+**refusé sur une journée** (durée retenue). Refusé sur plusieurs jours, il est déjà dans
+`heures_perdues` ; jamais arbitré, c'est la clôture qui plafonne — et l'interruption, qui clôt
+quand le client arrête tout, **rend désormais les heures retirées** comme les cinq autres
+clôtures (elle ne lisait même pas `delay_status` : rien n'était plafonné, le prestataire était payé
+du retard).
 
 La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
 plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
@@ -2762,13 +2884,19 @@ revenait payer en changeant une option (« mémoriser ma carte », cashback) rec
 paiement — débité deux fois — et le premier n'était plus jamais rendu ; constaté en recette.
 `/api/stripe-intent` cherche désormais chez Stripe un paiement de réservation déjà abouti pour
 cette prestation et ce client (`paiementDejaAbouti()` de `api/_paiement.js` : liste des paiements
-du client Stripe, à défaut recherche sur `metadata['mission']`) ; trouvé, il répond 409
+du client Stripe, **puis**, rien n'y étant trouvé, recherche sur `metadata['mission']` — un paiement
+créé sans client Stripe, quand celui-ci était indisponible au premier essai, n'est que là ;
+relecture du 14/10/2026) ; trouvé, il répond 409
 `deja_payee` avec son identifiant, et le tunnel achève l'affectation avec lui au lieu de faire
 payer. Stripe illisible : 503, rien n'est créé. Et si deux paiements ont tout de même abouti (deux
 onglets), l'affectation du second le **rembourse en entier** (`rembourserDoublonPaiement()`, clé
 `refund-doublon-{paiement}`, la même que le webhook) au lieu de le refuser sans rien rendre ;
 l'écriture de l'affectation est conditionnée à « aucun paiement rattaché, ou celui-ci »
 (`filtrePaiementLibre()`), pour que deux affectations simultanées ne s'écrasent pas.
+Le refus d'un paiement après coup (`rembourserRefusApresPaiement()`, secteur fermé, zone, prestataire
+non activé…) porte la même condition sur l'annulation : un second paiement refusé pendant qu'un
+premier venait d'être rattaché annulait la réservation réglée par celui-ci, sans le rendre
+(relecture du 14/10/2026).
 
 *Le paiement abouti mais jamais affecté* (relecture du 04/10/2026, `e2e/65`) : le webhook ne
 rattache pas le paiement d'une réservation ordinaire — c'est `assign_after_payment`, appelé par
@@ -3297,7 +3425,7 @@ elles-mêmes lisent la chaîne de caractères — c'est le point ouvert document
 
 L'action `envoyer_message` dérive désormais les deux **de la prestation partagée** : elle exige
 une prestation en commun entre l'auteur et le destinataire — le même contrôle que `chat_notify`
-appliquait déjà pour la notification, mais pas pour le message lui-même — puis construit la clé
+(neutralisée depuis, voir « le destinataire prévenu par le serveur ») appliquait déjà pour la notification, mais pas pour le message lui-même — puis construit la clé
 et le tag à partir de `client_id` et `prestataire_id`. Le navigateur n'envoie plus que le
 destinataire et le texte, tous deux bornés.
 
@@ -3327,6 +3455,29 @@ les fournit pas — sans lui, les contraintes auraient refusé tout message envo
 code entre la migration et le déploiement. Les
 messages déjà échangés dont la clé ne suit pas le format `prov{uuid}-user{uuid}` resteraient
 sans participants, donc illisibles : la vérification n° 1 de la migration doit rendre 0.
+
+### Messagerie : le destinataire prévenu par le serveur
+
+**Décision D5 d'Alexandre, 14/10/2026** (`api/_messagerie.js`, éprouvée par `e2e/92`). La notification
+d'un message partait d'un second appel, `chat_notify`, auquel le navigateur donnait le nom de
+l'expéditeur et le texte : ALANE les envoyait tels quels, à son nom, par e-mail **et SMS**, sans
+lien avec un message enregistré, autant de fois qu'on l'appelait — un SMS « ALANE » au texte de son
+choix (hameçonnage), chacun payé. `notify_client` faisait de même avec le nom du prestataire.
+
+Désormais `envoyer_message` prévient lui-même, après avoir enregistré le message :
+
+- l'expéditeur est lu dans **son profil** (« Prénom N. », `nomExpediteur()`), réduit à des lettres :
+  ni lien ni numéro ;
+- la notification dans l'application (doublée d'une push) suit **chaque** message ;
+- l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
+  (`texteSmsMessage()`) ;
+- e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
+  n'a pas lu le message précédent de cet expéditeur (rappel au-delà de 24 h), et pas plus d'un
+  par demi-heure dans une même conversation. Historique illisible : ni e-mail ni SMS.
+
+`chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
+version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
+sont annoncés au client par `respond_mission`, avec les données du serveur.
 
 ### Écrire à un prestataire après la prestation : l'équipe ALANE seulement
 
@@ -4314,6 +4465,23 @@ demandes en attente sans le savoir. L'échec affiche désormais « Vos prestatio
 
 Ces résumés ont été remplacés le même jour par un renvoi aux CGPS (voir « Les contrats ne recopient plus les CGPS »).
 
+### Back-office : gestes d'argent et envois de masse confirmés
+
+**Décision D6 d'Alexandre, 14/10/2026** (`src/tests/backoffice-confirmations.test.js`, `e2e/93`). Chaque
+geste d'argent et chaque envoi à un groupe passe par une confirmation qui dit **combien** et **à qui**,
+et « Annuler » y arrête tout :
+
+| Geste | Avant | Désormais |
+|---|---|---|
+| Ajustement du cashback (`adjust_cashback`) | parti au premier clic ; un refus ne s'affichait pas | montant, client et solde avant → après ; un retrait au-delà du solde est refusé ; le refus du serveur s'affiche ; le serveur rend le nouveau solde (`solde`) |
+| Annulation d'une prestation payée (`cancel_mission`) | « Rembourser le client en même temps ? » : répondre **Annuler** annulait quand même la prestation, **sans rembourser** | une seule question, « annuler et rembourser intégralement {client} ({montant}) ? » ; « Annuler » ne fait rien |
+| Remboursement manuel (`manual_refund`) | seul le motif était demandé | montant et client confirmés, puis le motif |
+| Notification à tous (`broadcast_notification`), communication aux prestataires (`send_global_comm`) | partaient au premier clic | confirmation sur la cible ; l'envoi ne se rattrape pas |
+
+L'e-mail à tous les inscrits (`send_info_mail`) confirmait déjà le nombre exact de destinataires.
+**Le motif d'une annulation s'ajoute au message** envoyé au client et au prestataire (« Motif : … ») :
+il le remplaçait, et le client perdait l'annonce de son remboursement sous 5 à 10 jours.
+
 ### Back-office, onglet Support : suppression confirmée, envoi expliqué
 
 **01/10/2026** (audit des écrans, `e2e/58`). « Supprimer » effaçait un ticket — et le message du
@@ -4433,6 +4601,19 @@ est dû, on ne retient rien au consommateur.
 Le montant retenu est annoncé dans la proposition et dans la notification de clôture. Le taire
 ferait découvrir l'écart sur le relevé bancaire, ce qui rouvre le litige qu'on vient de fermer.
 
+**Ce qui a déjà été rendu ne se rend pas deux fois** (étude d'octobre 2026, `e2e/80`,
+`litige-deja-rendu.test.js`). Une partie du prix peut avoir été rendue avant le litige — heure de
+retard d'un décalage refusé, heures plafonnées à la validation, journée écourtée. Le dénouement
+« rembourser le client » l'ignorait. Constaté en recette (8 h à 13 €, 110,98 € payés, une heure de
+retard) : avant la validation, il demandait le prix entier, Stripe le plafonnait à ce qui restait —
+frais compris —, et le « reliquat » calculé sur le prix entier était versé au prestataire (110,98 €
+rendus **et** 6,02 € versés) ; après la validation, `montant_total` ayant été ramené au dû, les frais
+n'étaient plus reconnus et partaient avec le reste. `soldeDuLitige()` (`api/_resolution.js`) part
+désormais de ce que le client a **encore** réglé : clôturée (`payout_amount` figé), `montant_total`
+(le dû, déjà net) et des frais égaux à `montant_total − payout_amount` ; pas encore, le prix payé
+moins ce que Stripe a déjà rendu sur le paiement, relu avant d'exécuter (illisible : rien n'est
+exécuté). Le partage avec le prestataire (`resteAuPrestataire()`) part de la même base.
+
 ### Une prestation faite ne s'annule plus
 
 **Corrigé le 21/08/2026.** `presta_cancel` ne filtrait que sur le statut — `assigned` ou
@@ -4535,9 +4716,14 @@ notification et l'e-mail de la créance annonçaient pourtant une retenue de la 
 versement, contre le contrat et contre l'écran du prestataire, qui disait l'inverse : alignés sur
 l'article (étude du 13/10/2026).
 
-> **À savoir** : `creances_prestataires.prestataire_id` est en `ON DELETE CASCADE` vers
-> `auth.users` — la suppression du compte d'un prestataire efface les sommes qu'il doit. Voir
-> AUDIT-2026-10.md (décision à prendre).
+> **À savoir** : une somme due **active ou contestée** bloque la suppression du compte
+> (`creancesOuvertes()`, 14/10/2026). Et depuis la migration
+> `2026-10-14_conserver_creances_et_rechargements_apres_suppression` (**appliquée en recette et en
+> production le 14/10/2026**, vérifiée des deux côtés), `creances_prestataires.prestataire_id` est en
+> `ON DELETE SET NULL` (et non plus `CASCADE`) :
+> une créance réglée survit au compte, sans lien vers lui. Même règle pour
+> `wallet_topups.user_id`. Avant, la suppression effaçait la dette et le registre. Éprouvé par
+> `e2e/83` et `e2e/84`.
 
 **Une contestation bancaire retient le versement** (décision d'Alexandre du 30/09/2026, CGPS
 art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` passe un versement
@@ -4560,6 +4746,14 @@ son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
 (décision d'Alexandre du 30/09/2026). La notification le dit ; elle annonçait « pour conserver
 votre accès » un accès déjà retiré.
+L'abonnement en impayé **garde sa référence** (`stripe_subscription_id`, étude d'octobre 2026,
+`abonnement-reference.test.js`) : le webhook l'effaçait dès l'impayé, que Stripe continue pourtant de
+relancer, et ne la rétablissait pas au paiement suivant. Le prestataire redevenait abonné sans
+référence : supprimer son compte ne résiliait plus l'abonnement (prélevé ensuite chaque mois),
+changer de formule en ouvrait un second, « Résilier » répondait « aucun abonnement ».
+`ecritureAbonnement()` (`api/stripe-webhook.js`) ne l'efface que sur un abonnement mort (supprimé,
+`canceled`, `incomplete_expired`) et la réinscrit quand il redevient actif. Aucun profil de production
+n'était dans ce cas (lecture seule, 14/10/2026).
 
 **Un refus de virement n'est plus définitif d'office** (30/09/2026). Le virement puise dans le
 solde *disponible* d'ALANE, où un paiement par carte n'entre qu'après quelques jours : à 48 h, un
@@ -4834,6 +5028,16 @@ vaut **disponible**, partout. L'interrupteur l'affichait ainsi (`!== false`), ma
 `/api/prestataires` rendait `false` pour un compte qui ne l'avait jamais touché : le prestataire
 se croyait disponible et apparaissait indisponible aux clients (corrigé le 13/10/2026). L'écriture
 de l'interrupteur est vérifiée : en cas d'échec, il revient en arrière et le dit.
+
+**L'accueil du client le reprend** (étude du 13/10/2026, `e2e/79`). Le bandeau « pros dispo
+maintenant » et la rubrique « Dispo maintenant » lisaient `dispo_immediat`, que la fiche du
+catalogue (`mapperPrestataires()`, `client-screens.jsx`) ne reprenait pas : 0 affiché, rubrique
+jamais montrée, alors que l'écran d'un secteur annonçait 1 330 disponibles en recette. La fiche le
+reprend ; la rubrique montre douze cartes au plus, le badge donne le total. « Prestations
+réalisées » comptait les prestations **du client** — la base ne lui montre que les siennes depuis
+le 01/10/2026 — soit 0 pour tout nouveau client, présenté comme un chiffre de la plateforme. Il
+vient désormais du serveur (`realisees` de `/api/prestataires?action=demandes_ouvertes` : toutes
+les prestations `completed` ou `closed`) ; illisible, l'écran affiche « — ».
 
 **Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
@@ -5138,7 +5342,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `20` | cashback : utilisé seulement si le client l'accepte ; rendu si toute la prestation est annulée avant son début (faute de prestataire, back-office, client), perdu une fois démarrée |
 | `21` | catalogue public en « Prénom I. », nom complet au seul client de la prestation |
 | `22` | pointage localisé : sur place, éloigné (enregistré quand même), sans position ; constat fermé à l'écriture depuis le navigateur |
-| `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` par le catalogue |
+| `23` | CV obligatoire : activation refusée sans CV, ouverte sans expérience du métier mais le back-office averti, CV lu depuis `profiles` — par un client connecté seulement, le catalogue public ne disant que s'il existe |
 | `24` | métier réglementé ajouté après l'activation : fermé sans titre (liste, candidature, catalogue), les autres métiers ouverts, ouvert une fois vérifié ; aucune écriture du navigateur dans `documents` |
 | `25` | back-office : un clic valide le profil de tous les prestataires en attente, accès aux prestations fermé ; la liste des comptes dépasse 1 000 |
 | `26` | accusé de réception de l'inscription : sans service d'envoi (recette), rien n'est marqué et l'envoi reste à faire ; un compte déjà validé n'est jamais pris ; les inscrits d'avant le 29/09 restent marqués. Le succès de l'envoi est couvert par `src/tests/api/accuse-inscription.test.js` |
@@ -5193,6 +5397,23 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `75` | Le tarif d'une prolongation déjà payée ne se réécrit pas |
 | `76` | Somme due par un prestataire : notifiée sans promettre de retenue |
 | `77` | La date d'inscription ne se réécrit pas depuis le navigateur |
+| `78` | Décalage refusé, puis interruption ou prolongation : l'heure n'est rendue qu'une fois |
+| `79` | Accueil client sur petit iPhone : prestataires disponibles, prestations réalisées de la plateforme |
+| `82` | Espace prestataire : pas de bandeau « IBAN manquant » quand l'IBAN est enregistré, pas d'offre de lancement épuisée |
+| `80` | Litige remboursé après un premier remboursement partiel : frais retenus, rien versé au prestataire |
+| `81` | Interruption d'une prestation commencée en retard : le retard n'est pas facturé comme du travail fait |
+| `83` | Suppression d'un compte refusée tant qu'une somme due à ALANE est active ou contestée |
+| `84` | Compte supprimé : la somme due réglée et le rechargement restent au registre, sans lien vers le compte |
+| `85` | Le SIRET ne se réécrit pas depuis le navigateur (client comme prestataire) |
+| `86` | Réservation payée que personne n'a reprise (`open`, `needs_replacement`) : le client annule, prix et frais de service lui sont rendus |
+| `87` | Compte suspendu : plus de carte, de paiement ni d'abonnement par un appel direct ; le support, la suppression et les pièces restent ouverts |
+| `88` | Réservation à 0 €/h payée : non affectée, client remboursé |
+| `89` | Décalage refusé, puis démarrage plus tardif encore : l'écart est déduit et rendu, la question n'est pas rouverte |
+| `90` | Prestation validée automatiquement : elle compte au quota mensuel du prestataire |
+| `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
+| `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
+| `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
+| `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

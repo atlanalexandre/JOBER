@@ -4,7 +4,7 @@
 // vérifie chez Stripe, pas seulement en base.
 import { test, expect } from "@playwright/test";
 import { sql } from "./outils.js";
-import { prestataireOperationnel, client, api, reservationPayee, paiementStripe, tachePlanifiee } from "./fabrique.js";
+import { prestataireOperationnel, client, api, reservationPayee, paiementStripe, tachePlanifieeJusqua } from "./fabrique.js";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -57,7 +57,8 @@ test("délai dépassé : le prestataire ne peut plus accepter, la tâche planifi
   expect(tard.statut, tard.texte.slice(0, 200)).toBe(410);
   expect((await etat(m.id)).status, "l'acceptation tardive ne vaut pas").toBe("pending_acceptance");
 
-  const t = await tachePlanifiee();
+  // Plusieurs passages au besoin : la tâche n'en traite que 20 à la fois.
+  const t = await tachePlanifieeJusqua(async () => (await etat(m.id)).status !== "pending_acceptance");
   expect(t.statut, t.texte.slice(0, 200)).toBe(200);
   const e = await etat(m.id);
   console.log("[08] après la tâche planifiée :", JSON.stringify(e));

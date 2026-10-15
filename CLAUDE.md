@@ -291,6 +291,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | `current_user` dans une fonction `SECURITY DEFINER` | Vaut **toujours** le propriétaire (`postgres`). Une garde qui exempte « `current_user = 'service_role'` » laisse tout passer — c'était le cas de `missions_creation_guard`, puis de `profiles_privileges_guard` jusqu'au 01/10/2026. Lire le rôle du jeton : `auth.role()` |
 | Règles RLS | Elles vivent dans la base : aucun contrôle du dépôt ne les voit. `npm run rls` imprime les sept requêtes de relecture — à passer avant toute mise en production |
 | Fenêtre plein écran sur téléphone | Toute fenêtre `position:"fixed"` + `inset:0` se centre en `"safe center"` et porte `overflowY:"auto"` : centrée sans `safe`, une fenêtre plus haute que l'écran perd son haut et son bas, sans défilement — il fallait dézoomer (13/10/2026). Et un champ de saisie sous 16 px fait zoomer l'iPhone : `src/index.css` les force à 16 px sur iOS, ne pas l'enlever. `src/tests/affichage-mobile.test.js` le vérifie |
+| SMS ou e-mail au nom d'ALANE | Jamais un texte, un nom ou un libellé fourni par le navigateur : `chat_notify` envoyait par SMS, à notre nom et sans limite, le texte de son choix (14/10/2026). Le serveur construit le message depuis ce qu'il a enregistré et lu lui-même, et plafonne les envois — voir `api/_messagerie.js` |
 | Adresse d'un abonnement aux notifications | Le serveur envoie chaque notification à l'adresse que le navigateur a déclarée. Seuls les services des navigateurs (Apple, Google, Mozilla, Microsoft) sont acceptés, à l'abonnement et à l'envoi : `serviceDeNotificationReconnu()` de `api/_push.js`. Toute adresse en https passait, ce qui permettait de faire envoyer par ALANE des requêtes vers n'importe quel site (13/10/2026). Ne jamais contacter une adresse d'abonnement sans ce contrôle |
 
 ---
@@ -349,7 +350,12 @@ dashboard.
 
 ## 5. Ce qui reste ouvert
 
-Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En résumé :
+**L'étude complète d'octobre 2026 est dans [AUDIT-2026-10.md](AUDIT-2026-10.md)** : ce qui a
+été vérifié dans chaque domaine (argent, comptes, prestations, sécurité, écrans), ce qui a été
+corrigé, le SQL de production en attente et les décisions qui reviennent à Alexandre. La lire
+avant de reprendre un de ces sujets.
+
+Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'audit précédent. En résumé :
 
 - **S-06 est clos** (29/07/2026). Les trois insertions de notifications que le front faisait
   pour autrui passent par `/api`, et la policy est fermée — vérifié le 21/08/2026 : `src/`

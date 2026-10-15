@@ -75,6 +75,41 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
   }
 }
 
+/**
+ * Ce que le webhook écrit dans `profiles` quand un abonnement change d'état.
+ *
+ * La référence de l'abonnement (`stripe_subscription_id`) n'est effacée que
+ * quand il est MORT (supprimé, ou statut `canceled` / `incomplete_expired`).
+ * Elle l'était aussi sur un simple impayé (`past_due`, `unpaid`, `incomplete`),
+ * que Stripe continue de relancer — et rien ne la rétablissait quand le paiement
+ * finissait par aboutir (étude d'octobre 2026). Le profil restait abonné, sans
+ * référence : supprimer son compte ne résiliait plus l'abonnement, qui
+ * continuait d'être prélevé ; changer de formule en ouvrait un second ;
+ * « Résilier » répondait « aucun abonnement ». Un abonnement redevenu actif
+ * réinscrit désormais sa référence.
+ *
+ * @param {string} type   type de l'événement Stripe
+ * @param {object} sub    l'abonnement
+ * @param {string|null} plan  plan à appliquer s'il est actif
+ */
+export function ecritureAbonnement(type, sub, plan) {
+  const actif = type === "customer.subscription.updated" && ["active", "trialing"].includes(sub?.status);
+  if (actif) {
+    const fin = sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString().split("T")[0] : null;
+    return {
+      plan_abonnement: plan || "premium",
+      subscription_end_date: fin,
+      ...(sub?.id ? { stripe_subscription_id: sub.id } : {}),
+    };
+  }
+  const mort = type === "customer.subscription.deleted" || ["canceled", "incomplete_expired"].includes(sub?.status);
+  return {
+    plan_abonnement: "free",
+    subscription_end_date: null,
+    ...(mort ? { stripe_subscription_id: null } : {}),
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -762,10 +797,7 @@ export default async function handler(req, res) {
         const ru = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: "PATCH",
           headers: { ...hdrs, "Prefer": "return=representation" },
-          body: JSON.stringify({
-            plan_abonnement: effectivePlan,
-            subscription_end_date: endDate ? endDate.split("T")[0] : null,
-          }),
+          body: JSON.stringify(ecritureAbonnement(event.type, sub, effectivePlan)),
         }).catch(e => { console.error("[sub.updated] profile patch failed:", e.message); return null; });
         const lu = ru ? await ru.json().catch(() => []) : null;
         if (!ru || !ru.ok || !Array.isArray(lu) || lu.length === 0) {
@@ -795,7 +827,7 @@ export default async function handler(req, res) {
         const rd = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: "PATCH",
           headers: { ...hdrs, "Prefer": "return=representation" },
-          body: JSON.stringify({ plan_abonnement: "free", subscription_end_date: null, stripe_subscription_id: null }),
+          body: JSON.stringify(ecritureAbonnement(event.type, sub, null)),
         }).catch(e => { console.error("[sub.deleted] profile downgrade failed:", e.message); return null; });
         const ld = rd ? await rd.json().catch(() => []) : null;
         if (!rd || !rd.ok || !Array.isArray(ld) || ld.length === 0) {

@@ -1,7 +1,7 @@
 import { utilisateurParEmail } from "./_auth.js";
 import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
-import { esc, hashPii, emailHtml, sendEmail, euros } from "./_email.js";
+import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
@@ -9,7 +9,8 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { destinatairesInformation, envoyerInformation, htmlInformation } from "./_diffusion.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond } from "./_liste_noire.js";
+import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
@@ -26,7 +27,7 @@ import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { restituerCashback } from "./_cashback.js";
 import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
@@ -234,16 +235,7 @@ export default async function handler(req, res) {
       const authData = await authRes.json();
 
       // Construire les sets de hash pour lookup O(1)
-      const blData = blacklistRes || [];
-      const blSets = { email: new Set(), tel: new Set(), iban: new Set(), siret: new Set() };
-      if (Array.isArray(blData)) {
-        for (const entry of blData) {
-          if (entry.email_hash)     blSets.email.add(entry.email_hash);
-          if (entry.telephone_hash) blSets.tel.add(entry.telephone_hash);
-          if (entry.iban_hash)      blSets.iban.add(entry.iban_hash);
-          if (entry.siret_hash)     blSets.siret.add(entry.siret_hash);
-        }
-      }
+      const blSets = ensemblesListeNoire(Array.isArray(blacklistRes) ? blacklistRes : []);
 
       const authUsers = authData.users || [];
       const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
@@ -288,11 +280,8 @@ export default async function handler(req, res) {
         // `siret` pour un prestataire, `kbis` pour un client professionnel.
         const siretMeta = meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
-        const blacklisted =
-          (email && blSets.email.has(hashPii(email))) ||
-          (tel   && blSets.tel.has(hashPii(tel)))     ||
-          (iban  && blSets.iban.has(hashPii(iban)))   ||
-          (siret && blSets.siret.has(hashPii(siret)));
+        // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
+        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets);
         // L'IBAN ne quitte plus le serveur dans la liste.
         //
         // `list` renvoyait l'IBAN complet, en clair, de TOUS les comptes, à chaque
@@ -400,17 +389,12 @@ export default async function handler(req, res) {
 
         // Vérification dans les deux sens :
         // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
-        const orFilters = [];
-        if (userEmail) orFilters.push(`email_hash.eq.${hashPii(userEmail)}`);
-        if (tel2)      orFilters.push(`telephone_hash.eq.${hashPii(tel2)}`);
-        if (iban2)     orFilters.push(`iban_hash.eq.${hashPii(iban2)}`);
-        if (siret2)    orFilters.push(`siret_hash.eq.${hashPii(siret2)}`);
+        // Empreintes normalisées (api/_liste_noire.js, décision D4).
+        const filtreBl = filtreListeNoire(empreintes({ email: userEmail, telephone: tel2, iban: iban2, siret: siret2 }));
 
-        const allFilters = [...new Set(orFilters)];
-
-        if (allFilters.length > 0) {
+        if (filtreBl) {
           try {
-            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
+            const blParams = new URLSearchParams({ or: filtreBl, select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
             const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
             const blData = await blRes.json();
             if (Array.isArray(blData) && blData.length > 0) {
@@ -803,7 +787,7 @@ export default async function handler(req, res) {
       const enCoursRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})`
         + `&status=in.(${STATUTS_EN_COURS.filter(st => st !== "disputed").join(",")})`
-        + `&select=id,client_id,prestataire_id,status,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector`,
+        + `&select=id,client_id,prestataire_id,status,started_at,stripe_payment_intent,payout_status,stripe_transfer_id,metier,sector`,
         { headers }
       );
       const enCours = await enCoursRes.json().catch(() => null);
@@ -819,6 +803,20 @@ export default async function handler(req, res) {
       const litiges = await litigesRes.json().catch(() => null);
       if (!litigesRes.ok || !Array.isArray(litiges)) return res.status(502).json({ error: "Litiges du compte illisibles : rien n'a été supprimé." });
       if (litiges.length) return res.status(409).json({ error: "Ce compte a une prestation en litige : tranchez-la avant de supprimer le compte." });
+      // Une prestation COMMENCÉE se termine d'abord, elle aussi (décision D3
+      // d'Alexandre, 14/10/2026). La suppression la remboursait en entier et
+      // l'annulait : le prestataire n'était pas payé du travail déjà fait. La
+      // suspension, elle, laisse déjà les prestations démarrées aller à leur terme.
+      const commencee = enCours.find(m => m.status === "assigned" && m.started_at);
+      if (commencee) {
+        return res.status(409).json({ error: `Ce compte a une prestation commencée (${commencee.id.slice(0, 8)}) : attendez qu'elle se termine, `
+          + "ou interrompez-la, avant de supprimer le compte. Rien n'a été supprimé." });
+      }
+      // Une somme due à ALANE, active ou contestée, partait avec le compte
+      // (étude du 13/10/2026) : on tranche d'abord, comme pour un litige.
+      const dues = await creancesOuvertes(profileId, SUPABASE_URL, headers, ctx);
+      if (!dues.lisible) return res.status(502).json({ error: "Sommes dues du compte illisibles : rien n'a été supprimé." });
+      if (dues.nombre > 0) return res.status(409).json({ error: `Ce compte doit encore ${euros(dues.total)} à ALANE (somme due active ou contestée) : réglez-la, éteignez-la ou abandonnez-la avant de supprimer le compte. Rien n'a été supprimé.` });
 
       const paiementCarte = (m) => /^pi_/.test(String(m.stripe_payment_intent || ""));
       // Un paiement qui n'est ni une carte ni rien — l'ancien portefeuille
@@ -913,15 +911,12 @@ export default async function handler(req, res) {
         const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            email_hash:               hashPii(userEmail),
-            telephone_hash:           hashPii(telephone),
-            iban_hash:                hashPii(iban),
-            siret_hash:               hashPii(siret),
+          // Champs normalisés (api/_liste_noire.js, décision D4).
+          body: JSON.stringify(ligneListeNoire({ email: userEmail, telephone, iban, siret }, {
             reason:                   reason ? `account_deleted: ${reason}` : "account_deleted",
             missions_completed_month: savedProfile.missions_completed_month || 0,
             plan_abonnement:          savedProfile.plan_abonnement || "free",
-          }),
+          })),
         }).catch(e => ({ ok: false, status: e?.message }));
         if (!bl.ok) console.error(`[${ctx}] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${profileId}`);
       }
@@ -1689,7 +1684,7 @@ export default async function handler(req, res) {
       }
       // Au-delà, l'envoi dépasserait la durée d'une fonction et s'arrêterait
       // au milieu, sans qu'on sache qui l'a reçu.
-      if (adresses.length > 4000) return res.status(413).json({ error: "Plus de 4 000 destinataires : envoi groupé à découper, demander une évolution." });
+      if (adresses.length > MAX_DESTINATAIRES) return res.status(413).json({ error: `Plus de ${MAX_DESTINATAIRES.toLocaleString("fr-FR")} destinataires : envoi groupé à découper, demander une évolution.` });
       const r = await envoyerInformation(adresses, contenu);
       await journaliser("send_info_mail", { details: { destinataires: adresses.length, envoyes: r.envoyes, echecs: r.echecs, ecartees, sujet: contenu.sujet, extrait: String(message).slice(0, 200) } });
       if (r.envoyes === 0) return res.status(502).json({ error: r.erreur || "Aucun e-mail accepté" });
@@ -2979,8 +2974,12 @@ export default async function handler(req, res) {
           : "La prestation n'a pas pu être annulée. Réessayez." });
       }
       const notifs = [];
-      if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:reason||(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Un remboursement sera effectué sous 5-10 jours ouvrés.":"Votre prestation a été annulée par ALANE."), read:false });
-      if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:reason||"Une prestation vous a été retirée par ALANE.", read:false });
+      // Le motif s'AJOUTE au message (décision D6, 14/10/2026) : il le
+      // remplaçait, et le client perdait « remboursement sous 5 à 10 jours ».
+      const motif = String(reason || "").trim().slice(0, 300);
+      const suffixe = motif ? ` Motif : ${motif}` : "";
+      if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Vous êtes intégralement remboursé, sous 5 à 10 jours ouvrés selon votre banque.":"Votre prestation a été annulée par ALANE.") + suffixe, read:false });
+      if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:"Une prestation vous a été retirée par ALANE." + suffixe, read:false });
       // Insertion groupée conservée — deux lignes, un seul aller-retour — mais
       // les téléphones sont prévenus : une prestation annulée par ALANE est
       // exactement ce qu'on ne découvre pas en ouvrant l'application par hasard.
@@ -3121,9 +3120,12 @@ export default async function handler(req, res) {
         console.error(`[bo-action/adjust_cashback] ajustement refusé (${ajust?.status}) :`, txt.slice(0, 200));
         return res.status(502).json({ error: "Le cashback n'a pas pu être ajusté. Rien n'a été modifié." });
       }
+      // Le solde après ajustement, que l'écran affiche (increment_cashback le rend).
+      const lignesSolde = await ajust.json().catch(() => null);
+      const solde = Array.isArray(lignesSolde) && lignesSolde[0] ? Number(lignesSolde[0].cashback_balance) : null;
       await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${euros(Math.abs(Number(delta)))}` : `Cashback ajusté ${euros(Number(delta))}`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(e => console.error("[bo-action/adjust_cashback] échec ignoré :", e?.message));
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, solde: Number.isFinite(solde) ? solde : null });
     }
 
     if (action === "broadcast_notification") {

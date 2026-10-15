@@ -1,9 +1,10 @@
-import { esc, emailHtml, sendEmail, hashPii, euros } from "./_email.js";
+import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { verifyUser } from "./_auth.js";
+import { empreintes, filtreListeNoire, ligneListeNoire } from "./_liste_noire.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
@@ -76,15 +77,12 @@ export default async function handler(req, res) {
           } catch (e) {
             console.error("[signup] lecture de profiles.rib impossible :", e.message);
           }
-          const iban3  = rib3 ? String(rib3).replace(/\s/g, "").toUpperCase() : null;
-          const siret3 = meta3.kbis || null;
-          const orFilters3 = [];
-          if (newUser.email) orFilters3.push(`email_hash.eq.${hashPii(newUser.email)}`);
-          if (tel3)    orFilters3.push(`telephone_hash.eq.${hashPii(tel3)}`);
-          if (iban3)   orFilters3.push(`iban_hash.eq.${hashPii(iban3)}`);
-          if (siret3)  orFilters3.push(`siret_hash.eq.${hashPii(siret3)}`);
-          if (orFilters3.length > 0) {
-            const blParams3 = new URLSearchParams({ or: `(${orFilters3.join(",")})`, select: "id", limit: "1" });
+          // Empreintes normalisées (api/_liste_noire.js, décision D4) : le
+          // téléphone sous toutes ses écritures, et le SIRET d'un prestataire —
+          // seul `kbis`, celui d'un client professionnel, était lu.
+          const filtre3 = filtreListeNoire(empreintes({ email: newUser.email, telephone: tel3, iban: rib3, siret: meta3.siret || meta3.kbis }));
+          if (filtre3) {
+            const blParams3 = new URLSearchParams({ or: filtre3, select: "id", limit: "1" });
             const blRes3 = await fetch(`${SUPABASE_URL2}/rest/v1/account_blacklist?${blParams3}`, { headers: svcHeaders });
             const blData3 = await blRes3.json();
             if (Array.isArray(blData3) && blData3.length > 0) {
@@ -425,6 +423,19 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
         return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
       }
 
+      // Une somme due à ALANE, active ou contestée, partait avec le compte
+      // (étude du 13/10/2026). Elle se règle ou se tranche d'abord.
+      const dues = await creancesOuvertes(userId, SUPABASE_URL, hdrs, "delete_account");
+      if (!dues.lisible) {
+        return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+      if (dues.nombre > 0) {
+        return res.status(409).json({
+          error: `Impossible de supprimer votre compte : une somme de ${euros(dues.total)} reste due à ALANE. `
+            + "Écrivez à support@alane.fr pour la régler ou la contester ; votre compte pourra être supprimé ensuite.",
+        });
+      }
+
       // L'abonnement d'abord : il n'était pas résilié, et Stripe continuait de
       // prélever chaque mois un compte qui n'existait plus. S'il ne peut pas
       // l'être, on s'arrête là — rien n'a encore été effacé.
@@ -450,20 +461,16 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
         const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib&limit=1`, { headers: hdrs });
         const pdSup = prSup.ok ? await prSup.json().catch(() => []) : [];
         const ribSup = (Array.isArray(pdSup) && pdSup[0]?.rib) || caller.user_metadata?.rib || null;
-        const ibanSup = ribSup ? String(ribSup).replace(/\s/g, "").toUpperCase() : null;
         const telSup   = caller.user_metadata?.telephone || null;
         const siretSup = caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
 
-        if (caller.email || telSup || ibanSup || siretSup) {
+        if (caller.email || telSup || ribSup || siretSup) {
           const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
             method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-            body: JSON.stringify({
-              email_hash:     hashPii(caller.email),
-              telephone_hash: hashPii(telSup),
-              iban_hash:      hashPii(ibanSup),
-              siret_hash:     hashPii(siretSup),
-              reason:         "account_deleted: suppression par l'utilisateur",
-            }),
+            // Champs normalisés (api/_liste_noire.js, décision D4).
+            body: JSON.stringify(ligneListeNoire(
+              { email: caller.email, telephone: telSup, iban: ribSup, siret: siretSup },
+              { reason: "account_deleted: suppression par l'utilisateur" })),
           });
           if (!blRes.ok) {
             console.error(`[delete_account] empreinte non enregistrée (${blRes.status}) — `

@@ -1,0 +1,56 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- secu_profils_siret_non_modifiable
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI (étude d'octobre 2026, prouvé en recette par e2e/85)
+--
+-- Le navigateur pouvait modifier `profiles.siret` par un simple appel à l'API de
+-- la base avec son propre jeton (réponse 204). Or ce numéro :
+--   - décide de l'ÉCHÉANCE DE L'ATTESTATION URSSAF (api/_documents.js,
+--     `etatRegularisation`) : date d'immatriculation lue dans SIRENE + 60 jours.
+--     En le remplaçant par celui d'une entreprise créée la veille, un
+--     prestataire repoussait l'échéance — autant de fois que voulu — et l'accès
+--     aux prestations ne se fermait jamais faute d'attestation : c'est
+--     l'obligation de vigilance de la plateforme qui tombait ;
+--   - figure sur les factures émises au nom du prestataire, et sert au contrôle
+--     anti-recréation (empreinte du SIRET).
+--
+-- Même famille que `created_at` (2026-10-13).
+--
+-- Écrivains relevés (CLAUDE.md 1.6) : `handle_new_user` à la création du compte
+-- (déclencheur, propriétaire postgres — non concerné), le back-office et
+-- `reparer-profil` (service role — non concernés). Le seul écran qui l'écrivait,
+-- l'inscription client, ne le fait plus (PR précédente, à déployer AVANT).
+-- Production, lecture seule le 14/10/2026 : aucun profil dont le SIRET diffère
+-- de celui déclaré à l'inscription — la faille n'a pas servi.
+--
+-- ORDRE : le code d'abord (inscription client sans SIRET), puis cette migration.
+-- Passée avant, l'inscription d'un client avec session ouverte verrait l'écriture
+-- de son profil refusée (rattrapée par /api/reparer-profil).
+-- APPLIQUÉE : recette et production le 14/10/2026 (production passée par Alexandre,
+-- après le déploiement de l'inscription client sans SIRET), vérifiée des deux côtés :
+-- siret n'est plus modifiable par authenticated ni par anon.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+REVOKE UPDATE (siret) ON public.profiles FROM authenticated, anon;
+
+-- ── Vérifications ──────────────────────────────────────────────────────────
+--
+-- 1. Plus aucun droit d'écriture du navigateur sur la colonne — ATTENDU : false, false.
+--
+-- SELECT has_column_privilege('authenticated', 'public.profiles', 'siret', 'UPDATE'),
+--        has_column_privilege('anon', 'public.profiles', 'siret', 'UPDATE');
+--
+-- 2. Les autres colonnes restent modifiables — ATTENDU : 15 colonnes
+--    (accepte_communications, accepte_communications_at, adresse, avatar_url,
+--     code_postal, cv, nif, nif_collecte_at, nom, prenom, residence_fiscale,
+--     rib, societe_nom, tel, ville).
+--
+-- SELECT string_agg(a.attname, ', ' ORDER BY a.attname)
+-- FROM pg_attribute a
+-- WHERE a.attrelid = 'public.profiles'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+--   AND has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE');
+--
+-- ── Retour arrière ─────────────────────────────────────────────────────────
+--
+-- GRANT UPDATE (siret) ON public.profiles TO authenticated;

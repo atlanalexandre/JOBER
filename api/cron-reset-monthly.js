@@ -5,10 +5,10 @@ import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { tirerAuHasard } from "./_lots.js";
 
-import { montantsDeCloture } from "./_cloture.js";
+import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
-import { STATUTS_EN_COURS, VERSEMENTS_DUS, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
+import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
@@ -16,13 +16,14 @@ import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { datesImmatriculation } from "./_sirene.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
-import { affecteeParLaPlateforme, affecterCandidatSuivant } from "./missions.js";
+import { affecteeParLaPlateforme, affecterCandidatSuivant, compterAuQuota } from "./missions.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
+import { comptesRecrees, ligneListeNoire } from "./_liste_noire.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
-import { cleVersement, virementDejaEmis } from "./_virement.js";
+import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
 
 /**
@@ -884,6 +885,8 @@ export default async function handler(req, res) {
                 if (!inscrit) console.error(`[versements] ${td.id} VERSÉ au prestataire ${m.prestataire_id} mais NON inscrit sur ${m.id} : `
                   + "passer payout_status à transferred et stripe_transfer_id à la main.");
 
+                await notifier({ user_id: m.prestataire_id, type: "system", ref_id: m.id, ...avisDeVersement(m, cents / 100, "emis") },
+                  SUPABASE_URL, headers).catch(e => console.error(`[versements] ${td.id} : prestataire non prévenu :`, e?.message));
                 emis++;
                 bilan.versements++;
                 console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
@@ -907,6 +910,8 @@ export default async function handler(req, res) {
                   { payout_status: "failed" }, headers, `versements/refus ${m.id}`);
                 console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status,
                   "— versement « échoué » : à relancer depuis le back-office (Versements) une fois la cause réglée.");
+                await notifier({ user_id: m.prestataire_id, type: "system", ref_id: m.id, ...avisDeVersement(m, cents / 100, "refuse") },
+                  SUPABASE_URL, headers).catch(e => console.error(`[versements] refus ${m.id} : prestataire non prévenu :`, e?.message));
               }
             } catch (e) {
               // On ne laisse jamais une prestation coincée en `processing` :
@@ -1095,6 +1100,19 @@ export default async function handler(req, res) {
               continue;
             }
 
+            // Une somme due à ALANE partait avec le compte (étude du 13/10/2026).
+            // Reportée chaque jour tant qu'elle est ouverte : en erreur dans le
+            // journal, pour qu'elle soit tranchée au back-office.
+            const dues = await creancesOuvertes(p.id, SUPABASE_URL, headers, "resiliation");
+            if (!dues.lisible) {
+              console.error(`[resiliation] ${p.id} reportée : sommes dues illisibles`);
+              continue;
+            }
+            if (dues.nombre > 0) {
+              console.error(`[resiliation] ${p.id} reportée : ${dues.total} € dus à ALANE (active ou contestée) — à régler ou trancher au back-office`);
+              continue;
+            }
+
             // Mêmes étapes que les deux autres suppressions (api/_suppression.js).
             // Seul le compte d'authentification était supprimé : l'abonnement
             // Stripe continuait de prélever, et les pièces d'identité restaient
@@ -1109,6 +1127,37 @@ export default async function handler(req, res) {
             if (!await effacerPieces(p.id, SUPABASE_URL, headers, "resiliation")) {
               console.error(`[resiliation] ${p.id} reportée : pièces non effacées du stockage — sera repris demain`);
               continue;
+            }
+            // La résiliation à l'échéance est le chemin des exclusions décidées
+            // par ALANE : le compte n'était inscrit nulle part sur la liste
+            // anti-recréation, et revenait avec un quota gratuit neuf (décision
+            // D4, 14/10/2026). Empreintes prises juste avant la suppression du
+            // compte, qui emporte le profil ; un échec est journalisé, il ne
+            // retient pas la résiliation.
+            try {
+              const [rU, rP] = await Promise.all([
+                fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers }),
+                fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${p.id}&select=rib,siret,tel,missions_completed_month,plan_abonnement`, { headers }),
+              ]);
+              const u = rU.ok ? await rU.json().catch(() => ({})) : {};
+              const lignesP = rP.ok ? await rP.json().catch(() => []) : [];
+              const pr = (Array.isArray(lignesP) && lignesP[0]) || {};
+              const meta = u.user_metadata || {};
+              if (!rU.ok || !rP.ok) console.error(`[resiliation] identifiants de ${p.id} incomplets (${rU.status}/${rP.status}) — empreinte partielle`);
+              const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
+                method: "POST",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify(ligneListeNoire(
+                  { email: u.email, telephone: meta.telephone || pr.tel, iban: pr.rib, siret: pr.siret || meta.siret || meta.kbis },
+                  {
+                    reason: `resiliation_echeance${p.resiliation_motif ? `: ${String(p.resiliation_motif).slice(0, 200)}` : ""}`,
+                    missions_completed_month: pr.missions_completed_month || 0,
+                    plan_abonnement: pr.plan_abonnement || "free",
+                  })),
+              });
+              if (!bl.ok) console.error(`[resiliation] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${p.id}`);
+            } catch (e) {
+              console.error(`[resiliation] empreinte anti-recréation non calculée pour ${p.id} :`, e.message);
             }
             if (!await supprimerCompteAuth(p.id, SUPABASE_URL, headers, "resiliation")) {
               console.error(`[resiliation] compte ${p.id} NON supprimé — sera repris demain`);
@@ -1923,6 +1972,31 @@ export default async function handler(req, res) {
       const nameMap   = {};
       profiles.forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
 
+      // ── 0. Comptes recréés : privés du quota gratuit ──────────────
+      //
+      // Décision D4, 14/10/2026 (api/_liste_noire.js). L'IBAN n'était comparé à
+      // la liste anti-recréation qu'à l'inscription et à la validation — avant
+      // que le prestataire le saisisse —, et la remise à zéro du 1er du mois
+      // rendait le quota gratuit à tous. Chaque passage compare donc tous les
+      // comptes, IBAN compris, et repose la pénalité où elle manque.
+      try {
+        const recrees = await comptesRecrees(SUPABASE_URL, headers, { utilisateurs: userMap });
+        const ids = [...recrees];
+        for (let i = 0; i < ids.length; i += 100) {
+          const lot = ids.slice(i, i + 100);
+          const rPen = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${lot.join(",")})&or=(trial_exhausted.is.false,trial_exhausted.is.null)&select=id`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=representation" },
+            body: JSON.stringify({ trial_exhausted: true }),
+          });
+          const penalises = rPen.ok ? await rPen.json().catch(() => null) : null;
+          if (!Array.isArray(penalises)) console.error(`[liste noire] pénalité non posée (${rPen.status}) sur ${lot.length} compte(s)`);
+          else if (penalises.length) console.warn(`[liste noire] ${penalises.length} compte(s) recréé(s) privé(s) du quota gratuit : ${penalises.map(x => x.id).join(", ")}`);
+        }
+      } catch (e) {
+        console.error("[liste noire] comparaison des comptes impossible :", e.message);
+      }
+
       // ── 1. Rappels de mission pour demain ────────────────────────
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -2353,6 +2427,9 @@ ${(() => {
                 })(),
               ]);
               autoValidated++;
+              // Le quota du mois, comme à la validation par le client : sans lui,
+              // une prestation validée automatiquement ne comptait nulle part.
+              if (m.prestataire_id) await compterAuQuota(m.prestataire_id, nombreDeJours(m), SUPABASE_URL, headers, "cron/validation automatique");
               // Série hebdomadaire : même suite que la validation par le client
               // (`complete`). Sans elle, une semaine validée automatiquement
               // arrêtait la série sans que personne le sache.
@@ -2503,11 +2580,33 @@ ${(() => {
     // (missions_completed_month) et les commandes du client (commandes_mois) —
     // ET débloque trial_exhausted pour TOUS les profils.
     // Le quota free (2 missions/mois) est mensuel — trial_exhausted doit se réinitialiser chaque 1er du mois.
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,commandes_mois.gt.0,trial_exhausted.is.true)`, {
+    //
+    // Sauf les comptes recréés (liste anti-recréation) : la remise à zéro leur
+    // rendait le quota gratuit, chaque mois (décision D4, 14/10/2026). Leurs
+    // compteurs repartent de zéro, leur pénalité reste. Liste illisible : la
+    // remise à zéro vaut pour tous, et la tâche des deux heures repose la
+    // pénalité au passage suivant.
+    let recrees = new Set();
+    try {
+      recrees = await comptesRecrees(SUPABASE_URL, headers);
+    } catch (e) {
+      console.error("[reset] comptes recréés non déterminés — pénalité reposée au prochain passage :", e.message);
+    }
+    const ecartes = [...recrees];
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,commandes_mois.gt.0,trial_exhausted.is.true)`
+      + (ecartes.length ? `&id=not.in.(${ecartes.join(",")})` : ""), {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: false }),
     });
+    for (let i = 0; i < ecartes.length; i += 100) {
+      const rPen = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ecartes.slice(i, i + 100).join(",")})`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: true }),
+      });
+      if (!rPen.ok) console.error(`[reset] compteurs des comptes recréés non remis à zéro (${rPen.status})`);
+    }
 
     if (!r.ok) {
       const err = await r.text();

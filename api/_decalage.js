@@ -22,7 +22,7 @@
 // Les frais de service ne bougent pas : ils rémunèrent la mise en relation.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { partHoraire } from "./_cloture.js";
+import { partHoraire, nombreDeJours } from "./_cloture.js";
 import { plafonnerRemboursement } from "./_cashback.js";
 
 /**
@@ -50,7 +50,7 @@ export function valeurHeuresRetirees(m, avant, apres) {
  *
  * @returns {Promise<{ok:boolean, centimes:number, refundId?:string}>}
  */
-export async function rembourserHeuresRetirees({ mission, euros, supabaseUrl, headers, contexte }) {
+export async function rembourserHeuresRetirees({ mission, euros, supabaseUrl, headers, contexte, suffixeCle = "" }) {
   const voulu = Math.round((Number(euros) || 0) * 100);
   if (!(voulu > 0)) return { ok: true, centimes: 0 };
   const intent = String(mission?.stripe_payment_intent || "");
@@ -73,7 +73,9 @@ export async function rembourserHeuresRetirees({ mission, euros, supabaseUrl, he
         "Authorization": `Bearer ${cle}`,
         "Content-Type": "application/x-www-form-urlencoded",
         // Une prestation ne connaît qu'une réduction pour décalage.
-        "Idempotency-Key": `refund-decalage-${mission.id}`,
+        // Un second remboursement (retard aggravé après un refus) porte sa propre
+        // clé : la même clé avec un autre montant, Stripe la refuse.
+        "Idempotency-Key": `refund-decalage-${mission.id}${suffixeCle ? `-${suffixeCle}` : ""}`,
       },
       body: new URLSearchParams({
         payment_intent: intent, amount: String(centimes), reason: "requested_by_customer",
@@ -93,4 +95,71 @@ export async function rembourserHeuresRetirees({ mission, euros, supabaseUrl, he
       + `(${(centimes / 100).toFixed(2)} €) :`, e.message, "— à rembourser à la main.");
     return { ok: false, centimes };
   }
+}
+
+/**
+ * Heures de retard à NE PAS compter comme faites le jour d'une interruption.
+ *
+ * L'interruption (`cancel_in_progress`) compte les heures faites depuis l'heure
+ * de début PRÉVUE. Quand le prestataire a commencé en retard, ce retard passait
+ * pour du travail fait (étude d'octobre 2026, `e2e/81`) :
+ *   - décalage ACCEPTÉ : la fin est repoussée, les heures courent du démarrage
+ *     réel — le client payait le retard comme une heure faite ;
+ *   - décalage REFUSÉ sur une prestation d'un jour : la durée retenue
+ *     (`actual_hours`) l'exclut déjà, et il a été rendu au refus — il était
+ *     facturé une seconde fois.
+ * Deux cas où il ne faut rien retrancher :
+ *   - refusé sur PLUSIEURS jours : le retard est déjà dans `heures_perdues`,
+ *     et `hours` (durée d'une journée) le contient ; le retrancher ici le
+ *     compterait deux fois ;
+ *   - jamais arbitré : la clôture plafonne et rend le retard elle-même
+ *     (`montantsDeCloture`, puis `rembourserHeuresRetirees`).
+ * Et seulement le jour du démarrage : le retard ne concerne qu'une journée.
+ *
+ * @param {object} m           la prestation (arrival_delay_minutes, delay_status, started_at)
+ * @param {string} aujourdHui  date du jour, heure de Paris (AAAA-MM-JJ)
+ * @param {boolean} plusieursJours
+ * @param {(ms:number)=>string} jourParis  date de Paris d'un instant
+ * @returns {number} heures à retrancher du temps écoulé
+ */
+export function retardADeduireDuJour(m, aujourdHui, plusieursJours, jourParis) {
+  const retardH = (Number(m?.arrival_delay_minutes) || 0) / 60;
+  if (!(retardH > 0) || !m?.started_at) return 0;
+  const demarrage = Date.parse(m.started_at);
+  if (!Number.isFinite(demarrage) || jourParis(demarrage) !== aujourdHui) return 0;
+  if (m.delay_status === "approved") return retardH;
+  if (m.delay_status === "rejected" && !plusieursJours) return retardH;
+  return 0;
+}
+
+/**
+ * Décalage déjà REFUSÉ, puis démarrage plus tardif encore que l'arrivée.
+ *
+ * Le démarrage rouvrait la question au client (`delay_status` repassait en
+ * attente) avec le retard total. Accepté, il effaçait la réduction déjà rendue :
+ * le prestataire était payé pour des minutes remboursées au client. Refusé de
+ * nouveau, il retirait le retard total une seconde fois, avec la même clé
+ * Stripe et un autre montant — remboursement refusé (étude du 14/10/2026).
+ *
+ * Le client a déjà dit non : la fin reste celle prévue. Seul l'écart entre le
+ * nouveau retard et celui déjà arbitré est déduit, et rendu.
+ *
+ * @returns {null | {maj:object, aRendre:number, ecartMin:number}}
+ */
+export function retardAggraveApresRefus(m, retardDemarrageMin) {
+  if (m?.delay_status !== "rejected") return null;
+  const deja = Number(m.arrival_delay_minutes) || 0;
+  const ecartMin = Math.round(Number(retardDemarrageMin) || 0) - deja;
+  if (!(ecartMin > 0)) return null;
+  const reserve = Number(m.hours) || 0;
+  const ecartH = ecartMin / 60;
+  const maj = { arrival_delay_minutes: deja + ecartMin };
+  if (nombreDeJours(m) > 1) {
+    maj.heures_perdues = Math.round((Number(m.heures_perdues || 0) + ecartH) * 10000) / 10000;
+  } else {
+    const avant = m.actual_hours != null ? Number(m.actual_hours) : reserve;
+    maj.actual_hours = Math.max(0, Math.round((avant - ecartH) * 10000) / 10000);
+  }
+  const aRendre = valeurHeuresRetirees(m, reserve, Math.max(0, reserve - ecartH));
+  return { maj, aRendre, ecartMin };
 }
