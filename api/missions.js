@@ -4511,6 +4511,14 @@ export default async function handler(req, res) {
         });
       }
 
+      // Prestation arrêtée : elle se clôt, et compte au quota du mois pour les
+      // journées faites — hier et aujourd'hui sur une série arrêtée le deuxième
+      // jour, pas les journées annulées. Elle quittait les « en cours » sans y
+      // être ajoutée : la place se libérait (relecture du 15/10/2026, `e2e/96`).
+      if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
+        await compterAuQuota(mission.prestataire_id, Math.max(1, joursPrestation - joursRestants), SUPABASE_URL, headers, "cancel_in_progress");
+      }
+
       // Décalage jamais arbitré, prestation arrêtée : elle se clôt ICI, et la
       // clôture plafonne les heures (`montantsDeCloture`). Comme les cinq autres
       // clôtures, elle rend au client les heures retirées — celle-ci les gardait

@@ -18,6 +18,7 @@ import { comparerPrix, resumeEcart } from "./_prix.js";
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
 import { montantsDeCloture } from "./_cloture.js";
+import { compterAuQuota } from "./missions.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
 import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
@@ -2902,17 +2903,11 @@ export default async function handler(req, res) {
       }
       // Notification client
       await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
-      if (m.prestataire_id) {
-        const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
-        const prD = prQ?.ok ? await prQ.json().catch(() => []) : [];
-        const currentMC = Array.isArray(prD) && prD[0] ? (prD[0].missions_completed_month || 0) : 0;
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ missions_completed_month: currentMC + 1 }),
-        }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      }
+      // Le quota mensuel du prestataire, par la même fonction que la validation
+      // par le client et la validation automatique. Ce chemin en tenait sa propre
+      // version : une seule journée quelle que soit la durée, et le quota gratuit
+      // jamais marqué épuisé à la limite (relecture du 15/10/2026, `e2e/96`).
+      if (m.prestataire_id) await compterAuQuota(m.prestataire_id, jours, SUPABASE_URL, headers, "bo/force_complete");
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
     }
