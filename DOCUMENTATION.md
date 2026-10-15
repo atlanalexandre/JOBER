@@ -3488,8 +3488,19 @@ Désormais `envoyer_message` prévient lui-même, après avoir enregistré le me
 - l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
   (`texteSmsMessage()`) ;
 - e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
-  n'a pas lu le message précédent de cet expéditeur (rappel au-delà de 24 h), et pas plus d'un
-  par demi-heure dans une même conversation. Historique illisible : ni e-mail ni SMS.
+  n'a pas lu depuis la dernière alerte (rappel au-delà de 24 h), et un seul par rafale — des
+  messages à moins d'une demi-heure les uns des autres. Historique illisible, ou plus de 200
+  messages du même expéditeur en 24 h (`HISTORIQUE_MAX`) : ni e-mail ni SMS. L'e-mail et le SMS
+  partent **ensemble** : l'un après l'autre, l'expéditeur attendait les deux services avant de
+  voir son message envoyé.
+
+**La règle se rejoue sur les messages des dernières 24 h** (relecture du 15/10/2026,
+`src/tests/api/messagerie-notification.test.js`). Elle ne regardait que le message précédent de
+l'expéditeur, et tenait un message non lu pour « déjà signalé » — or il avait pu être retenu par
+la demi-heure : message lu, un deuxième dix minutes après (retenu), un troisième une heure après…
+et le destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h. `envoyer_message`
+lit désormais les messages de l'expéditeur des 24 dernières heures (`created_at`, `lu_at`) et la
+règle y retrouve la dernière alerte réellement partie. Rien n'est enregistré de plus.
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
