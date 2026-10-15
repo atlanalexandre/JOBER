@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { hashPii } from "../../../api/_email.js";
 import {
   telephoneNormalise, empreintes, filtreListeNoire, ligneListeNoire,
-  ensemblesListeNoire, correspond, comptesRecrees,
+  ensemblesListeNoire, correspond, comptesRecrees, remiseAZeroMensuelle,
 } from "../../../api/_liste_noire.js";
 
 describe("telephoneNormalise — une seule forme pour un même numéro", () => {
@@ -72,13 +72,13 @@ describe("les quatre trous sont fermés dans le code", () => {
   const support = readFileSync(new URL("../../../api/support.js", import.meta.url), "utf8");
   it("la tâche des deux heures compare tous les comptes et repose la pénalité", () => {
     const rappels = cron.slice(cron.indexOf('if (req.query?.action === "reminders")'));
-    expect(rappels.slice(0, 6000)).toMatch(/comptesRecrees\(SUPABASE_URL, headers, \{ utilisateurs: userMap \}\)/);
-    expect(rappels.slice(0, 8000)).toMatch(/body: JSON\.stringify\(\{ trial_exhausted: true \}\)/);
+    expect(rappels.slice(0, 7000)).toMatch(/comptesRecrees\(SUPABASE_URL, headers, \{ utilisateurs: userMap, profils: profilsLus \}\)/);
+    expect(rappels.slice(0, 9000)).toMatch(/body: JSON\.stringify\(\{ trial_exhausted: true \}\)/);
   });
-  it("la remise à zéro du 1er du mois écarte les comptes recréés", () => {
+  it("la remise à zéro du 1er du mois écarte les comptes recréés — par lots, pas dans l'adresse", () => {
     const reset = cron.slice(cron.indexOf("── Mode reset mensuel"));
-    expect(reset).toMatch(/&id=not\.in\.\(/);
-    expect(reset.slice(0, 3500)).toMatch(/trial_exhausted: true/);
+    expect(reset.slice(0, 3500)).toMatch(/remiseAZeroMensuelle\(SUPABASE_URL, headers, recrees\)/);
+    expect(reset).not.toMatch(/not\.in\.\(/);
   });
   it("la résiliation à l'échéance inscrit le compte, avant de le supprimer", () => {
     const i = cron.indexOf("ligneListeNoire(");
@@ -87,5 +87,77 @@ describe("les quatre trous sont fermés dans le code", () => {
   });
   it("l'inscription lit le SIRET d'un prestataire, pas seulement celui d'un client", () => {
     expect(support).toMatch(/siret: meta3\.siret \|\| meta3\.kbis/);
+  });
+});
+
+// Suites de D4 (relecture du 15/10/2026).
+describe("suites de D4 — relecture du 15/10/2026", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("une empreinte d'avant, prise sur le numéro modifié dans le profil (« 06 12 34 56 78 »), reconnaît « 0612345678 »", () => {
+    // L'écran de profil enregistre le numéro tel qu'affiché, par paires ; les empreintes
+    // d'avant D4 l'ont haché ainsi.
+    for (const ancien of ["06 12 34 56 78", "+33 6 12 34 56 78", "06.12.34.56.78", "06-12-34-56-78"]) {
+      const s = ensemblesListeNoire([{ telephone_hash: hashPii(ancien) }]);
+      expect(correspond(empreintes({ telephone: "0612345678" }), s), ancien).toBe(true);
+    }
+  });
+
+  it("une ligne inscrite APRÈS la création du compte ne le désigne pas : c'est sa propre suppression, manquée", () => {
+    // La suppression inscrit l'empreinte, puis peut échouer (pièces non effacées : « votre
+    // compte n'a pas été supprimé ») : le compte restait, et perdait son quota gratuit.
+    const s = ensemblesListeNoire([{ email_hash: hashPii("a@b.fr"), created_at: "2026-10-10T12:00:00Z" }]);
+    const e = empreintes({ email: "a@b.fr" });
+    expect(correspond(e, s, Date.parse("2026-09-01T00:00:00Z")), "compte créé avant la ligne").toBe(false);
+    expect(correspond(e, s, Date.parse("2026-10-11T00:00:00Z")), "compte recréé après la ligne").toBe(true);
+    expect(correspond(e, s), "sans date de création : comme avant").toBe(true);
+  });
+
+  it("comptesRecrees compare la date de la ligne à celle du compte, et prend les profils déjà lus", async () => {
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      const u = String(url);
+      appels.push(u);
+      const corps = u.includes("account_blacklist")
+        ? (u.includes("offset=0") ? [{ id: "b1", email_hash: hashPii("a@b.fr"), created_at: "2026-10-10T12:00:00Z" }] : [])
+        : null;
+      return { ok: true, status: 200, json: async () => corps };
+    }));
+    const utilisateurs = { ancien: { email: "a@b.fr", meta: {} }, recree: { email: "a@b.fr", meta: {} } };
+    const profils = [
+      { id: "ancien", created_at: "2026-09-01T00:00:00Z" },
+      { id: "recree", created_at: "2026-10-12T00:00:00Z" },
+    ];
+    const r = await comptesRecrees("https://exemple.supabase.co", {}, { utilisateurs, profils });
+    expect([...r]).toEqual(["recree"]);
+    expect(appels.some(u => u.includes("/profiles")), "profils déjà lus : pas de seconde lecture").toBe(false);
+    expect(appels.find(u => u.includes("account_blacklist"))).toContain("created_at");
+  });
+
+  it("la remise à zéro du 1er du mois tient dans des adresses courtes, quel que soit le nombre de comptes recréés", async () => {
+    // Mesuré sur la recette : un `id=not.in.(…)` de 400 comptes (15 000 caractères) faisait
+    // échouer la requête — et la remise à zéro de TOUS les comptes avec elle.
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, opts = {}) => {
+      appels.push({ url: String(url), corps: opts.body ? JSON.parse(opts.body) : null });
+      return { ok: true, status: 204, text: async () => "" };
+    }));
+    const recrees = new Set(Array.from({ length: 500 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`));
+    const out = await remiseAZeroMensuelle("https://exemple.supabase.co", {}, recrees);
+    expect(out.ok).toBe(true);
+    for (const a of appels) expect(a.url.length, a.url.slice(0, 120)).toBeLessThan(8000);
+    expect(appels[0].corps).toEqual({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: false });
+    const penalises = appels.slice(1).flatMap(a => a.url.match(/id=in\.\(([^)]*)\)/)[1].split(","));
+    expect(new Set(penalises)).toEqual(recrees);
+    for (const a of appels.slice(1)) expect(a.corps).toEqual({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: true });
+  });
+
+  it("une remise à zéro refusée est dite, et les comptes recréés ne sont pas touchés", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, text: async () => "panne" })));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await remiseAZeroMensuelle("https://exemple.supabase.co", {}, new Set(["x"]));
+    expect(out.ok).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
   });
 });
