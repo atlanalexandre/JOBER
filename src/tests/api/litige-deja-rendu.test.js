@@ -73,6 +73,13 @@ describe("l'exécution demande à Stripe ce qui reste dû, pas le prix entier", 
         return { ok: true, json: async () => ({ id: mission.stripe_payment_intent,
           latest_charge: { amount_captured: Math.round(PRIX * 100), amount_refunded: dejaRendu } }) };
       }
+      // Ce qui a déjà été rendu est examiné remboursement par remboursement : celui
+      // du litige, s'il existe, n'est pas refait (relecture du 15/10/2026). Ici,
+      // l'heure de retard rendue au refus du décalage.
+      if (u.includes("/v1/refunds") && (opts.method || "GET") === "GET") {
+        return { ok: true, json: async () => ({ has_more: false,
+          data: [{ id: "re_decalage", amount: dejaRendu, status: "succeeded", metadata: { motif: "heures_non_faites" } }] }) };
+      }
       if (u.includes("/v1/refunds")) {
         const montant = Number(new URLSearchParams(opts.body).get("amount"));
         remboursements.push(montant);

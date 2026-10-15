@@ -2374,6 +2374,22 @@ payé. Les deux parties sont informées du montant reversé : sans cela, le pres
 un virement qu'il n'attendait pas et le client croit qu'il n'a rien touché.
 Éprouvé par `src/tests/api/resolution-partage.test.js`.
 
+**Un dénouement repris ne rembourse pas deux fois** (relecture du 15/10/2026,
+`src/tests/api/litige-reprise.test.js`, `e2e/95`). Le remboursement part chez Stripe, puis
+l'écriture en base échoue : la prestation reste en litige et le passage suivant — traitement
+automatique toutes les deux heures, ou back-office — recommence. Il comptait le remboursement
+qu'il avait lui-même fait dans ce qui avait « déjà été rendu » : au montant ordinaire, il ne
+trouvait plus rien à rendre et demandait la totalité sous la même clé d'idempotence, que Stripe
+refuse avec d'autres paramètres — le litige ne se fermait plus, puis, passé les 24 h où Stripe
+garde la clé, les frais de service étaient rendus ; sur un remboursement partiel, la somme
+rendue était déduite **deux fois** de la part du prestataire (44 € au lieu de 74 € sur la
+prestation type). Le remboursement d'un litige porte désormais une étiquette
+(`metadata[alane_operation]` = `resolution-{id}`, la valeur de sa clé d'idempotence, et
+`metadata[mission]`). Chaque passage la cherche parmi les remboursements du paiement : trouvée,
+le remboursement n'est pas refait, son montant sert au partage et il est exclu du « déjà
+rendu » ; les remboursements d'autres opérations (décalage, heures plafonnées) restent déduits.
+Même parade que `rembourserAjoutsNonFaits()` (`api/_remboursement_bo.js`).
+
 **`platform_settings.cron_dernier_passage`** — l'horodatage et le mode du dernier passage du
 traitement automatique, inscrits **au début** de chaque exécution : c'est un témoin de passage,
 pas de succès. Un traitement qui démarre puis échoue doit quand même prouver qu'il a démarré,
@@ -5414,6 +5430,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
 | `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
 | `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement |
+| `95` | Litige remboursé, clôture manquée puis reprise : un seul remboursement chez Stripe, frais de service retenus, litige clos |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

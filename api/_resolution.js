@@ -112,19 +112,59 @@ export function resteAuPrestataire({ net, rendu, frais, partMax }) {
   return { brut, reste, aVerser: reste >= 1 };
 }
 
-// Ce qui a déjà été rendu sur le paiement de la réservation, en centimes.
+// L'étiquette du remboursement d'un litige, posée chez Stripe
+// (`metadata[alane_operation]`). Même valeur que sa clé d'idempotence.
+export const etiquetteResolution = (missionId) => `resolution-${missionId}`;
+
+// Ce qui a déjà été rendu sur le paiement de la réservation, en centimes, en
+// mettant à part le remboursement de CE litige s'il a déjà eu lieu.
 // null si Stripe ne répond pas : on ne sait pas, on n'exécute rien.
-async function dejaRenduSurLePaiement(intentId, stripeKey) {
+//
+// UN PASSAGE REPRIS NE REMBOURSE PAS DEUX FOIS (relecture du 15/10/2026). Le
+// remboursement part, puis l'écriture en base échoue : la prestation reste en
+// litige et le passage suivant recommence. Il comptait alors dans le « déjà
+// rendu » le remboursement qu'il avait lui-même fait. Au montant ordinaire, il
+// ne trouvait plus rien à rendre et demandait la totalité sous la même clé
+// d'idempotence — refusée par Stripe : le litige ne se fermait plus, puis,
+// passé les 24 h où Stripe garde la clé, les frais de service étaient rendus.
+// Sur un remboursement partiel, la somme rendue était déduite deux fois de la
+// part du prestataire. Même parade que `rembourserAjoutsNonFaits`
+// (_remboursement_bo.js) : on cherche le remboursement portant l'étiquette.
+//
+// Retourne { autres, propre } : `autres` = centimes rendus par d'autres
+// opérations (décalage, heures plafonnées…), `propre` = le remboursement de ce
+// litige, ou null.
+async function remboursementsDuPaiement(intentId, stripeKey, etiquette) {
+  const auth = { headers: { "Authorization": `Bearer ${stripeKey}` } };
   try {
-    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(intentId)}?expand[]=latest_charge`,
-      { headers: { "Authorization": `Bearer ${stripeKey}` } });
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(intentId)}?expand[]=latest_charge`, auth);
     const pi = await r.json().catch(() => null);
     if (!r.ok || !pi?.id) {
       console.error(`[resolution] paiement ${intentId} illisible chez Stripe (${r.status}).`);
       return null;
     }
     const charge = pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null;
-    return Math.max(0, Number(charge?.amount_refunded) || 0);
+    const total = Math.max(0, Number(charge?.amount_refunded) || 0);
+    // Rien de rendu : aucun remboursement à examiner.
+    if (!(total > 0)) return { autres: 0, propre: null };
+
+    let propre = null;
+    let apres = null;
+    for (let page = 0; page < 10; page++) {
+      const rl = await fetch(`https://api.stripe.com/v1/refunds?payment_intent=${encodeURIComponent(intentId)}&limit=100`
+        + (apres ? `&starting_after=${encodeURIComponent(apres)}` : ""), auth);
+      const liste = await rl.json().catch(() => null);
+      if (!rl.ok || !Array.isArray(liste?.data)) {
+        console.error(`[resolution] remboursements de ${intentId} illisibles chez Stripe (${rl.status}).`);
+        return null;
+      }
+      const trouve = liste.data.find(x => x?.metadata?.alane_operation === etiquette && !["failed", "canceled"].includes(x.status));
+      if (trouve) { propre = trouve; break; }
+      if (!liste.has_more || !liste.data.length) break;
+      apres = liste.data[liste.data.length - 1].id;
+    }
+    const centimesPropres = propre ? Math.max(0, Number(propre.amount) || 0) : 0;
+    return { autres: Math.max(0, total - centimesPropres), propre };
   } catch (e) {
     console.error(`[resolution] paiement ${intentId} injoignable chez Stripe :`, e.message);
     return null;
@@ -249,6 +289,10 @@ export async function executerResolution({
   // dans le calcul que si la prestation n'a pas encore été clôturée (voir
   // soldeDuLitige). Lu chez Stripe ; illisible, on n'exécute rien.
   let dejaRendu = 0;
+  // Le remboursement de CE litige, fait par un passage précédent dont la
+  // clôture a échoué (voir remboursementsDuPaiement).
+  let dejaFait = null;
+  const etiquette = etiquetteResolution(mission.id);
 
   if (mission.stripe_payment_intent) {
     if (!stripeKey) {
@@ -256,10 +300,22 @@ export async function executerResolution({
       return { ok: false, detail: "Stripe non configuré — remboursement impossible." };
     }
     if (String(mission.stripe_payment_intent).startsWith("pi_")) {
-      const lu = await dejaRenduSurLePaiement(mission.stripe_payment_intent, stripeKey);
+      const lu = await remboursementsDuPaiement(mission.stripe_payment_intent, stripeKey, etiquette);
       if (lu === null) return { ok: false, detail: "Le paiement n'a pas pu être relu chez Stripe — rien n'a été exécuté. Réessayez." };
-      dejaRendu = lu;
+      dejaRendu = lu.autres;
+      dejaFait = lu.propre;
     }
+  }
+
+  if (dejaFait) {
+    // Déjà remboursé : on reprend là où le passage précédent s'est arrêté. Le
+    // montant rendu est celui que Stripe a enregistré ; le cashback suit la
+    // même règle qu'au premier passage (restituerCashback ne rend qu'une fois).
+    rembourseEuros = Math.round(Number(dejaFait.amount || 0)) / 100;
+    console.log(`[resolution] remboursement ${dejaFait.id} de ${rembourseEuros.toFixed(2)} € déjà fait pour ${mission.id}`
+      + " par un passage précédent — pas de second remboursement, clôture reprise.");
+    await restituerCashback(mission, supabaseUrl, headers, "resolution");
+  } else if (mission.stripe_payment_intent) {
     try {
       // Les frais de service restent acquis : on ne rembourse que la part
       // prestation. Sans montant établissable, on rembourse tout — mieux vaut
@@ -292,7 +348,10 @@ export async function executerResolution({
       // prélevé. Le refus arriverait APRÈS la clôture du litige, laissant le
       // client sans prestation et sans remboursement.
       const centimesDus = await plafonnerRemboursement(centimes, mission, supabaseUrl, headers);
-      const corpsRemboursement = { payment_intent: mission.stripe_payment_intent };
+      // L'étiquette permet au passage suivant de retrouver ce remboursement si
+      // la clôture échoue après lui.
+      const corpsRemboursement = { payment_intent: mission.stripe_payment_intent,
+        "metadata[alane_operation]": etiquette, "metadata[mission]": mission.id };
       if (centimesDus !== null) corpsRemboursement.amount = String(centimesDus);
 
       const rf = await fetch("https://api.stripe.com/v1/refunds", {
@@ -301,9 +360,11 @@ export async function executerResolution({
           "Authorization": `Bearer ${stripeKey}`,
           "Content-Type": "application/x-www-form-urlencoded",
           // Idempotence : le traitement automatique repasse toutes les deux
-          // heures. Sans cette clé, un échec réseau après l'appel Stripe mais
-          // avant l'écriture en base rembourserait deux fois.
-          "Idempotency-Key": `resolution-${mission.id}`,
+          // heures. Sans cette clé, deux passages simultanés rembourseraient
+          // deux fois. Un passage REPRIS, lui, retrouve le remboursement par
+          // son étiquette (plus haut) : Stripe n'oublie pas l'étiquette, alors
+          // qu'il oublie la clé au bout de 24 h.
+          "Idempotency-Key": etiquette,
         },
         body: new URLSearchParams(corpsRemboursement).toString(),
       });
