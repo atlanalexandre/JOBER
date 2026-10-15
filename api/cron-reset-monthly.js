@@ -19,7 +19,7 @@ import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { affecteeParLaPlateforme, affecterCandidatSuivant, compterAuQuota } from "./missions.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
-import { comptesRecrees, ligneListeNoire } from "./_liste_noire.js";
+import { comptesRecrees, ligneListeNoire, remiseAZeroMensuelle, COLONNES_PROFIL_LISTE_NOIRE } from "./_liste_noire.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
@@ -1967,7 +1967,12 @@ export default async function handler(req, res) {
         usersPage++;
       }
       // Lecture complète : au-delà de 1 000 profils, les rappels perdaient le nom.
-      const profiles  = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, headers)
+      // Elle sert aussi à la liste anti-recréation (étape 0), qui relisait la
+      // table entière une seconde fois : `profilsLus` reste null si elle échoue,
+      // et l'étape 0 relit alors elle-même.
+      let profilsLus = null;
+      const profiles  = await lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,${COLONNES_PROFIL_LISTE_NOIRE}`, headers)
+        .then(l => { profilsLus = l; return l; })
         .catch(e => { console.error("[rappels] noms illisibles :", e.message); return []; });
       const nameMap   = {};
       profiles.forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
@@ -1980,7 +1985,7 @@ export default async function handler(req, res) {
       // rendait le quota gratuit à tous. Chaque passage compare donc tous les
       // comptes, IBAN compris, et repose la pénalité où elle manque.
       try {
-        const recrees = await comptesRecrees(SUPABASE_URL, headers, { utilisateurs: userMap });
+        const recrees = await comptesRecrees(SUPABASE_URL, headers, { utilisateurs: userMap, profils: profilsLus });
         const ids = [...recrees];
         for (let i = 0; i < ids.length; i += 100) {
           const lot = ids.slice(i, i + 100);
@@ -2585,32 +2590,18 @@ ${(() => {
     // rendait le quota gratuit, chaque mois (décision D4, 14/10/2026). Leurs
     // compteurs repartent de zéro, leur pénalité reste. Liste illisible : la
     // remise à zéro vaut pour tous, et la tâche des deux heures repose la
-    // pénalité au passage suivant.
+    // pénalité au passage suivant. Tous sont remis à zéro, puis les comptes
+    // recréés repénalisés par lots : les écarter dans l'adresse faisait échouer
+    // la remise à zéro de tous au-delà de 400 environ (relecture du 15/10/2026).
     let recrees = new Set();
     try {
       recrees = await comptesRecrees(SUPABASE_URL, headers);
     } catch (e) {
       console.error("[reset] comptes recréés non déterminés — pénalité reposée au prochain passage :", e.message);
     }
-    const ecartes = [...recrees];
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,commandes_mois.gt.0,trial_exhausted.is.true)`
-      + (ecartes.length ? `&id=not.in.(${ecartes.join(",")})` : ""), {
-      method: "PATCH",
-      headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: false }),
-    });
-    for (let i = 0; i < ecartes.length; i += 100) {
-      const rPen = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ecartes.slice(i, i + 100).join(",")})`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: true }),
-      });
-      if (!rPen.ok) console.error(`[reset] compteurs des comptes recréés non remis à zéro (${rPen.status})`);
-    }
-
-    if (!r.ok) {
-      const err = await r.text();
-      console.error("cron-reset-monthly error:", err);
+    const remise = await remiseAZeroMensuelle(SUPABASE_URL, headers, recrees);
+    if (!remise.ok) {
+      console.error("cron-reset-monthly error:", remise.detail);
       return res.status(500).json({ error: "Erreur reset" });
     }
 

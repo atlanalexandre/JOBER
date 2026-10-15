@@ -16,9 +16,15 @@
 //   - l'e-mail cite le message réellement enregistré ;
 //   - le SMS ne contient AUCUN texte libre : il dit qu'un message attend, et de qui ;
 //   - e-mail et SMS sont plafonnés : un seul tant que le destinataire n'a pas lu
-//     le message précédent de cet expéditeur, et pas plus d'un par demi-heure dans
-//     une même conversation. La notification dans l'application suit, elle,
-//     chaque message.
+//     depuis la dernière alerte (un rappel au bout de 24 h), et un seul par
+//     rafale — des messages à moins d'une demi-heure les uns des autres. La
+//     notification dans l'application suit, elle, chaque message.
+//
+// La règle se rejoue sur les messages des dernières 24 h (relecture du
+// 15/10/2026). Elle ne regardait que le message précédent, et tenait un message
+// non lu pour « déjà signalé » — or il avait pu être retenu par la demi-heure :
+// message lu, deux autres envoyés à dix minutes puis à une heure, et le
+// destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Deux messages plus rapprochés forment une rafale : une seule alerte. */
@@ -26,19 +32,41 @@ export const DELAI_RAFALE_MS = 30 * 60 * 1000;
 /** Un message resté non lu plus longtemps peut être rappelé une fois. */
 export const DELAI_NON_LU_MS = 24 * 3600 * 1000;
 
+/** Au-delà, l'historique d'une journée est une avalanche : on ne prévient plus au dehors. */
+export const HISTORIQUE_MAX = 200;
+
 /**
  * Faut-il prévenir AUSSI par e-mail et SMS ?
- * `precedent` : le message précédent du même expéditeur dans la conversation
- * (`created_at`, `lu_at`), ou null s'il n'y en a pas.
+ *
+ * `historique` : les messages précédents du même expéditeur dans la
+ * conversation, des dernières 24 h (`created_at`, `lu_at`), du plus ancien au
+ * plus récent — ou un seul message, ou null. La règle y est rejouée pour
+ * retrouver la dernière alerte réellement partie :
+ *   - aucune depuis 24 h : alerte (un rappel, si rien n'a été lu depuis) ;
+ *   - le destinataire a lu depuis la dernière alerte : alerte si le message
+ *     précédent a une demi-heure ou plus — une rafale ne donne qu'une alerte ;
+ *   - rien lu depuis : pas de nouvelle alerte.
+ * Deux alertes ont donc toujours au moins une demi-heure d'écart.
+ * Rien n'est enregistré de plus : les messages et leur `lu_at` suffisent.
  */
-export function alerteExterieureDue(precedent, maintenantMs = Date.now()) {
-  if (!precedent) return true;
-  const age = maintenantMs - new Date(precedent.created_at).getTime();
+export function alerteExterieureDue(historique, maintenantMs = Date.now()) {
+  const h = Array.isArray(historique) ? historique : (historique ? [historique] : []);
+  const temps = h.map(m => ({ cree: Date.parse(m?.created_at), lu: Date.parse(m?.lu_at) }));
   // Date illisible : on ne sait pas si le destinataire vient d'être prévenu.
-  if (!Number.isFinite(age)) return false;
-  // Le précédent attend encore d'être lu : il a déjà donné lieu à une alerte.
-  if (!precedent.lu_at && age < DELAI_NON_LU_MS) return false;
-  return age >= DELAI_RAFALE_MS;
+  if (temps.some(t => !Number.isFinite(t.cree)) || !Number.isFinite(maintenantMs)) return false;
+  let derniere = null;   // la dernière alerte rejouée
+  let precedent = null;  // le message précédent
+  const due = (t) => {
+    if (derniere === null || t - derniere >= DELAI_NON_LU_MS) return true;
+    // Lu depuis la dernière alerte — connu à l'instant t ?
+    const luDepuis = temps.some(x => Number.isFinite(x.lu) && x.lu > derniere && x.lu <= t);
+    return luDepuis && t - precedent >= DELAI_RAFALE_MS;
+  };
+  for (const t of temps) {
+    if (due(t.cree)) derniere = t.cree;
+    precedent = t.cree;
+  }
+  return due(maintenantMs);
 }
 
 /** « Prénom N. », lu dans le profil, réduit à des lettres (30 caractères au plus). */

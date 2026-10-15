@@ -221,7 +221,7 @@ export default async function handler(req, res) {
         lireProfils(),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         // Lecture complète : au-delà de 1 000 entrées, un compte banni n'était plus reconnu.
-        lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash`, headers)
+        lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash,created_at`, headers)
           .catch(e => { console.error("[list] liste noire illisible :", e.message); return null; }),
         // Les pièces de chacun, pour dire AVANT le clic ce qui empêche d'ouvrir
         // l'accès. Illisibles : `null`, et l'écran n'affirme rien.
@@ -282,7 +282,9 @@ export default async function handler(req, res) {
         const siretMeta = meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
         // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
-        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets);
+        // Seule compte une ligne inscrite avant la création du compte : une ligne
+        // postérieure est celle de sa propre suppression, manquée (15/10/2026).
+        const blacklisted = correspond(empreintes({ email, telephone: tel, iban, siret }), blSets, Date.parse(p.created_at));
         // L'IBAN ne quitte plus le serveur dans la liste.
         //
         // `list` renvoyait l'IBAN complet, en clair, de TOUS les comptes, à chaque

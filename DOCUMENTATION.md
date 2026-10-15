@@ -1365,7 +1365,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_annulation.js` | Annulation par le client : les frais de service sont-ils retenus ? `fraisRetenusAnnulationClient()`, `sansPrestataireTrouve()`. Non en cas de défaillance du prestataire (CGPS art. 8.2), ni quand personne n'a repris une réservation payée (`open`, `needs_replacement` — décision D2, 14/10/2026). Appelé par `cancel_client` |
-| `_liste_noire.js` | Liste anti-recréation (`account_blacklist`, décision D4, 14/10/2026) — `empreintes()`, `filtreListeNoire()`, `ligneListeNoire()`, `comptesRecrees()`, `telephoneNormalise()`. Utilisé par l'inscription, la validation, la liste du back-office, les trois suppressions et la tâche des deux heures |
+| `_liste_noire.js` | Liste anti-recréation (`account_blacklist`, décision D4, 14/10/2026) — `empreintes()`, `filtreListeNoire()`, `ligneListeNoire()`, `comptesRecrees()`, `remiseAZeroMensuelle()`, `telephoneNormalise()`. Utilisé par l'inscription, la validation, la liste du back-office, les trois suppressions, la tâche des deux heures et la remise à zéro du 1er du mois |
 | `_suppression.js` | Suppression d'un compte — `resilierAbonnement()`, `anonymiserPrestations()`, `effacerPieces()`, `supprimerCompteAuth()`, et les états qui la bloquent (`STATUTS_EN_COURS`, `VERSEMENTS_DUS`, `creancesOuvertes()`). Partagé par `support.js` (`delete_account`), `bo-action.js` (`delete`) et la résiliation de `cron-reset-monthly.js`. Voir §5 « Suppression de compte et anti-recréation » |
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
@@ -1773,6 +1773,23 @@ avec un quota gratuit neuf :
 
 L'inscription lit aussi le SIRET d'un prestataire (`siret`) : seul `kbis`, celui d'un client
 professionnel, l'était.
+
+**Suites de D4** (relecture du 15/10/2026, `e2e/94` et `src/tests/api/liste-noire.test.js`) :
+
+- **seule compte une ligne inscrite avant la création du compte** (`account_blacklist.created_at` <
+  `profiles.created_at`, dans `comptesRecrees()` et la liste du back-office). La suppression inscrit
+  l'empreinte puis peut échouer — pièces non effacées : « votre compte n'a pas été supprimé » — et
+  la tâche des deux heures privait alors de son quota gratuit un compte resté ouvert. Constaté sur
+  la recette avant le correctif ; aucun compte touché en production ;
+- **le numéro modifié dans le profil est enregistré par paires** (« 06 12 34 56 78 », comme
+  l'affiche `formatPhone`) : les empreintes d'avant D4 l'ont haché ainsi. Il fait partie des
+  écritures comparées, avec ses variantes à points et à tirets et « +33 6 12 34 56 78 » ;
+- **la remise à zéro du 1er du mois n'écarte plus les comptes recréés dans l'adresse**
+  (`id=not.in.(…)`) : au-delà de 400 environ, l'adresse dépassait 15 000 caractères et la requête
+  échouait (mesuré sur la recette), emportant la remise à zéro de **tous** les comptes. Tous sont
+  remis à zéro, puis les comptes recréés repénalisés par lots de 100 (`remiseAZeroMensuelle()`) ;
+- la tâche des deux heures ne relit plus la table des profils une seconde fois : celle des rappels
+  lui est passée (`COLONNES_PROFIL_LISTE_NOIRE`).
 
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
@@ -3494,8 +3511,19 @@ Désormais `envoyer_message` prévient lui-même, après avoir enregistré le me
 - l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
   (`texteSmsMessage()`) ;
 - e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
-  n'a pas lu le message précédent de cet expéditeur (rappel au-delà de 24 h), et pas plus d'un
-  par demi-heure dans une même conversation. Historique illisible : ni e-mail ni SMS.
+  n'a pas lu depuis la dernière alerte (rappel au-delà de 24 h), et un seul par rafale — des
+  messages à moins d'une demi-heure les uns des autres. Historique illisible, ou plus de 200
+  messages du même expéditeur en 24 h (`HISTORIQUE_MAX`) : ni e-mail ni SMS. L'e-mail et le SMS
+  partent **ensemble** : l'un après l'autre, l'expéditeur attendait les deux services avant de
+  voir son message envoyé.
+
+**La règle se rejoue sur les messages des dernières 24 h** (relecture du 15/10/2026,
+`src/tests/api/messagerie-notification.test.js`). Elle ne regardait que le message précédent de
+l'expéditeur, et tenait un message non lu pour « déjà signalé » — or il avait pu être retenu par
+la demi-heure : message lu, un deuxième dix minutes après (retenu), un troisième une heure après…
+et le destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h. `envoyer_message`
+lit désormais les messages de l'expéditeur des 24 dernières heures (`created_at`, `lu_at`) et la
+règle y retrouve la dernière alerte réellement partie. Rien n'est enregistré de plus.
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
@@ -5058,8 +5086,15 @@ jamais montrée, alors que l'écran d'un secteur annonçait 1 330 disponibles en
 reprend ; la rubrique montre douze cartes au plus, le badge donne le total. « Prestations
 réalisées » comptait les prestations **du client** — la base ne lui montre que les siennes depuis
 le 01/10/2026 — soit 0 pour tout nouveau client, présenté comme un chiffre de la plateforme. Il
-vient désormais du serveur (`realisees` de `/api/prestataires?action=demandes_ouvertes` : toutes
-les prestations `completed` ou `closed`) ; illisible, l'écran affiche « — ».
+vient désormais du serveur (`realisees` de `/api/prestataires?action=demandes_ouvertes` : les
+prestations `completed`, comme le compteur du catalogue) ; illisible, l'écran affiche « — ».
+Il comptait aussi les `closed` jusqu'au 15/10/2026 — qui ne sont jamais des prestations faites :
+demande close sans prestataire ni paiement, prestation ou litige remboursés. 39 de trop en
+recette, dont 7 sans aucun prestataire (`src/tests/api/accueil-realisees.test.js`, `e2e/79`).
+Le même jour, « pros dispo maintenant » est calculé **à l'affichage**, depuis le catalogue,
+comme la rubrique : gardé dans l'état de l'écran, il valait le catalogue au moment où le
+comptage du serveur répondait — souvent encore vide — et la case affichait « 0 » pendant que
+la rubrique montrait déjà les prestataires.
 
 **Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
@@ -5435,7 +5470,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `91` | Back-office : supprimer un compte dont une prestation a commencé est refusé, rien n'est remboursé |
 | `92` | Messagerie : le destinataire est prévenu du message enregistré ; `chat_notify` au texte fabriqué n'envoie plus rien |
 | `93` | Back-office : annuler une prestation payée avec un motif — le client lit son remboursement ET le motif |
-| `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement |
+| `94` | Liste anti-recréation : un compte recréé est reconnu par l'IBAN saisi après l'inscription, et par son téléphone écrit autrement ; un compte dont la suppression a échoué garde son quota gratuit |
 | `95` | Litige remboursé, clôture manquée puis reprise : un seul remboursement chez Stripe, frais de service retenus, litige clos |
 | `96` | Clôtures hors validation : validation forcée (chaque journée), série arrêtée en cours (les journées faites), litige versé au prestataire — toutes comptent au quota du mois |
 

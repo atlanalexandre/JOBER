@@ -18,7 +18,9 @@ test("accueil client : prestataires disponibles et prestations réalisées de la
   const r = await appelApi("/api/prestataires?action=demandes_ouvertes");
   expect(r.statut, "comptage de l'accueil").toBe(200);
   const compte = r.json;
-  const [{ n }] = await sql("select count(*)::int as n from missions where status in ('completed','closed')");
+  // Les prestations TERMINÉES seules : `closed` n'en est jamais une (demande close sans
+  // prestataire, prestation ou litige remboursés — relecture du 15/10/2026).
+  const [{ n }] = await sql("select count(*)::int as n from missions where status = 'completed'");
   expect(n, "la recette doit avoir des prestations réalisées").toBeGreaterThan(0);
   // Une prestation peut se terminer entre les deux lectures : on tolère un petit écart.
   expect(Math.abs(compte.realisees - n), `réalisées : ${compte.realisees} rendues, ${n} en base`).toBeLessThanOrEqual(3);
