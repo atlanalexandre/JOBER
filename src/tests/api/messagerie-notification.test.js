@@ -38,6 +38,62 @@ describe("alerteExterieureDue — le plafond des e-mails et SMS", () => {
   });
 });
 
+// Relecture du 15/10/2026 : la règle ne regardait que le message précédent, et tenait un
+// message non lu pour « déjà signalé ». Or il avait pu être retenu par la demi-heure.
+describe("alerteExterieureDue — rejouée sur les messages des dernières 24 h", () => {
+  const iso = (ms) => new Date(ms).toISOString();
+  const MIN = 60e3;
+
+  it("message lu, puis deux autres à 10 min et à 1 h : le troisième est signalé", () => {
+    const m1 = { created_at: iso(T), lu_at: iso(T + 5 * MIN) };
+    const m2 = { created_at: iso(T + 10 * MIN), lu_at: null };
+    expect(alerteExterieureDue([], T), "premier message").toBe(true);
+    expect(alerteExterieureDue([m1], T + 10 * MIN), "dix minutes après : même rafale").toBe(false);
+    expect(alerteExterieureDue([m1, m2], T + 60 * MIN), "une heure après, le destinataire a lu depuis l'alerte").toBe(true);
+    // Avec le seul message précédent — ce que recevait la règle —, rien ne permettait de
+    // savoir que m2 n'avait pas été signalé : le destinataire restait 24 h sans e-mail ni SMS.
+    expect(alerteExterieureDue(m2, T + 60 * MIN)).toBe(false);
+  });
+
+  it("conversation suivie, puis destinataire parti : prévenu au premier message après une demi-heure de silence", () => {
+    // Messages à 0, 10, 20 min, chacun lu 2 min après ; puis plus aucune lecture
+    // (messages à 30, 40, 70 et 80 min).
+    const lus = new Set([0, 10, 20]);
+    const historique = [];
+    const alertes = [];
+    for (const minute of [0, 10, 20, 30, 40, 70, 80]) {
+      const t = T + minute * MIN;
+      if (alerteExterieureDue(historique, t)) alertes.push(minute);
+      historique.push({ created_at: iso(t), lu_at: lus.has(minute) ? iso(t + 2 * MIN) : null });
+    }
+    // Pendant la rafale : une alerte, la première. À 70 min — trente minutes après le
+    // message précédent, et le destinataire a lu depuis la première alerte : prévenu,
+    // une seule fois (à 80 min, il n'a rien lu depuis).
+    expect(alertes).toEqual([0, 70]);
+  });
+
+  it("vingt messages à la minute, aucun lu : un seul e-mail et un seul SMS", () => {
+    const historique = [];
+    let alertes = 0;
+    for (let i = 0; i < 20; i++) {
+      const t = T + i * MIN;
+      if (alerteExterieureDue(historique, t)) alertes++;
+      historique.push({ created_at: iso(t), lu_at: null });
+    }
+    expect(alertes).toBe(1);
+  });
+
+  it("rien lu depuis l'alerte : un rappel au bout de 24 h, pas avant", () => {
+    const h = [{ created_at: iso(T), lu_at: null }];
+    expect(alerteExterieureDue(h, T + DELAI_NON_LU_MS - MIN)).toBe(false);
+    expect(alerteExterieureDue(h, T + DELAI_NON_LU_MS)).toBe(true);
+  });
+
+  it("une date illisible dans l'historique : prudence, pas d'alerte", () => {
+    expect(alerteExterieureDue([{ created_at: "n'importe quoi" }], T)).toBe(false);
+  });
+});
+
 describe("nomExpediteur — lu dans le profil, réduit à des lettres", () => {
   it("prénom et initiale du nom", () => {
     expect(nomExpediteur({ prenom: "Marie", nom: "durand" }, "client")).toBe("Marie D.");
@@ -75,7 +131,13 @@ describe("les anciens envois au texte libre sont fermés", () => {
   });
   it("envoyer_message prévient depuis le message enregistré, avec le plafond", () => {
     const b = bloc("envoyer_message");
-    expect(b).toMatch(/alerteExterieureDue\(/);
+    expect(b).toMatch(/alerteExterieureDue\(precedents,/);
+    // L'historique des dernières 24 h, du plus ancien au plus récent — pas le seul précédent.
+    expect(b).toMatch(/&created_at=gte\./);
+    expect(b).toMatch(/&limit=\$\{HISTORIQUE_MAX\}&order=created_at\.asc/);
+    expect(b).not.toMatch(/order=created_at\.desc&limit=1/);
+    // L'e-mail et le SMS partent ensemble.
+    expect(b).toMatch(/await Promise\.all\(envois\)/);
     expect(b).toMatch(/texteSmsMessage\(nom\)/);
     expect(b).toMatch(/nomExpediteur\(/);
     expect(b).not.toMatch(/sender_name|message_preview/);
