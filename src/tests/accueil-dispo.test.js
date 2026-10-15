@@ -16,3 +16,14 @@ describe("accueil : disponibilité des prestataires", () => {
     expect(src).toMatch(/open\.realisees/);
   });
 });
+
+// Relecture du 15/10/2026 : le chiffre était gardé dans `liveStats`, calculé quand le
+// comptage du serveur répondait — sur un catalogue souvent encore vide. La case affichait
+// « 0 pros dispo maintenant » pendant que la rubrique montrait déjà les prestataires.
+describe("accueil : la case « pros dispo maintenant » suit le catalogue", () => {
+  it("est calculée à l'affichage, comme la rubrique", () => {
+    expect(src).toMatch(/\{ icon:"🟢", value: providers\.filter\(p=>p\.available\)\.length, label:"pros dispo maintenant" \}/);
+    expect(src).not.toMatch(/dispoNow:/);
+  });
+});
+

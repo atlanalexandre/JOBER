@@ -5041,6 +5041,10 @@ prestations `completed`, comme le compteur du catalogue) ; illisible, l'écran a
 Il comptait aussi les `closed` jusqu'au 15/10/2026 — qui ne sont jamais des prestations faites :
 demande close sans prestataire ni paiement, prestation ou litige remboursés. 39 de trop en
 recette, dont 7 sans aucun prestataire (`src/tests/api/accueil-realisees.test.js`, `e2e/79`).
+Le même jour, « pros dispo maintenant » est calculé **à l'affichage**, depuis le catalogue,
+comme la rubrique : gardé dans l'état de l'écran, il valait le catalogue au moment où le
+comptage du serveur répondait — souvent encore vide — et la case affichait « 0 » pendant que
+la rubrique montrait déjà les prestataires.
 
 **Réglages › Notification de test** (13/10/2026) : ligne affichée quand les notifications sont
 activées, pour clients et prestataires. Elle envoie une notification à ses propres appareils cinq
