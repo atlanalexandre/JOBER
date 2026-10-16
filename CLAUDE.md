@@ -318,6 +318,10 @@ de `.github/workflows/veille.yml`, jugée inutile par Alexandre. Elle relit en p
 changements de la veille et les chemins d'argent, rejoue la recette complète (`e2e/`), corrige
 ce qu'elle trouve — une pull request par sujet — et envoie un résumé à Alexandre.
 
+**Le jeudi**, elle prépare aussi la publication LinkedIn de la semaine (décision d'Alexandre du
+15/10/2026) : image et texte prêts à coller, envoyés avec le résumé. Alexandre la publie lui-même.
+Mode d'emploi, règles de contenu et calendrier : [marketing/linkedin/README.md](marketing/linkedin/README.md).
+
 Elle **fusionne d'elle-même les pull requests qui ne demandent aucun SQL** (décision
 d'Alexandre du 08/10/2026, qui remplace celle du 28/09/2026 : « ne jamais fusionner »), à
 quatre conditions réunies : aucune migration à passer, CI verte sur le dernier commit, recette
