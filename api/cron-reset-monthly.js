@@ -19,7 +19,7 @@ import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { affecteeParLaPlateforme, affecterCandidatSuivant, compterAuQuota } from "./missions.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
-import { comptesRecrees, ligneListeNoire, remiseAZeroMensuelle, COLONNES_PROFIL_LISTE_NOIRE } from "./_liste_noire.js";
+import { comptesRecrees, ligneListeNoire, inscrireListeNoire, remiseAZeroMensuelle, COLONNES_PROFIL_LISTE_NOIRE } from "./_liste_noire.js";
 import { restituerCashback } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
@@ -1134,6 +1134,7 @@ export default async function handler(req, res) {
             // D4, 14/10/2026). Empreintes prises juste avant la suppression du
             // compte, qui emporte le profil ; un échec est journalisé, il ne
             // retient pas la résiliation.
+            let empreinteBL = null;
             try {
               const [rU, rP] = await Promise.all([
                 fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers }),
@@ -1144,18 +1145,13 @@ export default async function handler(req, res) {
               const pr = (Array.isArray(lignesP) && lignesP[0]) || {};
               const meta = u.user_metadata || {};
               if (!rU.ok || !rP.ok) console.error(`[resiliation] identifiants de ${p.id} incomplets (${rU.status}/${rP.status}) — empreinte partielle`);
-              const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
-                method: "POST",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify(ligneListeNoire(
-                  { email: u.email, telephone: meta.telephone || pr.tel, iban: pr.rib, siret: pr.siret || meta.siret || meta.kbis },
-                  {
-                    reason: `resiliation_echeance${p.resiliation_motif ? `: ${String(p.resiliation_motif).slice(0, 200)}` : ""}`,
-                    missions_completed_month: pr.missions_completed_month || 0,
-                    plan_abonnement: pr.plan_abonnement || "free",
-                  })),
-              });
-              if (!bl.ok) console.error(`[resiliation] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${p.id}`);
+              empreinteBL = ligneListeNoire(
+                { email: u.email, telephone: meta.telephone || pr.tel, iban: pr.rib, siret: pr.siret || meta.siret || meta.kbis },
+                {
+                  reason: `resiliation_echeance${p.resiliation_motif ? `: ${String(p.resiliation_motif).slice(0, 200)}` : ""}`,
+                  missions_completed_month: pr.missions_completed_month || 0,
+                  plan_abonnement: pr.plan_abonnement || "free",
+                });
             } catch (e) {
               console.error(`[resiliation] empreinte anti-recréation non calculée pour ${p.id} :`, e.message);
             }
@@ -1163,6 +1159,7 @@ export default async function handler(req, res) {
               console.error(`[resiliation] compte ${p.id} NON supprimé — sera repris demain`);
               continue;
             }
+            await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, "resiliation");
             resiliations++;
             console.log(`[resiliation] compte ${p.id} résilié à l'échéance du préavis`);
           }
