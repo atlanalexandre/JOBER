@@ -5,6 +5,7 @@ import { hashPii } from "../../../api/_email.js";
 import {
   telephoneNormalise, empreintes, filtreListeNoire, ligneListeNoire,
   ensemblesListeNoire, correspond, comptesRecrees, remiseAZeroMensuelle,
+  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS,
 } from "../../../api/_liste_noire.js";
 
 describe("telephoneNormalise — une seule forme pour un même numéro", () => {
@@ -111,6 +112,34 @@ describe("suites de D4 — relecture du 15/10/2026", () => {
     expect(correspond(e, s, Date.parse("2026-09-01T00:00:00Z")), "compte créé avant la ligne").toBe(false);
     expect(correspond(e, s, Date.parse("2026-10-11T00:00:00Z")), "compte recréé après la ligne").toBe(true);
     expect(correspond(e, s), "sans date de création : comme avant").toBe(true);
+  });
+
+  it("une ligne inscrite depuis le 19/10/2026 désigne tout compte, même ouvert AVANT (relecture du 16/10/2026)", () => {
+    // Ouvrir le nouveau compte, puis supprimer l'ancien : la ligne, postérieure au nouveau
+    // compte, était prise pour sa propre suppression manquée — et il gardait un quota neuf.
+    const s = ensemblesListeNoire([{ email_hash: hashPii("a@b.fr"), created_at: "2026-10-20T08:00:00Z" }]);
+    expect(correspond(empreintes({ email: "a@b.fr" }), s, Date.parse("2026-10-19T18:00:00Z"))).toBe(true);
+    expect(INSCRIPTION_APRES_SUPPRESSION_MS).toBe(Date.parse("2026-10-19T12:00:00Z"));
+  });
+
+  it("les trois suppressions n'inscrivent l'empreinte qu'une fois le compte supprimé", () => {
+    for (const [fichier, debut] of [["bo-action.js", "empreinteBL"], ["support.js", "let empreinteBL"], ["cron-reset-monthly.js", "let empreinteBL"]]) {
+      const code = readFileSync(new URL(`../../../api/${fichier}`, import.meta.url), "utf8");
+      const bloc = code.slice(code.indexOf(debut));
+      const suppression = bloc.indexOf("supprimerCompteAuth(");
+      const inscription = bloc.indexOf("inscrireListeNoire(");
+      expect(suppression, fichier).toBeGreaterThan(0);
+      expect(inscription, `${fichier} : inscrite après la suppression`).toBeGreaterThan(suppression);
+      expect(code, `${fichier} : plus d'écriture directe`).not.toMatch(/account_blacklist`, \{\s*method: "POST"/);
+    }
+  });
+
+  it("inscrireListeNoire : un refus est journalisé, la suppression n'est pas défaite", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await inscrireListeNoire("https://exemple.supabase.co", {}, { email_hash: "x" }, "test")).toBe(false);
+    expect(err).toHaveBeenCalled();
+    expect(await inscrireListeNoire("https://exemple.supabase.co", {}, null, "test")).toBe(false);
   });
 
   it("comptesRecrees compare la date de la ligne à celle du compte, et prend les profils déjà lus", async () => {

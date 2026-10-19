@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond } from "./_liste_noire.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
@@ -910,19 +910,14 @@ export default async function handler(req, res) {
       // du jeton : `profiles.rib` d'abord, ancien emplacement en repli.
       const ribSuppr  = savedProfile.rib || meta.rib;
       const iban      = ribSuppr ? String(ribSuppr).replace(/\s/g, "").toUpperCase() : null;
-      if (userEmail || telephone || iban || siret) {
-        const bl = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          // Champs normalisés (api/_liste_noire.js, décision D4).
-          body: JSON.stringify(ligneListeNoire({ email: userEmail, telephone, iban, siret }, {
-            reason:                   reason ? `account_deleted: ${reason}` : "account_deleted",
-            missions_completed_month: savedProfile.missions_completed_month || 0,
-            plan_abonnement:          savedProfile.plan_abonnement || "free",
-          })),
-        }).catch(e => ({ ok: false, status: e?.message }));
-        if (!bl.ok) console.error(`[${ctx}] empreinte anti-recréation NON enregistrée (${bl.status}) pour ${profileId}`);
-      }
+      // Calculée ici, inscrite une fois le compte supprimé (`inscrireListeNoire`).
+      const empreinteBL = (userEmail || telephone || iban || siret)
+        ? ligneListeNoire({ email: userEmail, telephone, iban, siret }, {
+          reason:                   reason ? `account_deleted: ${reason}` : "account_deleted",
+          missions_completed_month: savedProfile.missions_completed_month || 0,
+          plan_abonnement:          savedProfile.plan_abonnement || "free",
+        })
+        : null;
 
       // ── 5. Effacement ────────────────────────────────────────────────────
       //
@@ -959,6 +954,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Les données du compte ont été effacées, mais le compte lui-même n'a pas pu être supprimé. "
           + "Si ce prestataire a déjà travaillé, vérifiez que la migration 2026-09-30_comptes_supprimes_prestations_conservees est appliquée." });
       }
+      await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, ctx);
 
       await journaliser("delete", { target_id: profileId, target_email: userEmail || null,
         details: { reason: reason || null, prestations_annulees: enCours.length, versements_annules: Math.round(versementsDus * 100) / 100 } });

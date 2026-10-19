@@ -94,18 +94,30 @@ export function ligneListeNoire({ email, telephone, iban, siret }, extra = {}) {
 }
 
 /**
+ * Depuis cette date, une empreinte n'est inscrite qu'une fois le compte
+ * réellement supprimé (`inscrireListeNoire`). Une ligne plus ancienne a pu
+ * l'être par une suppression manquée : elle ne vaut que pour un compte créé
+ * après elle. Une ligne plus récente vaut pour tout compte, même ouvert avant
+ * — sinon il suffisait d'ouvrir le nouveau compte avant de supprimer l'ancien.
+ */
+export const INSCRIPTION_APRES_SUPPRESSION_MS = Date.parse("2026-10-19T12:00:00Z");
+
+/**
  * La liste chargée en mémoire, pour comparer beaucoup de comptes d'un coup :
  * pour chaque empreinte, la date de sa PREMIÈRE inscription (en ms, `-Infinity`
- * si la ligne n'en porte pas — elle compte alors toujours).
+ * si la ligne n'en porte pas ou date d'après `INSCRIPTION_APRES_SUPPRESSION_MS`
+ * — elle compte alors toujours).
  */
 export function ensemblesListeNoire(lignes) {
   const s = { email: new Map(), telephone: new Map(), iban: new Map(), siret: new Map() };
   for (const l of lignes || []) {
     const quand = Date.parse(l.created_at);
     const ms = Number.isFinite(quand) ? quand : -Infinity;
+    // Inscrite une fois la suppression faite : elle vaut pour tout compte.
+    const sure = ms >= INSCRIPTION_APRES_SUPPRESSION_MS ? -Infinity : ms;
     for (const [champ, colonne] of [["email", "email_hash"], ["telephone", "telephone_hash"], ["iban", "iban_hash"], ["siret", "siret_hash"]]) {
       const h = l[colonne];
-      if (h && !(s[champ].get(h) <= ms)) s[champ].set(h, ms);
+      if (h && !(s[champ].get(h) <= sure)) s[champ].set(h, sure);
     }
   }
   return s;
@@ -113,13 +125,32 @@ export function ensemblesListeNoire(lignes) {
 
 /**
  * Le compte porte-t-il une empreinte de la liste ? `creeLeMs` : sa date de
- * création. Donnée, seule compte une ligne inscrite AVANT elle — un compte
- * recréé naît après la suppression de l'ancien ; une ligne postérieure est
- * celle de sa propre suppression, manquée.
+ * création. Donnée, une ligne ANCIENNE (d'avant `INSCRIPTION_APRES_SUPPRESSION_MS`)
+ * ne compte que si elle précède le compte : postérieure, elle peut être celle
+ * de sa propre suppression, manquée. Une ligne récente compte toujours.
  */
 export function correspond(e, s, creeLeMs = null) {
   const borne = Number.isFinite(creeLeMs) ? creeLeMs : Infinity;
   return ["email", "telephone", "iban", "siret"].some((champ) => e[champ].some((h) => s[champ].has(h) && s[champ].get(h) < borne));
+}
+
+/**
+ * Inscrit l'empreinte d'un compte supprimé. À appeler APRÈS la suppression du
+ * compte d'authentification, jamais avant : une suppression qui échoue ensuite
+ * laissait l'empreinte d'un compte resté ouvert (relecture du 16/10/2026). Les
+ * identifiants, eux, se lisent avant l'effacement — `ligne` est calculée tôt.
+ * Un échec est journalisé : le droit à l'effacement prime, la suppression tient.
+ */
+export async function inscrireListeNoire(supabaseUrl, headers, ligne, contexte) {
+  if (!ligne) return false;
+  const r = await fetch(`${supabaseUrl}/rest/v1/account_blacklist`, {
+    method: "POST",
+    headers: { ...headers, "Prefer": "return=minimal" },
+    body: JSON.stringify(ligne),
+  }).catch(e => ({ ok: false, status: e?.message }));
+  if (!r.ok) console.error(`[${contexte}] empreinte anti-recréation NON enregistrée (${r.status}) — `
+    + "le compte pourra être recréé avec un nouvel essai gratuit.");
+  return r.ok;
 }
 
 /** Les comptes d'authentification, page par page (e-mail et métadonnées). */
