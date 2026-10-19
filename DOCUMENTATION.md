@@ -3511,7 +3511,7 @@ Désormais `envoyer_message` prévient lui-même, après avoir enregistré le me
 - l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
   (`texteSmsMessage()`) ;
 - e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
-  n'a pas lu depuis la dernière alerte (rappel au-delà de 24 h), et un seul par rafale — des
+  n'a pas lu depuis la dernière alerte (un rappel par jour), et un seul par rafale — des
   messages à moins d'une demi-heure les uns des autres. Historique illisible, ou plus de 200
   messages du même expéditeur en 24 h (`HISTORIQUE_MAX`) : ni e-mail ni SMS. L'e-mail et le SMS
   partent **ensemble** : l'un après l'autre, l'expéditeur attendait les deux services avant de
@@ -3524,6 +3524,12 @@ la demi-heure : message lu, un deuxième dix minutes après (retenu), un troisi�
 et le destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h. `envoyer_message`
 lit désormais les messages de l'expéditeur des 24 dernières heures (`created_at`, `lu_at`) et la
 règle y retrouve la dernière alerte réellement partie. Rien n'est enregistré de plus.
+
+**Le rappel d'un message non lu part une fois par jour** (relecture du 16/10/2026) : au premier
+message d'une nouvelle journée, heure de Paris, si rien n'a été lu depuis la dernière alerte et
+qu'elle date d'une demi-heure au moins. La règle promettait un rappel « au bout de 24 h » : or
+l'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier message pour une alerte. Tant
+que l'expéditeur écrivait au moins une fois par jour, le rappel ne partait donc jamais.
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
