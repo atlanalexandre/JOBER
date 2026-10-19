@@ -83,10 +83,26 @@ describe("alerteExterieureDue — rejouée sur les messages des dernières 24 h"
     expect(alertes).toBe(1);
   });
 
-  it("rien lu depuis l'alerte : un rappel au bout de 24 h, pas avant", () => {
+  it("rien lu depuis l'alerte : un rappel le lendemain, pas le jour même", () => {
+    // T = 14h à Paris. 23 h 59 le même jour : rien ; 0 h 30 le lendemain : un rappel.
     const h = [{ created_at: iso(T), lu_at: null }];
-    expect(alerteExterieureDue(h, T + DELAI_NON_LU_MS - MIN)).toBe(false);
-    expect(alerteExterieureDue(h, T + DELAI_NON_LU_MS)).toBe(true);
+    expect(alerteExterieureDue(h, Date.parse("2026-10-14T21:59:00Z"))).toBe(false);
+    expect(alerteExterieureDue(h, Date.parse("2026-10-14T22:30:00Z"))).toBe(true);
+  });
+
+  it("un message par heure pendant deux jours, jamais lu : un rappel chaque jour (relecture du 16/10/2026)", () => {
+    // L'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier message pour
+    // une alerte : le rappel « 24 h après » ne partait donc plus jamais.
+    const tous = [];
+    const alertes = [];
+    for (let h = 0; h < 48; h++) {
+      const t = T + h * 3600e3;
+      const fenetre = tous.filter((m) => Date.parse(m.created_at) >= t - DELAI_NON_LU_MS);
+      if (alerteExterieureDue(fenetre, t)) alertes.push(new Date(t).toISOString());
+      tous.push({ created_at: iso(t), lu_at: null });
+    }
+    // La première alerte, puis une au premier message de chaque nouvelle journée (heure de Paris).
+    expect(alertes).toEqual(["2026-10-14T12:00:00.000Z", "2026-10-14T22:00:00.000Z", "2026-10-15T22:00:00.000Z"]);
   });
 
   it("une date illisible dans l'historique : prudence, pas d'alerte", () => {

@@ -10,8 +10,9 @@
 // La remise à zéro du 1er du mois (qui écarte désormais ces comptes) et la
 // résiliation à l'échéance sont éprouvées par `src/tests/api/liste-noire.test.js`.
 //
-// Seule compte une ligne inscrite AVANT la création du compte (relecture du
-// 15/10/2026) : une ligne postérieure est celle de sa propre suppression, manquée.
+// Une ligne d'avant le 19/10/2026 ne compte que si elle précède le compte (elle a pu
+// être inscrite par une suppression manquée) ; depuis, l'empreinte n'est inscrite
+// qu'une fois la suppression faite, et vaut pour tout compte (relecture du 16/10/2026).
 // Les lignes du premier test sont donc datées de la veille, comme celles d'un compte
 // réellement supprimé avant d'être recréé.
 import { test, expect } from "@playwright/test";
@@ -47,14 +48,33 @@ test("IBAN saisi après l'inscription, téléphone écrit autrement : le compte 
   }
 });
 
-test("suppression manquée : la ligne inscrite après la création du compte ne le prive pas du quota gratuit", async () => {
-  // La suppression inscrit l'empreinte, puis peut échouer — « votre compte n'a pas été
-  // supprimé » : le compte reste, et ne doit pas être traité en compte recréé.
+test("compte ouvert AVANT la suppression de l'autre : reconnu quand même (relecture du 16/10/2026)", async () => {
+  // Ouvrir le nouveau compte, puis supprimer l'ancien : l'empreinte, inscrite après la
+  // création du nouveau, était prise pour sa propre suppression manquée. Depuis le
+  // 19/10/2026, elle n'est inscrite qu'une fois la suppression faite : elle vaut pour tous.
   const p = await prestataireOperationnel();
   await sql(`update profiles set trial_exhausted = false where id = '${p.id}'`);
   const [{ email }] = await sql(`select email from auth.users where id = '${p.id}'`);
   const inscrites = await sql(`insert into account_blacklist (email_hash, reason) values
-    ('${hashPii(email)}', 'Scénario 94 — suppression manquée') returning id`);
+    ('${hashPii(email)}', 'Scénario 94 — ancien compte supprimé après') returning id`);
+  try {
+    const t = await tachePlanifiee();
+    expect(t.statut, t.texte.slice(0, 200)).toBe(200);
+    const [l] = await sql(`select trial_exhausted from profiles where id = '${p.id}'`);
+    expect(l.trial_exhausted, "le compte ouvert d'avance perd le quota gratuit").toBe(true);
+  } finally {
+    await sql(`delete from account_blacklist where id in (${inscrites.map(l => `'${l.id}'`).join(",")})`);
+  }
+});
+
+test("ancienne ligne d'une suppression manquée : le compte resté ouvert garde son quota gratuit", async () => {
+  // Avant le 19/10/2026, la suppression inscrivait l'empreinte puis pouvait échouer :
+  // une ligne de cette époque, postérieure au compte, ne le désigne pas.
+  const p = await prestataireOperationnel();
+  await sql(`update profiles set trial_exhausted = false, created_at = '2026-10-01T00:00:00Z' where id = '${p.id}'`);
+  const [{ email }] = await sql(`select email from auth.users where id = '${p.id}'`);
+  const inscrites = await sql(`insert into account_blacklist (email_hash, reason, created_at) values
+    ('${hashPii(email)}', 'Scénario 94 — suppression manquée', '2026-10-10T00:00:00Z') returning id`);
   try {
     const t = await tachePlanifiee();
     expect(t.statut, t.texte.slice(0, 200)).toBe(200);

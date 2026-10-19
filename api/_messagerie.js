@@ -16,7 +16,7 @@
 //   - l'e-mail cite le message réellement enregistré ;
 //   - le SMS ne contient AUCUN texte libre : il dit qu'un message attend, et de qui ;
 //   - e-mail et SMS sont plafonnés : un seul tant que le destinataire n'a pas lu
-//     depuis la dernière alerte (un rappel au bout de 24 h), et un seul par
+//     depuis la dernière alerte (un rappel par jour), et un seul par
 //     rafale — des messages à moins d'une demi-heure les uns des autres. La
 //     notification dans l'application suit, elle, chaque message.
 //
@@ -27,9 +27,11 @@
 // destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { dateDuJourFr } from "./_temps.js";
+
 /** Deux messages plus rapprochés forment une rafale : une seule alerte. */
 export const DELAI_RAFALE_MS = 30 * 60 * 1000;
-/** Un message resté non lu plus longtemps peut être rappelé une fois. */
+/** Sans alerte depuis ce délai, le message suivant en déclenche une. */
 export const DELAI_NON_LU_MS = 24 * 3600 * 1000;
 
 /** Au-delà, l'historique d'une journée est une avalanche : on ne prévient plus au dehors. */
@@ -45,7 +47,8 @@ export const HISTORIQUE_MAX = 200;
  *   - aucune depuis 24 h : alerte (un rappel, si rien n'a été lu depuis) ;
  *   - le destinataire a lu depuis la dernière alerte : alerte si le message
  *     précédent a une demi-heure ou plus — une rafale ne donne qu'une alerte ;
- *   - rien lu depuis : pas de nouvelle alerte.
+ *   - rien lu depuis : un rappel au premier message d'une nouvelle journée
+ *     (heure de Paris), sinon rien.
  * Deux alertes ont donc toujours au moins une demi-heure d'écart.
  * Rien n'est enregistré de plus : les messages et leur `lu_at` suffisent.
  */
@@ -60,7 +63,13 @@ export function alerteExterieureDue(historique, maintenantMs = Date.now()) {
     if (derniere === null || t - derniere >= DELAI_NON_LU_MS) return true;
     // Lu depuis la dernière alerte — connu à l'instant t ?
     const luDepuis = temps.some(x => Number.isFinite(x.lu) && x.lu > derniere && x.lu <= t);
-    return luDepuis && t - precedent >= DELAI_RAFALE_MS;
+    if (luDepuis) return t - precedent >= DELAI_RAFALE_MS;
+    // Rien lu : un rappel par jour, au premier message d'une nouvelle journée
+    // (heure de Paris). « 24 h après la dernière alerte » ne se retrouvait pas :
+    // l'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier
+    // message pour une alerte — le rappel ne partait jamais tant que
+    // l'expéditeur écrivait au moins une fois par jour (relecture du 16/10/2026).
+    return dateDuJourFr(t) !== dateDuJourFr(precedent) && t - derniere >= DELAI_RAFALE_MS;
   };
   for (const t of temps) {
     if (due(t.cree)) derniere = t.cree;

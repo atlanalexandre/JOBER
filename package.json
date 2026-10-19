@@ -21,7 +21,8 @@
     "contraintes": "node scripts/verifier-contraintes.mjs",
     "rls": "cat scripts/verifier-rls.sql",
     "recette": "node scripts/recette.mjs",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "linkedin": "node marketing/linkedin/generer.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.62.0",

@@ -1,0 +1,11 @@
+{
+  "modele": "titre-points",
+  "pastille": "Bientôt",
+  "titre": ["Un prestataire vérifié,", "en toute clarté."],
+  "sous_titre": "ALANE met en relation les entreprises avec des **prestataires indépendants**.",
+  "points": [
+    { "gras": "Des profils vérifiés", "detail": "Identité, SIRET et justificatifs contrôlés avant la mise en ligne." },
+    { "gras": "Un prix clair", "detail": "Le montant affiché à la réservation est celui que vous payez." },
+    { "gras": "Un paiement protégé", "detail": "Le prestataire est payé une fois la prestation validée." }
+  ]
+}

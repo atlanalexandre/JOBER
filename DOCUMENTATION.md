@@ -1777,7 +1777,8 @@ professionnel, l'était.
 **Suites de D4** (relecture du 15/10/2026, `e2e/94` et `src/tests/api/liste-noire.test.js`) :
 
 - **seule compte une ligne inscrite avant la création du compte** (`account_blacklist.created_at` <
-  `profiles.created_at`, dans `comptesRecrees()` et la liste du back-office). La suppression inscrit
+  `profiles.created_at`, dans `comptesRecrees()` et la liste du back-office) — **pour les lignes
+  d'avant le 19/10/2026 seulement** (voir ci-dessous). La suppression inscrit
   l'empreinte puis peut échouer — pièces non effacées : « votre compte n'a pas été supprimé » — et
   la tâche des deux heures privait alors de son quota gratuit un compte resté ouvert. Constaté sur
   la recette avant le correctif ; aucun compte touché en production ;
@@ -1790,6 +1791,16 @@ professionnel, l'était.
   remis à zéro, puis les comptes recréés repénalisés par lots de 100 (`remiseAZeroMensuelle()`) ;
 - la tâche des deux heures ne relit plus la table des profils une seconde fois : celle des rappels
   lui est passée (`COLONNES_PROFIL_LISTE_NOIRE`).
+
+**L'empreinte n'est inscrite qu'une fois le compte supprimé** (relecture du 16/10/2026,
+`inscrireListeNoire()`, `e2e/94`). Elle l'était avant la suppression, qui pouvait échouer ensuite ;
+la règle de date ci-dessus corrigeait ce cas, mais ouvrait un trou : **ouvrir le nouveau compte
+avant de supprimer l'ancien** suffisait à garder un quota gratuit neuf, la ligne étant postérieure
+au nouveau compte. Les identifiants sont toujours lus avant l'effacement ; seule l'écriture attend
+la suppression, dans les trois chemins (suppression par le back-office, par l'utilisateur,
+résiliation à l'échéance). Une ligne inscrite depuis le 19/10/2026 (`INSCRIPTION_APRES_SUPPRESSION_MS`)
+vaut pour tout compte, quelle que soit sa date de création ; la règle de date ne protège plus que les
+lignes plus anciennes.
 
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
@@ -3511,7 +3522,7 @@ Désormais `envoyer_message` prévient lui-même, après avoir enregistré le me
 - l'e-mail cite le message **enregistré** ; le SMS ne contient **aucun texte libre**
   (`texteSmsMessage()`) ;
 - e-mail et SMS sont **plafonnés** (`alerteExterieureDue()`) : un seul tant que le destinataire
-  n'a pas lu depuis la dernière alerte (rappel au-delà de 24 h), et un seul par rafale — des
+  n'a pas lu depuis la dernière alerte (un rappel par jour), et un seul par rafale — des
   messages à moins d'une demi-heure les uns des autres. Historique illisible, ou plus de 200
   messages du même expéditeur en 24 h (`HISTORIQUE_MAX`) : ni e-mail ni SMS. L'e-mail et le SMS
   partent **ensemble** : l'un après l'autre, l'expéditeur attendait les deux services avant de
@@ -3524,6 +3535,12 @@ la demi-heure : message lu, un deuxième dix minutes après (retenu), un troisi�
 et le destinataire n'était plus prévenu ni par e-mail ni par SMS pendant 24 h. `envoyer_message`
 lit désormais les messages de l'expéditeur des 24 dernières heures (`created_at`, `lu_at`) et la
 règle y retrouve la dernière alerte réellement partie. Rien n'est enregistré de plus.
+
+**Le rappel d'un message non lu part une fois par jour** (relecture du 16/10/2026) : au premier
+message d'une nouvelle journée, heure de Paris, si rien n'a été lu depuis la dernière alerte et
+qu'elle date d'une demi-heure au moins. La règle promettait un rappel « au bout de 24 h » : or
+l'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier message pour une alerte. Tant
+que l'expéditeur écrivait au moins une fois par jour, le rappel ne partait donc jamais.
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation

@@ -1,6 +1,6 @@
 import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { verifyUser } from "./_auth.js";
-import { empreintes, filtreListeNoire, ligneListeNoire } from "./_liste_noire.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, inscrireListeNoire } from "./_liste_noire.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
@@ -457,6 +457,7 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       // La table ne stocke que des empreintes, jamais de données en clair : elle
       // reste compatible avec le droit à l'effacement, qu'elle sert même, en
       // évitant de conserver les identifiants pour arriver au même résultat.
+      let empreinteBL = null;
       try {
         const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib&limit=1`, { headers: hdrs });
         const pdSup = prSup.ok ? await prSup.json().catch(() => []) : [];
@@ -464,18 +465,11 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
         const telSup   = caller.user_metadata?.telephone || null;
         const siretSup = caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
 
+        // Calculée ici, inscrite une fois le compte supprimé (`inscrireListeNoire`).
         if (caller.email || telSup || ribSup || siretSup) {
-          const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
-            method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-            // Champs normalisés (api/_liste_noire.js, décision D4).
-            body: JSON.stringify(ligneListeNoire(
-              { email: caller.email, telephone: telSup, iban: ribSup, siret: siretSup },
-              { reason: "account_deleted: suppression par l'utilisateur" })),
-          });
-          if (!blRes.ok) {
-            console.error(`[delete_account] empreinte non enregistrée (${blRes.status}) — `
-              + "le compte pourra être recréé avec un nouvel essai gratuit.");
-          }
+          empreinteBL = ligneListeNoire(
+            { email: caller.email, telephone: telSup, iban: ribSup, siret: siretSup },
+            { reason: "account_deleted: suppression par l'utilisateur" });
         }
       } catch (blErr) {
         // On ne bloque pas la suppression : le droit à l'effacement prime sur le
@@ -531,6 +525,7 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
         return res.status(500).json({ error: "Vos données ont été effacées, mais la fermeture du compte n'a pas abouti. "
           + "Écrivez à support@alane.fr : nous la terminerons." });
       }
+      await inscrireListeNoire(SUPABASE_URL, hdrs, empreinteBL, "delete_account");
       return res.status(200).json({ success: true });
     } catch (e) {
       console.error("delete_account error:", e.message);
