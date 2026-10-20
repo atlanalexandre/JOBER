@@ -30,6 +30,7 @@ import { restituerCashback } from "./_cashback.js";
 import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
 import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
+import { etatDossier, aUnSiret, destinatairesRelanceSiret, emailRelanceSiret } from "./_vagues.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -210,7 +211,7 @@ export default async function handler(req, res) {
       const lireProfils = async () => {
         const tous = [];
         for (let debut = 0; ; debut += 1000) {
-          const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv,accuse_inscription_at&order=created_at.desc,id.asc&limit=1000&offset=${debut}`, { headers });
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib,cv,accuse_inscription_at,siret&order=created_at.desc,id.asc&limit=1000&offset=${debut}`, { headers });
           const page = await r.json().catch(() => null);
           if (!r.ok || !Array.isArray(page)) throw new Error(`profils illisibles (${r.status}) à partir du ${debut + 1}e`);
           tous.push(...page);
@@ -299,6 +300,9 @@ export default async function handler(req, res) {
         // valeur complète s'obtient une fiche à la fois par l'action
         // `reveal_iban`, qui laisse une trace.
         const ribComplet = p.rib || meta.rib || null;
+        const piecesAOuvrir = p.role === "prestataire" && tousDocs
+          ? piecesAvantOuverture(docsRequisPour(meta.nationalite, metiersDeclares(meta)), docsParPresta.get(p.id) || [])
+          : null;
         const ribNettoye = ribComplet ? String(ribComplet).replace(/\s/g, "").toUpperCase() : null;
         return {
           ...p,
@@ -312,10 +316,11 @@ export default async function handler(req, res) {
           // ce que regarde celui qui ouvre l'accès aux prestations.
           cv: p.cv || meta.cv || null,
           cv_manques: p.role === "prestataire" ? manquesCv(p.cv || meta.cv) : [],
-          pieces_a_valider: p.role === "prestataire" && tousDocs
-            ? piecesAvantOuverture(docsRequisPour(meta.nationalite, metiersDeclares(meta)), docsParPresta.get(p.id) || [])
-                .map(d => `${d.label} (${d.raison})`)
-            : [],
+          pieces_a_valider: piecesAOuvrir ? piecesAOuvrir.map(d => `${d.label} (${d.raison})`) : [],
+          // Validation par vagues (20/10/2026) : la liste de travail de la
+          // vérification, et les inscrits qui ne peuvent pas exercer faute de SIRET.
+          etat_dossier: piecesAOuvrir ? etatDossier(piecesAOuvrir) : null,
+          sans_siret: p.role === "prestataire" && !aUnSiret(p, meta),
           metiers_sans_experience: p.role === "prestataire" ? metiersSansExperience(p.cv || meta.cv, metiersDeclares(meta)) : [],
         };
       });
@@ -3616,6 +3621,57 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Relance des prestataires inscrits sans SIRET (validation par vagues,
+    // 20/10/2026). Destinataires et texte établis ici, jamais par le navigateur ;
+    // aperçu d'abord, puis envoi au nombre annoncé (comme `send_info_mail`).
+    // Un compte relancé ne l'est plus pendant 30 jours.
+    if (action === "relance_sans_siret") {
+      const { mode } = req.body;
+      if (!["apercu", "envoi"].includes(mode)) return res.status(400).json({ error: "Mode inconnu" });
+      let profils, relances;
+      const utilisateurs = {};
+      try {
+        [profils, relances] = await Promise.all([
+          lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending&select=id,role,status,prenom,siret`, headers),
+          lireTout(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.relance_sans_siret&select=target_id,created_at`, headers),
+        ]);
+        for (let page = 1; ; page++) {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+          const ud = await ur.json().catch(() => null);
+          if (!ur.ok || !Array.isArray(ud?.users)) throw new Error(`comptes illisibles (${ur.status}), page ${page}`);
+          for (const u of ud.users) utilisateurs[u.id] = { email: u.email, meta: u.user_metadata || {} };
+          if (ud.users.length < 1000) break;
+        }
+      } catch (e) {
+        console.error("[relance_sans_siret] destinataires illisibles :", e.message);
+        return res.status(502).json({ error: "Destinataires illisibles" });
+      }
+      const { liste, dejaRelances } = destinatairesRelanceSiret(profils, utilisateurs, relances);
+      if (mode === "apercu") return res.status(200).json({ ok: true, destinataires: liste.length, dejaRelances });
+      if (Number(req.body.attendus) !== liste.length) {
+        return res.status(409).json({ error: `La liste a changé (${liste.length} destinataires au lieu de ${req.body.attendus}) : relancez l'aperçu.` });
+      }
+      if (liste.length > MAX_DESTINATAIRES) return res.status(413).json({ error: `Plus de ${MAX_DESTINATAIRES} destinataires : envoi à découper.` });
+      if (!liste.length) return res.status(200).json({ ok: true, envoyes: 0, echecs: 0 });
+      // Par lots de 100, tout ou rien par lot : un compte n'est noté « relancé »
+      // que si son lot est parti en entier.
+      const lots = [];
+      for (let i = 0; i < liste.length; i += 100) lots.push(liste.slice(i, i + 100));
+      let envoyes = 0, echecs = 0;
+      for (const lot of lots) {
+        const r = await envoyerInformation(lot.map(d => d.email), emailRelanceSiret());
+        if (r.envoyes !== lot.length) {
+          echecs += lot.length - r.envoyes;
+          console.error(`[relance_sans_siret] lot de ${lot.length} : ${r.envoyes} accepté(s) — ${r.erreur || "refus"}. Non noté relancé.`);
+          continue;
+        }
+        envoyes += r.envoyes;
+        for (const d of lot) await journaliser("relance_sans_siret", { target_id: d.id, target_email: d.email });
+      }
+      if (envoyes === 0) return res.status(502).json({ error: "Aucun e-mail accepté", echecs });
+      return res.status(200).json({ ok: true, envoyes, echecs });
+    }
+
     if (action === "update_profile") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
 
@@ -3631,6 +3687,16 @@ export default async function handler(req, res) {
         if (BOTH_COLS.includes(k)) { profileFields[k] = v; metaFields[k] = v; }
         else if (PROFILE_COLS.includes(k)) profileFields[k] = v;
         else if (META_WHITELIST.includes(k)) metaFields[k] = v;
+      }
+      // Le SIRET d'un prestataire, reçu par e-mail après la relance des inscrits
+      // sans SIRET (20/10/2026) : il ne peut plus le saisir lui-même une fois
+      // inscrit. Contrôlé (14 chiffres, clé de Luhn), écrit aux deux endroits
+      // que lisent l'inscription et la liste du back-office.
+      if (payload.siret !== undefined && payload.siret !== null && String(payload.siret).trim() !== "") {
+        const siret = String(payload.siret).replace(/\s/g, "");
+        if (!validateSiret(siret)) return res.status(400).json({ error: "SIRET invalide : 14 chiffres attendus, et la clé de contrôle ne correspond pas." });
+        profileFields.siret = siret;
+        metaFields.siret = siret;
       }
       if (profileFields.plan_abonnement !== undefined && !VALID_PLANS.includes(profileFields.plan_abonnement)) {
         return res.status(400).json({ error: "Plan invalide" });
