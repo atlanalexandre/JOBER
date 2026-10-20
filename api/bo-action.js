@@ -74,6 +74,64 @@ function validateSiret(raw) {
   return sum % 10 === 0;
 }
 
+// IBAN : 15 à 34 caractères, deux lettres de pays, clé ISO 7064 (modulo 97).
+export function validateIban(raw) {
+  const s = String(raw || "").replace(/\s/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return false;
+  const chiffres = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, c => String(c.charCodeAt(0) - 55));
+  let reste = 0;
+  for (const c of chiffres) reste = (reste * 10 + Number(c)) % 97;
+  return reste === 1;
+}
+
+/**
+ * Les champs de « Modifier profil » (back-office), et où chacun s'enregistre.
+ *
+ * Jusqu'au 20/10/2026, l'écran envoyait l'IBAN, l'adresse, le code postal, la
+ * société, le Kbis, la présentation et les besoins d'un client, et le serveur
+ * les ignorait sans rien dire : « Profil mis à jour », rien n'avait changé.
+ * Chaque champ va désormais là où l'application le lit — la colonne de
+ * `profiles` ET les métadonnées quand les deux existent (la liste du
+ * back-office lit les métadonnées en premier), l'IBAN dans `profiles` seul :
+ * il ne doit plus entrer dans le jeton (RGPD, migration
+ * 2026-07-30_rgpd_iban_hors_du_jeton). Rend { profil, meta } ou { erreur }.
+ */
+export function champsModifierProfil(payload) {
+  const profil = {}, meta = {};
+  const texte = (v) => (v === null || v === undefined ? null : String(v).trim() || null);
+  const aux2 = (cleProfil, cleMeta, v) => { const t = texte(v); profil[cleProfil] = t; meta[cleMeta] = t; };
+  for (const [k, v] of Object.entries(payload || {})) {
+    if (k === "rib") {
+      const iban = texte(v) ? String(v).replace(/\s/g, "").toUpperCase() : null;
+      if (iban && !validateIban(iban)) return { erreur: "IBAN invalide : vérifiez le numéro (clé de contrôle fausse)." };
+      profil.rib = iban;
+      meta.rib = null; // retire du jeton un IBAN qu'y aurait laissé une ancienne version
+    }
+    else if (k === "telephone") aux2("tel", "telephone", v);
+    else if (k === "rue" || k === "adresse") aux2("adresse", "adresse", v);
+    else if (k === "cp" || k === "code_postal") aux2("code_postal", "code_postal", v);
+    else if (k === "ville") aux2("ville", "ville", v);
+    else if (k === "societe_nom") aux2("societe_nom", "societe_nom", v);
+    else if (k === "kbis" || k === "ae_siret") {
+      const s = texte(v) ? String(v).replace(/\s/g, "") : null;
+      if (s && !validateSiret(s)) return { erreur: `${k === "kbis" ? "SIRET de la société" : "SIRET auto-entrepreneur"} invalide : 14 chiffres attendus, clé de contrôle fausse.` };
+      meta[k] = s;
+    }
+    else if (k === "type_compte") {
+      const t = texte(v);
+      if (t && !["particulier", "professionnel"].includes(t)) return { erreur: "Type de compte inconnu." };
+      meta.type_compte = t;
+    }
+    else if (k === "bio" || k === "frequence_besoins") meta[k] = texte(v);
+    else if (k === "volume_horaire") {
+      const t = texte(v);
+      if (t !== null && !(Number(t) >= 0)) return { erreur: "Volume horaire : un nombre d'heures attendu." };
+      meta.volume_horaire = t === null ? null : Number(t);
+    }
+  }
+  return { profil, meta };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -3683,7 +3741,12 @@ export default async function handler(req, res) {
       const BOTH_COLS = ["plan_abonnement"];
       const profileFields = {};
       const metaFields = {};
+      const champsDeplaces = champsModifierProfil(payload);
+      if (champsDeplaces.erreur) return res.status(400).json({ error: champsDeplaces.erreur });
+      Object.assign(profileFields, champsDeplaces.profil);
+      Object.assign(metaFields, champsDeplaces.meta);
       for (const [k, v] of Object.entries(payload)) {
+        if (k in champsDeplaces.profil || k in champsDeplaces.meta || ["rib", "rue", "cp", "telephone", "kbis", "ae_siret"].includes(k)) continue;
         if (BOTH_COLS.includes(k)) { profileFields[k] = v; metaFields[k] = v; }
         else if (PROFILE_COLS.includes(k)) profileFields[k] = v;
         else if (META_WHITELIST.includes(k)) metaFields[k] = v;
