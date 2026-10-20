@@ -950,11 +950,15 @@ export default async function handler(req, res) {
           + "le compte n'a pas été supprimé. Réessayez dans quelques minutes." });
       }
 
-      if (!await supprimerCompteAuth(profileId, SUPABASE_URL, headers, ctx)) {
+      // Les données sont effacées : l'empreinte s'inscrit même si la suppression
+      // du compte échoue ici — vidé, il ne sert plus, et l'empreinte ne doit pas
+      // se perdre si la suppression est terminée à la main (relecture du 20/10/2026).
+      const compteSupprime = await supprimerCompteAuth(profileId, SUPABASE_URL, headers, ctx);
+      await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, `${ctx} ${profileId}`);
+      if (!compteSupprime) {
         return res.status(500).json({ error: "Les données du compte ont été effacées, mais le compte lui-même n'a pas pu être supprimé. "
           + "Si ce prestataire a déjà travaillé, vérifiez que la migration 2026-09-30_comptes_supprimes_prestations_conservees est appliquée." });
       }
-      await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, ctx);
 
       await journaliser("delete", { target_id: profileId, target_email: userEmail || null,
         details: { reason: reason || null, prestations_annulees: enCours.length, versements_annules: Math.round(versementsDus * 100) / 100 } });

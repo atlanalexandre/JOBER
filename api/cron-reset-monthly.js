@@ -1159,7 +1159,7 @@ export default async function handler(req, res) {
               console.error(`[resiliation] compte ${p.id} NON supprimé — sera repris demain`);
               continue;
             }
-            await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, "resiliation");
+            await inscrireListeNoire(SUPABASE_URL, headers, empreinteBL, `resiliation ${p.id}`);
             resiliations++;
             console.log(`[resiliation] compte ${p.id} résilié à l'échéance du préavis`);
           }

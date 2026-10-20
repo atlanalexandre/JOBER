@@ -521,11 +521,15 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       }
       // La réponse de la base est lue : elle refusait la suppression de tout
       // prestataire ayant déjà travaillé, et l'écran annonçait « supprimé ».
-      if (!await supprimerCompteAuth(userId, SUPABASE_URL, hdrs, "delete_account")) {
+      // Les données sont effacées : l'empreinte s'inscrit même si la fermeture du
+      // compte échoue ici — le support la termine à la main, et l'empreinte ne
+      // doit pas se perdre en route (relecture du 20/10/2026).
+      const compteSupprime = await supprimerCompteAuth(userId, SUPABASE_URL, hdrs, "delete_account");
+      await inscrireListeNoire(SUPABASE_URL, hdrs, empreinteBL, `delete_account ${userId}`);
+      if (!compteSupprime) {
         return res.status(500).json({ error: "Vos données ont été effacées, mais la fermeture du compte n'a pas abouti. "
           + "Écrivez à support@alane.fr : nous la terminerons." });
       }
-      await inscrireListeNoire(SUPABASE_URL, hdrs, empreinteBL, "delete_account");
       return res.status(200).json({ success: true });
     } catch (e) {
       console.error("delete_account error:", e.message);
