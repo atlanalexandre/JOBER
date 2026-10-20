@@ -1802,6 +1802,13 @@ résiliation à l'échéance). Une ligne inscrite depuis le 19/10/2026 (`INSCRIP
 vaut pour tout compte, quelle que soit sa date de création ; la règle de date ne protège plus que les
 lignes plus anciennes.
 
+**Précisions du 20/10/2026** (relecture) : l'empreinte s'inscrit dès que les données du compte
+sont **effacées**, même si la suppression du compte lui-même échoue ensuite — le support la
+termine à la main, et l'empreinte ne se perdait plus en route. Le journal d'un échec nomme le
+compte (`inscrireListeNoire()` passe par `ecrireVerifie()`). Rappel de la règle D4 : une empreinte
+récente désigne **tout** compte qui la porte, ancien compris — deux prestataires qui partagent un
+IBAN (compte joint) ou un téléphone sont concernés si l'un supprime son compte.
+
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
 supprimé se recrée pour retrouver un essai gratuit, et reste compatible avec le droit à
@@ -3541,6 +3548,9 @@ message d'une nouvelle journée, heure de Paris, si rien n'a été lu depuis la 
 qu'elle date d'une demi-heure au moins. La règle promettait un rappel « au bout de 24 h » : or
 l'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier message pour une alerte. Tant
 que l'expéditeur écrivait au moins une fois par jour, le rappel ne partait donc jamais.
+Depuis le 20/10/2026, le jour se compare à celui de la **dernière alerte** (un premier message
+trop proche de l'alerte de la veille ne fait plus sauter le rappel de la journée), et le rappel
+ne part pas au milieu d'une rafale (une rafale qui passe minuit ne donne qu'une alerte).
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation
