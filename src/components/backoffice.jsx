@@ -325,7 +325,8 @@ function BOComptes() {
   const [previewDoc, setPreviewDoc] = useState(null);
   const [editMode, setEditMode]   = useState(null);
   const [editVals, setEditVals]   = useState({});
-  const [siretInitial, setSiretInitial] = useState("");
+  // Les valeurs à l'ouverture du formulaire : seuls les champs modifiés partent.
+  const [editInitial, setEditInitial] = useState({});
   const [editSaving, setEditSaving] = useState(false);
   const [editResult, setEditResult] = useState(null);
   const [contactModal, setContactModal] = useState(null);
@@ -549,7 +550,7 @@ function BOComptes() {
   };
 
   const startEdit = (p) => {
-    setEditVals({
+    const valeurs = {
       prenom: p.prenom || "",
       nom: p.nom || "",
       telephone: p.telephone || "",
@@ -570,8 +571,9 @@ function BOComptes() {
       volume_horaire: p.volume_horaire != null ? String(p.volume_horaire) : "",
       plan_abonnement: p.plan_abonnement || "free",
       subscription_end_date: p.subscription_end_date ? p.subscription_end_date.slice(0, 10) : "",
-    });
-    setSiretInitial(p.siret || "");
+    };
+    setEditVals(valeurs);
+    setEditInitial(valeurs);
     setEditMode(p.id);
     setEditResult(null);
   };
@@ -580,10 +582,13 @@ function BOComptes() {
     setEditSaving(true);
     setEditResult(null);
     try {
-      // Le SIRET n'est envoyé que s'il a changé : le serveur le contrôle, et un
-      // SIRET d'inscription mal formé ne doit pas bloquer la mise à jour du reste.
-      const { siret, ...autres } = editVals;
-      const envoi = siret !== siretInitial ? { ...autres, siret } : autres;
+      // Seuls les champs modifiés partent : le serveur contrôle le SIRET, l'IBAN
+      // et le Kbis, et une valeur d'inscription mal formée qu'on ne touche pas ne
+      // doit pas bloquer la mise à jour du reste. L'IBAN, masqué dans la liste,
+      // s'ouvre vide : laissé vide, il n'est pas effacé.
+      const envoi = Object.fromEntries(Object.entries(editVals)
+        .filter(([k, v]) => v !== editInitial[k] && !(k === "rib" && !String(v).trim())));
+      if (!Object.keys(envoi).length) { setEditSaving(false); setEditMode(null); return; }
       const r = await boFetch({ action: "update_profile", profileId, ...envoi });
       const j = await r.json().catch(() => ({}));
       if (j.success) {
@@ -1044,7 +1049,7 @@ function BOComptes() {
                   <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Contact & paiement</div>
                   <div style={{ marginBottom:12 }}>
                     <FI label="Téléphone" field="telephone" />
-                    <FI label="IBAN / RIB" field="rib" />
+                    <FI label={p.rib_present ? `IBAN / RIB — enregistré, finit par ${p.rib_fin} (laisser vide pour le garder)` : "IBAN / RIB"} field="rib" />
                   </div>
 
                   <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Profil légal</div>
@@ -1060,7 +1065,7 @@ function BOComptes() {
                   {p.role === "prestataire" && <>
                     <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Activité professionnelle</div>
                     <div style={{ marginBottom:12 }}>
-                      <FI label="Secteur" field="secteur" options={[["","— Non renseigné —"],["logistique","Logistique"],["btp","BTP"],["restauration","Restauration"],["proprete","Propreté"],["commercial","Commercial"],["hotellerie","Hôtellerie"],["distribution","Distribution"],["divers","Divers"]]} />
+                      <FI label="Secteur" field="secteur" options={[["","— Non renseigné —"],["logistique","Logistique"],["restauration","Restauration"],["proprete","Propreté"],["commercial","Commercial"],["hotellerie","Hôtellerie"],["distribution","Distribution"],["divers","Divers"]]} />
                       <FI label="SIRET (14 chiffres)" field="siret" />
                       <FI label="Métier / Poste" field="metier" />
                       <FI label="Tarif net (€/h)" field="tarif_net" type="number" />
