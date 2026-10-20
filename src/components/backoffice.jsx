@@ -237,6 +237,19 @@ function DemoDocPreview({ type }) {
   );
 }
 
+// Les états de dossier proposés par le filtre « 📋 Dossier » — calculés par le
+// serveur (`etat_dossier`, `sans_siret` : api/_vagues.js).
+const ETATS_DOSSIER = [
+  ["a_verifier", "Dossiers complets à vérifier"],
+  ["incomplet",  "Pièces manquantes"],
+  ["sans_siret", "Sans SIRET"],
+];
+function correspondDossier(p, etat) {
+  if (p.role !== "prestataire") return false;
+  if (etat === "sans_siret") return p.sans_siret === true;
+  return p.etat_dossier === etat;
+}
+
 function BOComptes() {
   const [profiles, setProfiles]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -249,6 +262,10 @@ function BOComptes() {
   // Provenance déclarée à l'inscription (« Comment avez-vous connu ALANE ? »).
   // Croisée avec le filtre secteur, elle dit quel canal amène quels métiers.
   const [provenanceFilter, setProvenanceFilter] = useState("all");
+  // Où en est le dossier (validation par vagues, 20/10/2026) : « a_verifier »
+  // = toutes les pièces déposées, au moins une à contrôler — la liste de
+  // travail ; « incomplet » ; « sans_siret » = ne peut pas exercer.
+  const [dossierFilter, setDossierFilter] = useState("all");
   // Ordre de la liste : du plus récent (défaut) ou par nom, A → Z.
   const [tri, setTri]                     = useState("recent");
   const [actioning, setActioning] = useState(null);
@@ -308,6 +325,7 @@ function BOComptes() {
   const [previewDoc, setPreviewDoc] = useState(null);
   const [editMode, setEditMode]   = useState(null);
   const [editVals, setEditVals]   = useState({});
+  const [siretInitial, setSiretInitial] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editResult, setEditResult] = useState(null);
   const [contactModal, setContactModal] = useState(null);
@@ -540,6 +558,7 @@ function BOComptes() {
       societe_nom: p.societe_nom || "",
       kbis: p.kbis || "",
       ae_siret: p.ae_siret || "",
+      siret: p.siret || "",
       secteur: p.secteur || "",
       metier: p.metier || "",
       tarif_net: p.tarif_net != null ? String(p.tarif_net) : "",
@@ -552,6 +571,7 @@ function BOComptes() {
       plan_abonnement: p.plan_abonnement || "free",
       subscription_end_date: p.subscription_end_date ? p.subscription_end_date.slice(0, 10) : "",
     });
+    setSiretInitial(p.siret || "");
     setEditMode(p.id);
     setEditResult(null);
   };
@@ -560,14 +580,19 @@ function BOComptes() {
     setEditSaving(true);
     setEditResult(null);
     try {
-      const r = await boFetch({ action: "update_profile", profileId, ...editVals });
-      const j = await r.json();
+      // Le SIRET n'est envoyé que s'il a changé : le serveur le contrôle, et un
+      // SIRET d'inscription mal formé ne doit pas bloquer la mise à jour du reste.
+      const { siret, ...autres } = editVals;
+      const envoi = siret !== siretInitial ? { ...autres, siret } : autres;
+      const r = await boFetch({ action: "update_profile", profileId, ...envoi });
+      const j = await r.json().catch(() => ({}));
       if (j.success) {
         setEditResult("ok");
         setEditMode(null);
         load();
       } else {
         setEditResult("error");
+        if (j.error) showToast(j.error, "error");
       }
     } catch { setEditResult("error"); }
     setEditSaving(false);
@@ -643,7 +668,7 @@ function BOComptes() {
 
   // Nouvelle recherche, nouveau filtre : on repart des 100 premiers.
   useEffect(() => { setNbAffiches(PAR_PAGE_COMPTES); },
-    [filter, roleFilter, search, secteurFilter, metierFilter, villeFilter, regionFilter, provenanceFilter, tri]);
+    [filter, roleFilter, search, secteurFilter, metierFilter, villeFilter, regionFilter, provenanceFilter, dossierFilter, tri]);
 
   const filtered = profiles.filter(p => {
     if (filter !== "all" && p.status !== filter) return false;
@@ -655,6 +680,7 @@ function BOComptes() {
     if (villeFilter   !== "all" && cleVille(p.ville) !== villeFilter)              return false;
     if (regionFilter  !== "all" && (regionDe(p) || "inconnue") !== regionFilter)   return false;
     if (provenanceFilter !== "all" && (p.connu_par || "inconnue") !== provenanceFilter) return false;
+    if (dossierFilter !== "all" && !correspondDossier(p, dossierFilter)) return false;
 
     if (searchLow) {
       // Identité, coordonnées, localisation : comparaison littérale.
@@ -687,8 +713,72 @@ function BOComptes() {
     });
   };
 
-  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all" || provenanceFilter !== "all";
-  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); setProvenanceFilter("all"); };
+  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all" || regionFilter !== "all" || provenanceFilter !== "all" || dossierFilter !== "all";
+  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); setRegionFilter("all"); setProvenanceFilter("all"); setDossierFilter("all"); };
+
+  // Combien de comptes, parmi ceux du statut affiché, à chaque état de dossier.
+  const comptesDossier = Object.fromEntries(ETATS_DOSSIER.map(([id]) => [id,
+    profiles.filter(p => (filter === "all" || p.status === filter) && correspondDossier(p, id)).length]));
+
+  // Les prestataires en attente de la liste affichée : la vague en cours.
+  const vagueAffichee = filtered.filter(p => p.role === "prestataire" && p.status === "pending");
+  const totalEnAttente = profiles.filter(p => p.role === "prestataire" && p.status === "pending").length;
+
+  // Valider un lot de profils : chacun par l'action « approve » habituelle, un
+  // par un — même contrôle anti-recréation, même e-mail qui nomme SES pièces.
+  const validerProfils = async (liste, cle) => {
+    setActioning(cle);
+    let valides = 0;
+    const echecs = [];
+    for (const p of liste) {
+      try {
+        const r = await boFetch({ action: "approve", profileId: p.id });
+        if (r.ok) valides++;
+        else {
+          const j = await r.json().catch(() => ({}));
+          echecs.push(p.email || p.id);
+          console.error(`[validation groupée] ${p.email || p.id} :`, r.status, j.error);
+        }
+      } catch (e) {
+        echecs.push(p.email || p.id);
+        console.error(`[validation groupée] ${p.email || p.id} :`, e.message);
+      }
+    }
+    showToast(`${valides}/${liste.length} profil(s) prestataire validé(s)`
+      + (echecs.length ? ` — échec pour : ${echecs.slice(0, 3).join(", ")}${echecs.length > 3 ? "…" : ""}` : ""),
+      echecs.length ? "error" : "success");
+    setActioning(null);
+    await load();
+  };
+
+  // Relance des inscrits sans SIRET : le serveur choisit les destinataires et
+  // écrit le texte ; l'écran montre le nombre, puis envoie à ce nombre-là.
+  const relancerSansSiret = async () => {
+    setActioning("relance_siret");
+    try {
+      const ra = await boFetch({ action: "relance_sans_siret", mode: "apercu" });
+      const ja = await ra.json().catch(() => ({}));
+      if (!ra.ok) { showToast(ja.error || `Erreur ${ra.status}`, "error"); setActioning(null); return; }
+      if (!ja.destinataires) {
+        showToast(`Personne à relancer${ja.dejaRelances ? ` (${ja.dejaRelances} déjà relancé(s) ce mois-ci)` : ""}.`, "success");
+        setActioning(null); return;
+      }
+      const ok = await showConfirm(
+        `Envoyer la relance « il manque votre numéro SIRET » à ${ja.destinataires} prestataire(s) en attente ?\n\n`
+        + "L'e-mail explique comment créer une micro-entreprise sur le guichet officiel (procedures.inpi.fr), "
+        + "et demande d'envoyer le numéro SIRET à support@alane.fr. Vous l'ajouterez ensuite dans « Modifier profil ».\n\n"
+        + (ja.dejaRelances ? `${ja.dejaRelances} compte(s) déjà relancé(s) depuis moins de 30 jours sont écartés.` : "Chacun ne sera pas relancé de nouveau avant 30 jours.")
+      );
+      if (!ok) { setActioning(null); return; }
+      const r = await boFetch({ action: "relance_sans_siret", mode: "envoi", attendus: ja.destinataires });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) showToast(j.error || `Erreur ${r.status}`, "error");
+      else showToast(`${j.envoyes} relance(s) envoyée(s)${j.echecs ? `, ${j.echecs} échec(s) — voir les journaux` : ""}.`, j.echecs ? "error" : "success");
+    } catch (e) {
+      showToast(e?.message || "Erreur réseau", "error");
+    }
+    setActioning(null);
+  };
 
   return (
     <div style={{ padding:"16px 18px" }}>
@@ -746,33 +836,35 @@ function BOComptes() {
               + "L'accès aux prestations n'est PAS ouvert : vous l'activerez fiche par fiche, une fois le dossier vérifié."
             );
             if (!ok) return;
-            setActioning("prestas_en_attente");
-            let valides = 0;
-            const echecs = [];
-            for (const p of prestasEnAttente) {
-              try {
-                const r = await boFetch({ action: "approve", profileId: p.id });
-                if (r.ok) valides++;
-                else {
-                  const j = await r.json().catch(() => ({}));
-                  echecs.push(p.email || p.id);
-                  console.error(`[validation groupée] ${p.email || p.id} :`, r.status, j.error);
-                }
-              } catch (e) {
-                echecs.push(p.email || p.id);
-                console.error(`[validation groupée] ${p.email || p.id} :`, e.message);
-              }
-            }
-            showToast(`${valides}/${n} profil(s) prestataire validé(s)`
-              + (echecs.length ? ` — échec pour : ${echecs.slice(0, 3).join(", ")}${echecs.length > 3 ? "…" : ""}` : ""),
-              echecs.length ? "error" : "success");
-            setActioning(null);
-            await load();
+            await validerProfils(prestasEnAttente, "prestas_en_attente");
           }} style={{ width:"100%", padding:"11px 14px", marginBottom:14, borderRadius:12, border:`1px solid ${C.success}55`, background:`${C.success}14`, color:C.success, fontWeight:800, fontSize:13, cursor:actioning?"default":"pointer", fontFamily:"inherit", opacity:actioning && actioning !== "prestas_en_attente" ? 0.5 : 1 }}>
-            {actioning === "prestas_en_attente" ? "Validation en cours…" : `✅ Valider le profil des ${n} prestataire(s) en attente (sans accès aux prestations)`}
+            {actioning === "prestas_en_attente" ? "Validation en cours…" : `✅ Valider le profil des ${n} prestataire(s) en attente — tous, sans tenir compte des filtres (sans accès aux prestations)`}
           </button>
         );
       })()}
+
+      {/* La vague en cours : les prestataires en attente que les filtres
+          affichent (validation par vagues, 20/10/2026). Le bouton ci-dessus,
+          lui, valide tout le monde. */}
+      {(filtresActifs || searchLow) && filter === "pending" && vagueAffichee.length > 0 && vagueAffichee.length < totalEnAttente && (
+        <button disabled={!!actioning} onClick={async () => {
+          const ok = await showConfirm(
+            `Valider le profil des ${vagueAffichee.length} prestataire(s) affiché(s) ?\n\n`
+            + "Seuls ceux que montrent les filtres sont validés. Chacun reçoit l'e-mail de bienvenue avec la liste de SES pièces.\n\n"
+            + "L'accès aux prestations n'est PAS ouvert."
+          );
+          if (!ok) return;
+          await validerProfils(vagueAffichee, "vague_affichee");
+        }} style={{ width:"100%", padding:"11px 14px", marginBottom:14, borderRadius:12, border:`1px solid ${C.violet}66`, background:`${C.violet}1A`, color:C.text, fontWeight:800, fontSize:13, cursor:actioning?"default":"pointer", fontFamily:"inherit", opacity:actioning?0.6:1 }}>
+          {actioning === "vague_affichee" ? "Validation en cours…" : `🌊 Valider les ${vagueAffichee.length} profil(s) affiché(s) — la vague filtrée`}
+        </button>
+      )}
+
+      {dossierFilter === "sans_siret" && filter === "pending" && comptesDossier.sans_siret > 0 && (
+        <button disabled={!!actioning} onClick={relancerSansSiret} style={{ width:"100%", padding:"11px 14px", marginBottom:14, borderRadius:12, border:`1px solid ${C.accentGold}66`, background:`${C.accentGold}14`, color:C.text, fontWeight:800, fontSize:13, cursor:actioning?"default":"pointer", fontFamily:"inherit", opacity:actioning?0.6:1 }}>
+          {actioning === "relance_siret" ? "Préparation…" : "✉️ Relancer les inscrits sans SIRET (aperçu avant envoi)"}
+        </button>
+      )}
 
       <input type="text" placeholder="🔍 Rechercher par email, prénom, nom, téléphone…" value={search} onChange={e=>setSearch(e.target.value)}
         style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:12, boxSizing:"border-box", outline:"none" }} />
@@ -808,6 +900,10 @@ function BOComptes() {
              optionsFiltres.villes.map(([cle, lib, n]) => [cle, `${lib} (${n})`])],
             ["📣", provenanceFilter, setProvenanceFilter, "Toutes les provenances",
              optionsFiltres.provenances.map(([id, n]) => [id, `${id === "inconnue" ? "Provenance non renseignée" : LIBELLE_CONNAISSANCE[id] || id} (${n})`])],
+            ...(roleFilter !== "client" ? [
+              ["📋", dossierFilter, setDossierFilter, "Tous les dossiers",
+               ETATS_DOSSIER.map(([id, libelle]) => [id, `${libelle} (${comptesDossier[id]})`])],
+            ] : []),
           ].map(([icone, valeur, setValeur, libelleTout, options]) => (
             <select key={libelleTout} value={valeur} onChange={e => setValeur(e.target.value)}
               disabled={options.length === 0}
@@ -965,6 +1061,7 @@ function BOComptes() {
                     <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Activité professionnelle</div>
                     <div style={{ marginBottom:12 }}>
                       <FI label="Secteur" field="secteur" options={[["","— Non renseigné —"],["logistique","Logistique"],["btp","BTP"],["restauration","Restauration"],["proprete","Propreté"],["commercial","Commercial"],["hotellerie","Hôtellerie"],["distribution","Distribution"],["divers","Divers"]]} />
+                      <FI label="SIRET (14 chiffres)" field="siret" />
                       <FI label="Métier / Poste" field="metier" />
                       <FI label="Tarif net (€/h)" field="tarif_net" type="number" />
                       <FI label="Bio / Présentation" field="bio" type="textarea" />
