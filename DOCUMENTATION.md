@@ -1370,6 +1370,9 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
+| `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` / `ae_siret` des métadonnées), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
+
+**« Modifier profil » enregistre enfin ce qu'il affiche** (20/10/2026, `champsModifierProfil()` d'`api/bo-action.js`, `e2e/98`). L'IBAN, l'adresse, le code postal, la société, le Kbis, le SIRET auto-entrepreneur, la présentation et les besoins d'un client étaient envoyés puis ignorés par `update_profile`, qui répondait « mis à jour ». Chacun va désormais là où l'application le lit : la colonne de `profiles` **et** les métadonnées quand les deux existent (adresse, code postal, ville, société, téléphone → `tel`), l'IBAN dans `profiles.rib` seul (contrôlé modulo 97, retiré du jeton), le Kbis et le SIRET auto-entrepreneur contrôlés (clé de Luhn). L'écran n'envoie que les champs modifiés ; l'IBAN, masqué dans la liste, s'ouvre vide et n'est pas effacé s'il reste vide. Le secteur « BTP », qui n'existe pas sur la plateforme, n'est plus proposé.
 | `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
 
 ### Comment l'appelant est vérifié
@@ -1801,6 +1804,13 @@ la suppression, dans les trois chemins (suppression par le back-office, par l'ut
 résiliation à l'échéance). Une ligne inscrite depuis le 19/10/2026 (`INSCRIPTION_APRES_SUPPRESSION_MS`)
 vaut pour tout compte, quelle que soit sa date de création ; la règle de date ne protège plus que les
 lignes plus anciennes.
+
+**Précisions du 20/10/2026** (relecture) : l'empreinte s'inscrit dès que les données du compte
+sont **effacées**, même si la suppression du compte lui-même échoue ensuite — le support la
+termine à la main, et l'empreinte ne se perdait plus en route. Le journal d'un échec nomme le
+compte (`inscrireListeNoire()` passe par `ecrireVerifie()`). Rappel de la règle D4 : une empreinte
+récente désigne **tout** compte qui la porte, ancien compris — deux prestataires qui partagent un
+IBAN (compte joint) ou un téléphone sont concernés si l'un supprime son compte.
 
 `account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
 de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
@@ -3541,6 +3551,9 @@ message d'une nouvelle journée, heure de Paris, si rien n'a été lu depuis la 
 qu'elle date d'une demi-heure au moins. La règle promettait un rappel « au bout de 24 h » : or
 l'historique lu ne remonte qu'à 24 h, et le rejeu prend son premier message pour une alerte. Tant
 que l'expéditeur écrivait au moins une fois par jour, le rappel ne partait donc jamais.
+Depuis le 20/10/2026, le jour se compare à celui de la **dernière alerte** (un premier message
+trop proche de l'alerte de la veille ne fait plus sauter le rappel de la journée), et le rappel
+ne part pas au milieu d'une rafale (une rafale qui passe minuit ne donne qu'une alerte).
 
 `chat_notify` et `notify_client` restent acceptées **sans rien envoyer**, pour les onglets d'une
 version antérieure ; plus aucun écran ne les appelle. L'acceptation ou le refus d'une prestation

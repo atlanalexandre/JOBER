@@ -108,6 +108,30 @@ describe("alerteExterieureDue — rejouée sur les messages des dernières 24 h"
   it("une date illisible dans l'historique : prudence, pas d'alerte", () => {
     expect(alerteExterieureDue([{ created_at: "n'importe quoi" }], T)).toBe(false);
   });
+  // Relecture du 20/10/2026 : la règle du jour se compare à la dernière alerte, hors rafale.
+  const rejouer = (heuresIso) => {
+    const tous = [], alertes = [];
+    for (const h of heuresIso) {
+      const t = Date.parse(h);
+      const fenetre = tous.filter((m) => Date.parse(m.created_at) >= t - DELAI_NON_LU_MS);
+      if (alerteExterieureDue(fenetre, t)) alertes.push(h);
+      tous.push({ created_at: iso(t), lu_at: null });
+    }
+    return alertes;
+  };
+
+  it("premier message du jour trop proche de l'alerte de la veille : le rappel part au suivant", () => {
+    // Alerte à 23 h 50 (Paris), puis 0 h 05, 9 h, 15 h, jamais lus.
+    const alertes = rejouer(["2026-10-14T21:50:00Z", "2026-10-14T22:05:00Z", "2026-10-15T07:00:00Z", "2026-10-15T13:00:00Z"]);
+    expect(alertes).toEqual(["2026-10-14T21:50:00Z", "2026-10-15T07:00:00Z"]);
+  });
+
+  it("une rafale qui passe minuit ne donne qu'une alerte", () => {
+    // Un message toutes les dix minutes de 23 h 30 à 0 h 30 (Paris), jamais lus.
+    const heures = [];
+    for (let m = 0; m <= 60; m += 10) heures.push(new Date(Date.parse("2026-10-14T21:30:00Z") + m * 60e3).toISOString());
+    expect(rejouer(heures)).toEqual(["2026-10-14T21:30:00.000Z"]);
+  });
 });
 
 describe("nomExpediteur — lu dans le profil, réduit à des lettres", () => {

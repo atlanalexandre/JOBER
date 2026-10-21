@@ -134,11 +134,23 @@ describe("suites de D4 — relecture du 15/10/2026", () => {
     }
   });
 
+  it("données effacées : l'empreinte s'inscrit même si la suppression du compte échoue ensuite (relecture du 20/10/2026)", () => {
+    // Le support termine la suppression à la main : l'empreinte ne doit pas se perdre en route.
+    for (const fichier of ["bo-action.js", "support.js"]) {
+      const code = readFileSync(new URL(`../../../api/${fichier}`, import.meta.url), "utf8");
+      const bloc = code.slice(code.indexOf("const compteSupprime = await supprimerCompteAuth("));
+      expect(bloc.length, fichier).toBeGreaterThan(0);
+      expect(bloc.indexOf("inscrireListeNoire("), `${fichier} : inscrite avant le test d'échec`)
+        .toBeLessThan(bloc.indexOf("if (!compteSupprime)"));
+      expect(bloc.indexOf("inscrireListeNoire("), fichier).toBeGreaterThan(0);
+    }
+  });
+
   it("inscrireListeNoire : un refus est journalisé, la suppression n'est pas défaite", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await inscrireListeNoire("https://exemple.supabase.co", {}, { email_hash: "x" }, "test")).toBe(false);
-    expect(err).toHaveBeenCalled();
+    expect(await inscrireListeNoire("https://exemple.supabase.co", {}, { email_hash: "x" }, "resiliation compte-42")).toBe(false);
+    expect(String(err.mock.calls.at(0)?.[0]), "le journal nomme le compte").toContain("compte-42");
     expect(await inscrireListeNoire("https://exemple.supabase.co", {}, null, "test")).toBe(false);
   });
 

@@ -31,6 +31,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { hashPii } from "./_email.js";
 import { lireTout } from "./_lignes.js";
+import { ecrireVerifie } from "./_ecriture.js";
 
 /** Un numéro français ramené à « 0612345678 » ; un numéro étranger, à ses chiffres. */
 export function telephoneNormalise(tel) {
@@ -135,22 +136,18 @@ export function correspond(e, s, creeLeMs = null) {
 }
 
 /**
- * Inscrit l'empreinte d'un compte supprimé. À appeler APRÈS la suppression du
- * compte d'authentification, jamais avant : une suppression qui échoue ensuite
- * laissait l'empreinte d'un compte resté ouvert (relecture du 16/10/2026). Les
- * identifiants, eux, se lisent avant l'effacement — `ligne` est calculée tôt.
- * Un échec est journalisé : le droit à l'effacement prime, la suppression tient.
+ * Inscrit l'empreinte d'un compte supprimé. À appeler une fois les données du
+ * compte EFFACÉES, jamais avant : une suppression qui échoue en chemin (pièces
+ * non effacées) laissait l'empreinte d'un compte resté ouvert et utilisable
+ * (relecture du 16/10/2026). Les identifiants, eux, se lisent avant
+ * l'effacement — `ligne` est calculée tôt. `contexte` nomme le compte : un
+ * échec est journalisé (le droit à l'effacement prime, la suppression tient),
+ * et l'empreinte se reprend à la main.
  */
 export async function inscrireListeNoire(supabaseUrl, headers, ligne, contexte) {
   if (!ligne) return false;
-  const r = await fetch(`${supabaseUrl}/rest/v1/account_blacklist`, {
-    method: "POST",
-    headers: { ...headers, "Prefer": "return=minimal" },
-    body: JSON.stringify(ligne),
-  }).catch(e => ({ ok: false, status: e?.message }));
-  if (!r.ok) console.error(`[${contexte}] empreinte anti-recréation NON enregistrée (${r.status}) — `
-    + "le compte pourra être recréé avec un nouvel essai gratuit.");
-  return r.ok;
+  return ecrireVerifie(`${supabaseUrl}/rest/v1/account_blacklist`, ligne, headers,
+    `${contexte} — empreinte anti-recréation`, { method: "POST" });
 }
 
 /** Les comptes d'authentification, page par page (e-mail et métadonnées). */
