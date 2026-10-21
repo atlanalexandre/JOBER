@@ -33,6 +33,9 @@ import { hashPii } from "./_email.js";
 import { lireTout } from "./_lignes.js";
 import { ecrireVerifie } from "./_ecriture.js";
 
+/** Durée pendant laquelle une empreinte compte (CGPS art. 14.4) : 3 ans. */
+export const CONSERVATION_EMPREINTES_MS = 3 * 365.25 * 24 * 3600 * 1000;
+
 /** Un numéro français ramené à « 0612345678 » ; un numéro étranger, à ses chiffres. */
 export function telephoneNormalise(tel) {
   const c = String(tel ?? "").replace(/\D/g, "");
@@ -109,11 +112,15 @@ export const INSCRIPTION_APRES_SUPPRESSION_MS = Date.parse("2026-10-19T12:00:00Z
  * si la ligne n'en porte pas ou date d'après `INSCRIPTION_APRES_SUPPRESSION_MS`
  * — elle compte alors toujours).
  */
-export function ensemblesListeNoire(lignes) {
+export function ensemblesListeNoire(lignes, maintenant = Date.now()) {
   const s = { email: new Map(), telephone: new Map(), iban: new Map(), siret: new Map() };
   for (const l of lignes || []) {
     const quand = Date.parse(l.created_at);
     const ms = Number.isFinite(quand) ? quand : -Infinity;
+    // Au-delà de 3 ans, l'empreinte ne désigne plus personne (CGPS art. 14.4,
+    // décision d'Alexandre du 21/10/2026). Une date illisible reste comptée :
+    // on ne la sait pas périmée.
+    if (Number.isFinite(quand) && maintenant - quand >= CONSERVATION_EMPREINTES_MS) continue;
     // Inscrite une fois la suppression faite : elle vaut pour tout compte.
     const sure = ms >= INSCRIPTION_APRES_SUPPRESSION_MS ? -Infinity : ms;
     for (const [champ, colonne] of [["email", "email_hash"], ["telephone", "telephone_hash"], ["iban", "iban_hash"], ["siret", "siret_hash"]]) {

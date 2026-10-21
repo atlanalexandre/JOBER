@@ -1154,6 +1154,10 @@ un cache de 5 minutes. **Un changement de réglage met donc jusqu'à 5 minutes �
 **`account_blacklist`** — empreintes des comptes supprimés, pour empêcher qu'on recrée un
 compte afin de récupérer l'essai gratuit. **Ne contient que des empreintes**, jamais de
 données en clair.
+Une empreinte **ne compte que 3 ans** à partir de son inscription (`CONSERVATION_EMPREINTES_MS`,
+CGPS art. 14.4, décision d'Alexandre du 21/10/2026) : au-delà, `ensemblesListeNoire()` l'ignore.
+Rien ne supprime encore les lignes périmées ; la plus ancienne date du 22/06/2026, la première
+purge sera donc due en juin 2029.
 
 **`mission_remplacements`** — le droit de remplacement du prestataire (CGPS art. 9), créé le
 06/08/2026 par `2026-08-06_droit_de_remplacement.sql`.

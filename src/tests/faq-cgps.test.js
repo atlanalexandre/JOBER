@@ -41,6 +41,10 @@ describe("les CGPS décrivent les abonnements qu'elles citent", () => {
       expect(article("Article 6B")).toContain(`${p.label} : ${p.price.toFixed(2).replace(".", ",")} € par mois`);
     }
   });
+  it("le classement par formule et la conservation de 3 ans sont écrits", () => {
+    expect(article("Article 11")).toMatch(/les membres Elite apparaissent en premier, puis les membres Premium/);
+    expect(article("Article 14")).toMatch(/pendant 3 ans à compter de la suppression ou de la résiliation du compte/);
+  });
   it("le paiement a lieu à la commande, avant l'acceptation", () => {
     expect(article("Article 5 —")).toMatch(/règle la Prestation au moment de sa commande/);
     expect(article("Article 5 —")).not.toMatch(/Dès l'acceptation d'une proposition, le Client procède au paiement/);

@@ -5,7 +5,7 @@ import { hashPii } from "../../../api/_email.js";
 import {
   telephoneNormalise, empreintes, filtreListeNoire, ligneListeNoire,
   ensemblesListeNoire, correspond, comptesRecrees, remiseAZeroMensuelle,
-  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS,
+  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS, CONSERVATION_EMPREINTES_MS,
 } from "../../../api/_liste_noire.js";
 
 describe("telephoneNormalise — une seule forme pour un même numéro", () => {
@@ -200,5 +200,20 @@ describe("suites de D4 — relecture du 15/10/2026", () => {
     expect(out.ok).toBe(false);
     expect(fetch).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
+  });
+});
+
+describe("durée de conservation — 3 ans (CGPS art. 14.4, décision du 21/10/2026)", () => {
+  const T = Date.parse("2030-01-01T00:00:00Z");
+  const e = empreintes({ email: "recree@exemple.fr" });
+  const ligne = (age) => ({ email_hash: hashPii("recree@exemple.fr"), created_at: new Date(T - age).toISOString() });
+  it("une empreinte de moins de 3 ans désigne encore le compte recréé", () => {
+    expect(correspond(e, ensemblesListeNoire([ligne(CONSERVATION_EMPREINTES_MS - 86400e3)], T))).toBe(true);
+  });
+  it("au-delà de 3 ans, elle ne désigne plus personne", () => {
+    expect(correspond(e, ensemblesListeNoire([ligne(CONSERVATION_EMPREINTES_MS + 1)], T))).toBe(false);
+  });
+  it("une date illisible reste comptée", () => {
+    expect(correspond(e, ensemblesListeNoire([{ email_hash: hashPii("recree@exemple.fr"), created_at: "?" }], T))).toBe(true);
   });
 });
