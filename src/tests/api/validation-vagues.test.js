@@ -11,7 +11,10 @@ describe("etatDossier — la liste de travail de la vérification", () => {
     expect(etatDossier([{ raison: "non vérifiée" }, { raison: "absente" }])).toBe("incomplet");
   });
   it("tout déposé, une pièce à contrôler : à vérifier", () => {
-    expect(etatDossier([{ raison: "non vérifiée" }, { raison: "expirée" }])).toBe("a_verifier");
+    expect(etatDossier([{ raison: "non vérifiée" }, { raison: "non vérifiée" }])).toBe("a_verifier");
+  });
+  it("une pièce expirée : au prestataire d'en déposer une autre, pas à vérifier (relecture du 21/10/2026)", () => {
+    expect(etatDossier([{ raison: "non vérifiée" }, { raison: "expirée" }])).toBe("incomplet");
   });
   it("plus rien ne manque : prêt", () => {
     expect(etatDossier([])).toBe("pret");
@@ -22,10 +25,10 @@ describe("etatDossier — la liste de travail de la vérification", () => {
 });
 
 describe("aUnSiret — profil, puis métadonnées d'inscription", () => {
-  it("lit profiles.siret, puis siret et ae_siret des métadonnées", () => {
+  it("lit profiles.siret, puis siret des métadonnées — les sources de l'empreinte anti-recréation", () => {
     expect(aUnSiret({ siret: "123 456 789 00012" }, {})).toBe(true);
     expect(aUnSiret({}, { siret: "12345678900012" })).toBe(true);
-    expect(aUnSiret({}, { ae_siret: "12345678900012" })).toBe(true);
+    expect(aUnSiret({}, { ae_siret: "12345678900012" }), "ae_siret n'est pas une source").toBe(false);
     expect(siretDeclare({ siret: "123 456 789 00012" }, {})).toBe("12345678900012");
   });
   it("vide ou blanc : pas de SIRET", () => {
@@ -46,7 +49,7 @@ describe("destinatairesRelanceSiret — qui reçoit la relance", () => {
   ];
   const utilisateurs = {
     a: { email: "a@x.fr", meta: {} }, b: { email: "b@x.fr", meta: {} }, c: { email: "c@x.fr", meta: {} },
-    d: { email: "d@x.fr", meta: {} }, e: { email: "e@x.fr", meta: {} }, f: { email: "f@x.fr", meta: { ae_siret: "12345678900012" } },
+    d: { email: "d@x.fr", meta: {} }, e: { email: "e@x.fr", meta: {} }, f: { email: "f@x.fr", meta: { siret: "12345678900012" } },
   };
   it("prestataires en attente, sans SIRET, pas relancés depuis 30 jours", () => {
     const relances = [
@@ -82,6 +85,9 @@ describe("le back-office", () => {
     expect(bloc).toMatch(/emailRelanceSiret\(\)/);
     expect(bloc).toMatch(/Number\(req\.body\.attendus\) !== liste\.length/);
     expect(bloc).not.toMatch(/req\.body\.(sujet|message|html|destinataires)/);
+    // Une écriture du journal par lot, pas une par destinataire.
+    expect(bloc).toMatch(/lot\.map\(d => \(\{ action: "relance_sans_siret"/);
+    expect(bloc).toMatch(/lireUtilisateurs\(SUPABASE_URL, headers\)/);
   });
   it("le SIRET saisi au back-office est contrôlé avant d'être écrit", () => {
     const bloc = bo.slice(bo.indexOf('if (action === "update_profile")'));
@@ -92,7 +98,8 @@ describe("le back-office", () => {
     expect(bo).toMatch(/sans_siret: p\.role === "prestataire" && !aUnSiret\(p, meta\)/);
   });
   it("la validation de la vague ne porte que sur les prestataires en attente affichés", () => {
-    expect(ecran).toMatch(/const vagueAffichee = filtered\.filter\(p => p\.role === "prestataire" && p\.status === "pending"\)/);
+    // Ce qui est rendu (tranches de 100), pas toute la liste filtrée (relecture du 21/10/2026).
+    expect(ecran).toMatch(/const vagueAffichee = trier\(filtered\)\.slice\(0, nbAffiches\)\.filter\(p => p\.role === "prestataire" && p\.status === "pending"\)/);
     expect(ecran).toMatch(/await validerProfils\(vagueAffichee, "vague_affichee"\)/);
   });
 });

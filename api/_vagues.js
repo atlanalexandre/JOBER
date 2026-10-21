@@ -19,21 +19,27 @@ import { emailHtml } from "./_email.js";
 /**
  * L'état du dossier de pièces, d'après `piecesAvantOuverture()` (les pièces
  * obligatoires qui empêchent encore d'ouvrir l'accès).
- *   - "incomplet"  : au moins une pièce n'est pas déposée ;
+ *   - "incomplet"  : au moins une pièce n'est pas déposée, ou est expirée ;
  *   - "a_verifier" : tout est déposé, au moins une pièce attend votre contrôle ;
  *   - "pret"       : rien ne manque côté pièces ;
  *   - null         : pièces illisibles — l'écran n'affirme rien.
  */
 export function etatDossier(pieces) {
   if (!Array.isArray(pieces)) return null;
-  if (pieces.some(p => p.raison === "absente")) return "incomplet";
+  // Expirée : c'est au prestataire d'en déposer une nouvelle, pas à vous de la
+  // contrôler (relecture du 21/10/2026).
+  if (pieces.some(p => p.raison === "absente" || p.raison === "expirée")) return "incomplet";
   if (pieces.length > 0) return "a_verifier";
   return "pret";
 }
 
-/** Le SIRET déclaré : `profiles.siret`, puis les métadonnées d'inscription. */
+/**
+ * Le SIRET déclaré : `profiles.siret`, puis `siret` des métadonnées — les
+ * mêmes sources que l'empreinte anti-recréation (`ae_siret`, que personne ne
+ * renseigne, n'y est pas : il ne doit pas compter ici non plus).
+ */
 export function siretDeclare(profil, meta) {
-  const brut = profil?.siret || meta?.siret || meta?.ae_siret || null;
+  const brut = profil?.siret || meta?.siret || null;
   const s = brut ? String(brut).replace(/\s/g, "") : "";
   return s || null;
 }
