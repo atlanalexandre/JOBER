@@ -36,6 +36,14 @@ import { ecrireVerifie } from "./_ecriture.js";
 /** Durée pendant laquelle une empreinte compte (CGPS art. 14.4) : 3 ans. */
 export const CONSERVATION_EMPREINTES_MS = 3 * 365.25 * 24 * 3600 * 1000;
 
+/**
+ * Le filtre PostgREST `created_at` des lectures directes de la liste : les
+ * contrôles de l'inscription et de la validation interrogeaient toute la table,
+ * empreintes de plus de 3 ans comprises (relecture du 22/10/2026).
+ */
+export const depuisConservation = (maintenant = Date.now()) =>
+  `gte.${new Date(maintenant - CONSERVATION_EMPREINTES_MS).toISOString()}`;
+
 /** Un numéro français ramené à « 0612345678 » ; un numéro étranger, à ses chiffres. */
 export function telephoneNormalise(tel) {
   const c = String(tel ?? "").replace(/\D/g, "");
