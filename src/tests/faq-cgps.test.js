@@ -24,9 +24,16 @@ describe("la FAQ ne promet rien que les CGPS démentent", () => {
   ])("%s", (motif) => {
     expect(faq).not.toMatch(motif);
   });
-  it("les quotas annoncés sont ceux des formules", () => {
-    const q = Object.fromEntries(ABONNEMENTS_PRESTA.map(p => [p.id, p.missions]));
-    expect(faq).toContain(`${q.free} jours de prestation par mois en Gratuit, ${q.premium} en Premium`);
+  it("les quotas annoncés viennent de la liste des formules, pas d'un chiffre recopié", () => {
+    expect(ABONNEMENTS_PRESTA.map(p => p.id)).toEqual(["free", "premium", "elite"]);
+    expect(faq).toMatch(/const quota = Object\.fromEntries\(ABONNEMENTS_PRESTA\.map\(p => \[p\.id, p\.missions\]\)\)/);
+    expect(faq).toContain("${quota.free} jours de prestation par mois en Gratuit, ${quota.premium} en Premium");
+    expect(faq).toContain("ont ${quota.premium} jours au lieu de ${quota.free}");
+  });
+  it("l'offre de lancement et la montée en gamme sont décrites comme dans les CGPS (relecture du 22/10/2026)", () => {
+    expect(faq).toMatch(/100 premiers prestataires dont l'accès aux prestations a été ouvert/);
+    expect(faq).toMatch(/au prorata des jours restants de la période en cours/);
+    expect(faq).not.toMatch(/jours restants du mois\./);
   });
 });
 

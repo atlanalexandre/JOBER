@@ -5,7 +5,7 @@ import { hashPii } from "../../../api/_email.js";
 import {
   telephoneNormalise, empreintes, filtreListeNoire, ligneListeNoire,
   ensemblesListeNoire, correspond, comptesRecrees, remiseAZeroMensuelle,
-  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS, CONSERVATION_EMPREINTES_MS,
+  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS, CONSERVATION_EMPREINTES_MS, depuisConservation,
 } from "../../../api/_liste_noire.js";
 
 describe("telephoneNormalise — une seule forme pour un même numéro", () => {
@@ -215,5 +215,20 @@ describe("durée de conservation — 3 ans (CGPS art. 14.4, décision du 21/10/2
   });
   it("une date illisible reste comptée", () => {
     expect(correspond(e, ensemblesListeNoire([{ email_hash: hashPii("recree@exemple.fr"), created_at: "?" }], T))).toBe(true);
+  });
+});
+
+describe("les lectures directes de la liste s'arrêtent aussi à 3 ans (relecture du 22/10/2026)", () => {
+  it("depuisConservation : la borne PostgREST", () => {
+    const T = Date.parse("2030-01-01T00:00:00Z");
+    expect(depuisConservation(T)).toBe(`gte.${new Date(T - CONSERVATION_EMPREINTES_MS).toISOString()}`);
+  });
+  it.each([["api/support.js", /or: filtre3, created_at: depuisConservation\(\)/], ["api/bo-action.js", /or: filtreBl, created_at: depuisConservation\(\)/]])(
+    "%s borne sa lecture", (f, motif) => {
+      expect(readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8")).toMatch(motif);
+    });
+  it("la relance ne journalise pas les adresses", () => {
+    const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(bo).toMatch(/lot\.map\(d => \(\{ action: "relance_sans_siret", target_id: d\.id \}\)\)/);
   });
 });

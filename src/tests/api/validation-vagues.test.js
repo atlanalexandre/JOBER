@@ -99,7 +99,9 @@ describe("le back-office", () => {
   });
   it("la validation de la vague ne porte que sur les prestataires en attente affichés", () => {
     // Ce qui est rendu (tranches de 100), pas toute la liste filtrée (relecture du 21/10/2026).
-    expect(ecran).toMatch(/const vagueAffichee = trier\(filtered\)\.slice\(0, nbAffiches\)\.filter\(p => p\.role === "prestataire" && p\.status === "pending"\)/);
+    expect(ecran).toMatch(/const affiches = trier\(filtered\)\.slice\(0, nbAffiches\);/);
+    expect(ecran).toMatch(/const vagueAffichee = affiches\.filter\(p => p\.role === "prestataire" && p\.status === "pending"\)/);
+    expect(ecran).toMatch(/\) : affiches\.map\(p => \(/);
     expect(ecran).toMatch(/await validerProfils\(vagueAffichee, "vague_affichee"\)/);
   });
 });
