@@ -37,7 +37,10 @@ test("urgence : le prix part du tarif du prestataire, le même de l'écran à la
   await connexion(page, { email: c.email });
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   await fermerBandeauCookies(page);
-  await page.getByText("Hôtellerie").first().click();
+  // La tuile du secteur, et elle seule : sans `exact`, le premier élément trouvé
+  // était un autre bloc « 🏨 Hôtellerie », dont le clic ouvrait la fiche d'un
+  // prestataire au lieu du secteur (trace de la recette du 22/10/2026).
+  await page.getByText("Hôtellerie", { exact: true }).first().click();
   // Le catalogue arrive en quelques secondes (1 200 prestataires en recette) :
   // avant, chaque métier est « en chargement », et rien n'est cliquable.
   await expect(page.getByText("Disponible", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
