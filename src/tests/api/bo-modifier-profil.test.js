@@ -39,7 +39,12 @@ describe("champsModifierProfil — chaque champ à sa place", () => {
   it("présentation, type de compte, besoins d'un client : métadonnées", () => {
     const r = champsModifierProfil({ bio: " Bonjour ", type_compte: "professionnel", frequence_besoins: "hebdo", volume_horaire: "12" });
     expect(r.meta).toEqual({ bio: "Bonjour", type_compte: "professionnel", frequence_besoins: "hebdo", volume_horaire: 12 });
+    expect(champsModifierProfil({ volume_horaire: "1,5" }).meta.volume_horaire, "virgule décimale").toBe(1.5);
     expect(champsModifierProfil({ type_compte: "autre" }).erreur).toMatch(/Type de compte/);
+  });
+  it("rend les clés traitées, alias compris, et laisse les autres au serveur", () => {
+    const r = champsModifierProfil({ rue: "x", cp: "75001", secteur: "proprete" });
+    expect([...r.consommes].sort()).toEqual(["cp", "rue"]);
   });
   it("un champ vidé est effacé (null), pas laissé tel quel", () => {
     expect(champsModifierProfil({ societe_nom: "" }).profil.societe_nom).toBe(null);

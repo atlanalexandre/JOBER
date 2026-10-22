@@ -726,7 +726,8 @@ function BOComptes() {
     profiles.filter(p => (filter === "all" || p.status === filter) && correspondDossier(p, id)).length]));
 
   // Les prestataires en attente de la liste affichée : la vague en cours.
-  const vagueAffichee = filtered.filter(p => p.role === "prestataire" && p.status === "pending");
+  // Ce qui est réellement affiché : la liste se rend par tranches de 100.
+  const vagueAffichee = trier(filtered).slice(0, nbAffiches).filter(p => p.role === "prestataire" && p.status === "pending");
   const totalEnAttente = profiles.filter(p => p.role === "prestataire" && p.status === "pending").length;
 
   // Valider un lot de profils : chacun par l'action « approve » habituelle, un
@@ -1056,10 +1057,7 @@ function BOComptes() {
                   <div style={{ marginBottom:12 }}>
                     <FI label="Type de compte" field="type_compte" options={[["","— Non renseigné —"],["particulier","Particulier"],["professionnel","Professionnel"]]} />
                     <FI label="Nom de la société" field="societe_nom" />
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                      <FI label="KBIS / SIRET" field="kbis" />
-                      <FI label="SIRET auto-entrepreneur" field="ae_siret" />
-                    </div>
+                    <FI label="SIRET de la société (client professionnel)" field="kbis" />
                   </div>
 
                   {p.role === "prestataire" && <>

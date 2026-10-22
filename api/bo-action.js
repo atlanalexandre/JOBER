@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire } from "./_liste_noire.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire, lireUtilisateurs } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
@@ -94,13 +94,15 @@ export function validateIban(raw) {
  * `profiles` ET les métadonnées quand les deux existent (la liste du
  * back-office lit les métadonnées en premier), l'IBAN dans `profiles` seul :
  * il ne doit plus entrer dans le jeton (RGPD, migration
- * 2026-07-30_rgpd_iban_hors_du_jeton). Rend { profil, meta } ou { erreur }.
+ * 2026-07-30_rgpd_iban_hors_du_jeton). Rend { profil, meta, consommes } (les
+ * clés reçues qu'elle a traitées) ou { erreur }.
  */
 export function champsModifierProfil(payload) {
-  const profil = {}, meta = {};
+  const profil = {}, meta = {}, consommes = new Set();
   const texte = (v) => (v === null || v === undefined ? null : String(v).trim() || null);
   const aux2 = (cleProfil, cleMeta, v) => { const t = texte(v); profil[cleProfil] = t; meta[cleMeta] = t; };
   for (const [k, v] of Object.entries(payload || {})) {
+    consommes.add(k);
     if (k === "rib") {
       const iban = texte(v) ? String(v).replace(/\s/g, "").toUpperCase() : null;
       if (iban && !validateIban(iban)) return { erreur: "IBAN invalide : vérifiez le numéro (clé de contrôle fausse)." };
@@ -124,12 +126,13 @@ export function champsModifierProfil(payload) {
     }
     else if (k === "bio" || k === "frequence_besoins") meta[k] = texte(v);
     else if (k === "volume_horaire") {
-      const t = texte(v);
+      const t = texte(v) === null ? null : texte(v).replace(",", ".");
       if (t !== null && !(Number(t) >= 0)) return { erreur: "Volume horaire : un nombre d'heures attendu." };
       meta.volume_horaire = t === null ? null : Number(t);
     }
+    else consommes.delete(k);
   }
-  return { profil, meta };
+  return { profil, meta, consommes };
 }
 
 export default async function handler(req, res) {
@@ -3686,20 +3689,13 @@ export default async function handler(req, res) {
     if (action === "relance_sans_siret") {
       const { mode } = req.body;
       if (!["apercu", "envoi"].includes(mode)) return res.status(400).json({ error: "Mode inconnu" });
-      let profils, relances;
-      const utilisateurs = {};
+      let profils, relances, utilisateurs;
       try {
-        [profils, relances] = await Promise.all([
+        [profils, relances, utilisateurs] = await Promise.all([
           lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending&select=id,role,status,prenom,siret`, headers),
           lireTout(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.relance_sans_siret&select=target_id,created_at`, headers),
+          lireUtilisateurs(SUPABASE_URL, headers),
         ]);
-        for (let page = 1; ; page++) {
-          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
-          const ud = await ur.json().catch(() => null);
-          if (!ur.ok || !Array.isArray(ud?.users)) throw new Error(`comptes illisibles (${ur.status}), page ${page}`);
-          for (const u of ud.users) utilisateurs[u.id] = { email: u.email, meta: u.user_metadata || {} };
-          if (ud.users.length < 1000) break;
-        }
       } catch (e) {
         console.error("[relance_sans_siret] destinataires illisibles :", e.message);
         return res.status(502).json({ error: "Destinataires illisibles" });
@@ -3724,7 +3720,13 @@ export default async function handler(req, res) {
           continue;
         }
         envoyes += r.envoyes;
-        for (const d of lot) await journaliser("relance_sans_siret", { target_id: d.id, target_email: d.email });
+        // Une seule écriture par lot : cent écritures à la suite allongeaient
+        // l'envoi au point de risquer l'arrêt de la fonction, et un lot parti mais
+        // pas noté aurait été renvoyé au clic suivant (relecture du 21/10/2026).
+        const note = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/bo_logs`,
+          lot.map(d => ({ action: "relance_sans_siret", target_id: d.id, target_email: d.email })),
+          headers, "relance_sans_siret/journal", { method: "POST" });
+        if (!note) console.error(`[relance_sans_siret] ${lot.length} relance(s) envoyée(s) mais non notée(s) — à ne pas renvoyer avant 30 jours.`);
       }
       if (envoyes === 0) return res.status(502).json({ error: "Aucun e-mail accepté", echecs });
       return res.status(200).json({ ok: true, envoyes, echecs });
@@ -3746,7 +3748,7 @@ export default async function handler(req, res) {
       Object.assign(profileFields, champsDeplaces.profil);
       Object.assign(metaFields, champsDeplaces.meta);
       for (const [k, v] of Object.entries(payload)) {
-        if (k in champsDeplaces.profil || k in champsDeplaces.meta || ["rib", "rue", "cp", "telephone", "kbis", "ae_siret"].includes(k)) continue;
+        if (champsDeplaces.consommes.has(k)) continue;
         if (BOTH_COLS.includes(k)) { profileFields[k] = v; metaFields[k] = v; }
         else if (PROFILE_COLS.includes(k)) profileFields[k] = v;
         else if (META_WHITELIST.includes(k)) metaFields[k] = v;
