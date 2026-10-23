@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { Readable } from "node:stream";
+import { readFileSync } from "node:fs";
 import handler from "../../../api/stripe-webhook.js";
 
 // Décision d'Alexandre du 30/09/2026 : une contestation bancaire retient le
@@ -32,7 +33,7 @@ function simuler(mission) {
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url);
     appels.push({ u, methode: o.method || "GET", corps: o.body });
-    if (u.includes("/rest/v1/missions?stripe_payment_intent")) return new Response(JSON.stringify([mission]), { status: 200 });
+    if (u.includes("/rest/v1/missions?or=(stripe_payment_intent")) return new Response(JSON.stringify([mission]), { status: 200 });
     if (u.includes("/rest/v1/missions?id=") && o.method === "PATCH") return new Response(JSON.stringify([{ id: mission.id }]), { status: 200 });
     return new Response("[]", { status: 200 });
   }));
@@ -73,5 +74,62 @@ describe("contestation bancaire", () => {
     expect(corps.payout_status, "pas de versement inventé").toBeUndefined();
     expect(corps.payout_hold_reason).toBe("opposition_bancaire");
     expect(Math.round((new Date(corps.payout_hold_until) - new Date(corps.payout_hold_at)) / 86400000)).toBe(90);
+  });
+});
+
+// Relecture du 23/10/2026 : la retenue tombait d'office à 90 jours, quelle que
+// soit l'issue — une opposition PERDUE laissait partir le versement.
+describe("issue de l'opposition (charge.dispute.closed)", () => {
+  const ferme = (status) => ({ type: "charge.dispute.closed", data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 11098, status } } });
+  function simulerIssue() {
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET", corps: o.body });
+      if (u.includes("/rest/v1/missions?or=") && o.method === "PATCH" && u.includes("payout_status=eq.held")) {
+        return new Response(JSON.stringify([{ id: "m1", prestataire_id: "p1" }]), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }));
+    return appels;
+  }
+  it("gagnée : la retenue est levée, le versement repart, le prestataire est prévenu", async () => {
+    const appels = simulerIssue();
+    const res = reponse();
+    await handler(requete(ferme("won")), res);
+    expect(res.statut).toBe(200);
+    const levee = appels.find(a => a.methode === "PATCH" && a.u.includes("payout_status=eq.held"));
+    expect(levee.u).toContain("extra_hours_payment_intent.eq.pi_1");
+    expect(levee.u).toContain("payout_hold_reason=eq.opposition_bancaire");
+    expect(JSON.parse(levee.corps)).toEqual({ payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null, payout_status: "pending" });
+    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("rejetée"))).toBe(true);
+  });
+  it("perdue : la retenue garde son motif et perd son terme — plus rien ne la lève seul", async () => {
+    vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
+    vi.stubEnv("RESEND_API_KEY", "re_x");
+    const appels = simulerIssue();
+    await handler(requete(ferme("lost")), reponse());
+    const maintenue = appels.filter(a => a.methode === "PATCH" && a.u.includes("/rest/v1/missions?or="));
+    expect(maintenue).toHaveLength(2);
+    for (const a of maintenue) expect(JSON.parse(a.corps)).toEqual({ payout_hold_until: null });
+    expect(appels.some(a => a.u.includes("api.resend.com") && a.corps.includes("Opposition perdue"))).toBe(true);
+  });
+  it("base indisponible : 500, Stripe réémettra", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    const res = reponse();
+    await handler(requete(ferme("won")), res);
+    expect(res.statut).toBe(500);
+  });
+});
+
+describe("le traitement des versements respecte une retenue sans terme", () => {
+  const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
+  it("à l'émission, une retenue sans terme retient ; la levée d'office ne touche que les retenues datées", () => {
+    expect(cron).toMatch(/if \(m\.payout_hold_reason && \(!m\.payout_hold_until \|\| new Date\(m\.payout_hold_until\)\.getTime\(\) > Date\.now\(\)\)\)/);
+    expect(cron).toMatch(/payout_status=eq\.held&payout_hold_until=lte\./);
+  });
+  it("les versements dus sont tirés au hasard parmi 1 000, pas toujours les 200 mêmes", () => {
+    expect(cron).toMatch(/\+ `&limit=1000`/);
+    expect(cron).toMatch(/const lots = tirerAuHasard\(await aVerser\.json\(\)\.catch\(\(\) => \[\]\), 200\)/);
   });
 });

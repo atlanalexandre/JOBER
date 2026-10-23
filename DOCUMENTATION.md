@@ -813,6 +813,10 @@ Voir « Le versement au prestataire » au §6.
 solde du client a réellement été prélevé. La seconde n'est pas une redondance : entre la
 création de l'intention de paiement et sa confirmation, `cashback_applique` porte une réduction
 PROMISE que rien n'a encore consommée — un panier abandonné ne doit rien coûter au client.
+Et le débit vérifie ce que la carte a **réellement** payé (`payePleinTarif()`, relecture du
+23/10/2026) : un paiement au plein tarif — deux paiements préparés, case décochée puis cochée,
+le premier confirmé — ne prend rien sur le solde et remet `cashback_applique` à 0, qui plafonne
+les remboursements.
 
 `resolution_proposee` (`verser_prestataire` | `rembourser_client`, sous contrainte `CHECK`),
 `resolution_motif`, `resolution_montant`, `resolution_notifiee_at`, `resolution_echeance_at`,
@@ -1963,6 +1967,11 @@ est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu
 Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée,
 refusée ou clôturée** (`closed` ajouté le 06/10/2026 : c'est l'état d'une demande close sans prestataire ni paiement) sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
 vivante sans paiement rattaché, il ne touche à rien et le journalise.
+Depuis le 23/10/2026, l'affectation exige qu'aucun **autre** paiement ne soit rattaché
+(`or=(stripe_payment_intent.is.null,…)`, comme `filtrePaiementLibre`) — un second paiement
+écrasait le premier sur une prestation `needs_replacement` —, et un paiement dont la candidature a
+disparu est **remboursé** (`rembourserPaiementOrphelin()`, clé `refund-orphelin-{paiement}`), sauf
+s'il est déjà celui de la prestation.
 Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
 est le refus de `/api/stripe-intent` (409 `deja_payee`).
 
@@ -4829,6 +4838,23 @@ passe en `held` au lieu d'être émis, et le prestataire est prévenu. Quelle qu
 (client, validation automatique, « Valider de force », litige), aucune ne peut l'oublier. Passé
 son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 `contestation-bancaire.test.js`.
+
+**Issue de l'opposition** (relecture du 23/10/2026, CGPS art. 7.4 : la retenue « se prolonge
+jusqu'à l'issue » d'une opposition bancaire). À `charge.dispute.closed`, le webhook lève la
+retenue si l'opposition est **gagnée** (`won`, `warning_closed` : versement remis en `pending`,
+prestataire prévenu) ; si elle est **perdue** (`lost`), il vide `payout_hold_until` : la
+retenue garde son motif, n'a plus de terme, et plus rien ne la lève seul — ni la levée d'office
+des 90 jours (`payout_hold_until=lte.`), ni le traitement des versements, qui retient une
+retenue sans terme. L'administrateur est prévenu par courriel ; le back-office décide
+(« Lever la retenue », ou recouvrement selon l'article 9B). La prestation est retrouvée par le
+paiement de la réservation **ou** celui d'une prolongation (`extra_hours_payment_intent`), à
+l'ouverture comme à l'issue. `src/tests/api/contestation-bancaire.test.js`.
+
+> ⚠️ **Ni `charge.dispute.created` ni `charge.dispute.closed` ne sont abonnés chez Stripe**
+> (lu en mode test le 23/10/2026 : seuls les trois événements d'abonnement le sont, comme
+> l'indiquait déjà la liste du 26/09). Toute la retenue sur opposition est donc **dormante**
+> tant qu'Alexandre ne les ajoute pas au point de terminaison `/api/stripe-webhook`, en mode
+> test et en mode réel.
 
 **Abonnement dont le renouvellement échoue** : retour au gratuit tout de suite, sans attendre la
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit

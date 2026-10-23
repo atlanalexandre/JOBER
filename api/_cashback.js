@@ -53,6 +53,8 @@
 // puis honorée coûte moins qu'un client débité de son cashback pour rien.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { bornesMontant } from "./_paiement.js";
+
 /**
  * Ce qui doit rester à la charge de la carte, en euros.
  *
@@ -230,10 +232,47 @@ async function resteRemboursable(mission, supabaseUrl, headers) {
  *
  * @returns {{debite:number, ok:boolean}}
  */
+// Le paiement rattaché a-t-il été fait au PLEIN tarif, alors qu'une réduction
+// est inscrite ? Deux paiements préparés — case décochée, puis cochée — et le
+// client confirmait le premier : il payait plein tarif ET perdait son cashback,
+// et le plafond de remboursement tombait sous ce que la carte avait payé
+// (relecture du 23/10/2026). Paiement illisible : on ne conclut rien (false).
+async function payePleinTarif(mission) {
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  const pi = mission?.stripe_payment_intent;
+  if (!cle || !pi || String(pi).startsWith("wallet_")) return false;
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(pi)}`, { headers: { "Authorization": `Bearer ${cle}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d) {
+      console.error(`[cashback] paiement ${pi} illisible (${r.status}) — montant payé non vérifié, débit maintenu.`);
+      return false;
+    }
+    const recu = Number(d.amount_received || d.amount);
+    const { min, max } = bornesMontant(mission);
+    return min < max && Number.isFinite(recu) && recu >= max;
+  } catch (e) {
+    console.error(`[cashback] paiement ${pi} illisible — montant payé non vérifié, débit maintenu :`, e.message);
+    return false;
+  }
+}
+
 export async function debiterCashback(missionBrute, supabaseUrl, headers) {
   const mission = await completerCashback(missionBrute, supabaseUrl, headers);
   const prevu = Number(mission?.cashback_applique || 0);
   if (!(prevu > 0) || mission?.cashback_debite || !mission?.client_id) {
+    return { debite: 0, ok: true };
+  }
+  if (await payePleinTarif(mission)) {
+    // Rien n'a été déduit du prix : rien n'est pris sur le solde, et la
+    // réduction inscrite retombe à zéro — c'est elle qui plafonne les
+    // remboursements (`montantCharge`).
+    const r = await fetch(
+      `${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&or=(cashback_debite.is.null,cashback_debite.eq.false)`,
+      { method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify({ cashback_applique: 0 }) }
+    ).catch(e => { console.error(`[cashback] réduction non effacée sur ${mission.id} :`, e.message); return null; });
+    if (r && !r.ok) console.error(`[cashback] réduction non effacée sur ${mission.id} (${r.status}) — plafond de remboursement à vérifier.`);
+    console.log(`[cashback] ${mission.id} payée au plein tarif : cashback non débité.`);
     return { debite: 0, ok: true };
   }
 

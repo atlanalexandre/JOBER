@@ -75,6 +75,47 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
   }
 }
 
+// Un paiement abouti qui ne peut être rattaché à rien (candidature retirée,
+// métadonnées fausses) est rendu — sauf s'il est DÉJÀ celui de la prestation :
+// une livraison répétée du webhook, arrivée après que l'application l'a
+// rattaché, ne doit pas rembourser un paiement qui sert (relecture du 23/10/2026).
+// Rend "deja_rattache", "rembourse", "echec" ou "illisible".
+export async function rembourserPaiementOrphelin(missionId, intent, supabaseUrl, headers, cle) {
+  let m;
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`, { headers });
+    const rows = r.ok ? await r.json().catch(() => null) : null;
+    if (!Array.isArray(rows)) {
+      console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible (${r.status}) — paiement orphelin NON remboursé, Stripe réémettra.`);
+      return "illisible";
+    }
+    m = rows[0] || null;
+  } catch (e) {
+    console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible — paiement orphelin NON remboursé :`, e.message);
+    return "illisible";
+  }
+  if (m?.stripe_payment_intent === intent.id) {
+    console.log(`[stripe-webhook] ${intent.id} : déjà rattaché à ${missionId} — rien à rembourser.`);
+    return "deja_rattache";
+  }
+  try {
+    const rr = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `refund-orphelin-${intent.id}` },
+      body: new URLSearchParams({ payment_intent: intent.id, reason: "requested_by_customer" }).toString(),
+    });
+    const rd = await rr.json().catch(() => null);
+    if (rd?.id || rd?.error?.code === "charge_already_refunded") {
+      console.error(`[stripe-webhook] paiement orphelin ${intent.id} remboursé (prestation ${missionId}).`);
+      return "rembourse";
+    }
+    console.error(`[stripe-webhook] ⚠️ paiement orphelin ${intent.id} NON remboursé (prestation ${missionId}) — à rembourser à la main :`, JSON.stringify(rd?.error || rd).slice(0, 200));
+  } catch (e) {
+    console.error(`[stripe-webhook] ⚠️ paiement orphelin ${intent.id} NON remboursé (prestation ${missionId}) :`, e.message);
+  }
+  return "echec";
+}
+
 /**
  * Ce que le webhook écrit dans `profiles` quand un abonnement change d'état.
  *
@@ -307,7 +348,15 @@ export default async function handler(req, res) {
           const candVerif = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}&prestataire_id=eq.${prestataireId}&select=id`, { headers });
           const candData = await candVerif.json().catch(() => []);
           if (!Array.isArray(candData) || candData.length === 0) {
-            console.error("[stripe-webhook] prestataireId metadata mismatch — candidature not found for this prestataire, aborting assignment");
+            // Candidature retirée entre la création du paiement et sa confirmation,
+            // ou métadonnées fausses : rien n'est affecté, et le paiement encaissé
+            // est RENDU — il restait pris sans prestation ni remboursement, la
+            // prestation portant un prestataire échappant à cron-abandon
+            // (relecture du 23/10/2026).
+            console.error(`[stripe-webhook] ${intent.id} : candidature ${candidatureId} introuvable pour ${prestataireId} — paiement remboursé, rien d'affecté.`);
+            const issue = await rembourserPaiementOrphelin(missionId, intent, SUPABASE_URL, headers, STRIPE_SECRET_KEY);
+            // Prestation illisible : Stripe réémettra, on ne rembourse pas à l'aveugle.
+            if (issue === "illisible") return res.status(500).json({ error: "Supabase unavailable" });
             return res.status(200).json({ received: true }); // Ne pas retenter — les metadata sont invalides
           }
         } catch(e) {
@@ -377,7 +426,12 @@ export default async function handler(req, res) {
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
       try {
-        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected,assigned)`, {
+        // Et seulement si aucun AUTRE paiement n'y est rattaché, comme `filtrePaiementLibre`
+        // de missions.js : un second paiement écrasait le premier sur une prestation
+        // « needs_replacement » ou « pending_acceptance », qui restait encaissé sans
+        // jamais être rendu (relecture du 23/10/2026). Il part désormais en doublon.
+        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected,assigned)`
+          + `&or=(stripe_payment_intent.is.null,stripe_payment_intent.eq.${encodeURIComponent(intent.id)})`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" }, body: JSON.stringify(patch),
         });
       } catch (e) {
@@ -944,7 +998,10 @@ export default async function handler(req, res) {
       try {
         const hdrsD = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
         const mRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=eq.${dispute.payment_intent}&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status,payout_status,payout_amount&limit=1`,
+          // Le paiement de la réservation, ou celui d'une prolongation : une contestation
+          // d'heures supplémentaires ne retrouvait aucune prestation, et le versement,
+          // qui les inclut, partait quand même (relecture du 23/10/2026).
+          `${SUPABASE_URL}/rest/v1/missions?or=(stripe_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)},extra_hours_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)})&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status,payout_status,payout_amount&limit=1`,
           { headers: hdrsD }
         );
         missionLitige = (await mRes.json().catch(() => []))[0] || null;
@@ -1070,6 +1127,74 @@ export default async function handler(req, res) {
       }).catch(e => console.error("[dispute] email admin failed:", e.message));
     }
     console.warn("[charge.dispute.created] chargeback détecté:", dispute.id, amount, reason);
+  }
+
+  // ── Issue de l'opposition (relecture du 23/10/2026) ──
+  //
+  // La retenue posée à `charge.dispute.created` tombait d'office au bout de 90
+  // jours, quelle que soit l'issue : une opposition PERDUE — la banque a repris
+  // l'argent au client — laissait ensuite partir le versement, payé par ALANE.
+  // CGPS art. 7.4 : en cas d'opposition bancaire, la retenue « se prolonge
+  // jusqu'à l'issue de celle-ci ».
+  //   - gagnée (`won`, `warning_closed`) : la retenue est levée, le versement
+  //     repart au prochain traitement ;
+  //   - perdue (`lost`) : la retenue perd son terme (`payout_hold_until` vidé),
+  //     plus rien ne la lève seul ; le back-office décide (« Lever la retenue »,
+  //     ou recouvrement selon l'article 9B), et l'administrateur est prévenu.
+  if (event.type === "charge.dispute.closed") {
+    const dispute = event.data.object;
+    const pi = dispute.payment_intent;
+    const gagnee = ["won", "warning_closed"].includes(dispute.status);
+    const perdue = dispute.status === "lost";
+    if (pi && (gagnee || perdue) && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const hdrsC = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+      const cible = `${SUPABASE_URL}/rest/v1/missions?or=(stripe_payment_intent.eq.${encodeURIComponent(pi)},extra_hours_payment_intent.eq.${encodeURIComponent(pi)})`
+        + "&payout_hold_reason=eq.opposition_bancaire&payout_status=not.in.(transferred,processing)";
+      let corps;
+      if (gagnee) corps = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
+      else corps = { payout_hold_until: null };
+      let lignes;
+      try {
+        // Gagnée : un versement retenu repart (« pending ») ; une retenue inscrite
+        // avant la clôture (versement encore vide) est simplement effacée.
+        const rh = await fetch(`${cible}&payout_status=eq.held`, { method: "PATCH", headers: hdrsC,
+          body: JSON.stringify(gagnee ? { ...corps, payout_status: "pending" } : corps) });
+        const rn = await fetch(`${cible}&payout_status=is.null`, { method: "PATCH", headers: hdrsC, body: JSON.stringify(corps) });
+        if (!rh.ok || !rn.ok) {
+          console.error(`[dispute.closed] ${dispute.id} (${dispute.status}) : retenue NON mise à jour (${rh.status}/${rn.status}) — Stripe réémettra.`);
+          return res.status(500).json({ error: "Mise à jour de la retenue impossible" });
+        }
+        lignes = [...(await rh.json().catch(() => [])), ...(await rn.json().catch(() => []))];
+      } catch (e) {
+        console.error(`[dispute.closed] ${dispute.id} : retenue NON mise à jour —`, e.message);
+        return res.status(500).json({ error: "Supabase unavailable" });
+      }
+      for (const m of lignes) {
+        console.error(`[dispute.closed] ${dispute.id} ${dispute.status} : prestation ${m.id} — ${gagnee ? "retenue levée" : "retenue maintenue sans terme"}.`);
+        if (gagnee && m.prestataire_id) {
+          await notifier({ user_id: m.prestataire_id, type: "system", title: "Retenue levée ✅",
+            body: "L'opposition bancaire formée par le client a été rejetée : votre versement est de nouveau programmé." },
+          SUPABASE_URL, hdrsC).catch(e => console.error("[dispute.closed] notification non envoyée :", e.message));
+        }
+      }
+      if (perdue) {
+        const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+        const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+        if (admin && RESEND_KEY) {
+          await fetch("https://api.resend.com/emails", {
+            method: "POST", headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+            body: resendBody({ from: process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>", to: [admin],
+              subject: `⚠️ Opposition perdue — ${euros((dispute.amount || 0) / 100)}`,
+              html: `<p>L'opposition bancaire <strong>${dispute.id}</strong> est perdue : la banque a repris ${euros((dispute.amount || 0) / 100)} au client.</p>`
+                + `<p>${lignes.length ? `Le versement de ${lignes.length} prestation(s) reste retenu, sans terme : c'est au back-office de décider (« Lever la retenue » ou recouvrement, CGPS art. 9B).` : "Aucune retenue en cours sur la prestation : le versement est peut-être déjà parti — à vérifier."}</p>` }),
+          }).then(r => { if (!r.ok) console.error(`[dispute.closed] alerte NON envoyée (${r.status}).`); })
+            .catch(e => console.error("[dispute.closed] alerte NON envoyée :", e.message));
+        } else {
+          console.error(`[dispute.closed] ${dispute.id} perdue — ADMIN_EMAIL ou RESEND_API_KEY absente, alerte non envoyée.`);
+        }
+      }
+    }
+    return res.status(200).json({ received: true });
   }
 
   if (event.type === "account.updated") {

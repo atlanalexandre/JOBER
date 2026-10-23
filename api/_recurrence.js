@@ -278,7 +278,25 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
   const maj = await ur.json().catch(() => null);
   if (!ur.ok || !Array.isArray(maj) || !maj.length) {
     // L'argent est encaissé : l'échec est bruyant, et à reprendre à la main.
+    // Le journal seul ne suffisait pas : la semaine reste en attente sans
+    // prestataire ni délai, aucune tâche ne la reprend, et le client a payé
+    // (relecture du 23/10/2026). L'équipe est prévenue, comme pour le
+    // prélèvement incertain.
     console.error(`[serie] ${nouvelleId} : PAYÉE (${pi}) mais NON affectée (${ur.status}) — à reprendre à la main.`);
+    const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+    if (admin) {
+      const parti = await sendEmail({
+        to: admin,
+        subject: `⚠️ Série hebdomadaire : semaine payée mais non affectée`,
+        html: `<p>La semaine du ${esc(dateFr(date))} (${esc(euros(montant))}) a été débitée (paiement <strong>${esc(pi)}</strong>), `
+          + `mais n'a pas pu être proposée au prestataire.</p>`
+          + `<p>Prestation <strong>${esc(nouvelleId)}</strong> : à affecter au prestataire depuis le back-office, ou à rembourser.</p>`
+          + `<p>Prestation d'origine : ${esc(missionId)}.</p>`,
+      });
+      if (parti !== true) console.error(`[serie] ${nouvelleId} : alerte « payée non affectée » NON envoyée.`);
+    } else {
+      console.error(`[serie] ${nouvelleId} : ADMIN_EMAIL absente — alerte « payée non affectée » non envoyée.`);
+    }
     return { mode: "echec", mission_id: nouvelleId };
   }
   await prevenirNouvelleDemande(nouvelleId, supabaseUrl, headers);

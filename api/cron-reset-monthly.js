@@ -690,7 +690,12 @@ export default async function handler(req, res) {
           + `?payout_status=eq.pending&status=eq.completed`
           + `&payout_due_at=lte.${encodeURIComponent(maintenant)}`
           + `&select=id,prestataire_id,payout_amount,payout_hold_reason,payout_hold_until,metier,sector,date`
-          + `&limit=200`,
+          // Jusqu'à 1 000 lus, 200 tirés au hasard : les 200 premières lignes,
+          // toujours les mêmes, pouvaient être des versements renvoyés en attente
+          // à chaque passage (prestataire sans compte de virement) — et plus
+          // personne d'autre n'était payé (relecture du 23/10/2026). Même remède
+          // que l'expiration et la clôture (`tirerAuHasard`).
+          + `&limit=1000`,
           { headers }
         );
         if (!aVerser.ok) {
@@ -701,7 +706,7 @@ export default async function handler(req, res) {
           console.error(`[versements] lecture impossible (${aVerser.status}) : ${detail.slice(0, 200)}`
             + " — vérifier que la migration 2026-08-12_versement_differe_48h.sql est appliquée.");
         } else {
-          const lots = await aVerser.json().catch(() => []);
+          const lots = tirerAuHasard(await aVerser.json().catch(() => []), 200);
           const COMMISSION_V = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
           let emis = 0;
           // Combien de versements ne peuvent pas partir faute de compte de
@@ -725,7 +730,9 @@ export default async function handler(req, res) {
             // « retenu », le prestataire est prévenu, et le back-office la lève
             // si la contestation est rejetée. Passé son terme, elle ne retient
             // plus rien.
-            if (m.payout_hold_reason && m.payout_hold_until && new Date(m.payout_hold_until).getTime() > Date.now()) {
+            // Sans terme : opposition PERDUE (`charge.dispute.closed`), la banque a
+            // repris l'argent — retenue jusqu'à décision du back-office (relecture du 23/10/2026).
+            if (m.payout_hold_reason && (!m.payout_hold_until || new Date(m.payout_hold_until).getTime() > Date.now())) {
               const ret = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
                 body: JSON.stringify({ payout_status: "held" }),
