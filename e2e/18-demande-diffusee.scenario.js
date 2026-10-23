@@ -53,7 +53,10 @@ test("par l'écran : le client diffuse, le prestataire se propose, le client le 
   await connexion(pageC, { email: c.email });
   await expect(pageC).toHaveURL(/\/dashboard/, { timeout: 30_000 });
   await fermerBandeauCookies(pageC);
-  await pageC.getByText("Hôtellerie").first().click();
+  // La tuile du secteur, et elle seule : sans `exact`, le premier élément trouvé
+  // était un autre bloc « 🏨 Hôtellerie », dont le clic ouvrait la fiche d'un
+  // prestataire au lieu du secteur (trace de la recette du 22/10/2026).
+  await pageC.getByText("Hôtellerie", { exact: true }).first().click();
   // La liste des métiers se charge après l'en-tête : on clique jusqu'à ouvrir le métier.
   await expect(async () => {
     await pageC.getByText("Femme/Valet de chambre", { exact: true }).first().click();

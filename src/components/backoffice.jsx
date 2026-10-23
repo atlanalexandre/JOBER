@@ -727,7 +727,9 @@ function BOComptes() {
 
   // Les prestataires en attente de la liste affichée : la vague en cours.
   // Ce qui est réellement affiché : la liste se rend par tranches de 100.
-  const vagueAffichee = trier(filtered).slice(0, nbAffiches).filter(p => p.role === "prestataire" && p.status === "pending");
+  // Triée une seule fois par rendu : la liste et la vague en dérivent.
+  const affiches = trier(filtered).slice(0, nbAffiches);
+  const vagueAffichee = affiches.filter(p => p.role === "prestataire" && p.status === "pending");
   const totalEnAttente = profiles.filter(p => p.role === "prestataire" && p.status === "pending").length;
 
   // Valider un lot de profils : chacun par l'action « approve » habituelle, un
@@ -960,7 +962,7 @@ function BOComptes() {
             </div>
           )}
         </div>
-      ) : trier(filtered).slice(0, nbAffiches).map(p => (
+      ) : affiches.map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
             <div style={{ flex:1, minWidth:0 }}>
