@@ -2134,7 +2134,7 @@ export default async function handler(req, res) {
                     <h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée ✅</h2>
                     <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
-                    <p>Votre paiement de <strong style="color:#A29BFE">${euros(partPrestataire)}</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${euros(partPrestataire)}</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 2 à 7 jours ouvrés selon votre banque.</p>
                     <!-- Information fiscale et sociale délivrée À CHAQUE TRANSACTION,
                          comme l'impose l'article 242 bis, I du CGI. Une clause acceptée
                          une fois à l'inscription ne remplit pas cette obligation : le

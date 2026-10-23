@@ -1,6 +1,6 @@
 import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { verifyUser } from "./_auth.js";
-import { empreintes, filtreListeNoire, ligneListeNoire, inscrireListeNoire, depuisConservation } from "./_liste_noire.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, inscrireListeNoire, dansLaConservation } from "./_liste_noire.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
           // seul `kbis`, celui d'un client professionnel, était lu.
           const filtre3 = filtreListeNoire(empreintes({ email: newUser.email, telephone: tel3, iban: rib3, siret: meta3.siret || meta3.kbis }));
           if (filtre3) {
-            const blParams3 = new URLSearchParams({ or: filtre3, created_at: depuisConservation(), select: "id", limit: "1" });
+            const blParams3 = new URLSearchParams({ and: dansLaConservation(filtre3), select: "id", limit: "1" });
             const blRes3 = await fetch(`${SUPABASE_URL2}/rest/v1/account_blacklist?${blParams3}`, { headers: svcHeaders });
             const blData3 = await blRes3.json();
             if (Array.isArray(blData3) && blData3.length > 0) {

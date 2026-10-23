@@ -4969,8 +4969,22 @@ export function FavoritesScreen({ onNavigate, onBack }) {
 
 export function FAQScreen({ onBack, role }) {
   const [open, setOpen] = useState(null);
-  // Les quotas viennent de la liste des formules, pas d'un chiffre recopié.
-  const quota = Object.fromEntries(ABONNEMENTS_PRESTA.map(p => [p.id, p.missions]));
+  // Les quotas : ceux que le serveur applique (`plan_limits`), à défaut ceux de
+  // la liste des formules — comme l'écran des abonnements. Et l'offre de
+  // lancement ne s'annonce que si le serveur la dit ouverte (relecture du 23/10/2026).
+  const [limites, setLimites] = useState(null);
+  const [offreOuverte, setOffreOuverte] = useState(false);
+  useEffect(() => {
+    if (role !== "prestataire") return;
+    supabase.from("platform_settings").select("value").eq("key", "plan_limits").maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error("[faq] lecture de plan_limits impossible :", error.message);
+        setLimites(data?.value || null);
+      });
+    fetchOffreLancement().then(o => setOffreOuverte(o.ouverte === true));
+  }, [role]);
+  const quota = Object.fromEntries(ABONNEMENTS_PRESTA.map(p => [p.id, limites?.[p.id] ?? p.missions]));
+  const taux = CASHBACK_TIERS.map(t => tauxCashback(t));
   const faqs = role === "prestataire" ? [
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin d'un professionnel indépendant dans votre secteur. Vous recevez des propositions de prestations correspondant à votre profil et vous êtes libre de les accepter ou non. C'est votre acceptation qui forme le contrat avec le client." },
     { q:"Comment mon compte est-il validé ?", a:"En trois temps (CGPS art. 3) :\n\n① ALANE valide votre profil : vous pouvez alors vous connecter à votre espace et déposer vos pièces.\n② ALANE vérifie chaque pièce.\n③ L'accès aux prestations s'ouvre quand toutes les pièces obligatoires sont vérifiées, votre CV complet et les mandats de facturation et d'encaissement acceptés.\n\nUne pièce datée qui expire doit être renouvelée, sinon l'accès aux prestations est suspendu jusqu'à son remplacement." },
@@ -4978,7 +4992,7 @@ export function FAQScreen({ onBack, role }) {
     { q:"Je n'ai pas encore de SIRET, que faire ?", a:"Il faut être immatriculé comme indépendant pour exercer sur ALANE. Créez votre micro-entreprise gratuitement sur le guichet officiel procedures.inpi.fr. Dès que vous recevez votre numéro SIRET (14 chiffres), envoyez-le à support@alane.fr : nous l'ajoutons à votre dossier. Sans SIRET, votre profil ne peut pas être validé." },
     { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée sur votre IBAN à l'expiration du délai de 48 heures dont le client dispose, après la fin de la prestation, pour signaler un problème. Elle arrive ensuite sous 2 à 7 jours ouvrés selon votre banque (CGPS art. 7.2)." },
     { q:"Et si le client ne valide pas la prestation ?", a:"Vous n'avez rien à faire. Sans réponse du client dans les 24 heures qui suivent la fin, la prestation est réputée validée (CGPS art. 5.4). Le versement suit le délai habituel de 48 heures après la fin de la prestation." },
-    { q:"Combien de prestations puis-je faire chaque mois ?", a:`Cela dépend de votre formule (CGPS art. 6B) : ${quota.free} jours de prestation par mois en Gratuit, ${quota.premium} en Premium, sans limite en Elite. Le compteur se calcule en jours — une prestation de 3 jours en compte 3 — et repart à zéro le 1er de chaque mois.\n\nOffre de lancement : les 100 premiers prestataires dont l'accès aux prestations a été ouvert, par ordre d'inscription, ont ${quota.premium} jours au lieu de ${quota.free}, sans abonnement, de leur première prestation acceptée jusqu'à la fin du mois.` },
+    { q:"Combien de prestations puis-je faire chaque mois ?", a:`Cela dépend de votre formule (CGPS art. 6B) : ${quota.free} jours de prestation par mois en Gratuit, ${quota.premium} en Premium, sans limite en Elite. Le compteur se calcule en jours — une prestation de 3 jours en compte 3 — et repart à zéro le 1er de chaque mois.${offreOuverte ? `\n\nOffre de lancement : les 100 premiers prestataires dont l'accès aux prestations a été ouvert, par ordre d'inscription, ont ${quota.premium} jours au lieu de ${quota.free}, sans abonnement, de leur première prestation acceptée jusqu'à la fin du mois.` : ""}` },
     { q:"Comment changer de formule ou résilier ?", a:"Depuis l'onglet Abonnement de votre espace. Une formule supérieure est active tout de suite : seule la différence est facturée, au prorata des jours restants de la période en cours — le mois, ou l'année pour un abonnement annuel. Une formule inférieure ou une résiliation prend effet à la fin de la période déjà payée, et vous gardez vos avantages jusque-là. L'abonnement annuel coûte 20 % de moins que douze mois et se règle en une fois." },
     { q:"Que se passe-t-il si je refuse une prestation ?", a:"Rien. Vous êtes libre de refuser toute prestation, sans avoir à vous justifier, sans délai imposé et sans aucune conséquence : un refus n'entraîne ni pénalité, ni baisse de visibilité, ni restriction d'accès (CGPS art. 4.2). La prestation est simplement proposée à un autre professionnel disponible dans votre secteur." },
     { q:"Et si je dois me désister ?", a:"Prévenez le client et ALANE au plus tôt. Le client est alors intégralement remboursé (CGPS art. 8.2). Vous pouvez aussi proposer un remplaçant parmi les professionnels vérifiés : le remplacement n'est effectif qu'avec son accord et celui du client (CGPS art. 9). Des annulations répétées peuvent entraîner une restriction d'accès, après notification écrite." },
@@ -4997,7 +5011,7 @@ export function FAQScreen({ onBack, role }) {
     { q:"Que faire si le prestataire ne se présente pas ?", a:"Signalez-le tout de suite depuis la prestation ou au support. Une prestation non assurée par le prestataire vous est intégralement remboursée, frais de service compris (CGPS art. 8.2)." },
     { q:"Comment annuler une réservation ?", a:"Depuis votre espace client (CGPS art. 8.1) :\n\n• plus de 24 heures avant le début : le prix de la prestation vous est remboursé, seuls les frais de service sont retenus ;\n• moins de 24 heures avant : même chose — les frais de service sont retenus à titre d'indemnité, le reste vous est remboursé ;\n• après le début : les heures entamées sont dues au prestataire, le solde vous est remboursé ;\n• si vous n'êtes pas présent : le montant de la prestation reste dû.\n\nSi c'est le prestataire qui annule, vous êtes remboursé de tout, frais de service compris." },
     { q:"J'ai réservé en tant que particulier : ai-je un droit de rétractation ?", a:"Oui, 14 jours (CGPS art. 8.3). Si vous vous rétractez avant la prestation, son prix vous est intégralement remboursé ; les frais de service restent acquis, car la mise en relation a déjà été faite. Une fois la prestation entièrement réalisée à votre demande, le droit est perdu. Écrivez à support@alane.fr. Ce droit ne concerne pas les clients professionnels." },
-    { q:"Qu'est-ce que le cashback ?", a:"Chaque prestation validée vous rapporte un crédit ALANE, de 0,5 % à 1,5 % du montant selon le nombre de prestations validées dans le mois. Il est utilisable sur vos prochaines réservations et n'est pas convertible en argent (CGPS art. 5B)." },
+    { q:"Qu'est-ce que le cashback ?", a:`Chaque prestation validée vous rapporte un crédit ALANE, de ${taux[0]} à ${taux[taux.length - 1]} du montant selon le nombre de prestations validées dans le mois. Il est utilisable sur vos prochaines réservations et n'est pas convertible en argent (CGPS art. 5B).` },
     { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque prestation est encadrée par un contrat de prestation signé électroniquement, le prestataire reste libre de travailler pour d'autres clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
     { q:"Qu'est-ce qui me protège contre une requalification ?", a:"Trois éléments vous protègent :\n\n① Le contrat ALANE — signé électroniquement, il établit explicitement l'absence de lien de subordination et cite les critères jurisprudentiels de la Cour de Cassation.\n\n② La liberté de clientèle — chaque prestataire reste libre de travailler pour d'autres clients, sur ALANE comme en dehors. L'absence de dépendance économique exclusive est un critère clé dans les décisions de requalification, et ALANE la surveille (CGPS art. 10D).\n\n③ La vérification des documents — ALANE s'assure que chaque prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance).\n\nBon réflexe complémentaire : évitez de faire appel au même prestataire de manière répétée et exclusive sur le long terme." },
     { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque prestation. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la prestation, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de prestations." },
@@ -9695,7 +9709,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                 // pas après. C'est la question que tout le monde se pose ici.
                 (RANG_PLANS[pendingPlan] ?? 0) > (RANG_PLANS[current] ?? 0) ? (
                   <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
-                    Votre abonnement actuel est modifié, pas doublé. Seule la différence vous est facturée pour les jours restants du mois.
+                    Votre abonnement actuel est modifié, pas doublé. Seule la différence vous est facturée, au prorata des jours restants de la période en cours (le mois, ou l'année pour un abonnement annuel).
                   </span>
                 ) : (
                   <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
@@ -10231,7 +10245,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     ], color:C.success },
     { icon:"💶", title:"Comment vous êtes payé", lines:[
       "Sur place, signalez votre arrivée, puis confirmez la fin de la prestation. Le client valide de son côté — sans réponse de sa part, la validation est automatique au bout de 24 h.",
-      `Le virement part ${HEURES_CONTESTATION} h après la fin de la prestation — ce délai est celui dont le client dispose pour signaler un problème — et arrive sur votre compte sous 1 à 2 jours ouvrés.`,
+      `Le virement part ${HEURES_CONTESTATION} h après la fin de la prestation — ce délai est celui dont le client dispose pour signaler un problème — et arrive sur votre compte sous 2 à 7 jours ouvrés selon votre banque.`,
       "ALANE retient ses frais de service sur ce que paie le client, jamais sur votre tarif : vous touchez ce que vous avez annoncé.",
     ], color:"#4FC3F7" },
     // Écrit court, volontairement.

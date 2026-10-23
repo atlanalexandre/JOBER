@@ -1157,7 +1157,8 @@ données en clair.
 Une empreinte **ne compte que 3 ans** à partir de son inscription (`CONSERVATION_EMPREINTES_MS`,
 CGPS art. 14.4, décision d'Alexandre du 21/10/2026) : au-delà, `ensemblesListeNoire()` l'ignore, et
 les deux lectures directes — inscription (`support.js`) et validation (`bo-action.js`) — portent le
-filtre `created_at=depuisConservation()`.
+filtre `and=dansLaConservation(…)` : moins de 3 ans, ou sans date (la colonne admet NULL, et une
+ligne sans date reste comptée partout).
 Rien ne supprime encore les lignes périmées ; la plus ancienne date du 22/06/2026, la première
 purge sera donc due en juin 2029.
 

@@ -44,6 +44,15 @@ export const CONSERVATION_EMPREINTES_MS = 3 * 365.25 * 24 * 3600 * 1000;
 export const depuisConservation = (maintenant = Date.now()) =>
   `gte.${new Date(maintenant - CONSERVATION_EMPREINTES_MS).toISOString()}`;
 
+/**
+ * Le paramètre `and` des lectures directes : une empreinte de la liste
+ * (`filtreListeNoire`), ET de moins de 3 ans — ou sans date, comptée comme
+ * `ensemblesListeNoire` la compte (on ne la sait pas périmée ; la colonne
+ * admet NULL). `created_at=gte.` seul écartait ces lignes (relecture du 23/10/2026).
+ */
+export const dansLaConservation = (filtre, maintenant = Date.now()) =>
+  `(or${filtre},or(created_at.${depuisConservation(maintenant)},created_at.is.null))`;
+
 /** Un numéro français ramené à « 0612345678 » ; un numéro étranger, à ses chiffres. */
 export function telephoneNormalise(tel) {
   const c = String(tel ?? "").replace(/\D/g, "");
