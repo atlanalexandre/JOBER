@@ -9,7 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
-import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire, lireUtilisateurs, depuisConservation } from "./_liste_noire.js";
+import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire, lireUtilisateurs, dansLaConservation } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
 import { dateImmatriculation } from "./_sirene.js";
@@ -463,7 +463,7 @@ export default async function handler(req, res) {
 
         if (filtreBl) {
           try {
-            const blParams = new URLSearchParams({ or: filtreBl, created_at: depuisConservation(), select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
+            const blParams = new URLSearchParams({ and: dansLaConservation(filtreBl), select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
             const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
             const blData = await blRes.json();
             if (Array.isArray(blData) && blData.length > 0) {
@@ -3724,9 +3724,9 @@ export default async function handler(req, res) {
         // l'envoi au point de risquer l'arrêt de la fonction, et un lot parti mais
         // pas noté aurait été renvoyé au clic suivant (relecture du 21/10/2026).
         const note = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/bo_logs`,
-          // Sans l'adresse : en cas de refus, ecrireVerifie journalise le corps
-          // entier — cent adresses en clair dans les journaux (relecture du 22/10/2026).
-          lot.map(d => ({ action: "relance_sans_siret", target_id: d.id })),
+          // L'adresse reste au journal du back-office, où on la recherche ; en cas de
+          // refus, ecrireVerifie n'en journalise que le nombre (relecture du 23/10/2026).
+          lot.map(d => ({ action: "relance_sans_siret", target_id: d.id, target_email: d.email })),
           headers, "relance_sans_siret/journal", { method: "POST" });
         if (!note) console.error(`[relance_sans_siret] ${lot.length} relance(s) envoyée(s) mais non notée(s) — à ne pas renvoyer avant 30 jours.`);
       }

@@ -4920,7 +4920,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 )}
                 <div style={{ color:C.textMuted, fontSize:11, marginTop:10, lineHeight:1.5 }}>
                   Le virement part 48 h après la fin de la prestation — le délai dont le client dispose
-                  pour signaler un problème. Il arrive ensuite sur votre compte sous 1 à 2 jours ouvrés.
+                  pour signaler un problème. Il arrive ensuite sur votre compte sous 2 à 7 jours ouvrés selon votre banque.
                 </div>
               </div>
             )}
