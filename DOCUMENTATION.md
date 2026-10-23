@@ -1951,9 +1951,10 @@ webhook contrôle `status=approved` **et** `missions_enabled`. Si le prestataire
 plus les conditions, la prestation passe en `needs_replacement` plutôt qu'en `assigned` —
 l'argent est encaissé, le client doit être servi — et le client est prévenu.
 
-**Les événements réellement abonnés** (lus chez Stripe le 26/09/2026) : `checkout.session.completed`,
-`customer.subscription.updated`, `customer.subscription.deleted` — les abonnements des
-prestataires. **`payment_intent.succeeded` ne l'est pas** : tout le traitement des paiements de
+**Les événements réellement abonnés** (lus chez Stripe le 26/09/2026, complétés le 23/10/2026) :
+`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted` — les
+abonnements des prestataires —, et `charge.dispute.created`, `charge.dispute.closed` — les oppositions
+bancaires. **`payment_intent.succeeded` ne l'est pas** : tout le traitement des paiements de
 réservation ci-dessus est aujourd'hui dormant, l'application affectant elle-même
 (`assign_after_payment`, `affecter_tiers`).
 
@@ -4851,11 +4852,9 @@ retenue sans terme. L'administrateur est prévenu par courriel ; le back-office 
 paiement de la réservation **ou** celui d'une prolongation (`extra_hours_payment_intent`), à
 l'ouverture comme à l'issue. `src/tests/api/contestation-bancaire.test.js`.
 
-> ⚠️ **Ni `charge.dispute.created` ni `charge.dispute.closed` ne sont abonnés chez Stripe**
-> (lu en mode test le 23/10/2026 : seuls les trois événements d'abonnement le sont, comme
-> l'indiquait déjà la liste du 26/09). Toute la retenue sur opposition est donc **dormante**
-> tant qu'Alexandre ne les ajoute pas au point de terminaison `/api/stripe-webhook`, en mode
-> test et en mode réel.
+**Abonnement chez Stripe** : `charge.dispute.created` et `charge.dispute.closed` ont été ajoutés
+au point de terminaison `/api/stripe-webhook` par Alexandre le 23/10/2026, en mode test et en mode
+réel (relu en mode test le même jour). Jusque-là, toute la retenue sur opposition était dormante.
 
 **Abonnement dont le renouvellement échoue** : retour au gratuit tout de suite, sans attendre la
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit
