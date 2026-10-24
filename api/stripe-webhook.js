@@ -1,5 +1,5 @@
 import { notifier } from "./_push.js";
-import { resendBody, euros } from "./_email.js";
+import { resendBody, euros, sendEmail } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
 import { rafraichirStatutCompte } from "./_connect.js";
 export const config = { api: { bodyParser: false } };
@@ -75,45 +75,53 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
   }
 }
 
+// Une opposition est-elle encore ouverte sur ce paiement ? Illisible : oui —
+// mieux vaut garder une retenue que payer ce que la banque reprendra.
+export async function oppositionOuverte(paymentIntent, cle) {
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/disputes?payment_intent=${encodeURIComponent(paymentIntent)}&limit=10`, { headers: { "Authorization": `Bearer ${cle}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(d?.data)) {
+      console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — retenue maintenue.`);
+      return true;
+    }
+    return d.data.some(x => !["won", "lost", "warning_closed"].includes(x.status));
+  } catch (e) {
+    console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles — retenue maintenue :`, e.message);
+    return true;
+  }
+}
+
 // Un paiement abouti qui ne peut être rattaché à rien (candidature retirée,
-// métadonnées fausses) est rendu — sauf s'il est DÉJÀ celui de la prestation :
-// une livraison répétée du webhook, arrivée après que l'application l'a
-// rattaché, ne doit pas rembourser un paiement qui sert (relecture du 23/10/2026).
-// Rend "deja_rattache", "rembourse", "echec" ou "illisible".
-export async function rembourserPaiementOrphelin(missionId, intent, supabaseUrl, headers, cle) {
+// métadonnées fausses) est signalé à l'équipe — sauf s'il est DÉJÀ celui de la
+// prestation (livraison répétée, ou rattachement par l'application entre-temps).
+// Rend "deja_rattache", "signale" ou "illisible".
+export async function signalerPaiementOrphelin(missionId, intent, supabaseUrl, headers) {
   let m;
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`, { headers });
     const rows = r.ok ? await r.json().catch(() => null) : null;
     if (!Array.isArray(rows)) {
-      console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible (${r.status}) — paiement orphelin NON remboursé, Stripe réémettra.`);
+      console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible (${r.status}) — Stripe réémettra.`);
       return "illisible";
     }
     m = rows[0] || null;
   } catch (e) {
-    console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible — paiement orphelin NON remboursé :`, e.message);
+    console.error(`[stripe-webhook] ${intent.id} : prestation ${missionId} illisible :`, e.message);
     return "illisible";
   }
-  if (m?.stripe_payment_intent === intent.id) {
-    console.log(`[stripe-webhook] ${intent.id} : déjà rattaché à ${missionId} — rien à rembourser.`);
-    return "deja_rattache";
+  if (m?.stripe_payment_intent === intent.id) return "deja_rattache";
+  const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+  if (!admin) {
+    console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature (prestation ${missionId}) — ADMIN_EMAIL absente, à vérifier à la main.`);
+    return "signale";
   }
-  try {
-    const rr = await fetch("https://api.stripe.com/v1/refunds", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${cle}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `refund-orphelin-${intent.id}` },
-      body: new URLSearchParams({ payment_intent: intent.id, reason: "requested_by_customer" }).toString(),
-    });
-    const rd = await rr.json().catch(() => null);
-    if (rd?.id || rd?.error?.code === "charge_already_refunded") {
-      console.error(`[stripe-webhook] paiement orphelin ${intent.id} remboursé (prestation ${missionId}).`);
-      return "rembourse";
-    }
-    console.error(`[stripe-webhook] ⚠️ paiement orphelin ${intent.id} NON remboursé (prestation ${missionId}) — à rembourser à la main :`, JSON.stringify(rd?.error || rd).slice(0, 200));
-  } catch (e) {
-    console.error(`[stripe-webhook] ⚠️ paiement orphelin ${intent.id} NON remboursé (prestation ${missionId}) :`, e.message);
-  }
-  return "echec";
+  const parti = await sendEmail({ to: admin,
+    subject: `⚠️ Paiement sans candidature — ${euros((intent.amount_received || intent.amount || 0) / 100)}`,
+    html: `<p>Le paiement <strong>${intent.id}</strong> a abouti, mais sa candidature n'existe plus : rien n'a été affecté.</p>`
+      + `<p>Prestation <strong>${missionId}</strong> : si l'application ne l'a pas rattaché, remboursez-le depuis Stripe.</p>` });
+  if (parti !== true) console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — alerte NON envoyée, à vérifier à la main.`);
+  return "signale";
 }
 
 /**
@@ -346,16 +354,23 @@ export default async function handler(req, res) {
       if (candidatureId && prestataireId) {
         try {
           const candVerif = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}&prestataire_id=eq.${prestataireId}&select=id`, { headers });
-          const candData = await candVerif.json().catch(() => []);
-          if (!Array.isArray(candData) || candData.length === 0) {
+          // Une erreur de la base n'est pas une candidature introuvable : Stripe
+          // réémettra (relecture du 24/10/2026).
+          if (!candVerif.ok) {
+            console.error(`[stripe-webhook] ${intent.id} : candidatures illisibles (${candVerif.status}) — Stripe réémettra.`);
+            return res.status(500).json({ error: "Supabase unavailable" });
+          }
+          const candData = await candVerif.json().catch(() => null);
+          if (!Array.isArray(candData)) return res.status(500).json({ error: "Supabase unavailable" });
+          if (candData.length === 0) {
             // Candidature retirée entre la création du paiement et sa confirmation,
-            // ou métadonnées fausses : rien n'est affecté, et le paiement encaissé
-            // est RENDU — il restait pris sans prestation ni remboursement, la
-            // prestation portant un prestataire échappant à cron-abandon
-            // (relecture du 23/10/2026).
-            console.error(`[stripe-webhook] ${intent.id} : candidature ${candidatureId} introuvable pour ${prestataireId} — paiement remboursé, rien d'affecté.`);
-            const issue = await rembourserPaiementOrphelin(missionId, intent, SUPABASE_URL, headers, STRIPE_SECRET_KEY);
-            // Prestation illisible : Stripe réémettra, on ne rembourse pas à l'aveugle.
+            // ou métadonnées fausses : rien n'est affecté. Le paiement n'est PAS
+            // remboursé d'office — l'application peut le rattacher au même instant
+            // (`assign_after_payment`), et un remboursement croisé laisserait une
+            // prestation attribuée sur un paiement rendu (relecture du 24/10/2026).
+            // L'équipe est prévenue et tranche.
+            console.error(`[stripe-webhook] ${intent.id} : candidature ${candidatureId} introuvable pour ${prestataireId} — rien d'affecté, équipe prévenue.`);
+            const issue = await signalerPaiementOrphelin(missionId, intent, SUPABASE_URL, headers);
             if (issue === "illisible") return res.status(500).json({ error: "Supabase unavailable" });
             return res.status(200).json({ received: true }); // Ne pas retenter — les metadata sont invalides
           }
@@ -1148,26 +1163,48 @@ export default async function handler(req, res) {
     const perdue = dispute.status === "lost";
     if (pi && (gagnee || perdue) && SUPABASE_URL && SERVICE_ROLE_KEY) {
       const hdrsC = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
-      const cible = `${SUPABASE_URL}/rest/v1/missions?or=(stripe_payment_intent.eq.${encodeURIComponent(pi)},extra_hours_payment_intent.eq.${encodeURIComponent(pi)})`
-        + "&payout_hold_reason=eq.opposition_bancaire&payout_status=not.in.(transferred,processing)";
-      let corps;
-      if (gagnee) corps = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
-      else corps = { payout_hold_until: null };
-      let lignes;
+      const piEnc = encodeURIComponent(pi);
+      // Versement pas encore parti : vide (retenue inscrite avant la clôture),
+      // en attente (dans les 48 h), retenu ou en échec. Un filtre unique
+      // `payout_status=not.in.(…)` écartait le vide — en SQL, NULL NOT IN (…) n'est
+      // pas vrai — et une retenue inscrite avant la clôture n'était jamais touchée
+      // (relecture du 24/10/2026).
+      const pasParti = "or(payout_status.is.null,payout_status.in.(held,pending,failed))";
+      let lignes = [];
       try {
-        // Gagnée : un versement retenu repart (« pending ») ; une retenue inscrite
-        // avant la clôture (versement encore vide) est simplement effacée.
-        const rh = await fetch(`${cible}&payout_status=eq.held`, { method: "PATCH", headers: hdrsC,
-          body: JSON.stringify(gagnee ? { ...corps, payout_status: "pending" } : corps) });
-        const rn = await fetch(`${cible}&payout_status=is.null`, { method: "PATCH", headers: hdrsC, body: JSON.stringify(corps) });
-        if (!rh.ok || !rn.ok) {
-          console.error(`[dispute.closed] ${dispute.id} (${dispute.status}) : retenue NON mise à jour (${rh.status}/${rn.status}) — Stripe réémettra.`);
-          return res.status(500).json({ error: "Mise à jour de la retenue impossible" });
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?and=(or(stripe_payment_intent.eq.${piEnc},extra_hours_payment_intent.eq.${piEnc}),${pasParti})`
+          + "&payout_hold_reason=eq.opposition_bancaire&select=id,prestataire_id,payout_status,stripe_payment_intent,extra_hours_payment_intent", { headers: hdrsC });
+        const lus = lr.ok ? await lr.json().catch(() => null) : null;
+        if (!Array.isArray(lus)) {
+          console.error(`[dispute.closed] ${dispute.id} (${dispute.status}) : prestations illisibles (${lr.status}) — Stripe réémettra.`);
+          return res.status(500).json({ error: "Lecture des retenues impossible" });
         }
-        lignes = [...(await rh.json().catch(() => [])), ...(await rn.json().catch(() => []))];
+        for (const m of lus) {
+          if (perdue) {
+            // Perdue : la retenue garde son motif et perd son terme.
+            const rp = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_hold_reason=eq.opposition_bancaire&${pasParti.replace(/^or/, "or=")}`,
+              { method: "PATCH", headers: hdrsC, body: JSON.stringify({ payout_hold_until: null }) });
+            if (!rp.ok) throw new Error(`PATCH ${rp.status}`);
+            lignes.push(m);
+            continue;
+          }
+          // Gagnée : la retenue tombe — sauf si l'AUTRE paiement de la prestation
+          // (réservation ou prolongation) fait encore l'objet d'une opposition
+          // ouverte : la retenue couvre la prestation entière.
+          const autre = [m.stripe_payment_intent, m.extra_hours_payment_intent].find(x => x && x !== pi);
+          if (autre && await oppositionOuverte(autre, STRIPE_SECRET_KEY)) {
+            console.error(`[dispute.closed] ${dispute.id} gagnée, mais ${autre} reste contesté : retenue maintenue sur ${m.id}.`);
+            continue;
+          }
+          const levee = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
+          const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_hold_reason=eq.opposition_bancaire&${pasParti.replace(/^or/, "or=")}`,
+            { method: "PATCH", headers: hdrsC, body: JSON.stringify(m.payout_status === "held" ? { ...levee, payout_status: "pending" } : levee) });
+          if (!rl.ok) throw new Error(`PATCH ${rl.status}`);
+          lignes.push(m);
+        }
       } catch (e) {
-        console.error(`[dispute.closed] ${dispute.id} : retenue NON mise à jour —`, e.message);
-        return res.status(500).json({ error: "Supabase unavailable" });
+        console.error(`[dispute.closed] ${dispute.id} : retenue NON mise à jour —`, e.message, "— Stripe réémettra.");
+        return res.status(500).json({ error: "Mise à jour de la retenue impossible" });
       }
       for (const m of lignes) {
         console.error(`[dispute.closed] ${dispute.id} ${dispute.status} : prestation ${m.id} — ${gagnee ? "retenue levée" : "retenue maintenue sans terme"}.`);
@@ -1179,18 +1216,14 @@ export default async function handler(req, res) {
       }
       if (perdue) {
         const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
-        const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-        if (admin && RESEND_KEY) {
-          await fetch("https://api.resend.com/emails", {
-            method: "POST", headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-            body: resendBody({ from: process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>", to: [admin],
-              subject: `⚠️ Opposition perdue — ${euros((dispute.amount || 0) / 100)}`,
-              html: `<p>L'opposition bancaire <strong>${dispute.id}</strong> est perdue : la banque a repris ${euros((dispute.amount || 0) / 100)} au client.</p>`
-                + `<p>${lignes.length ? `Le versement de ${lignes.length} prestation(s) reste retenu, sans terme : c'est au back-office de décider (« Lever la retenue » ou recouvrement, CGPS art. 9B).` : "Aucune retenue en cours sur la prestation : le versement est peut-être déjà parti — à vérifier."}</p>` }),
-          }).then(r => { if (!r.ok) console.error(`[dispute.closed] alerte NON envoyée (${r.status}).`); })
-            .catch(e => console.error("[dispute.closed] alerte NON envoyée :", e.message));
+        if (admin) {
+          const parti = await sendEmail({ to: admin,
+            subject: `⚠️ Opposition perdue — ${euros((dispute.amount || 0) / 100)}`,
+            html: `<p>L'opposition bancaire <strong>${dispute.id}</strong> est perdue : la banque a repris ${euros((dispute.amount || 0) / 100)} au client.</p>`
+              + `<p>${lignes.length ? `Le versement de ${lignes.length} prestation(s) reste retenu, sans terme : c'est au back-office de décider (« Lever la retenue » ou recouvrement, CGPS art. 9B).` : "Aucune retenue en cours sur la prestation : le versement est peut-être déjà parti — à vérifier."}</p>` });
+          if (parti !== true) console.error(`[dispute.closed] ${dispute.id} perdue — alerte NON envoyée.`);
         } else {
-          console.error(`[dispute.closed] ${dispute.id} perdue — ADMIN_EMAIL ou RESEND_API_KEY absente, alerte non envoyée.`);
+          console.error(`[dispute.closed] ${dispute.id} perdue — ADMIN_EMAIL absente, alerte non envoyée.`);
         }
       }
     }

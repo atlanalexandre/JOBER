@@ -41,40 +41,43 @@ function simuler(reponses) {
   return appels;
 }
 
-describe("candidature introuvable au paiement : le paiement est rendu", () => {
-  it("rien n'est affecté, et le paiement encaissé est remboursé une fois (clé propre)", async () => {
+describe("candidature introuvable au paiement : l'équipe est prévenue, rien n'est remboursé d'office", () => {
+  // Relecture du 24/10/2026 : le remboursement d'office croisait le rattachement
+  // par l'application — prestation attribuée sur un paiement rendu.
+  it("rien n'est affecté ni remboursé ; l'administrateur reçoit une alerte", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
+    vi.stubEnv("RESEND_API_KEY", "re_x");
     const appels = simuler([
       [(u) => u.includes("/rest/v1/candidatures?"), []],
       [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null }]],
-      [(u) => u.includes("/v1/refunds"), { id: "re_1" }],
+      [(u) => u.includes("api.resend.com"), { id: "e1" }],
     ]);
     const res = reponse();
     await handler(requete(paiement), res);
     expect(res.statut).toBe(200);
-    const remb = appels.find(a => a.u.includes("/v1/refunds"));
-    expect(remb, "remboursement demandé").toBeTruthy();
-    expect(remb.entetes["Idempotency-Key"]).toBe("refund-orphelin-pi_1");
+    expect(appels.some(a => a.u.includes("/v1/refunds"))).toBe(false);
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("/rest/v1/missions"))).toBe(false);
+    expect(appels.some(a => a.u.includes("api.resend.com") && a.corps.includes("Paiement sans candidature"))).toBe(true);
   });
-  it("déjà rattaché à la prestation (livraison répétée) : aucun remboursement", async () => {
+  it("déjà rattaché à la prestation : aucune alerte", async () => {
+    vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
     const appels = simuler([
       [(u) => u.includes("/rest/v1/candidatures?"), []],
       [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: "pi_1" }]],
     ]);
     await handler(requete(paiement), reponse());
-    expect(appels.some(a => a.u.includes("/v1/refunds"))).toBe(false);
+    expect(appels.some(a => a.u.includes("api.resend.com") || a.u.includes("/v1/refunds"))).toBe(false);
   });
-  it("prestation illisible : 500, pas de remboursement à l'aveugle", async () => {
+  it("candidatures illisibles (erreur de la base) : 500, ce n'est pas « introuvable »", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const appels = simuler([
-      [(u) => u.includes("/rest/v1/candidatures?"), []],
-      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), () => new Response("{}", { status: 503 })],
+      [(u) => u.includes("/rest/v1/candidatures?"), () => new Response(JSON.stringify({ message: "panne" }), { status: 503 })],
     ]);
     const res = reponse();
     await handler(requete(paiement), res);
     expect(res.statut).toBe(500);
-    expect(appels.some(a => a.u.includes("/v1/refunds"))).toBe(false);
+    expect(appels.some(a => a.u.includes("/v1/refunds") || a.u.includes("api.resend.com"))).toBe(false);
   });
 });
 
