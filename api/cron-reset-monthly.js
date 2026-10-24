@@ -739,13 +739,18 @@ export default async function handler(req, res) {
               });
               const retenu = ret.ok ? await ret.json().catch(() => []) : [];
               if (Array.isArray(retenu) && retenu.length) {
-                const finLe = new Date(m.payout_hold_until).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
-                console.error(`[versements] ${m.id} RETENU à l'émission : ${m.payout_hold_reason} (jusqu'au ${finLe}).`);
+                // Sans terme (opposition perdue) : pas de date à annoncer — elle
+                // affichait « 1 janvier 1970 » (relecture du 24/10/2026).
+                const finLe = m.payout_hold_until
+                  ? new Date(m.payout_hold_until).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" })
+                  : null;
+                console.error(`[versements] ${m.id} RETENU à l'émission : ${m.payout_hold_reason} (${finLe ? `jusqu'au ${finLe}` : "sans terme"}).`);
                 await notifier({ user_id: m.prestataire_id, type: "system",
                   title: "Versement suspendu",
                   body: `Le versement de ${euros(m.payout_amount)} pour « ${m.metier || m.sector || "votre prestation"} » du ${m.date || "?"} est suspendu : `
                     + "le client a formé une opposition bancaire sur son paiement (CGPS art. 7.4). "
-                    + `La retenue prend fin au plus tard le ${finLe}, et plus tôt si l'opposition est rejetée. `
+                    + (finLe ? `La retenue prend fin au plus tard le ${finLe}, et plus tôt si l'opposition est rejetée. `
+                      : "L'opposition a été tranchée en faveur du client : la retenue est maintenue jusqu'à décision d'ALANE. ")
                     + "Vous pouvez la contester à direction@alane.fr.",
                 }, SUPABASE_URL, headers).catch(e => console.error(`[versements] retenue non notifiée ${m.id} :`, e.message));
               } else {

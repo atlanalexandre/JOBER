@@ -81,37 +81,58 @@ describe("contestation bancaire", () => {
 // soit l'issue — une opposition PERDUE laissait partir le versement.
 describe("issue de l'opposition (charge.dispute.closed)", () => {
   const ferme = (status) => ({ type: "charge.dispute.closed", data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 11098, status } } });
-  function simulerIssue() {
+  // `missions` : les prestations retenues que la lecture rend ; `autresOuvertes` :
+  // oppositions encore ouvertes sur l'autre paiement de la prestation.
+  function simulerIssue(missions, autresOuvertes = []) {
     const appels = [];
     vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
       const u = String(url);
       appels.push({ u, methode: o.method || "GET", corps: o.body });
-      if (u.includes("/rest/v1/missions?or=") && o.method === "PATCH" && u.includes("payout_status=eq.held")) {
-        return new Response(JSON.stringify([{ id: "m1", prestataire_id: "p1" }]), { status: 200 });
-      }
+      if (u.includes("/rest/v1/missions?and=") && !o.method) return new Response(JSON.stringify(missions), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=eq.") && o.method === "PATCH") return new Response("[{}]", { status: 200 });
+      if (u.includes("api.stripe.com/v1/disputes")) return new Response(JSON.stringify({ data: autresOuvertes }), { status: 200 });
+      if (u.includes("api.resend.com")) return new Response(JSON.stringify({ id: "e1" }), { status: 200 });
       return new Response("[]", { status: 200 });
     }));
     return appels;
   }
-  it("gagnée : la retenue est levée, le versement repart, le prestataire est prévenu", async () => {
-    const appels = simulerIssue();
+  it("la lecture prend aussi le versement vide (retenue inscrite avant la clôture) et celui en attente", async () => {
+    const appels = simulerIssue([]);
+    await handler(requete(ferme("won")), reponse());
+    const lecture = appels.find(a => a.u.includes("/rest/v1/missions?and="));
+    expect(decodeURIComponent(lecture.u)).toContain("or(payout_status.is.null,payout_status.in.(held,pending,failed))");
+    expect(lecture.u).not.toContain("not.in");
+  });
+  it("gagnée, versement retenu : la retenue est levée, le versement repart, le prestataire est prévenu", async () => {
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_1" }]);
     const res = reponse();
     await handler(requete(ferme("won")), res);
     expect(res.statut).toBe(200);
-    const levee = appels.find(a => a.methode === "PATCH" && a.u.includes("payout_status=eq.held"));
-    expect(levee.u).toContain("extra_hours_payment_intent.eq.pi_1");
-    expect(levee.u).toContain("payout_hold_reason=eq.opposition_bancaire");
+    const levee = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
     expect(JSON.parse(levee.corps)).toEqual({ payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null, payout_status: "pending" });
     expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("rejetée"))).toBe(true);
   });
-  it("perdue : la retenue garde son motif et perd son terme — plus rien ne la lève seul", async () => {
+  it("gagnée, retenue inscrite avant la clôture : elle est effacée, sans inventer de versement", async () => {
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: null, stripe_payment_intent: "pi_1" }]);
+    await handler(requete(ferme("won")), reponse());
+    const levee = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+    expect(JSON.parse(levee.corps)).toEqual({ payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null });
+  });
+  it("gagnée, mais l'autre paiement de la prestation est encore contesté : la retenue reste", async () => {
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_0", extra_hours_payment_intent: "pi_1" }],
+      [{ id: "dp_0", status: "needs_response" }]);
+    await handler(requete(ferme("won")), reponse());
+    expect(appels.some(a => a.u.includes("api.stripe.com/v1/disputes?payment_intent=pi_0"))).toBe(true);
+    expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
+  });
+  it("perdue : la retenue garde son motif et perd son terme — plus rien ne la lève seul ; l'administrateur est prévenu", async () => {
     vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
     vi.stubEnv("RESEND_API_KEY", "re_x");
-    const appels = simulerIssue();
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: null, stripe_payment_intent: "pi_1" }]);
     await handler(requete(ferme("lost")), reponse());
-    const maintenue = appels.filter(a => a.methode === "PATCH" && a.u.includes("/rest/v1/missions?or="));
-    expect(maintenue).toHaveLength(2);
-    for (const a of maintenue) expect(JSON.parse(a.corps)).toEqual({ payout_hold_until: null });
+    const maintenue = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+    expect(JSON.parse(maintenue.corps)).toEqual({ payout_hold_until: null });
+    expect(maintenue.u).toContain("payout_hold_reason=eq.opposition_bancaire");
     expect(appels.some(a => a.u.includes("api.resend.com") && a.corps.includes("Opposition perdue"))).toBe(true);
   });
   it("base indisponible : 500, Stripe réémettra", async () => {
@@ -119,6 +140,14 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
     const res = reponse();
     await handler(requete(ferme("won")), res);
     expect(res.statut).toBe(500);
+  });
+});
+
+describe("une retenue sans terme n'annonce pas de date", () => {
+  const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
+  it("le prestataire ne lit plus « 1 janvier 1970 »", () => {
+    expect(cron).toMatch(/const finLe = m\.payout_hold_until\s+\? new Date\(m\.payout_hold_until\)/);
+    expect(cron).toMatch(/finLe \? `La retenue prend fin au plus tard le \$\{finLe\}/);
   });
 });
 

@@ -249,3 +249,17 @@ describe("les lectures directes de la liste s'arrêtent aussi à 3 ans (relectur
     erreurs.mockRestore();
   });
 });
+
+describe("un refus de PostgREST ne recopie pas la ligne refusée (relecture du 24/10/2026)", () => {
+  it("seuls le code et le message de l'erreur sont journalisés, pas `details`", async () => {
+    const { ecrireVerifie } = await import("../../../api/_ecriture.js");
+    const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ code: "23502", message: "null value", details: "Failing row contains (secret@exemple.fr)" }) })));
+    await ecrireVerifie("https://x/rest/v1/bo_logs", [{ target_email: "secret@exemple.fr" }], {}, "test", { method: "POST" });
+    const journal = erreurs.mock.calls.flat().join(" ");
+    expect(journal).toContain("23502 null value");
+    expect(journal).not.toContain("secret@exemple.fr");
+    vi.unstubAllGlobals();
+    erreurs.mockRestore();
+  });
+});
