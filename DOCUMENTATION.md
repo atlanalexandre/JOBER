@@ -1711,6 +1711,13 @@ Sept ne le faisaient pas : `approve`/`reject`, `verify_doc`, `reject_doc`,
 `list_missions_export`, `seed_docs`. La validation des pièces d'identité et la modification
 des réglages — frais de service, cashback, seuils de vigilance — ne laissaient aucune trace.
 
+**« 🧾 Export comptable » (`list_missions_export`)** — n'exporte que des montants enregistrés :
+montant de la prestation, versement programmé au prestataire (`payout_amount`) et son état. Il
+calculait une « commission ALANE » à 20 % du prix, un taux qui n'existe pas (ALANE se rémunère sur
+ses frais de service), et s'arrêtait à 1 000 lignes : corrigé le 24/10/2026 (`lireTout`). Ce n'est
+**pas** un journal comptable : les frais de service, abonnements, frais Stripe et remboursements
+n'y figurent pas — à construire avant la première prestation payée (`src/tests/export-comptable.test.js`).
+
 **Documents de démonstration (`seed_docs`, bouton « 🌱 Seed démo ») — recette uniquement**
 (24/09/2026). L'action insère sept pièces fictives **marquées vérifiées**, ce qui suffit à
 ouvrir l'accès aux prestations. Utile à la recette, où `e2e/fabrique.js` s'en sert pour

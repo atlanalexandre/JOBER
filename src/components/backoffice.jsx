@@ -3212,13 +3212,15 @@ export function BOExportMissions() {
     try {
       const r = await boFetch({ action: "list_missions_export" });
       const prestations = await r.json();
-      const COMMISSION = 0.20;
-      const rows = [["ID","Date création","Date prestation","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
-      (Array.isArray(prestations) ? prestations : []).forEach(m => {
-        const montant = Number(m.montant_total) || 0;
-        const comm    = Math.round(montant * COMMISSION * 100) / 100;
-        const net     = Math.round((montant - comm) * 100) / 100;
-        rows.push([m.id, m.created_at?.slice(0,10)||"", m.date||"", m.sector||"", m.metier||"", m.hours||"", m.tarif_horaire||"", montant, comm, net, m.status||"", m.stripe_payment_intent||""]);
+      if (!r.ok || !Array.isArray(prestations)) throw new Error(prestations?.error || `export refusé (${r.status})`);
+      // Uniquement des montants enregistrés. La « commission ALANE » était
+      // calculée à 20 % du prix — un taux qui n'existe pas : ALANE se rémunère
+      // sur ses frais de service (relecture du 24/10/2026). Un export que le
+      // comptable reprendrait tel quel ne doit rien inventer.
+      const rows = [["ID","Date création","Date prestation","Secteur","Métier","Heures","Tarif/h (€)","Montant de la prestation (€)","Versement prestataire (€)","État du versement","Statut","Paiement Stripe"]];
+      prestations.forEach(m => {
+        rows.push([m.id, m.created_at?.slice(0,10)||"", m.date||"", m.sector||"", m.metier||"", m.hours||"", m.tarif_horaire||"",
+          m.montant_total ?? "", m.payout_amount ?? "", m.payout_status||"", m.status||"", m.stripe_payment_intent||""]);
       });
       const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
       const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
@@ -3226,7 +3228,10 @@ export function BOExportMissions() {
       const a    = document.createElement("a");
       a.href = url; a.download = `alane-prestations-comptable-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
-    } catch (e) { console.error("[BO] export comptable échoué :", e.message); }
+    } catch (e) {
+      console.error("[BO] export comptable échoué :", e.message);
+      showToast(`Export non produit : ${e.message}`, "error");
+    }
     setExporting(false);
   };
   return (

@@ -3654,11 +3654,18 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_missions_export") {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`,
-        { headers }
-      );
-      const missions = await r.json();
+      // Toutes les lignes, pas les 1 000 premières (CLAUDE.md §4, « 1 000 lignes
+      // au plus ») ; et le versement réellement programmé au prestataire.
+      let missions;
+      try {
+        missions = await lireTout(
+          `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,payout_amount,payout_status,created_at,stripe_payment_intent&order=created_at.desc`,
+          headers
+        );
+      } catch (e) {
+        console.error("[list_missions_export] lecture impossible :", e.message);
+        return res.status(502).json({ error: "Prestations illisibles — export non produit." });
+      }
       await journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
       return res.status(200).json(Array.isArray(missions) ? missions : []);
     }
