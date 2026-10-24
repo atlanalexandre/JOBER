@@ -5,7 +5,7 @@ import { hashPii } from "../../../api/_email.js";
 import {
   telephoneNormalise, empreintes, filtreListeNoire, ligneListeNoire,
   ensemblesListeNoire, correspond, comptesRecrees, remiseAZeroMensuelle,
-  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS, CONSERVATION_EMPREINTES_MS, depuisConservation,
+  inscrireListeNoire, INSCRIPTION_APRES_SUPPRESSION_MS, CONSERVATION_EMPREINTES_MS, depuisConservation, dansLaConservation,
 } from "../../../api/_liste_noire.js";
 
 describe("telephoneNormalise — une seule forme pour un même numéro", () => {
@@ -223,12 +223,29 @@ describe("les lectures directes de la liste s'arrêtent aussi à 3 ans (relectur
     const T = Date.parse("2030-01-01T00:00:00Z");
     expect(depuisConservation(T)).toBe(`gte.${new Date(T - CONSERVATION_EMPREINTES_MS).toISOString()}`);
   });
-  it.each([["api/support.js", /or: filtre3, created_at: depuisConservation\(\)/], ["api/bo-action.js", /or: filtreBl, created_at: depuisConservation\(\)/]])(
+  it("dansLaConservation : l'empreinte ET (moins de 3 ans OU sans date, comptée comme par ensemblesListeNoire)", () => {
+    const T = Date.parse("2030-01-01T00:00:00Z");
+    expect(dansLaConservation("(email_hash.in.(a))", T))
+      .toBe(`(or(email_hash.in.(a)),or(created_at.${depuisConservation(T)},created_at.is.null))`);
+  });
+  it.each([["api/support.js", /and: dansLaConservation\(filtre3\)/], ["api/bo-action.js", /and: dansLaConservation\(filtreBl\)/]])(
     "%s borne sa lecture", (f, motif) => {
       expect(readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8")).toMatch(motif);
     });
-  it("la relance ne journalise pas les adresses", () => {
+  it("la relance garde l'adresse au journal du back-office", () => {
     const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
-    expect(bo).toMatch(/lot\.map\(d => \(\{ action: "relance_sans_siret", target_id: d\.id \}\)\)/);
+    expect(bo).toMatch(/lot\.map\(d => \(\{ action: "relance_sans_siret", target_id: d\.id, target_email: d\.email \}\)\)/);
+  });
+  it("un lot refusé ne copie pas ses adresses dans les journaux : seulement le nombre et les colonnes", async () => {
+    const { ecrireVerifie } = await import("../../../api/_ecriture.js");
+    const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ message: "refus" }) })));
+    const ok = await ecrireVerifie("https://x/rest/v1/bo_logs", [{ action: "a", target_email: "secret@exemple.fr" }, { action: "a", target_email: "autre@exemple.fr" }], {}, "test", { method: "POST" });
+    expect(ok).toBe(false);
+    const journal = erreurs.mock.calls.flat().join(" ");
+    expect(journal).toContain("[2 ligne(s) : action, target_email]");
+    expect(journal).not.toContain("secret@exemple.fr");
+    vi.unstubAllGlobals();
+    erreurs.mockRestore();
   });
 });

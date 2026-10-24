@@ -813,6 +813,10 @@ Voir « Le versement au prestataire » au §6.
 solde du client a réellement été prélevé. La seconde n'est pas une redondance : entre la
 création de l'intention de paiement et sa confirmation, `cashback_applique` porte une réduction
 PROMISE que rien n'a encore consommée — un panier abandonné ne doit rien coûter au client.
+Et le débit vérifie ce que la carte a **réellement** payé (`payePleinTarif()`, relecture du
+23/10/2026) : un paiement au plein tarif — deux paiements préparés, case décochée puis cochée,
+le premier confirmé — ne prend rien sur le solde et remet `cashback_applique` à 0, qui plafonne
+les remboursements.
 
 `resolution_proposee` (`verser_prestataire` | `rembourser_client`, sous contrainte `CHECK`),
 `resolution_motif`, `resolution_montant`, `resolution_notifiee_at`, `resolution_echeance_at`,
@@ -1157,7 +1161,8 @@ données en clair.
 Une empreinte **ne compte que 3 ans** à partir de son inscription (`CONSERVATION_EMPREINTES_MS`,
 CGPS art. 14.4, décision d'Alexandre du 21/10/2026) : au-delà, `ensemblesListeNoire()` l'ignore, et
 les deux lectures directes — inscription (`support.js`) et validation (`bo-action.js`) — portent le
-filtre `created_at=depuisConservation()`.
+filtre `and=dansLaConservation(…)` : moins de 3 ans, ou sans date (la colonne admet NULL, et une
+ligne sans date reste comptée partout).
 Rien ne supprime encore les lignes périmées ; la plus ancienne date du 22/06/2026, la première
 purge sera donc due en juin 2029.
 
@@ -1946,9 +1951,10 @@ webhook contrôle `status=approved` **et** `missions_enabled`. Si le prestataire
 plus les conditions, la prestation passe en `needs_replacement` plutôt qu'en `assigned` —
 l'argent est encaissé, le client doit être servi — et le client est prévenu.
 
-**Les événements réellement abonnés** (lus chez Stripe le 26/09/2026) : `checkout.session.completed`,
-`customer.subscription.updated`, `customer.subscription.deleted` — les abonnements des
-prestataires. **`payment_intent.succeeded` ne l'est pas** : tout le traitement des paiements de
+**Les événements réellement abonnés** (lus chez Stripe le 26/09/2026, complétés le 23/10/2026) :
+`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted` — les
+abonnements des prestataires —, et `charge.dispute.created`, `charge.dispute.closed` — les oppositions
+bancaires. **`payment_intent.succeeded` ne l'est pas** : tout le traitement des paiements de
 réservation ci-dessus est aujourd'hui dormant, l'application affectant elle-même
 (`assign_after_payment`, `affecter_tiers`).
 
@@ -1963,6 +1969,11 @@ est remboursé (`rembourserDoublon()`, clé `refund-doublon-{paiement}`) au lieu
 Depuis le 05/10/2026, il rembourse aussi un paiement arrivé sur une prestation **annulée,
 refusée ou clôturée** (`closed` ajouté le 06/10/2026 : c'est l'état d'une demande close sans prestataire ni paiement) sans paiement rattaché (« rien à faire », disait le journal) ; sur une prestation encore
 vivante sans paiement rattaché, il ne touche à rien et le journalise.
+Depuis le 23/10/2026, l'affectation exige qu'aucun **autre** paiement ne soit rattaché
+(`or=(stripe_payment_intent.is.null,…)`, comme `filtrePaiementLibre`) — un second paiement
+écrasait le premier sur une prestation `needs_replacement` —, et un paiement dont la candidature a
+disparu est **remboursé** (`rembourserPaiementOrphelin()`, clé `refund-orphelin-{paiement}`), sauf
+s'il est déjà celui de la prestation.
 Dormant tant que l'événement n'est pas abonné ; la protection effective contre le double paiement
 est le refus de `/api/stripe-intent` (409 `deja_payee`).
 
@@ -4829,6 +4840,21 @@ passe en `held` au lieu d'être émis, et le prestataire est prévenu. Quelle qu
 (client, validation automatique, « Valider de force », litige), aucune ne peut l'oublier. Passé
 son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 `contestation-bancaire.test.js`.
+
+**Issue de l'opposition** (relecture du 23/10/2026, CGPS art. 7.4 : la retenue « se prolonge
+jusqu'à l'issue » d'une opposition bancaire). À `charge.dispute.closed`, le webhook lève la
+retenue si l'opposition est **gagnée** (`won`, `warning_closed` : versement remis en `pending`,
+prestataire prévenu) ; si elle est **perdue** (`lost`), il vide `payout_hold_until` : la
+retenue garde son motif, n'a plus de terme, et plus rien ne la lève seul — ni la levée d'office
+des 90 jours (`payout_hold_until=lte.`), ni le traitement des versements, qui retient une
+retenue sans terme. L'administrateur est prévenu par courriel ; le back-office décide
+(« Lever la retenue », ou recouvrement selon l'article 9B). La prestation est retrouvée par le
+paiement de la réservation **ou** celui d'une prolongation (`extra_hours_payment_intent`), à
+l'ouverture comme à l'issue. `src/tests/api/contestation-bancaire.test.js`.
+
+**Abonnement chez Stripe** : `charge.dispute.created` et `charge.dispute.closed` ont été ajoutés
+au point de terminaison `/api/stripe-webhook` par Alexandre le 23/10/2026, en mode test et en mode
+réel (relu en mode test le même jour). Jusque-là, toute la retenue sur opposition était dormante.
 
 **Abonnement dont le renouvellement échoue** : retour au gratuit tout de suite, sans attendre la
 fin des nouvelles tentatives de Stripe, et retour de la formule dès qu'un paiement aboutit

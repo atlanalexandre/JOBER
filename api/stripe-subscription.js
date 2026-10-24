@@ -180,7 +180,7 @@ export default async function handler(req, res) {
         console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (montée), abonnement ${abonnementActuel} modifié.`);
         return res.status(200).json({
           change: true,
-          message: "Votre nouvelle formule est active. Seule la différence vous est facturée pour les jours restants du mois en cours.",
+          message: "Votre nouvelle formule est active. Seule la différence vous est facturée, au prorata des jours restants de la période en cours.",
         });
       }
 

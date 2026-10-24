@@ -10,6 +10,13 @@
 // Retourne true si au moins une ligne a été écrite, false sinon — l'échec est
 // journalisé avec le contexte, jamais avalé. C'est à l'appelant de décider s'il
 // interrompt (réponse d'erreur) ou s'il poursuit (tâche planifiée).
+// Ce qu'on journalise d'un corps refusé : une liste de lignes peut porter des
+// données personnelles par centaines (cent adresses pour une relance) — on n'en
+// garde que le nombre et les colonnes (relecture du 23/10/2026).
+const resumeCorps = (corps) => Array.isArray(corps)
+  ? `[${corps.length} ligne(s) : ${Object.keys(corps[0] || {}).join(", ")}]`
+  : JSON.stringify(corps);
+
 export async function ecrireVerifie(url, corps, headers, contexte, { method = "PATCH" } = {}) {
   try {
     const r = await fetch(url, {
@@ -18,13 +25,13 @@ export async function ecrireVerifie(url, corps, headers, contexte, { method = "P
     });
     const lignes = await r.json().catch(() => null);
     if (!r.ok || !Array.isArray(lignes) || lignes.length === 0) {
-      console.error(`[${contexte}] écriture NON enregistrée (${r.status}) ${JSON.stringify(corps)} — `
+      console.error(`[${contexte}] écriture NON enregistrée (${r.status}) ${resumeCorps(corps)} — `
         + `${JSON.stringify(lignes || {}).slice(0, 200)}. À reprendre à la main.`);
       return false;
     }
     return true;
   } catch (e) {
-    console.error(`[${contexte}] écriture NON enregistrée ${JSON.stringify(corps)} :`, e.message, "— à reprendre à la main.");
+    console.error(`[${contexte}] écriture NON enregistrée ${resumeCorps(corps)} :`, e.message, "— à reprendre à la main.");
     return false;
   }
 }
