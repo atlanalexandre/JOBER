@@ -125,6 +125,27 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
     expect(appels.some(a => a.u.includes("api.stripe.com/v1/disputes?payment_intent=pi_0"))).toBe(true);
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
   });
+  it("gagnée, mais l'autre paiement a une opposition PERDUE : la retenue sans terme reste (relecture du 25/10/2026)", async () => {
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_0", extra_hours_payment_intent: "pi_1" }],
+      [{ id: "dp_0", status: "lost" }]);
+    await handler(requete(ferme("won")), reponse());
+    expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
+  });
+  it("l'écriture vise l'état lu ; si rien n'est écrit (état changé entre-temps), 500 et Stripe réémet", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET" });
+      if (u.includes("/rest/v1/missions?and=") && !o.method) return new Response(JSON.stringify([{ id: "m1", payout_status: "pending", stripe_payment_intent: "pi_1" }]), { status: 200 });
+      return new Response("[]", { status: 200 });
+    }));
+    const res = reponse();
+    await handler(requete(ferme("won")), res);
+    const ecriture = appels.find(a => a.methode === "PATCH");
+    expect(ecriture.u).toContain("payout_status=eq.pending");
+    expect(res.statut).toBe(500);
+  });
   it("perdue : la retenue garde son motif et perd son terme — plus rien ne la lève seul ; l'administrateur est prévenu", async () => {
     vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
     vi.stubEnv("RESEND_API_KEY", "re_x");
