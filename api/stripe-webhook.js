@@ -1,5 +1,5 @@
 import { notifier } from "./_push.js";
-import { resendBody, euros, sendEmail } from "./_email.js";
+import { resendBody, euros, sendEmail, esc } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
 import { rafraichirStatutCompte } from "./_connect.js";
 export const config = { api: { bodyParser: false } };
@@ -75,9 +75,14 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
   }
 }
 
-// Une opposition est-elle encore ouverte sur ce paiement ? Illisible : oui —
-// mieux vaut garder une retenue que payer ce que la banque reprendra.
-export async function oppositionOuverte(paymentIntent, cle) {
+// Ce paiement porte-t-il une opposition qui interdit de verser ? Ouverte, ou
+// PERDUE (la banque a repris l'argent), ou close par remboursement : oui. Seules
+// une opposition gagnée (`won`, `warning_closed`) ou évitée (`prevented`) ne
+// retiennent rien. « Perdue » comptait comme close : gagner l'autre opposition
+// de la prestation levait la retenue d'une opposition perdue (relecture du
+// 25/10/2026). Illisible : oui — mieux vaut garder une retenue que payer ce que
+// la banque reprendra.
+export async function oppositionBloquante(paymentIntent, cle) {
   try {
     const r = await fetch(`https://api.stripe.com/v1/disputes?payment_intent=${encodeURIComponent(paymentIntent)}&limit=10`, { headers: { "Authorization": `Bearer ${cle}` } });
     const d = await r.json().catch(() => null);
@@ -85,7 +90,7 @@ export async function oppositionOuverte(paymentIntent, cle) {
       console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — retenue maintenue.`);
       return true;
     }
-    return d.data.some(x => !["won", "lost", "warning_closed"].includes(x.status));
+    return d.data.some(x => !["won", "warning_closed", "prevented"].includes(x.status));
   } catch (e) {
     console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles — retenue maintenue :`, e.message);
     return true;
@@ -111,16 +116,37 @@ export async function signalerPaiementOrphelin(missionId, intent, supabaseUrl, h
     return "illisible";
   }
   if (m?.stripe_payment_intent === intent.id) return "deja_rattache";
-  const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
-  if (!admin) {
-    console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature (prestation ${missionId}) — ADMIN_EMAIL absente, à vérifier à la main.`);
-    return "signale";
+  const montant = euros((intent.amount_received || intent.amount || 0) / 100);
+  // Une trace DURABLE d'abord : un ticket de support, comme pour une contestation
+  // — un courriel perdu laissait un client débité sans rien nulle part
+  // (relecture du 25/10/2026).
+  let ticket = false;
+  if (intent.metadata?.client) {
+    try {
+      const t = await fetch(`${supabaseUrl}/rest/v1/support_tickets`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ subject: `Paiement sans candidature — ${montant} — prestation ${missionId}`,
+          message: `Le paiement ${intent.id} a abouti, mais sa candidature n'existe plus : rien n'a été affecté. `
+            + "Si l'application ne l'a pas rattaché à la prestation, le rembourser depuis Stripe.",
+          user_id: intent.metadata.client, status: "open" }),
+      });
+      ticket = t.ok;
+      if (!t.ok) console.error(`[stripe-webhook] paiement ${intent.id} sans candidature — ticket NON créé (${t.status}).`);
+    } catch (e) {
+      console.error(`[stripe-webhook] paiement ${intent.id} sans candidature — ticket NON créé :`, e.message);
+    }
   }
-  const parti = await sendEmail({ to: admin,
-    subject: `⚠️ Paiement sans candidature — ${euros((intent.amount_received || intent.amount || 0) / 100)}`,
-    html: `<p>Le paiement <strong>${intent.id}</strong> a abouti, mais sa candidature n'existe plus : rien n'a été affecté.</p>`
-      + `<p>Prestation <strong>${missionId}</strong> : si l'application ne l'a pas rattaché, remboursez-le depuis Stripe.</p>` });
-  if (parti !== true) console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — alerte NON envoyée, à vérifier à la main.`);
+  const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+  const parti = admin ? await sendEmail({ to: admin,
+    subject: `⚠️ Paiement sans candidature — ${montant}`,
+    html: `<p>Le paiement <strong>${esc(intent.id)}</strong> a abouti, mais sa candidature n'existe plus : rien n'a été affecté.</p>`
+      + `<p>Prestation <strong>${esc(missionId)}</strong> : si l'application ne l'a pas rattaché, remboursez-le depuis Stripe.</p>` }) : false;
+  if (!ticket && parti !== true) {
+    // Ni ticket ni courriel : on répond 500, Stripe réémettra plutôt que de
+    // laisser un paiement encaissé sans aucune trace.
+    console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — ni ticket ni alerte : Stripe réémettra.`);
+    return "illisible";
+  }
   return "signale";
 }
 
@@ -1169,10 +1195,15 @@ export default async function handler(req, res) {
       // `payout_status=not.in.(…)` écartait le vide — en SQL, NULL NOT IN (…) n'est
       // pas vrai — et une retenue inscrite avant la clôture n'était jamais touchée
       // (relecture du 24/10/2026).
-      const pasParti = "or(payout_status.is.null,payout_status.in.(held,pending,failed))";
+      const PAS_PARTI = "payout_status.is.null,payout_status.in.(held,pending,failed)";
+      // Ligne à mettre à jour : celle lue, dans l'état lu (relecture du 25/10/2026) —
+      // un passage en « retenu » par le traitement des versements entre la lecture
+      // et l'écriture laissait sinon un versement retenu sans motif ni terme.
+      const cibleLue = (m) => `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_hold_reason=eq.opposition_bancaire`
+        + (m.payout_status ? `&payout_status=eq.${m.payout_status}` : "&payout_status=is.null");
       let lignes = [];
       try {
-        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?and=(or(stripe_payment_intent.eq.${piEnc},extra_hours_payment_intent.eq.${piEnc}),${pasParti})`
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?and=(or(stripe_payment_intent.eq.${piEnc},extra_hours_payment_intent.eq.${piEnc}),or(${PAS_PARTI}))`
           + "&payout_hold_reason=eq.opposition_bancaire&select=id,prestataire_id,payout_status,stripe_payment_intent,extra_hours_payment_intent", { headers: hdrsC });
         const lus = lr.ok ? await lr.json().catch(() => null) : null;
         if (!Array.isArray(lus)) {
@@ -1182,9 +1213,9 @@ export default async function handler(req, res) {
         for (const m of lus) {
           if (perdue) {
             // Perdue : la retenue garde son motif et perd son terme.
-            const rp = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_hold_reason=eq.opposition_bancaire&${pasParti.replace(/^or/, "or=")}`,
-              { method: "PATCH", headers: hdrsC, body: JSON.stringify({ payout_hold_until: null }) });
-            if (!rp.ok) throw new Error(`PATCH ${rp.status}`);
+            const rp = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC, body: JSON.stringify({ payout_hold_until: null }) });
+            const ecrites = rp.ok ? await rp.json().catch(() => null) : null;
+            if (!Array.isArray(ecrites) || !ecrites.length) throw new Error(`retenue de ${m.id} non mise à jour (${rp.status}) — état changé entre-temps`);
             lignes.push(m);
             continue;
           }
@@ -1192,15 +1223,23 @@ export default async function handler(req, res) {
           // (réservation ou prolongation) fait encore l'objet d'une opposition
           // ouverte : la retenue couvre la prestation entière.
           const autre = [m.stripe_payment_intent, m.extra_hours_payment_intent].find(x => x && x !== pi);
-          if (autre && await oppositionOuverte(autre, STRIPE_SECRET_KEY)) {
-            console.error(`[dispute.closed] ${dispute.id} gagnée, mais ${autre} reste contesté : retenue maintenue sur ${m.id}.`);
+          if (autre && await oppositionBloquante(autre, STRIPE_SECRET_KEY)) {
+            console.error(`[dispute.closed] ${dispute.id} gagnée, mais ${autre} est encore contesté ou perdu : retenue maintenue sur ${m.id}.`);
             continue;
           }
           const levee = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
-          const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_hold_reason=eq.opposition_bancaire&${pasParti.replace(/^or/, "or=")}`,
-            { method: "PATCH", headers: hdrsC, body: JSON.stringify(m.payout_status === "held" ? { ...levee, payout_status: "pending" } : levee) });
-          if (!rl.ok) throw new Error(`PATCH ${rl.status}`);
+          const rl = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC,
+            body: JSON.stringify(m.payout_status === "held" ? { ...levee, payout_status: "pending" } : levee) });
+          const ecrites = rl.ok ? await rl.json().catch(() => null) : null;
+          if (!Array.isArray(ecrites) || !ecrites.length) throw new Error(`retenue de ${m.id} non levée (${rl.status}) — état changé entre-temps`);
           lignes.push(m);
+          // Prévenu tout de suite : si une prestation suivante échoue, Stripe
+          // réémet, et celle-ci, déjà levée, ne serait plus relue.
+          if (m.prestataire_id) {
+            await notifier({ user_id: m.prestataire_id, type: "system", title: "Retenue levée ✅",
+              body: "L'opposition bancaire formée par le client a été rejetée : votre versement est de nouveau programmé." },
+            SUPABASE_URL, hdrsC).catch(e => console.error("[dispute.closed] notification non envoyée :", e.message));
+          }
         }
       } catch (e) {
         console.error(`[dispute.closed] ${dispute.id} : retenue NON mise à jour —`, e.message, "— Stripe réémettra.");
@@ -1208,11 +1247,6 @@ export default async function handler(req, res) {
       }
       for (const m of lignes) {
         console.error(`[dispute.closed] ${dispute.id} ${dispute.status} : prestation ${m.id} — ${gagnee ? "retenue levée" : "retenue maintenue sans terme"}.`);
-        if (gagnee && m.prestataire_id) {
-          await notifier({ user_id: m.prestataire_id, type: "system", title: "Retenue levée ✅",
-            body: "L'opposition bancaire formée par le client a été rejetée : votre versement est de nouveau programmé." },
-          SUPABASE_URL, hdrsC).catch(e => console.error("[dispute.closed] notification non envoyée :", e.message));
-        }
       }
       if (perdue) {
         const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)

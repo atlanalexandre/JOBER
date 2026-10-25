@@ -19,6 +19,8 @@ describe("l'export comptable n'invente rien", () => {
   });
   it("toutes les prestations, pas les 1 000 premières ; un échec se voit", () => {
     expect(exportServeur).toMatch(/missions = await lireTout\(/);
+    // Ordre stable entre les pages : created_at seul a des ex æquo (séries créées ensemble).
+    expect(exportServeur).toMatch(/order=created_at\.desc,id\.desc/);
     expect(exportServeur).toMatch(/return res\.status\(502\)/);
     expect(exportEcran).toMatch(/showToast\(`Export non produit/);
   });

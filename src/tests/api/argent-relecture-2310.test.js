@@ -60,6 +60,30 @@ describe("candidature introuvable au paiement : l'équipe est prévenue, rien n'
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("/rest/v1/missions"))).toBe(false);
     expect(appels.some(a => a.u.includes("api.resend.com") && a.corps.includes("Paiement sans candidature"))).toBe(true);
   });
+  it("une trace durable : un ticket de support au nom du client (relecture du 25/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = simuler([
+      [(u) => u.includes("/rest/v1/candidatures?"), []],
+      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null }]],
+      [(u) => u.includes("/rest/v1/support_tickets"), () => new Response("", { status: 201 })],
+    ]);
+    const res = reponse();
+    await handler(requete(paiement), res);
+    const ticket = appels.find(a => a.u.includes("/rest/v1/support_tickets"));
+    expect(JSON.parse(ticket.corps).user_id).toBe("cl1");
+    expect(res.statut).toBe(200);
+  });
+  it("ni ticket ni courriel : 500, Stripe réémettra", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    simuler([
+      [(u) => u.includes("/rest/v1/candidatures?"), []],
+      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null }]],
+      [(u) => u.includes("/rest/v1/support_tickets"), () => new Response("{}", { status: 500 })],
+    ]);
+    const res = reponse();
+    await handler(requete(paiement), res);
+    expect(res.statut).toBe(500);
+  });
   it("déjà rattaché à la prestation : aucune alerte", async () => {
     vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
     const appels = simuler([

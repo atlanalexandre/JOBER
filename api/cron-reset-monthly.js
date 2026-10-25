@@ -750,7 +750,7 @@ export default async function handler(req, res) {
                   body: `Le versement de ${euros(m.payout_amount)} pour « ${m.metier || m.sector || "votre prestation"} » du ${m.date || "?"} est suspendu : `
                     + "le client a formé une opposition bancaire sur son paiement (CGPS art. 7.4). "
                     + (finLe ? `La retenue prend fin au plus tard le ${finLe}, et plus tôt si l'opposition est rejetée. `
-                      : "L'opposition a été tranchée en faveur du client : la retenue est maintenue jusqu'à décision d'ALANE. ")
+                      : "La retenue est maintenue jusqu'à décision d'ALANE. ")
                     + "Vous pouvez la contester à direction@alane.fr.",
                 }, SUPABASE_URL, headers).catch(e => console.error(`[versements] retenue non notifiée ${m.id} :`, e.message));
               } else {
