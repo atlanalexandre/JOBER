@@ -3659,7 +3659,7 @@ export default async function handler(req, res) {
       let missions;
       try {
         missions = await lireTout(
-          `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,payout_amount,payout_status,created_at,stripe_payment_intent&order=created_at.desc`,
+          `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,payout_amount,payout_status,created_at,stripe_payment_intent&order=created_at.desc,id.desc`,
           headers
         );
       } catch (e) {
