@@ -1888,6 +1888,12 @@ et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACT
 prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
 « Mes clients » du prestataire les ignore.
 
+**Lister tous les comptes : `lireComptesAuth()`** (`api/_auth.js`, 26/10/2026). `admin/users?per_page=10000`
+ne rend que 1 000 comptes ; les neuf lectures de `bo-action` (liste, prestations, envoi global,
+pièces, DAC7, signaux), `cron-reset-monthly` (inscriptions à signaler), `missions` (affectation
+automatique) et `prestataires` (catalogue) passent par elle. Une page refusée lève une erreur ;
+l'envoi global répond alors 503 plutôt que d'écrire à une partie des destinataires.
+
 **Retrouver un compte par son adresse : `utilisateurParEmail()`** (`api/_auth.js`, 01/10/2026).
 `/auth/v1/admin/users?email=…` **ne filtre pas** — le paramètre est ignoré, la réponse commence
 par le compte le plus récent — et trois endroits prenaient ce premier résultat pour le compte

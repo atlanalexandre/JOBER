@@ -3,7 +3,7 @@ import { PLACES_OFFRE } from "./_offre.js";
 import { justificatifsDe, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
 import { lireTout } from "./_lignes.js";
-import { verifyUser } from "./_auth.js";
+import { verifyUser, lireComptesAuth } from "./_auth.js";
 import { cvPresent } from "./_cv.js";
 
 export default async function handler(req, res) {
@@ -269,13 +269,7 @@ export default async function handler(req, res) {
     // Fetch all auth users in one request to avoid N+1 against Supabase Auth API
     let userMetaMap = {};
     try {
-      const allUsersRes = await fetch(
-        `${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`,
-        { headers }
-      );
-      if (!allUsersRes.ok) throw new Error(`comptes illisibles (${allUsersRes.status})`);
-      const allUsersData = await allUsersRes.json();
-      const allUsers = allUsersData.users || [];
+      const allUsers = await lireComptesAuth(SUPABASE_URL, headers);
       for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
     } catch (e) { degrade = true; console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
 
