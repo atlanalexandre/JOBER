@@ -443,7 +443,7 @@ function PublicContactScreen({ onBack }) {
         </button>
         <div style={{ marginBottom:14 }}><ALANELogo size="sm" /></div>
         <h1 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Nous contacter</h1>
-        <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6 }}>Pas besoin de compte — notre équipe répond sous 24h ouvrées.</p>
+        <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6 }}>Pas besoin de compte — notre équipe répond sous 48 h ouvrées.</p>
       </div>
 
       <div style={{ flex:1, padding:"28px 22px 60px", overflowY:"auto" }}>
@@ -452,7 +452,7 @@ function PublicContactScreen({ onBack }) {
             <div aria-hidden="true" style={{ fontSize:64, marginBottom:20 }}>✅</div>
             <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:"0 0 10px" }}>Message envoyé !</h2>
             <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 32px" }}>
-              Nous vous répondrons à <strong style={{ color:C.white }}>{email}</strong> sous 24h ouvrées.
+              Nous vous répondrons à <strong style={{ color:C.white }}>{email}</strong> sous 48 h ouvrées.
             </p>
             <button onClick={onBack} style={{ background:C.violet, color:"#fff", border:"none", borderRadius:r, padding:"14px 28px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
               ← Retour à l'accueil
