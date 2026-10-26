@@ -170,6 +170,46 @@ function sendSms(apiKey, to, content) {
   }).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
 }
 
+// L'état du compte de virement de chaque prestataire concerné, par lots de 100.
+// Illisible : carte vide — `ordonnerVersements` retombe alors sur un tirage au
+// hasard, comme avant, et chaque versement relit son compte.
+async function lireEtatsComptes(dus, supabaseUrl, headers) {
+  const etats = new Map();
+  const ids = [...new Set(dus.map(m => m.prestataire_id).filter(Boolean))];
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const r = await fetch(`${supabaseUrl}/rest/v1/profiles?id=in.(${ids.slice(i, i + 100).join(",")})&select=id,stripe_account_id,stripe_account_status`, { headers });
+      const lignes = r.ok ? await r.json().catch(() => null) : null;
+      if (!Array.isArray(lignes)) { console.error(`[versements] comptes illisibles (${r.status}) — ordre au hasard.`); return new Map(); }
+      for (const l of lignes) etats.set(l.id, l);
+    } catch (e) {
+      console.error("[versements] comptes illisibles — ordre au hasard :", e.message);
+      return new Map();
+    }
+  }
+  return etats;
+}
+
+/**
+ * Les `n` versements à traiter ce passage. D'abord ceux qui peuvent partir
+ * (compte de virement actif) ou qui portent une retenue à poser ; puis, sur
+ * les places restantes et AU MOINS `relire` d'entre elles, les autres — leur
+ * compte a pu s'activer depuis, il faut le relire. Chaque groupe au hasard.
+ * Sans état de compte connu, tout est tiré au hasard, comme avant.
+ */
+export function ordonnerVersements(dus, etatsComptes, n, relire = 20) {
+  if (!etatsComptes || etatsComptes.size === 0) return tirerAuHasard(dus, n);
+  const prioritaires = [], autres = [];
+  for (const m of dus) {
+    const c = etatsComptes.get(m.prestataire_id);
+    if (m.payout_hold_reason || (c?.stripe_account_id && c.stripe_account_status === "enabled")) prioritaires.push(m);
+    else autres.push(m);
+  }
+  const reserve = Math.min(autres.length, relire);
+  const enTete = tirerAuHasard(prioritaires, n - reserve);
+  return [...enTete, ...tirerAuHasard(autres, n - enTete.length)];
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
@@ -685,28 +725,33 @@ export default async function handler(req, res) {
         // `status=eq.completed` est le verrou : un litige fait passer la
         // prestation en `disputed` et l'exclut d'office. Une retenue au titre de
         // l'article 7.4 des CGPS suivra le même chemin quand elle sera outillée.
-        const aVerser = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions`
-          + `?payout_status=eq.pending&status=eq.completed`
-          + `&payout_due_at=lte.${encodeURIComponent(maintenant)}`
-          + `&select=id,prestataire_id,payout_amount,payout_hold_reason,payout_hold_until,metier,sector,date`
-          // Jusqu'à 1 000 lus, 200 tirés au hasard : les 200 premières lignes,
-          // toujours les mêmes, pouvaient être des versements renvoyés en attente
-          // à chaque passage (prestataire sans compte de virement) — et plus
-          // personne d'autre n'était payé (relecture du 23/10/2026). Même remède
-          // que l'expiration et la clôture (`tirerAuHasard`).
-          + `&limit=1000`,
-          { headers }
-        );
-        if (!aVerser.ok) {
+        // TOUS les versements dus (`lireTout`), et d'abord ceux qui peuvent partir.
+        // Lus par 1 000 sans ordre puis tirés au hasard, les versements qui ne
+        // partiront jamais (prestataire sans compte de virement) occupaient la
+        // file à chaque passage, et au-delà de 1 000 dus, certains n'étaient
+        // jamais lus (relecture du 26/10/2026). `ordonnerVersements()` place en
+        // tête les comptes actifs et les retenues à poser, puis réserve quelques
+        // places aux autres — dont l'état de compte doit être relu.
+        let dus = null;
+        try {
+          dus = await lireTout(
+            `${SUPABASE_URL}/rest/v1/missions`
+            + `?payout_status=eq.pending&status=eq.completed`
+            + `&payout_due_at=lte.${encodeURIComponent(maintenant)}`
+            + `&select=id,prestataire_id,payout_amount,payout_hold_reason,payout_hold_until,metier,sector,date`
+            + `&order=payout_due_at.asc,id.asc`,
+            headers
+          );
+        } catch (e) {
           // PostgREST répond 400 (code 42703) sur une colonne inconnue, pas 404.
           // C'est le symptôme d'une migration non appliquée, et il faut qu'il se
           // voie : sans elle, plus aucun prestataire n'est payé.
-          const detail = await aVerser.text().catch(() => "");
-          console.error(`[versements] lecture impossible (${aVerser.status}) : ${detail.slice(0, 200)}`
+          console.error(`[versements] lecture impossible : ${e.message}`
             + " — vérifier que la migration 2026-08-12_versement_differe_48h.sql est appliquée.");
-        } else {
-          const lots = tirerAuHasard(await aVerser.json().catch(() => []), 200);
+        }
+        if (dus) {
+          const etatsComptes = await lireEtatsComptes(dus, SUPABASE_URL, headers);
+          const lots = ordonnerVersements(dus, etatsComptes, 200);
           const COMMISSION_V = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
           let emis = 0;
           // Combien de versements ne peuvent pas partir faute de compte de

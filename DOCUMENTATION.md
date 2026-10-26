@@ -807,6 +807,10 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
+Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux
+qui peuvent partir — compte de virement actif, ou retenue à poser —, en gardant au moins 20 places
+pour relire les autres comptes (`ordonnerVersements()`, 26/10/2026) : les versements bloqués faute de
+compte occupaient la file, et au-delà de 1 000 dus, certains n'étaient jamais lus.
 Voir « Le versement au prestataire » au §6.
 
 `cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le

@@ -197,9 +197,9 @@ describe("le traitement des versements respecte une retenue sans terme", () => {
     expect(cron).toMatch(/if \(m\.payout_hold_reason && \(!m\.payout_hold_until \|\| new Date\(m\.payout_hold_until\)\.getTime\(\) > Date\.now\(\)\)\)/);
     expect(cron).toMatch(/payout_status=eq\.held&payout_hold_until=lte\./);
   });
-  it("les versements dus sont tirés au hasard parmi 1 000, pas toujours les 200 mêmes", () => {
-    expect(cron).toMatch(/\+ `&limit=1000`/);
-    expect(cron).toMatch(/const lots = tirerAuHasard\(await aVerser\.json\(\)\.catch\(\(\) => \[\]\), 200\)/);
+  it("tous les versements dus sont lus, et ceux qui peuvent partir passent d'abord (relecture du 26/10/2026)", () => {
+    expect(cron).toMatch(/dus = await lireTout\(/);
+    expect(cron).toMatch(/const lots = ordonnerVersements\(dus, etatsComptes, 200\)/);
   });
 });
 
