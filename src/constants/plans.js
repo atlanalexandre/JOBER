@@ -110,3 +110,23 @@ export const tauxCashback = (tier) => {
   return (Number.isInteger(pct) ? String(pct) : pct.toFixed(2).replace(/0+$/, "").replace(".", ",")) + " %";
 };
 export const calcCashback = (amount, missions) => amount * getCashbackTier(missions).rate;
+
+// Les paliers réellement appliqués par le serveur (`platform_settings.cashback_rates`).
+// Ils remplacent EN PLACE seuils et taux de `CASHBACK_TIERS` — libellés, icônes
+// et couleurs restent ceux du code —, de sorte que `getCashbackTier`,
+// `calcCashback` et `tauxCashback` affichent ce qui sera crédité. Un palier
+// inconnu du code est ignoré. Rend true si la grille a changé.
+export function appliquerPaliersCashback(paliers) {
+  if (!Array.isArray(paliers) || !paliers.length) return false;
+  let change = false;
+  for (const t of CASHBACK_TIERS) {
+    const p = paliers.find(x => x?.id === t.id);
+    if (!p) continue;
+    for (const k of ["min", "max", "rate"]) {
+      const v = Number(p[k]);
+      if (Number.isFinite(v) && v !== t[k]) { t[k] = v; change = true; }
+    }
+  }
+  CASHBACK_TIERS.sort((a, b) => a.min - b.min);
+  return change;
+}
