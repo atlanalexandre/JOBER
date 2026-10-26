@@ -9,6 +9,7 @@ import { qualificationsPour, metiersDeclares } from "./_qualifications.js";
 import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
+import { bornesMois, ligneJournal } from "./_journal_comptable.js";
 import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire, lireUtilisateurs, dansLaConservation } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
@@ -3660,6 +3661,69 @@ export default async function handler(req, res) {
       }
       await journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
       return res.status(200).json(Array.isArray(missions) ? missions : []);
+    }
+
+    // ── Journal comptable du mois (api/_journal_comptable.js) ──
+    //
+    // Lu par tranches : un mois du compte de test compte plus de 4 000
+    // mouvements (la recette en produit chaque jour), et une page Stripe avec
+    // ses paiements dépliés prend deux à trois secondes. Chaque appel lit au
+    // plus PAGES pages et rend `suite` ; l'écran rappelle jusqu'à la fin. Un
+    // seul appel pour tout le mois dépassait le délai de la fonction.
+    if (action === "export_comptable") {
+      const bornes = bornesMois(body.mois);
+      if (!bornes) return res.status(400).json({ error: "Mois invalide (AAAA-MM attendu)" });
+      const apres = body.apres == null ? null : String(body.apres);
+      if (apres && !/^txn_[A-Za-z0-9]+$/.test(apres)) return res.status(400).json({ error: "Reprise invalide" });
+      const STRIPE_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      if (!STRIPE_KEY) return res.status(503).json({ error: "Stripe non configuré" });
+      const mode = /^(sk|rk)_live_/.test(STRIPE_KEY) ? "live" : "test";
+      const stripeAuth = "Basic " + Buffer.from(STRIPE_KEY + ":").toString("base64");
+
+      const PAGES = 6;
+      const mouvements = [];
+      let curseur = apres;
+      let suite = null;
+      try {
+        for (let page = 0; page < PAGES; page++) {
+          const url = "https://api.stripe.com/v1/balance_transactions?limit=100"
+            + `&created[gte]=${bornes.gte}&created[lt]=${bornes.lt}&expand[]=data.source.charge`
+            + (curseur ? `&starting_after=${encodeURIComponent(curseur)}` : "");
+          const r = await fetch(url, { headers: { Authorization: stripeAuth } });
+          if (!r.ok) throw new Error(`Stripe ${r.status}`);
+          const j = await r.json();
+          const lot = Array.isArray(j.data) ? j.data : [];
+          mouvements.push(...lot);
+          if (!j.has_more || !lot.length) { suite = null; break; }
+          curseur = lot[lot.length - 1].id;
+          suite = curseur;
+        }
+      } catch (e) {
+        console.error(`[export_comptable] ${body.mois} : relevé Stripe illisible :`, e.message);
+        return res.status(502).json({ error: "Relevé Stripe illisible — export non produit." });
+      }
+
+      // Les prestations citées, lues par lots (une adresse trop longue est refusée).
+      const ids = [...new Set(mouvements.flatMap(t => {
+        const s = t.source && typeof t.source === "object" ? t.source : {};
+        const c = s.charge && typeof s.charge === "object" ? s.charge : {};
+        return [s.metadata?.mission, s.metadata?.mission_id, c.metadata?.mission];
+      }).filter(isUuidId))];
+      const missions = new Map();
+      try {
+        for (let i = 0; i < ids.length; i += 100) {
+          const lot = await lireTout(`${SUPABASE_URL}/rest/v1/missions?id=in.(${ids.slice(i, i + 100).join(",")})`
+            + "&select=id,metier,montant_total,tarif_horaire,hours,date_debut,date_fin,cashback_applique&order=id.asc", headers);
+          for (const m of lot) missions.set(m.id, m);
+        }
+      } catch (e) {
+        console.error(`[export_comptable] ${body.mois} : prestations illisibles :`, e.message);
+        return res.status(502).json({ error: "Prestations illisibles — export non produit." });
+      }
+
+      const lignes = mouvements.map(t => ligneJournal(t, missions));
+      if (!apres) await journaliser("export_comptable", { details: { mois: body.mois, mode } });
+      return res.status(200).json({ mois: body.mois, mode, lignes, suite });
     }
 
     if (action === "bo_log_export") {
