@@ -1386,6 +1386,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 | `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` des métadonnées — pas `ae_siret`, que personne ne renseigne et que l'empreinte anti-recréation ne lit pas), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
+| `_journal_comptable.js` | Journal comptable du mois, depuis le relevé du solde Stripe : `bornesMois()` (heure de Paris), `ligneJournal()`, `totauxJournal()` (partagé avec l'écran), `fraisServiceDeduits()`. Utilisé par l'action `export_comptable` de `bo-action.js`. Voir §5 « Back-office » |
 | `_rattrapage_heures_supp.js` | Rattrapage des **prolongations payées mais jamais appliquées** (relecture du 23/10/2026, branché sur `cron-abandon`, toutes les 30 min) : un client qui fermait l'application entre le paiement des heures supplémentaires et `confirmer_heures_supp` était débité sans que les heures soient ajoutées ni payées au prestataire. Un paiement `heures_supp` abouti depuis plus de 15 min et non rattaché est appliqué par `appliquerHeuresSupp()` (exportée de `missions.js`, la fonction même de l'action, mêmes contrôles) ; plus applicable et **jamais appliqué de façon certaine** (le compteur `extra_hours_appliquees + heures_ajoutees_total` n'a pas bougé depuis le `deja_appliquees` du paiement), il est remboursé avec la clé `refund-heures-supp-{paiement}` de l'action ; dans le doute (compteur changé, paiement sans repère), un ticket `[Interne]` et rien d'autre. Un paiement dont la prestation n'existe pas dans la base est ignoré : la recette et la production partagent le même compte Stripe de test. `src/tests/api/rattrapage-heures-supp.test.js` |
 
 | `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
@@ -1720,8 +1721,28 @@ des réglages — frais de service, cashback, seuils de vigilance — ne laissai
 montant de la prestation, versement programmé au prestataire (`payout_amount`) et son état. Il
 calculait une « commission ALANE » à 20 % du prix, un taux qui n'existe pas (ALANE se rémunère sur
 ses frais de service), et s'arrêtait à 1 000 lignes : corrigé le 24/10/2026 (`lireTout`). Ce n'est
-**pas** un journal comptable : les frais de service, abonnements, frais Stripe et remboursements
-n'y figurent pas — à construire avant la première prestation payée (`src/tests/export-comptable.test.js`).
+**pas** un journal comptable : c'est la liste des prestations (`src/tests/export-comptable.test.js`).
+
+**« 📒 Journal comptable du mois » (`export_comptable`, `api/_journal_comptable.js`)** — le fichier
+à remettre au comptable (26/10/2026). Source : le **relevé du solde Stripe**
+(`/v1/balance_transactions`, paiements dépliés par `expand[]=data.source.charge`), où chaque euro
+entré ou sorti figure une fois, avec la commission Stripe et le net. Une ligne par mouvement,
+nommée : Réservation, Réservation (série), Heures supplémentaires, Abonnement prestataire,
+Remboursement — (nature du paiement d'origine), Versement prestataire, Virement vers le compte
+bancaire, Frais Stripe, Contestation bancaire… ; un type inconnu sort en « Autre (type) », jamais
+écarté. Puis les **totaux par nature**, calculés au centime. Les bornes du mois sont celles de
+**Paris**. La base n'éclaire que : le métier de la prestation, et la part **« dont frais de service
+ALANE »** d'une réservation — `montant_total − tarif × heures × jours`, comme `verifierMontant()`
+à l'encaissement — **seulement** quand le paiement égale encore le prix enregistré (cashback
+déduit) ; une prestation prolongée, interrompue ou recalculée laisse la case vide plutôt qu'un
+chiffre deviné. Lecture **par tranches** de 600 mouvements (`suite`, reprise contrôlée `txn_…`) :
+un mois du compte de test en compte plus de 4 000, la recette en produit chaque jour, et un seul
+appel dépassait le délai de la fonction ; l'écran enchaîne les tranches et s'arrête en le disant
+au-delà de 36 000. Tant que le compte est en **mode test**, le fichier le dit en première ligne et
+dans son nom (`-TEST`), et la colonne « Prestation connue » sépare la recette de la production,
+qui partagent ce compte (IMMATRICULATION.md §7). Un refus de Stripe ou de la base arrête l'export
+(502) : un fichier incomplet remis au comptable serait pire qu'aucun. `src/tests/api/journal-comptable.test.js`,
+`e2e/100`.
 
 **Documents de démonstration (`seed_docs`, bouton « 🌱 Seed démo ») — recette uniquement**
 (24/09/2026). L'action insère sept pièces fictives **marquées vérifiées**, ce qui suffit à
