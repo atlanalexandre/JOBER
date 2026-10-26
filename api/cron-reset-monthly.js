@@ -733,7 +733,10 @@ export default async function handler(req, res) {
             // Sans terme : opposition PERDUE (`charge.dispute.closed`), la banque a
             // repris l'argent — retenue jusqu'à décision du back-office (relecture du 23/10/2026).
             if (m.payout_hold_reason && (!m.payout_hold_until || new Date(m.payout_hold_until).getTime() > Date.now())) {
-              const ret = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending`, {
+              // Et seulement si la retenue est toujours là : levée entre-temps par
+              // `charge.dispute.closed`, ce passage laissait un versement retenu sans
+              // motif ni terme, que rien ne libérait (relecture du 26/10/2026).
+              const ret = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending&payout_hold_reason=eq.${encodeURIComponent(m.payout_hold_reason)}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
                 body: JSON.stringify({ payout_status: "held" }),
               });

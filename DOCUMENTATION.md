@@ -1979,8 +1979,10 @@ vivante sans paiement rattaché, il ne touche à rien et le journalise.
 Depuis le 23/10/2026, l'affectation exige qu'aucun **autre** paiement ne soit rattaché
 (`or=(stripe_payment_intent.is.null,…)`, comme `filtrePaiementLibre`) — un second paiement
 écrasait le premier sur une prestation `needs_replacement` —, et un paiement dont la candidature a
-disparu est **signalé à l'équipe** (`signalerPaiementOrphelin()`) : un ticket de support au nom du
-client — la trace durable — et un courriel ; ni l'un ni l'autre, 500 et Stripe réémet. Sauf s'il est
+disparu est **signalé à l'équipe** (`signalerPaiementOrphelin()`) : un ticket de support `[Interne]`
+au nom du client (celui du paiement, sinon celui de la prestation), **un seul par paiement**, et un
+courriel ; ni l'un ni l'autre, 500 si la base est en panne (Stripe réémet), sinon journal « À TRAITER
+À LA MAIN » — réémettre sur une cause permanente finirait par faire désactiver le webhook. Sauf s'il est
 déjà celui de la prestation. Le remboursement d'office (23/10) a été retiré le 24/10 : il pouvait croiser le
 rattachement par l'application et laisser une prestation attribuée sur un paiement rendu. Une erreur
 de lecture des candidatures répond 500 (Stripe réémet) au lieu de valoir « introuvable ».
@@ -4865,7 +4867,10 @@ clôture), en attente, retenus ou en échec — `payout_status=not.in.(…)` éc
 n'étant jamais « hors liste » en SQL (24/10/2026). Une opposition gagnée ne lève la retenue que si
 l'**autre** paiement de la prestation n'a pas d'opposition ouverte **ou perdue** (`oppositionBloquante()`,
 25/10/2026 : une opposition perdue comptait comme close). Chaque écriture vise la prestation **dans
-l'état lu** et vérifie qu'elle a écrit ; sinon 500, et Stripe réémet. Une
+l'état lu** et vérifie qu'elle a écrit ; sinon 500, et Stripe réémet. Les oppositions de **ce même** paiement sont
+aussi consultées (26/10/2026), et une retenue maintenue parce qu'une autre opposition reste ouverte ou
+perdue perd son terme : les 90 jours posés par la première pouvaient échoir avant l'issue. Côté
+traitement des versements, le passage en « retenu » exige que le motif soit toujours là. Une
 retenue sans terme n'annonce plus de date au prestataire (« 1 janvier 1970 »). `src/tests/api/contestation-bancaire.test.js`.
 
 **Abonnement chez Stripe** : `charge.dispute.created` et `charge.dispute.closed` ont été ajoutés
