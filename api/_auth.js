@@ -83,3 +83,25 @@ export async function refuserCompteBloque(res, caller, supabaseUrl, serviceRoleK
   });
   return true;
 }
+
+/**
+ * TOUS les comptes d'authentification, page par page (1 000 par page).
+ *
+ * `admin/users?per_page=10000` ne rend jamais plus de 1 000 comptes : GoTrue
+ * plafonne la page, sans le dire. Au-delà, neuf écrans et tâches lisaient une
+ * liste tronquée — un SIRET de l'inscription invisible au back-office, un
+ * prestataire écarté des propositions automatiques, une adresse absente d'un
+ * envoi (relecture du 26/10/2026). Lève une erreur si une page est illisible :
+ * l'appelant décide.
+ */
+export async function lireComptesAuth(supabaseUrl, headers, { pagesMax = 100 } = {}) {
+  const tous = [];
+  for (let page = 1; page <= pagesMax; page++) {
+    const r = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(d?.users)) throw new Error(`comptes illisibles (${r.status}) page ${page}`);
+    tous.push(...d.users);
+    if (d.users.length < 1000) return tous;
+  }
+  throw new Error(`plus de ${pagesMax} 000 comptes : lecture interrompue`);
+}

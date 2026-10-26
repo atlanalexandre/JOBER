@@ -3,7 +3,7 @@ import { PLACES_OFFRE } from "./_offre.js";
 import { justificatifsDe, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
 import { lireTout } from "./_lignes.js";
-import { verifyUser } from "./_auth.js";
+import { verifyUser, lireComptesAuth } from "./_auth.js";
 import { cvPresent } from "./_cv.js";
 
 export default async function handler(req, res) {
@@ -31,6 +31,30 @@ export default async function handler(req, res) {
   // plus une seule. Depuis le 24/08/2026 la place s'attribue à l'ouverture de
   // l'accès aux prestations, et c'est cela qu'on compte ici — le compteur et
   // la règle disent enfin la même chose.
+  // Les paliers de cashback réellement appliqués (`platform_settings.cashback_rates`,
+  // modifiable au back-office). Les écrans clients affichaient la grille écrite
+  // dans le code : un taux changé au back-office était crédité, mais pas affiché
+  // (relecture du 23/10/2026). La clé n'est pas lisible par les clients : on la
+  // sert ici, réduite aux seuils et aux taux.
+  if (req.query.action === "paliers_cashback") {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
+      const d = r.ok ? await r.json().catch(() => null) : null;
+      const brut = Array.isArray(d) && Array.isArray(d[0]?.value) ? d[0].value : null;
+      if (!brut) {
+        if (!r.ok) console.error(`[paliers_cashback] réglage illisible (${r.status}) — grille par défaut affichée.`);
+        return res.status(200).json({ paliers: null });
+      }
+      const paliers = brut.map(t => ({ id: String(t.id || ""), min: Number(t.min), max: Number(t.max), rate: Number(t.rate) }))
+        .filter(t => t.id && Number.isFinite(t.min) && Number.isFinite(t.max) && Number.isFinite(t.rate) && t.rate >= 0 && t.rate < 1);
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.status(200).json({ paliers: paliers.length ? paliers : null });
+    } catch (e) {
+      console.error("[paliers_cashback] lecture impossible :", e.message);
+      return res.status(200).json({ paliers: null });
+    }
+  }
+
   if (req.query.action === "places") {
     try {
       // Une place est prise dès qu'un compte devient ÉLIGIBLE, c'est-à-dire dès
@@ -269,13 +293,7 @@ export default async function handler(req, res) {
     // Fetch all auth users in one request to avoid N+1 against Supabase Auth API
     let userMetaMap = {};
     try {
-      const allUsersRes = await fetch(
-        `${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`,
-        { headers }
-      );
-      if (!allUsersRes.ok) throw new Error(`comptes illisibles (${allUsersRes.status})`);
-      const allUsersData = await allUsersRes.json();
-      const allUsers = allUsersData.users || [];
+      const allUsers = await lireComptesAuth(SUPABASE_URL, headers);
       for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
     } catch (e) { degrade = true; console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
 

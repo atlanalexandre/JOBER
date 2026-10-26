@@ -8,6 +8,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { lireComptesAuth } from "./_auth.js";
 import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
@@ -505,9 +506,7 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
   // user_metadata porte métier, secteur, tarif, disponibilités et rayon.
   let metas = {};
   try {
-    const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=10000`, { headers });
-    const ud = await ur.json();
-    for (const u of (ud.users || [])) metas[u.id] = u.user_metadata || {};
+    for (const u of await lireComptesAuth(supabaseUrl, headers)) metas[u.id] = u.user_metadata || {};
   } catch (e) {
     console.error("[affectation] métadonnées prestataires illisibles :", e.message);
     return [];

@@ -807,6 +807,10 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
+Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux
+qui peuvent partir — compte de virement actif, ou retenue à poser —, en gardant au moins 20 places
+pour relire les autres comptes (`ordonnerVersements()`, 26/10/2026) : les versements bloqués faute de
+compte occupaient la file, et au-delà de 1 000 dus, certains n'étaient jamais lus.
 Voir « Le versement au prestataire » au §6.
 
 `cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le
@@ -1360,7 +1364,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 |---|---|
 | `missions.js` | Cycle de vie complet des prestations (le plus gros) |
 | `bo-action.js` | Toutes les actions du backoffice |
-| `prestataires.js` | Catalogue des prestataires |
+| `prestataires.js` | Catalogue des prestataires ; `?action=places` (offre de lancement) ; `?action=paliers_cashback` (23/10/2026) : seuils et taux de `platform_settings.cashback_rates`, que les clients ne peuvent pas lire directement — `chargerPaliersCashback()` (`ui.jsx`) les reporte dans `CASHBACK_TIERS` au démarrage (`appliquerPaliersCashback()`, `plans.js`), pour que les écrans affichent le taux réellement crédité et non la grille du code |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
 | `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
@@ -1888,6 +1892,12 @@ prestations par cascade** — le prestataire qui attendait son virement n'était
 et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACTION`). Une
 prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
 « Mes clients » du prestataire les ignore.
+
+**Lister tous les comptes : `lireComptesAuth()`** (`api/_auth.js`, 26/10/2026). `admin/users?per_page=10000`
+ne rend que 1 000 comptes ; les neuf lectures de `bo-action` (liste, prestations, envoi global,
+pièces, DAC7, signaux), `cron-reset-monthly` (inscriptions à signaler), `missions` (affectation
+automatique) et `prestataires` (catalogue) passent par elle. Une page refusée lève une erreur ;
+l'envoi global répond alors 503 plutôt que d'écrire à une partie des destinataires.
 
 **Retrouver un compte par son adresse : `utilisateurParEmail()`** (`api/_auth.js`, 01/10/2026).
 `/auth/v1/admin/users?email=…` **ne filtre pas** — le paramètre est ignoré, la réponse commence

@@ -20,7 +20,8 @@ describe("mise en cache du catalogue", () => {
   });
 
   it("une liste des comptes refusée n'est pas lue comme vide", () => {
-    expect(code).toContain("if (!allUsersRes.ok) throw");
+    // `lireComptesAuth` lève sur une page refusée ; le catalogue est alors dégradé (26/10/2026).
+    expect(code).toContain("const allUsers = await lireComptesAuth(SUPABASE_URL, headers);");
   });
 });
 
