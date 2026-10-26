@@ -989,6 +989,197 @@ async function handleEmailAction(req, res) {
   ));
 }
 
+// Applique une prolongation PAYÉE à sa prestation. Partagée par l'action
+// `confirmer_heures_supp` (l'application, juste après le paiement) et par le
+// rattrapage de cron-abandon : un client qui fermait l'application entre le
+// paiement et la confirmation était débité sans que les heures soient ajoutées
+// ni payées au prestataire (relecture du 23/10/2026). Mêmes contrôles des deux
+// côtés : la prestation, le client, CETTE prolongation, le montant.
+// Rend { code, corps } — le code HTTP et la réponse de l'action.
+const reponseHS = (code, corps) => ({ code, corps });
+export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, SUPABASE_URL, headers }) {
+
+  const mr = await fetch(
+    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&client_id=eq.${clientId}`
+    + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
+    + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
+    + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,actual_hours,`
+    + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
+    { headers }
+  );
+  const mission = (await mr.json().catch(() => []))[0];
+  if (!mission) return reponseHS(404, { error: "Prestation introuvable" });
+
+  // Rejoué après coup : on répond que c'est fait, sans rien réappliquer.
+  if (mission.extra_hours_payment_intent === paymentIntent && mission.extra_hours_status === "accepted") {
+    return reponseHS(200, { ok: true, deja: true, hours: mission.hours });
+  }
+  if (mission.extra_hours_status !== "accepte_presta") {
+    return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation." });
+  }
+
+  const extraH = Number(mission.extra_hours_requested || 0);
+  const frais  = await lireFraisService(SUPABASE_URL, headers);
+  const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), frais);
+  if (!(devisC.total > 0)) return reponseHS(400, { error: "Montant de la prolongation incalculable." });
+
+  const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!stripeKey) {
+    console.error(`[heures_supp] STRIPE_SECRET_KEY absente — confirmation impossible pour ${missionId}`);
+    return reponseHS(500, { error: "Paiement indisponible. Réessayez plus tard." });
+  }
+  let pi = null;
+  try {
+    const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(paymentIntent)}`, {
+      headers: { "Authorization": `Bearer ${stripeKey}` },
+    });
+    pi = await pr.json();
+  } catch (e) {
+    console.error(`[heures_supp] lecture Stripe impossible pour ${missionId} :`, e.message);
+    return reponseHS(502, { error: "Vérification du paiement impossible. Réessayez." });
+  }
+  if (!pi?.id || pi.status !== "succeeded") {
+    return reponseHS(400, { error: "Le paiement n'est pas confirmé." });
+  }
+  // Le paiement doit porter SUR CETTE prestation et couvrir le montant dû.
+  if (String(pi.metadata?.mission || "") !== String(missionId)) {
+    console.error(`[heures_supp] paiement ${pi.id} rattaché à une autre prestation que ${missionId}`);
+    return reponseHS(400, { error: "Ce paiement ne correspond pas à cette prestation." });
+  }
+  // …et être un paiement DE PROLONGATION, de CE client, pour CETTE
+  // prolongation. Seule la prestation était contrôlée : le paiement de la
+  // réservation elle-même — même `metadata[mission]` — réglait n'importe
+  // quelle prolongation, et celui d'une prolongation précédente redevenait
+  // utilisable dès qu'une seconde l'avait remplacé (relecture du 01/10/2026).
+  // Le repère compte AUSSI les heures ajoutées par journée (06/10/2026) :
+  // ce chemin-là ne touche pas `extra_hours_appliquees`, et un paiement
+  // déjà appliqué aurait sinon réglé la demande suivante. Inchangé pour une
+  // prestation d'un seul jour (heures_ajoutees_total y vaut 0).
+  const dejaAppliquees = String(Math.round((Number(mission.extra_hours_appliquees || 0)
+    + Number(mission.heures_ajoutees_total || 0)) * 100) / 100);
+  const pourCetteProlongation = pi.metadata?.deja_appliquees !== undefined
+    ? pi.metadata.deja_appliquees === dejaAppliquees
+    // Paiement créé avant cette règle : admis seulement pour une première prolongation.
+    : dejaAppliquees === "0";
+  if (pi.metadata?.type !== "heures_supp" || String(pi.metadata?.client || "") !== String(clientId)
+      || pi.id === mission.stripe_payment_intent || !pourCetteProlongation) {
+    console.error(`[heures_supp] paiement ${pi.id} refusé pour ${missionId} : type ${pi.metadata?.type || "?"}, `
+      + `client ${pi.metadata?.client || "?"}, déjà appliquées ${pi.metadata?.deja_appliquees ?? "?"} / ${dejaAppliquees}`);
+    return reponseHS(400, { error: "Ce paiement ne correspond pas à cette prolongation." });
+  }
+  if (Number(pi.amount_received || 0) < devisC.centimes) {
+    console.error(`[heures_supp] paiement ${pi.id} insuffisant : ${pi.amount_received} c reçus pour ${devisC.centimes} c dus`);
+    return reponseHS(400, { error: "Le montant réglé ne couvre pas la prolongation." });
+  }
+
+  // Le paiement est vérifié, mais la prestation n'est plus en cours (close,
+  // annulée, en litige) entre la création du paiement et sa confirmation.
+  // Prolonger ce qui est terminé n'a pas de sens, et garder l'argent non
+  // plus : le complément est rendu.
+  if (mission.status !== "assigned") {
+    const rb = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded",
+                 "Idempotency-Key": `refund-heures-supp-${pi.id}` },
+      body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
+    }).catch(e => { console.error(`[heures_supp] remboursement ${pi.id} impossible :`, e.message); return null; });
+    const rbData = rb ? await rb.json().catch(() => ({})) : {};
+    if (!rbData.id) {
+      console.error(`[heures_supp] remboursement ${pi.id} à reprendre manuellement — prestation ${missionId} (${mission.status}) : ${JSON.stringify(rbData).slice(0, 200)}`);
+      return reponseHS(500, { error: "Cette prestation n'est plus en cours. Votre paiement de prolongation n'a pas pu être remboursé automatiquement : écrivez à direction@alane.fr, nous le reprenons à la main." });
+    }
+    return reponseHS(409, { error: "Cette prestation n'est plus en cours : la prolongation n'est pas appliquée et votre paiement vous est remboursé." });
+  }
+
+  const nouvellesHeures = Math.min(24, Number(mission.hours || 0) + extraH);
+  const nouveauTotal    = Math.round((Number(mission.montant_total || 0) + devisC.total) * 100) / 100;
+
+  // Prestation de plusieurs jours, demande à portée figée (06/10/2026) : la
+  // durée par jour (`hours`) ne bouge pas — elle vaut pour TOUTES les
+  // journées. L'ajout est cumulé à part, en montant pour le prestataire et
+  // en heures ; la clôture et la facture l'ajoutent. Les heures du dernier
+  // jour reculent la fin de la prestation, donc l'échéance du versement.
+  //
+  // Chaque journée couverte est inscrite au détail, avec son tarif et le
+  // paiement qui l'a réglée : une série arrêtée en cours de route rend au
+  // client ce qui ne sera pas fait (`ajoutsNonFaits`, action
+  // `cancel_in_progress`).
+  const parJournee = Number(mission.extra_hours_jours) > 0;
+  let detailAjoute = null;
+  if (parJournee) {
+    const enCours = porteeDemande(mission, "jour");
+    const couvertes = journeesCouvertes(mission, mission.extra_hours_portee,
+      Number(mission.extra_hours_jours),
+      // Le jour retenu à la demande fait foi ; à défaut (demande antérieure
+      // au 07/10/2026), la journée en cours.
+      String(mission.extra_hours_journee || "").slice(0, 10) || (enCours.ok ? enCours.journee : dateDuJourFr()));
+    detailAjoute = [
+      ...detailAjouts(mission),
+      ...couvertes.map(jour => ({ jour, heures: extraH, tarif: Number(mission.extra_hours_tarif), paiement: paymentIntent })),
+    ];
+  }
+  const application = parJournee
+    ? {
+        ...cumulsAjouts(mission, detailAjoute),
+        montant_heures_ajoutees: Math.round((Number(mission.montant_heures_ajoutees || 0) + devisC.partPrestataire) * 100) / 100,
+        extra_hours_portee: null,
+        extra_hours_jours: null,
+        extra_hours_journee: null,
+      }
+    : {
+        hours: nouvellesHeures,
+        // Combien d'heures relèvent du tarif négocié. Sans cette valeur,
+        // la clôture recalcule tout au tarif de base et le prestataire perd
+        // l'écart qu'il avait annoncé.
+        extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
+        // La durée retenue suit la durée réservée : un décalage refusé y
+        // avait déjà retiré des heures, rendues au client. La remettre à
+        // vide faisait payer au prestataire, à la clôture, ces heures
+        // remboursées (relecture du 14/10/2026). Sans décalage, elle reste
+        // vide et la clôture lit `hours`.
+        actual_hours: mission.actual_hours !== null && mission.actual_hours !== undefined
+          ? Math.max(0, Math.round((Number(mission.actual_hours) + (nouvellesHeures - Number(mission.hours || 0))) * 10000) / 10000)
+          : null,
+      };
+
+  // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
+  // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
+  // ferme la même porte côté base.
+  const up = await fetch(
+    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&extra_hours_status=eq.accepte_presta&status=eq.assigned`,
+    { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+      body: JSON.stringify({
+        ...application,
+        montant_total: nouveauTotal,
+        extra_hours_status: "accepted",
+        extra_hours_requested: null,
+        extra_hours_payment_intent: paymentIntent,
+      }) }
+  );
+  const lignesC = await up.json().catch(() => []);
+  if (!up.ok || !Array.isArray(lignesC) || lignesC.length === 0) {
+    // Le client a payé : le dire franchement plutôt que de le laisser
+    // croire que son règlement s'est perdu.
+    console.error(`[heures_supp] application impossible après paiement ${paymentIntent} `
+      + `sur ${missionId} (${up.status}) : ${JSON.stringify(lignesC).slice(0, 200)}`);
+    return reponseHS(500, {
+      error: "Votre paiement est bien enregistré mais la prolongation n'a pas pu être appliquée. "
+           + "Écrivez à direction@alane.fr en indiquant la date : nous la reprenons à la main.",
+    });
+  }
+
+  const mPresta = lignesC[0]?.prestataire_id || null;
+  if (mPresta) {
+    await notifier({
+        user_id: mPresta, type: "mission", title: "💶 Prolongation réglée",
+        body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`, ref_id: missionId,
+      }, SUPABASE_URL, headers).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
+    sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/confirmer_heures_supp] échec ignoré :", e?.message));
+  }
+
+  return reponseHS(200, { ok: true, hours: parJournee ? mission.hours : nouvellesHeures, montant_total: nouveauTotal });
+}
+
 export default async function handler(req, res) {
   // GET → one-click email action (accept/refuse mission from email link)
   if (req.method === "GET") return handleEmailAction(req, res);
@@ -6295,186 +6486,8 @@ export default async function handler(req, res) {
       if (!payment_intent || typeof payment_intent !== "string") {
         return res.status(400).json({ error: "payment_intent requis" });
       }
-
-      const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
-        + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
-        + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
-        + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,actual_hours,`
-        + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
-        { headers }
-      );
-      const mission = (await mr.json().catch(() => []))[0];
-      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
-
-      // Rejoué après coup : on répond que c'est fait, sans rien réappliquer.
-      if (mission.extra_hours_payment_intent === payment_intent && mission.extra_hours_status === "accepted") {
-        return res.status(200).json({ ok: true, deja: true, hours: mission.hours });
-      }
-      if (mission.extra_hours_status !== "accepte_presta") {
-        return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
-      }
-
-      const extraH = Number(mission.extra_hours_requested || 0);
-      const frais  = await lireFraisService(SUPABASE_URL, headers);
-      const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), frais);
-      if (!(devisC.total > 0)) return res.status(400).json({ error: "Montant de la prolongation incalculable." });
-
-      const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-      if (!stripeKey) {
-        console.error(`[heures_supp] STRIPE_SECRET_KEY absente — confirmation impossible pour ${mission_id}`);
-        return res.status(500).json({ error: "Paiement indisponible. Réessayez plus tard." });
-      }
-      let pi = null;
-      try {
-        const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(payment_intent)}`, {
-          headers: { "Authorization": `Bearer ${stripeKey}` },
-        });
-        pi = await pr.json();
-      } catch (e) {
-        console.error(`[heures_supp] lecture Stripe impossible pour ${mission_id} :`, e.message);
-        return res.status(502).json({ error: "Vérification du paiement impossible. Réessayez." });
-      }
-      if (!pi?.id || pi.status !== "succeeded") {
-        return res.status(400).json({ error: "Le paiement n'est pas confirmé." });
-      }
-      // Le paiement doit porter SUR CETTE prestation et couvrir le montant dû.
-      if (String(pi.metadata?.mission || "") !== String(mission_id)) {
-        console.error(`[heures_supp] paiement ${pi.id} rattaché à une autre prestation que ${mission_id}`);
-        return res.status(400).json({ error: "Ce paiement ne correspond pas à cette prestation." });
-      }
-      // …et être un paiement DE PROLONGATION, de CE client, pour CETTE
-      // prolongation. Seule la prestation était contrôlée : le paiement de la
-      // réservation elle-même — même `metadata[mission]` — réglait n'importe
-      // quelle prolongation, et celui d'une prolongation précédente redevenait
-      // utilisable dès qu'une seconde l'avait remplacé (relecture du 01/10/2026).
-      // Le repère compte AUSSI les heures ajoutées par journée (06/10/2026) :
-      // ce chemin-là ne touche pas `extra_hours_appliquees`, et un paiement
-      // déjà appliqué aurait sinon réglé la demande suivante. Inchangé pour une
-      // prestation d'un seul jour (heures_ajoutees_total y vaut 0).
-      const dejaAppliquees = String(Math.round((Number(mission.extra_hours_appliquees || 0)
-        + Number(mission.heures_ajoutees_total || 0)) * 100) / 100);
-      const pourCetteProlongation = pi.metadata?.deja_appliquees !== undefined
-        ? pi.metadata.deja_appliquees === dejaAppliquees
-        // Paiement créé avant cette règle : admis seulement pour une première prolongation.
-        : dejaAppliquees === "0";
-      if (pi.metadata?.type !== "heures_supp" || String(pi.metadata?.client || "") !== String(caller.id)
-          || pi.id === mission.stripe_payment_intent || !pourCetteProlongation) {
-        console.error(`[heures_supp] paiement ${pi.id} refusé pour ${mission_id} : type ${pi.metadata?.type || "?"}, `
-          + `client ${pi.metadata?.client || "?"}, déjà appliquées ${pi.metadata?.deja_appliquees ?? "?"} / ${dejaAppliquees}`);
-        return res.status(400).json({ error: "Ce paiement ne correspond pas à cette prolongation." });
-      }
-      if (Number(pi.amount_received || 0) < devisC.centimes) {
-        console.error(`[heures_supp] paiement ${pi.id} insuffisant : ${pi.amount_received} c reçus pour ${devisC.centimes} c dus`);
-        return res.status(400).json({ error: "Le montant réglé ne couvre pas la prolongation." });
-      }
-
-      // Le paiement est vérifié, mais la prestation n'est plus en cours (close,
-      // annulée, en litige) entre la création du paiement et sa confirmation.
-      // Prolonger ce qui est terminé n'a pas de sens, et garder l'argent non
-      // plus : le complément est rendu.
-      if (mission.status !== "assigned") {
-        const rb = await fetch("https://api.stripe.com/v1/refunds", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded",
-                     "Idempotency-Key": `refund-heures-supp-${pi.id}` },
-          body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
-        }).catch(e => { console.error(`[heures_supp] remboursement ${pi.id} impossible :`, e.message); return null; });
-        const rbData = rb ? await rb.json().catch(() => ({})) : {};
-        if (!rbData.id) {
-          console.error(`[heures_supp] remboursement ${pi.id} à reprendre manuellement — prestation ${mission_id} (${mission.status}) : ${JSON.stringify(rbData).slice(0, 200)}`);
-          return res.status(500).json({ error: "Cette prestation n'est plus en cours. Votre paiement de prolongation n'a pas pu être remboursé automatiquement : écrivez à direction@alane.fr, nous le reprenons à la main." });
-        }
-        return res.status(409).json({ error: "Cette prestation n'est plus en cours : la prolongation n'est pas appliquée et votre paiement vous est remboursé." });
-      }
-
-      const nouvellesHeures = Math.min(24, Number(mission.hours || 0) + extraH);
-      const nouveauTotal    = Math.round((Number(mission.montant_total || 0) + devisC.total) * 100) / 100;
-
-      // Prestation de plusieurs jours, demande à portée figée (06/10/2026) : la
-      // durée par jour (`hours`) ne bouge pas — elle vaut pour TOUTES les
-      // journées. L'ajout est cumulé à part, en montant pour le prestataire et
-      // en heures ; la clôture et la facture l'ajoutent. Les heures du dernier
-      // jour reculent la fin de la prestation, donc l'échéance du versement.
-      //
-      // Chaque journée couverte est inscrite au détail, avec son tarif et le
-      // paiement qui l'a réglée : une série arrêtée en cours de route rend au
-      // client ce qui ne sera pas fait (`ajoutsNonFaits`, action
-      // `cancel_in_progress`).
-      const parJournee = Number(mission.extra_hours_jours) > 0;
-      let detailAjoute = null;
-      if (parJournee) {
-        const enCours = porteeDemande(mission, "jour");
-        const couvertes = journeesCouvertes(mission, mission.extra_hours_portee,
-          Number(mission.extra_hours_jours),
-          // Le jour retenu à la demande fait foi ; à défaut (demande antérieure
-          // au 07/10/2026), la journée en cours.
-          String(mission.extra_hours_journee || "").slice(0, 10) || (enCours.ok ? enCours.journee : dateDuJourFr()));
-        detailAjoute = [
-          ...detailAjouts(mission),
-          ...couvertes.map(jour => ({ jour, heures: extraH, tarif: Number(mission.extra_hours_tarif), paiement: payment_intent })),
-        ];
-      }
-      const application = parJournee
-        ? {
-            ...cumulsAjouts(mission, detailAjoute),
-            montant_heures_ajoutees: Math.round((Number(mission.montant_heures_ajoutees || 0) + devisC.partPrestataire) * 100) / 100,
-            extra_hours_portee: null,
-            extra_hours_jours: null,
-            extra_hours_journee: null,
-          }
-        : {
-            hours: nouvellesHeures,
-            // Combien d'heures relèvent du tarif négocié. Sans cette valeur,
-            // la clôture recalcule tout au tarif de base et le prestataire perd
-            // l'écart qu'il avait annoncé.
-            extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
-            // La durée retenue suit la durée réservée : un décalage refusé y
-            // avait déjà retiré des heures, rendues au client. La remettre à
-            // vide faisait payer au prestataire, à la clôture, ces heures
-            // remboursées (relecture du 14/10/2026). Sans décalage, elle reste
-            // vide et la clôture lit `hours`.
-            actual_hours: mission.actual_hours !== null && mission.actual_hours !== undefined
-              ? Math.max(0, Math.round((Number(mission.actual_hours) + (nouvellesHeures - Number(mission.hours || 0))) * 10000) / 10000)
-              : null,
-          };
-
-      // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
-      // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
-      // ferme la même porte côté base.
-      const up = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.accepte_presta&status=eq.assigned`,
-        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({
-            ...application,
-            montant_total: nouveauTotal,
-            extra_hours_status: "accepted",
-            extra_hours_requested: null,
-            extra_hours_payment_intent: payment_intent,
-          }) }
-      );
-      const lignesC = await up.json().catch(() => []);
-      if (!up.ok || !Array.isArray(lignesC) || lignesC.length === 0) {
-        // Le client a payé : le dire franchement plutôt que de le laisser
-        // croire que son règlement s'est perdu.
-        console.error(`[heures_supp] application impossible après paiement ${payment_intent} `
-          + `sur ${mission_id} (${up.status}) : ${JSON.stringify(lignesC).slice(0, 200)}`);
-        return res.status(500).json({
-          error: "Votre paiement est bien enregistré mais la prolongation n'a pas pu être appliquée. "
-               + "Écrivez à direction@alane.fr en indiquant la date : nous la reprenons à la main.",
-        });
-      }
-
-      const mPresta = lignesC[0]?.prestataire_id || null;
-      if (mPresta) {
-        await notifier({
-            user_id: mPresta, type: "mission", title: "💶 Prolongation réglée",
-            body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`, ref_id: mission_id,
-          }, SUPABASE_URL, headers).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
-        sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/confirmer_heures_supp] échec ignoré :", e?.message));
-      }
-
-      return res.status(200).json({ ok: true, hours: parJournee ? mission.hours : nouvellesHeures, montant_total: nouveauTotal });
+      const resultat = await appliquerHeuresSupp({ missionId: mission_id, paymentIntent: payment_intent, clientId: caller.id, SUPABASE_URL, headers });
+      return res.status(resultat.code).json(resultat.corps);
     }
 
     // ── Annulation par le prestataire ─────────────────────────────────

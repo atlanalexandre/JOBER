@@ -3,6 +3,7 @@ import { sendWebPush, notifier } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 import { appUrl } from "./_url.js";
 import { tirerAuHasard } from "./_lots.js";
+import { rattraperProlongations } from "./_rattrapage_heures_supp.js";
 
 /**
  * Une relance « réservation non finalisée » n'a pas lieu d'être si la prestation
@@ -55,6 +56,16 @@ export default async function handler(req, res) {
   };
 
   try {
+
+  // ── Prolongations payées mais jamais appliquées (relecture du 23/10/2026) ──
+  // Voir api/_rattrapage_heures_supp.js. Un échec n'arrête pas le reste.
+  try {
+    const bilan = await rattraperProlongations({ SUPABASE_URL, headers: hdrs,
+      cleStripe: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "") });
+    if (bilan.appliquees || bilan.remboursees || bilan.signalees) console.error("[cron-abandon] prolongations rattrapées :", JSON.stringify(bilan));
+  } catch (e) {
+    console.error("[cron-abandon] rattrapage des prolongations impossible :", e.message);
+  }
 
   // ── Prestataire en retard : heure de début dépassée sans pointage ──────────
   // Ce cron tourne toutes les 30 min, contre 2 h pour celui des rappels : c'est
