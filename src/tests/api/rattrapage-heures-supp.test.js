@@ -104,5 +104,8 @@ describe("appliquerHeuresSupp : extraite sans rien changer", async () => {
     expect(fonction).toContain("extra_hours_payment_intent,");
     expect(fonction).toContain("https://api.stripe.com/v1/payment_intents/");
     expect(fonction).toContain("extra_hours_payment_intent: paymentIntent,");
+    // Paramètre de l'API Stripe, pas la variable : le remboursement échouait.
+    expect(fonction).toContain("new URLSearchParams({ payment_intent: pi.id, reason: \"requested_by_customer\" })");
+    expect(fonction).not.toMatch(/\{ paymentIntent: /);
   });
 });

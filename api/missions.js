@@ -1082,7 +1082,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
       method: "POST",
       headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded",
                  "Idempotency-Key": `refund-heures-supp-${pi.id}` },
-      body: new URLSearchParams({ paymentIntent: pi.id, reason: "requested_by_customer" }).toString(),
+      body: new URLSearchParams({ payment_intent: pi.id, reason: "requested_by_customer" }).toString(),
     }).catch(e => { console.error(`[heures_supp] remboursement ${pi.id} impossible :`, e.message); return null; });
     const rbData = rb ? await rb.json().catch(() => ({})) : {};
     if (!rbData.id) {
