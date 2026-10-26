@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { appliquerPaliersCashback } from "../constants/plans.js";
 import { useState, useEffect, useRef } from "react";
 import { C, font, r, shadow } from "../constants/colors.js";
 
@@ -595,6 +596,19 @@ export function fetchOffreLancement() {
       return { ouverte: false, restantes: null, prises: null, total: 100 };
     });
   return _offrePending;
+}
+
+// Les paliers de cashback que le serveur applique : chargés une fois, puis
+// reportés dans `CASHBACK_TIERS` (relecture du 23/10/2026). En cas d'échec, la
+// grille du code reste affichée — la même que le repli du serveur.
+let _paliersCharges = null;
+export function chargerPaliersCashback() {
+  if (_paliersCharges) return _paliersCharges;
+  _paliersCharges = fetch("/api/prestataires?action=paliers_cashback")
+    .then(r => r.json())
+    .then(d => appliquerPaliersCashback(d?.paliers))
+    .catch(e => { console.error("[cashback] paliers illisibles — grille par défaut :", e?.message); return false; });
+  return _paliersCharges;
 }
 
 // `fetchPrestaCount()` a été retirée le 27/08/2026.

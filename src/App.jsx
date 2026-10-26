@@ -11,7 +11,7 @@ import { VALIDATION_PRESTA } from "./constants/editeur.js";
 import { nouvelleVersionDisponible, rechargerVersion } from "./lib/version.js";
 import { lireRetourConfirmation, messageConfirmationSansSession } from "./lib/confirmation.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchOffreLancement } from "./components/ui.jsx";
+import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchOffreLancement, chargerPaliersCashback } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
@@ -1049,6 +1049,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 // ── MISSION BROADCAST SCREEN ─────────────────────────────────────
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
+  // Paliers de cashback du serveur : une fois chargés, on redessine pour que
+  // chaque écran affiche le taux réellement crédité.
+  const [, setPaliersCashback] = useState(0);
+  useEffect(() => { chargerPaliersCashback().then(change => { if (change) setPaliersCashback(v => v + 1); }); }, []);
   const [screen,setScreen]=useState(()=>{
     try {
       // Flux custom reset (reset_token dans la query string)
