@@ -1,4 +1,4 @@
-import { utilisateurParEmail } from "./_auth.js";
+import { utilisateurParEmail, lireComptesAuth } from "./_auth.js";
 import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
 import { esc, emailHtml, sendEmail, euros } from "./_email.js";
@@ -279,9 +279,9 @@ export default async function handler(req, res) {
           if (page.length < 1000) return tous;
         }
       };
-      const [profiles, authRes, blacklistRes, tousDocs] = await Promise.all([
+      const [profiles, comptesAuth, blacklistRes, tousDocs] = await Promise.all([
         lireProfils(),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
+        lireComptesAuth(SUPABASE_URL, headers).catch(e => { console.error("[list] comptes illisibles :", e.message); return []; }),
         // Lecture complète : au-delà de 1 000 entrées, un compte banni n'était plus reconnu.
         lireTout(`${SUPABASE_URL}/rest/v1/account_blacklist?select=id,email_hash,telephone_hash,iban_hash,siret_hash,created_at`, headers)
           .catch(e => { console.error("[list] liste noire illisible :", e.message); return null; }),
@@ -295,7 +295,7 @@ export default async function handler(req, res) {
         if (!docsParPresta.has(d.prestataire_id)) docsParPresta.set(d.prestataire_id, []);
         docsParPresta.get(d.prestataire_id).push(d);
       }
-      const authData = await authRes.json();
+      const authData = { users: comptesAuth };
 
       // Construire les sets de hash pour lookup O(1)
       const blSets = ensemblesListeNoire(Array.isArray(blacklistRes) ? blacklistRes : []);
@@ -1471,9 +1471,7 @@ export default async function handler(req, res) {
       let emailMap = {};
       if (userIds.length > 0) {
         try {
-          const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-          const authData = await authRes.json();
-          (authData.users || []).forEach(u => { emailMap[u.id] = u.email; });
+          (await lireComptesAuth(SUPABASE_URL, headers)).forEach(u => { emailMap[u.id] = u.email; });
         } catch (e) { console.error("[bo-action] emails des participants illisibles :", e.message); }
       }
 
@@ -1689,11 +1687,12 @@ export default async function handler(req, res) {
         lireTout(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved&accepte_communications=is.true`, headers)
           .catch(e => { console.error(`[send_global_comm] destinataires illisibles : ${e.message}`
             + " — vérifier que la migration 2026-08-15_communications_commerciales.sql est appliquée."); return null; }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
+        lireComptesAuth(SUPABASE_URL, headers).catch(e => { console.error("[send_global_comm] comptes illisibles :", e.message); return null; }),
       ]);
       if (!profiles) return res.status(503).json({ error: "Destinataires illisibles — migration non appliquée ?" });
-      const authData = await authRes.json();
-      const authUsers = authData.users || [];
+      // Une liste d'adresses tronquée ferait croire l'envoi complet.
+      if (!authRes) return res.status(503).json({ error: "Adresses des destinataires illisibles — envoi non fait." });
+      const authUsers = authRes;
       const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
       const emails = authUsers.filter(u => ids.has(u.id)).map(u => u.email).filter(Boolean);
 
@@ -2054,13 +2053,10 @@ export default async function handler(req, res) {
       }
       const emailMap = {}, metaMap = {};
       if (ids.length) {
-        const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-        const usersData = await usersRes.json().catch(() => null);
-        if (!usersRes.ok || !Array.isArray(usersData?.users)) {
-          console.error("[bo list_all_docs] adresses illisibles :", usersRes.status);
-        } else {
+        const comptes = await lireComptesAuth(SUPABASE_URL, headers).catch(e => { console.error("[bo list_all_docs] adresses illisibles :", e.message); return null; });
+        if (comptes) {
           const voulus = new Set(ids);
-          for (const u of usersData.users) if (voulus.has(u.id)) { emailMap[u.id] = u.email; metaMap[u.id] = u.user_metadata || {}; }
+          for (const u of comptes) if (voulus.has(u.id)) { emailMap[u.id] = u.email; metaMap[u.id] = u.user_metadata || {}; }
         }
       }
 
@@ -2341,9 +2337,7 @@ export default async function handler(req, res) {
       // Les adresses e-mail vivent dans auth, pas dans profiles.
       const emails = {};
       try {
-        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-        const uData = await uRes.json();
-        for (const u of (uData.users || [])) emails[u.id] = u.email || "";
+        for (const u of await lireComptesAuth(SUPABASE_URL, headers)) emails[u.id] = u.email || "";
       } catch (e) {
         console.error("[export_dac7] adresses e-mail illisibles :", e.message);
       }
@@ -3397,9 +3391,7 @@ export default async function handler(req, res) {
       // La ville du compte peut n'exister que dans user_metadata pour les comptes anciens.
       let metaVille = {};
       try {
-        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-        const ud = await ur.json();
-        for (const u of (ud.users || [])) {
+        for (const u of await lireComptesAuth(SUPABASE_URL, headers)) {
           const v = u.user_metadata?.ville;
           if (v) metaVille[u.id] = v;
         }

@@ -4,6 +4,7 @@ import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temp
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { tirerAuHasard } from "./_lots.js";
+import { lireComptesAuth } from "./_auth.js";
 
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
@@ -1528,9 +1529,7 @@ export default async function handler(req, res) {
           // Les adresses e-mail vivent dans `auth.users`, pas dans `profiles`.
           const emails = {};
           try {
-            const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-            const ud = await ur.json();
-            for (const u of (ud.users || [])) emails[u.id] = u.email || "";
+            for (const u of await lireComptesAuth(SUPABASE_URL, headers)) emails[u.id] = u.email || "";
           } catch (e) {
             console.error("[inscriptions] adresses illisibles :", e.message);
           }
