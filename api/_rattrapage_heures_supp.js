@@ -45,7 +45,10 @@ export function dejaRattache(m, piId) {
  * Fonction pure : `m` est la prestation lue, `pi` le paiement Stripe.
  */
 export function decisionRattrapage(m, pi, maintenantMs = Date.now()) {
-  if (!m) return "signaler";
+  // Prestation absente de CETTE base : la production et la recette partagent le
+  // même compte Stripe de test, et chacune voit les paiements de l'autre. Rien
+  // à faire ici — c'est l'autre base qui le traite.
+  if (!m) return "rien";
   if ((pi.created || 0) * 1000 > maintenantMs - DELAI_AVANT_RATTRAPAGE_MS) return "rien"; // l'application a encore la main
   if (pi.latest_charge?.refunded || Number(pi.latest_charge?.amount_refunded || 0) > 0) return "rien";
   if (dejaRattache(m, pi.id)) return "rien";

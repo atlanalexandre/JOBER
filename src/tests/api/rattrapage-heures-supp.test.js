@@ -30,9 +30,11 @@ describe("decisionRattrapage", () => {
   it("le compteur a bougé : une prolongation a été appliquée — un humain tranche, ni application ni remboursement", () => {
     expect(decisionRattrapage(mission({ extra_hours_appliquees: 2 }), pi(), T)).toBe("signaler");
   });
-  it("paiement sans repère, ou prestation introuvable : signaler", () => {
+  it("paiement sans repère : signaler", () => {
     expect(decisionRattrapage(mission(), pi({ metadata: { type: "heures_supp", mission: "m1", client: "c1" } }), T)).toBe("signaler");
-    expect(decisionRattrapage(null, pi(), T)).toBe("signaler");
+  });
+  it("prestation absente de cette base (compte Stripe de test partagé entre recette et production) : rien", () => {
+    expect(decisionRattrapage(null, pi(), T)).toBe("rien");
   });
 });
 
