@@ -21,7 +21,7 @@ test("une tranche du mois : mouvements nommés, prestations retrouvées, reprise
   for (const l of lignes) {
     expect(l.nature, l.mouvement).not.toMatch(/^Autre \(/);
     expect(l.mouvement).toMatch(/^txn_/);
-    expect(Math.round((l.montant - l.frais_stripe - l.net) * 100), l.mouvement).toBe(0);
+    expect(Math.abs(Math.round((l.montant - l.frais_stripe - l.net) * 100)), l.mouvement).toBe(0);
   }
   // Des prestations de CETTE base sont retrouvées (les autres viennent de la production).
   expect(lignes.some(l => l.connue === true)).toBe(true);
