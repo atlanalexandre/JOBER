@@ -69,9 +69,28 @@ describe("candidature introuvable au paiement : l'équipe est prévenue, rien n'
     ]);
     const res = reponse();
     await handler(requete(paiement), res);
-    const ticket = appels.find(a => a.u.includes("/rest/v1/support_tickets"));
+    const ticket = appels.find(a => a.u.includes("/rest/v1/support_tickets") && a.methode === "POST");
     expect(JSON.parse(ticket.corps).user_id).toBe("cl1");
+    expect(JSON.parse(ticket.corps).subject).toMatch(/^\[Interne\] .*pi_1$/);
     expect(res.statut).toBe(200);
+  });
+  it("sans client dans le paiement, le ticket prend celui de la prestation ; et un seul ticket par paiement (relecture du 26/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const sansClient = { ...paiement, data: { object: { ...paiement.data.object, metadata: { mission: "m1", candidature_id: "cand1", prestataire_id: "p1" } } } };
+    const appels = simuler([
+      [(u) => u.includes("/rest/v1/candidatures?"), []],
+      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null, client_id: "cl9" }]],
+      [(u, o) => u.includes("/rest/v1/support_tickets") && o.method === "POST", () => new Response("", { status: 201 })],
+    ]);
+    await handler(requete(sansClient), reponse());
+    expect(JSON.parse(appels.find(a => a.methode === "POST" && a.u.includes("support_tickets")).corps).user_id).toBe("cl9");
+    const deja = simuler([
+      [(u) => u.includes("/rest/v1/candidatures?"), []],
+      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null, client_id: "cl9" }]],
+      [(u, o) => u.includes("/rest/v1/support_tickets?subject=like") && !o.method, [{ id: "t1" }]],
+    ]);
+    await handler(requete(sansClient), reponse());
+    expect(deja.some(a => a.methode === "POST" && a.u.includes("support_tickets"))).toBe(false);
   });
   it("ni ticket ni courriel : 500, Stripe réémettra", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
