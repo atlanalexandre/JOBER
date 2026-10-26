@@ -184,7 +184,7 @@ export function ContactSupportScreen({ onBack }) {
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14, fontFamily:"inherit" }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:0, fontFamily:font.display }}>🎧 Contacter le support</h2>
-        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Notre équipe répond sous 24h ouvrées</p>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Notre équipe répond sous 48 h ouvrées</p>
       </div>
 
       <div style={{ padding:"24px 18px" }}>
@@ -193,7 +193,7 @@ export function ContactSupportScreen({ onBack }) {
             <div style={{ fontSize:52, marginBottom:16 }}>✅</div>
             <div style={{ fontWeight:800, color:C.text, fontSize:20, marginBottom:8 }}>Message envoyé !</div>
             <div style={{ color:C.textSub, fontSize:14, lineHeight:1.6, marginBottom:24 }}>
-              Notre équipe va traiter votre demande et vous répondre par email sous 24h ouvrées.
+              Notre équipe va traiter votre demande et vous répondre par email sous 48 h ouvrées.
             </div>
             <Btn onClick={onBack} style={{ background:C.violet }}>← Retour aux réglages</Btn>
           </div>
@@ -4557,7 +4557,7 @@ export function ValidationScreen({ provider, missionId, onNavigate }) {
               <div style={{ textAlign:"center", padding:"8px 0" }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>✅</div>
                 <div style={{ fontWeight:800, color:C.success, fontSize:15, marginBottom:6 }}>Litige transmis</div>
-                <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>Notre équipe de médiation vous contactera sous 24h ouvrées.</div>
+                <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>Notre équipe de médiation vous contactera sous 48 h ouvrées.</div>
               </div>
             ) : <>
               <div style={{ fontWeight:800, color:C.danger, fontSize:14, marginBottom:8 }}>⚠️ Signalement de litige</div>
@@ -9362,7 +9362,7 @@ export function DocUploadScreen({ onBack }) {
           </div>
         )}
         <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>24h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
+          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>48 h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
         </div>
       </div>
     </div>
@@ -9525,7 +9525,7 @@ export function ClientProDocScreen({ onBack }) {
         ))}
 
         <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>24h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
+          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>48 h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
         </div>
       </div>
     </div>
