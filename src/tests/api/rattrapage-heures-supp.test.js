@@ -91,3 +91,18 @@ describe("branché sur cron-abandon, et l'application passe par la même fonctio
     expect(missions).toMatch(/const resultat = await appliquerHeuresSupp\(\{ missionId: mission_id, paymentIntent: payment_intent, clientId: caller\.id/);
   });
 });
+
+describe("appliquerHeuresSupp : extraite sans rien changer", async () => {
+  const { readFileSync } = await import("node:fs");
+  const code = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+  const fonction = code.slice(code.indexOf("export async function appliquerHeuresSupp"), code.indexOf("export default async function handler"));
+  it("les noms de colonnes et l'adresse Stripe ne sont pas renommés avec les variables", () => {
+    // L'extraction du 26/10/2026 avait d'abord transformé `extra_hours_payment_intent`
+    // en `extra_hours_paymentIntent` : la base refusait la lecture (« Prestation
+    // introuvable »). La recette l'a vu, pas les tests unitaires.
+    expect(fonction).not.toMatch(/_paymentIntent|paymentIntents\//);
+    expect(fonction).toContain("extra_hours_payment_intent,");
+    expect(fonction).toContain("https://api.stripe.com/v1/payment_intents/");
+    expect(fonction).toContain("extra_hours_payment_intent: paymentIntent,");
+  });
+});

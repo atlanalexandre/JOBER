@@ -1003,8 +1003,8 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   const mr = await fetch(
     `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&client_id=eq.${clientId}`
     + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
-    + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_paymentIntent,`
-    + `extra_hours_appliquees,stripe_paymentIntent,date,heure_debut,actual_hours,`
+    + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
+    + `extra_hours_appliquees,stripe_payment_intent,date,heure_debut,actual_hours,`
     + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
     { headers }
   );
@@ -1012,7 +1012,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   if (!mission) return reponseHS(404, { error: "Prestation introuvable" });
 
   // Rejoué après coup : on répond que c'est fait, sans rien réappliquer.
-  if (mission.extra_hours_paymentIntent === paymentIntent && mission.extra_hours_status === "accepted") {
+  if (mission.extra_hours_payment_intent === paymentIntent && mission.extra_hours_status === "accepted") {
     return reponseHS(200, { ok: true, deja: true, hours: mission.hours });
   }
   if (mission.extra_hours_status !== "accepte_presta") {
@@ -1031,7 +1031,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   }
   let pi = null;
   try {
-    const pr = await fetch(`https://api.stripe.com/v1/paymentIntents/${encodeURIComponent(paymentIntent)}`, {
+    const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(paymentIntent)}`, {
       headers: { "Authorization": `Bearer ${stripeKey}` },
     });
     pi = await pr.json();
@@ -1063,7 +1063,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     // Paiement créé avant cette règle : admis seulement pour une première prolongation.
     : dejaAppliquees === "0";
   if (pi.metadata?.type !== "heures_supp" || String(pi.metadata?.client || "") !== String(clientId)
-      || pi.id === mission.stripe_paymentIntent || !pourCetteProlongation) {
+      || pi.id === mission.stripe_payment_intent || !pourCetteProlongation) {
     console.error(`[heures_supp] paiement ${pi.id} refusé pour ${missionId} : type ${pi.metadata?.type || "?"}, `
       + `client ${pi.metadata?.client || "?"}, déjà appliquées ${pi.metadata?.deja_appliquees ?? "?"} / ${dejaAppliquees}`);
     return reponseHS(400, { error: "Ce paiement ne correspond pas à cette prolongation." });
@@ -1144,7 +1144,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
       };
 
   // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
-  // prolongation deux fois. L'index unique sur `extra_hours_paymentIntent`
+  // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
   // ferme la même porte côté base.
   const up = await fetch(
     `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&extra_hours_status=eq.accepte_presta&status=eq.assigned`,
@@ -1154,7 +1154,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
         montant_total: nouveauTotal,
         extra_hours_status: "accepted",
         extra_hours_requested: null,
-        extra_hours_paymentIntent: paymentIntent,
+        extra_hours_payment_intent: paymentIntent,
       }) }
   );
   const lignesC = await up.json().catch(() => []);
