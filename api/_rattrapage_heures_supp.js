@@ -60,13 +60,47 @@ export function decisionRattrapage(m, pi, maintenantMs = Date.now()) {
   return "appliquer";
 }
 
+// Toutes les pages de la recherche (100 par page) : la recette et la production
+// partagent le compte Stripe de test, et la recette crée chaque jour des
+// prolongations — au-delà de 100 en trois jours, les suivantes n'étaient jamais
+// relues (relecture du 27/10/2026). Borné à PAGES_MAX pour tenir le délai.
+const PAGES_MAX = 5;
 async function lirePaiements(cleStripe, depuisS) {
   const q = encodeURIComponent(`metadata['type']:'heures_supp' AND status:'succeeded' AND created>${depuisS}`);
-  const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`,
-    { headers: { "Authorization": `Bearer ${cleStripe}` } });
-  const d = await r.json().catch(() => null);
-  if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche Stripe refusée (${r.status})`);
-  return d.data;
+  const tous = [];
+  let page = null;
+  for (let i = 0; i < PAGES_MAX; i++) {
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`
+      + (page ? `&page=${encodeURIComponent(page)}` : ""), { headers: { "Authorization": `Bearer ${cleStripe}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche Stripe refusée (${r.status})`);
+    tous.push(...d.data);
+    if (!d.has_more || !d.next_page) return tous;
+    page = d.next_page;
+  }
+  console.error(`[rattrapage heures supp] plus de ${PAGES_MAX * 100} paiements en trois jours — les plus anciens au prochain passage.`);
+  return tous;
+}
+
+// Les prestations citées, lues en une requête par lot de 100 : une lecture par
+// paiement, en série, consommait le délai de cron-abandon avant ses autres
+// alertes. `null` : lot illisible, ses paiements attendent le prochain passage.
+async function lirePrestations(ids, SUPABASE_URL, headers) {
+  const lues = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const lot = ids.slice(i, i + 100);
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=in.(${lot.join(",")})`
+        + "&select=id,client_id,status,extra_hours_payment_intent,extra_hours_appliquees,heures_ajoutees_total,heures_ajoutees_detail", { headers });
+      const lignes = r.ok ? await r.json().catch(() => null) : null;
+      if (!Array.isArray(lignes)) { console.error(`[rattrapage heures supp] prestations illisibles (${r.status}) — au prochain passage.`); continue; }
+      for (const id of lot) lues.set(id, null);
+      for (const m of lignes) lues.set(m.id, m);
+    } catch (e) {
+      console.error("[rattrapage heures supp] prestations illisibles — au prochain passage :", e.message);
+    }
+  }
+  return lues;
 }
 
 async function signaler(pi, m, SUPABASE_URL, headers, raison) {
@@ -106,21 +140,15 @@ async function rembourser(pi, cleStripe) {
 export async function rattraperProlongations({ SUPABASE_URL, headers, cleStripe, maintenantMs = Date.now() }) {
   const bilan = { appliquees: 0, remboursees: 0, signalees: 0 };
   if (!cleStripe) return bilan;
-  const paiements = await lirePaiements(cleStripe, Math.floor(maintenantMs / 1000) - FENETRE_S);
+  const paiements = (await lirePaiements(cleStripe, Math.floor(maintenantMs / 1000) - FENETRE_S))
+    .filter(pi => pi.metadata?.mission && (pi.created || 0) * 1000 <= maintenantMs - DELAI_AVANT_RATTRAPAGE_MS);
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const prestations = await lirePrestations([...new Set(paiements.map(pi => pi.metadata.mission).filter(id => uuid.test(id)))], SUPABASE_URL, headers);
   for (const pi of paiements) {
-    const missionId = pi.metadata?.mission;
-    if (!missionId) continue;
-    let m;
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`
-        + "&select=id,client_id,status,extra_hours_payment_intent,extra_hours_appliquees,heures_ajoutees_total,heures_ajoutees_detail", { headers });
-      const lignes = r.ok ? await r.json().catch(() => null) : null;
-      if (!Array.isArray(lignes)) { console.error(`[rattrapage heures supp] ${pi.id} : prestation illisible (${r.status}) — au prochain passage.`); continue; }
-      m = lignes[0] || null;
-    } catch (e) {
-      console.error(`[rattrapage heures supp] ${pi.id} : prestation illisible — au prochain passage :`, e.message);
-      continue;
-    }
+    const missionId = pi.metadata.mission;
+    // Absente de la carte : lot illisible (ou identifiant malformé) — au prochain passage.
+    if (!prestations.has(missionId)) continue;
+    const m = prestations.get(missionId);
     const decision = decisionRattrapage(m, pi, maintenantMs);
     if (decision === "rien") continue;
     if (decision === "signaler") {
@@ -135,8 +163,17 @@ export async function rattraperProlongations({ SUPABASE_URL, headers, cleStripe,
       continue;
     }
     if (resultat.code >= 500) continue; // panne passagère : au prochain passage
-    // Plus applicable (prolongation retirée, prestation close, montant) et
-    // jamais appliqué — le compteur l'atteste : le client est remboursé.
+    // Remboursé SEULEMENT quand la prolongation n'est plus applicable de façon
+    // certaine (409 : plus de prolongation en attente, prestation plus en
+    // cours) et jamais appliquée — le compteur l'atteste. Un autre refus
+    // (montant qui ne couvre plus le devis après un changement des frais,
+    // paiement qui ne correspond pas) n'est pas une certitude : un humain
+    // tranche (relecture du 27/10/2026).
+    if (resultat.code !== 409) {
+      await signaler(pi, m, SUPABASE_URL, headers, `non applicable (${resultat.corps?.error || resultat.code})`);
+      bilan.signalees++;
+      continue;
+    }
     if (await rembourser(pi, cleStripe)) {
       bilan.remboursees++;
       console.error(`[rattrapage heures supp] ${pi.id} remboursé : ${resultat.corps?.error || resultat.code}.`);
