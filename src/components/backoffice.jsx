@@ -6,6 +6,7 @@ import { origineApp } from "../constants/premiere-visite.js";
 import { formatMontant, prixAnnuel } from "../constants/plans.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { libelleConstat } from "../../api/_localisation.js";
+import { totauxJournal } from "../../api/_journal_comptable.js";
 import { periodePrestation } from "../lib/statuts.js";
 
 // Fiches de comptes rendues par tranche dans la liste du back-office.
@@ -3241,6 +3242,73 @@ export function BOExportMissions() {
   );
 }
 
+// Journal comptable du mois : chaque mouvement du compte Stripe (paiements,
+// remboursements, versements, frais Stripe, virements bancaires), suivi des
+// totaux par nature. C'est le fichier à remettre au comptable ; l'export des
+// prestations ci-dessus n'en est pas un (api/_journal_comptable.js).
+export function BOExportJournal() {
+  const moisPrecedent = () => {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const [mois, setMois] = useState(moisPrecedent);
+  const [etat, setEtat] = useState("");
+  const enCours = etat !== "";
+  const doExport = async () => {
+    setEtat("⏳ Lecture…");
+    try {
+      const lignes = [];
+      let apres = null, mode = "test";
+      // 60 tranches de 600 mouvements : bien au-delà d'un mois réel. Au-delà,
+      // l'export s'arrête et le dit plutôt que de rendre un fichier incomplet.
+      for (let tour = 0; tour < 60; tour++) {
+        const r = await boFetch({ action: "export_comptable", mois, apres });
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j || !Array.isArray(j.lignes)) throw new Error(j?.error || `export refusé (${r.status})`);
+        lignes.push(...j.lignes);
+        mode = j.mode;
+        setEtat(`⏳ ${lignes.length} mouvement(s)…`);
+        apres = j.suite;
+        if (!apres) break;
+      }
+      if (apres) throw new Error("plus de 36 000 mouvements sur le mois — export interrompu");
+      const montant = (x) => x == null ? "" : Number(x).toFixed(2).replace(".", ",");
+      const rows = [];
+      if (mode !== "live") rows.push(["ATTENTION : compte Stripe en mode TEST — paiements fictifs, recette et production mêlées"]);
+      rows.push(["Date (Paris)","Nature","Montant (€)","Frais Stripe (€)","Net (€)","Dont frais de service ALANE (€)","Prestation","Métier","Prestation connue","Description","Mouvement Stripe","Origine","Paiement","Disponible le"]);
+      lignes.forEach(l => rows.push([l.date, l.nature, montant(l.montant), montant(l.frais_stripe), montant(l.net), montant(l.frais_service),
+        l.prestation, l.metier, l.connue == null ? "" : (l.connue ? "oui" : "non"), l.description, l.mouvement, l.origine, l.paiement, l.disponible_le]));
+      rows.push([]);
+      rows.push(["TOTAUX DU MOIS","Nature","Montant (€)","Frais Stripe (€)","Net (€)","Nombre"]);
+      totauxJournal(lignes).forEach(t => rows.push(["", t.nature, montant(t.montant), montant(t.frais_stripe), montant(t.net), t.nombre]));
+      const csv = rows.map(r=>r.map(v=>`"${String(v ?? "").replace(/"/g,'""')}"`).join(";")).join("\n");
+      const blob = new Blob(["\ufeff"+csv], { type:"text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `alane-journal-comptable-${mois}${mode !== "live" ? "-TEST" : ""}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+      showToast(`Journal de ${mois} : ${lignes.length} mouvement(s)`, "success");
+    } catch (e) {
+      console.error("[BO] journal comptable échoué :", e.message);
+      showToast(`Journal non produit : ${e.message}`, "error");
+    }
+    setEtat("");
+  };
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:16, padding:"14px 16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:4 }}>📒 Journal comptable du mois</div>
+      <div style={{ color:C.textSub, fontSize:11, marginBottom:10 }}>Tous les mouvements Stripe du mois — paiements, remboursements, versements, frais — et leurs totaux. Le fichier à remettre au comptable.</div>
+      <div style={{ display:"flex", gap:8 }}>
+        <input type="month" value={mois} onChange={e => setMois(e.target.value)} disabled={enCours}
+          style={{ flex:1, padding:"10px", borderRadius:r, border:`1px solid ${C.border}`, background:"#091530", color:C.text, fontSize:16, fontFamily:"inherit" }} />
+        <button onClick={doExport} disabled={enCours || !/^\d{4}-\d{2}$/.test(mois)} style={{ flex:1, padding:"10px", borderRadius:r, border:`1px solid ${C.border}`, background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:enCours?0.7:1 }}>
+          {etat || "Télécharger"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function BOExportPDF({ d }) {
   const doPDF = () => {
     const lines = [
@@ -4921,6 +4989,8 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             <BOExportPDF d={d} />
             <BOExportMissions />
           </div>
+
+          <BOExportJournal />
 
           <BORefundSection />
         </>}

@@ -807,6 +807,10 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
+Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux
+qui peuvent partir — compte de virement actif, ou retenue à poser —, en gardant au moins 20 places
+pour relire les autres comptes (`ordonnerVersements()`, 26/10/2026) : les versements bloqués faute de
+compte occupaient la file, et au-delà de 1 000 dus, certains n'étaient jamais lus.
 Voir « Le versement au prestataire » au §6.
 
 `cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le
@@ -1360,7 +1364,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 |---|---|
 | `missions.js` | Cycle de vie complet des prestations (le plus gros) |
 | `bo-action.js` | Toutes les actions du backoffice |
-| `prestataires.js` | Catalogue des prestataires |
+| `prestataires.js` | Catalogue des prestataires ; `?action=places` (offre de lancement) ; `?action=paliers_cashback` (23/10/2026) : seuils et taux de `platform_settings.cashback_rates`, que les clients ne peuvent pas lire directement — `chargerPaliersCashback()` (`ui.jsx`) les reporte dans `CASHBACK_TIERS` au démarrage (`appliquerPaliersCashback()`, `plans.js`), pour que les écrans affichent le taux réellement crédité et non la grille du code |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
 | `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
@@ -1381,7 +1385,9 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_ecriture.js` | `ecrireVerifie()` — écriture dont le résultat est lu : refus de la base ou aucune ligne touchée = échec journalisé. Passage obligé des écritures qui suivent un mouvement d'argent (voir « L'audit des écritures qui suivent un mouvement d'argent ») |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
-| `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` / `ae_siret` des métadonnées), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
+| `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` des métadonnées — pas `ae_siret`, que personne ne renseigne et que l'empreinte anti-recréation ne lit pas), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
+| `_journal_comptable.js` | Journal comptable du mois, depuis le relevé du solde Stripe : `bornesMois()` (heure de Paris), `ligneJournal()`, `totauxJournal()` (partagé avec l'écran), `fraisServiceDeduits()`. Utilisé par l'action `export_comptable` de `bo-action.js`. Voir §5 « Back-office » |
+| `_rattrapage_heures_supp.js` | Rattrapage des **prolongations payées mais jamais appliquées** (relecture du 23/10/2026, branché sur `cron-abandon`, toutes les 30 min) : un client qui fermait l'application entre le paiement des heures supplémentaires et `confirmer_heures_supp` était débité sans que les heures soient ajoutées ni payées au prestataire. Un paiement `heures_supp` abouti depuis plus de 15 min et non rattaché est appliqué par `appliquerHeuresSupp()` (exportée de `missions.js`, la fonction même de l'action, mêmes contrôles) ; plus applicable et **jamais appliqué de façon certaine** (le compteur `extra_hours_appliquees + heures_ajoutees_total` n'a pas bougé depuis le `deja_appliquees` du paiement), il est remboursé avec la clé `refund-heures-supp-{paiement}` de l'action ; dans le doute (compteur changé, paiement sans repère), un ticket `[Interne]` et rien d'autre. Un paiement dont la prestation n'existe pas dans la base est ignoré : la recette et la production partagent le même compte Stripe de test. `src/tests/api/rattrapage-heures-supp.test.js` |
 
 | `_diffusion.js` | E-mail d'information à **tous les inscrits** (action BO `send_info_mail`, 13/10/2026) — `destinatairesInformation()`, `envoyerInformation()`. Clients et prestataires, validés ou non ; écartés : comptes `rejected`/`suspended`, bannis, et par défaut les adresses jamais confirmées (rejets = réputation du domaine). Un e-mail par adresse, par lots de 100 (`/emails/batch` de Resend). Aperçu du nombre, test à `ADMIN_EMAIL`, puis envoi refusé (409) si le nombre a changé depuis l'aperçu ; journalisé dans `bo_logs`. **Information sur le service uniquement** : une offre commerciale relève de `send_global_comm`, réservée aux prestataires consentants (L.34-5 CPCE). `bo-action.js` a une durée maximale de 60 s pour cet envoi : au-delà de 2 000 adresses (`MAX_DESTINATAIRES`), refus — à 4 000, le plafond d'origine, 40 lots pouvaient dépasser la minute et la fonction s'arrêter au milieu, un second appui renvoyant l'e-mail (relecture du 14/10/2026) |
 
@@ -1715,8 +1721,28 @@ des réglages — frais de service, cashback, seuils de vigilance — ne laissai
 montant de la prestation, versement programmé au prestataire (`payout_amount`) et son état. Il
 calculait une « commission ALANE » à 20 % du prix, un taux qui n'existe pas (ALANE se rémunère sur
 ses frais de service), et s'arrêtait à 1 000 lignes : corrigé le 24/10/2026 (`lireTout`). Ce n'est
-**pas** un journal comptable : les frais de service, abonnements, frais Stripe et remboursements
-n'y figurent pas — à construire avant la première prestation payée (`src/tests/export-comptable.test.js`).
+**pas** un journal comptable : c'est la liste des prestations (`src/tests/export-comptable.test.js`).
+
+**« 📒 Journal comptable du mois » (`export_comptable`, `api/_journal_comptable.js`)** — le fichier
+à remettre au comptable (26/10/2026). Source : le **relevé du solde Stripe**
+(`/v1/balance_transactions`, paiements dépliés par `expand[]=data.source.charge`), où chaque euro
+entré ou sorti figure une fois, avec la commission Stripe et le net. Une ligne par mouvement,
+nommée : Réservation, Réservation (série), Heures supplémentaires, Abonnement prestataire,
+Remboursement — (nature du paiement d'origine), Versement prestataire, Virement vers le compte
+bancaire, Frais Stripe, Contestation bancaire… ; un type inconnu sort en « Autre (type) », jamais
+écarté. Puis les **totaux par nature**, calculés au centime. Les bornes du mois sont celles de
+**Paris**. La base n'éclaire que : le métier de la prestation, et la part **« dont frais de service
+ALANE »** d'une réservation — `montant_total − tarif × heures × jours`, comme `verifierMontant()`
+à l'encaissement — **seulement** quand le paiement égale encore le prix enregistré (cashback
+déduit) ; une prestation prolongée, interrompue ou recalculée laisse la case vide plutôt qu'un
+chiffre deviné. Lecture **par tranches** de 600 mouvements (`suite`, reprise contrôlée `txn_…`) :
+un mois du compte de test en compte plus de 4 000, la recette en produit chaque jour, et un seul
+appel dépassait le délai de la fonction ; l'écran enchaîne les tranches et s'arrête en le disant
+au-delà de 36 000. Tant que le compte est en **mode test**, le fichier le dit en première ligne et
+dans son nom (`-TEST`), et la colonne « Prestation connue » sépare la recette de la production,
+qui partagent ce compte (IMMATRICULATION.md §7). Un refus de Stripe ou de la base arrête l'export
+(502) : un fichier incomplet remis au comptable serait pire qu'aucun. `src/tests/api/journal-comptable.test.js`,
+`e2e/100`.
 
 **Documents de démonstration (`seed_docs`, bouton « 🌱 Seed démo ») — recette uniquement**
 (24/09/2026). L'action insère sept pièces fictives **marquées vérifiées**, ce qui suffit à
@@ -1888,6 +1914,12 @@ et supprimer un prestataire ayant travaillé était **impossible** (clé `NO ACT
 prestation terminée peut donc avoir un client ou un prestataire `NULL` : l'écran
 « Mes clients » du prestataire les ignore.
 
+**Lister tous les comptes : `lireComptesAuth()`** (`api/_auth.js`, 26/10/2026). `admin/users?per_page=10000`
+ne rend que 1 000 comptes ; les neuf lectures de `bo-action` (liste, prestations, envoi global,
+pièces, DAC7, signaux), `cron-reset-monthly` (inscriptions à signaler), `missions` (affectation
+automatique) et `prestataires` (catalogue) passent par elle. Une page refusée lève une erreur ;
+l'envoi global répond alors 503 plutôt que d'écrire à une partie des destinataires.
+
 **Retrouver un compte par son adresse : `utilisateurParEmail()`** (`api/_auth.js`, 01/10/2026).
 `/auth/v1/admin/users?email=…` **ne filtre pas** — le paramètre est ignoré, la réponse commence
 par le compte le plus récent — et trois endroits prenaient ce premier résultat pour le compte
@@ -1979,8 +2011,10 @@ vivante sans paiement rattaché, il ne touche à rien et le journalise.
 Depuis le 23/10/2026, l'affectation exige qu'aucun **autre** paiement ne soit rattaché
 (`or=(stripe_payment_intent.is.null,…)`, comme `filtrePaiementLibre`) — un second paiement
 écrasait le premier sur une prestation `needs_replacement` —, et un paiement dont la candidature a
-disparu est **signalé à l'équipe** (`signalerPaiementOrphelin()`) : un ticket de support au nom du
-client — la trace durable — et un courriel ; ni l'un ni l'autre, 500 et Stripe réémet. Sauf s'il est
+disparu est **signalé à l'équipe** (`signalerPaiementOrphelin()`) : un ticket de support `[Interne]`
+au nom du client (celui du paiement, sinon celui de la prestation), **un seul par paiement**, et un
+courriel ; ni l'un ni l'autre, 500 si la base est en panne (Stripe réémet), sinon journal « À TRAITER
+À LA MAIN » — réémettre sur une cause permanente finirait par faire désactiver le webhook. Sauf s'il est
 déjà celui de la prestation. Le remboursement d'office (23/10) a été retiré le 24/10 : il pouvait croiser le
 rattachement par l'application et laisser une prestation attribuée sur un paiement rendu. Une erreur
 de lecture des candidatures répond 500 (Stripe réémet) au lieu de valoir « introuvable ».
@@ -4865,7 +4899,10 @@ clôture), en attente, retenus ou en échec — `payout_status=not.in.(…)` éc
 n'étant jamais « hors liste » en SQL (24/10/2026). Une opposition gagnée ne lève la retenue que si
 l'**autre** paiement de la prestation n'a pas d'opposition ouverte **ou perdue** (`oppositionBloquante()`,
 25/10/2026 : une opposition perdue comptait comme close). Chaque écriture vise la prestation **dans
-l'état lu** et vérifie qu'elle a écrit ; sinon 500, et Stripe réémet. Une
+l'état lu** et vérifie qu'elle a écrit ; sinon 500, et Stripe réémet. Les oppositions de **ce même** paiement sont
+aussi consultées (26/10/2026), et une retenue maintenue parce qu'une autre opposition reste ouverte ou
+perdue perd son terme : les 90 jours posés par la première pouvaient échoir avant l'issue. Côté
+traitement des versements, le passage en « retenu » exige que le motif soit toujours là. Une
 retenue sans terme n'annonce plus de date au prestataire (« 1 janvier 1970 »). `src/tests/api/contestation-bancaire.test.js`.
 
 **Abonnement chez Stripe** : `charge.dispute.created` et `charge.dispute.closed` ont été ajoutés
