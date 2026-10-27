@@ -808,7 +808,7 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux
-qui peuvent partir — compte de virement actif, ou retenue à poser —, en gardant au moins 20 places
+qui peuvent partir — compte de virement actif, ou retenue à poser (en cours : une retenue échue ne compte plus, 27/10/2026) —, en gardant au moins 20 places
 pour relire les autres comptes (`ordonnerVersements()`, 26/10/2026) : les versements bloqués faute de
 compte occupaient la file, et au-delà de 1 000 dus, certains n'étaient jamais lus.
 Voir « Le versement au prestataire » au §6.

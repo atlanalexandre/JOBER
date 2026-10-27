@@ -198,12 +198,16 @@ async function lireEtatsComptes(dus, supabaseUrl, headers) {
  * compte a pu s'activer depuis, il faut le relire. Chaque groupe au hasard.
  * Sans état de compte connu, tout est tiré au hasard, comme avant.
  */
-export function ordonnerVersements(dus, etatsComptes, n, relire = 20) {
+export function ordonnerVersements(dus, etatsComptes, n, relire = 20, maintenantMs = Date.now()) {
   if (!etatsComptes || etatsComptes.size === 0) return tirerAuHasard(dus, n);
   const prioritaires = [], autres = [];
   for (const m of dus) {
     const c = etatsComptes.get(m.prestataire_id);
-    if (m.payout_hold_reason || (c?.stripe_account_id && c.stripe_account_status === "enabled")) prioritaires.push(m);
+    // Retenue À POSER : même condition que la boucle d'émission. Échue, elle ne
+    // retient plus rien, et ne doit pas occuper la tête de file d'un versement
+    // qui, faute de compte, ne partira pas (relecture du 27/10/2026).
+    const retenueActive = m.payout_hold_reason && (!m.payout_hold_until || new Date(m.payout_hold_until).getTime() > maintenantMs);
+    if (retenueActive || (c?.stripe_account_id && c.stripe_account_status === "enabled")) prioritaires.push(m);
     else autres.push(m);
   }
   const reserve = Math.min(autres.length, relire);
