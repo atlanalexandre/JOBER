@@ -65,20 +65,27 @@ export function decisionRattrapage(m, pi, maintenantMs = Date.now()) {
 // prolongations — au-delà de 100 en trois jours, les suivantes n'étaient jamais
 // relues (relecture du 27/10/2026). Borné à PAGES_MAX pour tenir le délai.
 const PAGES_MAX = 5;
-async function lirePaiements(cleStripe, depuisS) {
-  const q = encodeURIComponent(`metadata['type']:'heures_supp' AND status:'succeeded' AND created>${depuisS}`);
+// Les paiements de moins de 15 minutes sont écartés DANS la requête : l'application
+// a encore la main, et ils ne doivent pas consommer les pages (28/10/2026). Une page
+// suivante refusée n'efface pas les précédentes : elles sont traitées.
+async function lirePaiements(cleStripe, depuisS, jusquaS) {
+  const q = encodeURIComponent(`metadata['type']:'heures_supp' AND status:'succeeded' AND created>${depuisS} AND created<${jusquaS}`);
   const tous = [];
   let page = null;
   for (let i = 0; i < PAGES_MAX; i++) {
     const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`
       + (page ? `&page=${encodeURIComponent(page)}` : ""), { headers: { "Authorization": `Bearer ${cleStripe}` } });
     const d = await r.json().catch(() => null);
-    if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche Stripe refusée (${r.status})`);
+    if (!r.ok || !Array.isArray(d?.data)) {
+      if (!tous.length) throw new Error(`recherche Stripe refusée (${r.status})`);
+      console.error(`[rattrapage heures supp] page ${i + 1} refusée (${r.status}) — les ${tous.length} paiements déjà lus sont traités.`);
+      return tous;
+    }
     tous.push(...d.data);
     if (!d.has_more || !d.next_page) return tous;
     page = d.next_page;
   }
-  console.error(`[rattrapage heures supp] plus de ${PAGES_MAX * 100} paiements en trois jours — les plus anciens au prochain passage.`);
+  console.error(`[rattrapage heures supp] ⚠️ plus de ${PAGES_MAX * 100} paiements en trois jours : les suivants ne sont pas relus — à vérifier.`);
   return tous;
 }
 
@@ -140,13 +147,18 @@ async function rembourser(pi, cleStripe) {
 export async function rattraperProlongations({ SUPABASE_URL, headers, cleStripe, maintenantMs = Date.now() }) {
   const bilan = { appliquees: 0, remboursees: 0, signalees: 0 };
   if (!cleStripe) return bilan;
-  const paiements = (await lirePaiements(cleStripe, Math.floor(maintenantMs / 1000) - FENETRE_S))
+  const paiements = (await lirePaiements(cleStripe, Math.floor(maintenantMs / 1000) - FENETRE_S,
+    Math.floor((maintenantMs - DELAI_AVANT_RATTRAPAGE_MS) / 1000)))
     .filter(pi => pi.metadata?.mission && (pi.created || 0) * 1000 <= maintenantMs - DELAI_AVANT_RATTRAPAGE_MS);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // Un repère de prestation malformé ne désigne rien : écarté, mais pas en silence.
+  for (const pi of paiements) {
+    if (!uuid.test(pi.metadata.mission)) console.error(`[rattrapage heures supp] ⚠️ ${pi.id} : prestation « ${String(pi.metadata.mission).slice(0, 60)} » illisible — à vérifier dans Stripe.`);
+  }
   const prestations = await lirePrestations([...new Set(paiements.map(pi => pi.metadata.mission).filter(id => uuid.test(id)))], SUPABASE_URL, headers);
   for (const pi of paiements) {
     const missionId = pi.metadata.mission;
-    // Absente de la carte : lot illisible (ou identifiant malformé) — au prochain passage.
+    // Absente de la carte : lot illisible (au prochain passage) ou repère malformé (signalé plus haut).
     if (!prestations.has(missionId)) continue;
     const m = prestations.get(missionId);
     const decision = decisionRattrapage(m, pi, maintenantMs);

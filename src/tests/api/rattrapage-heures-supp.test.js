@@ -101,6 +101,31 @@ describe("rattraperProlongations", () => {
     expect(bilan.appliquees).toBe(2);
     expect(appels.filter(a => a.u.includes("/rest/v1/missions")).length).toBe(1);
   });
+  it("une page suivante refusée n'efface pas les précédentes ; la requête écarte les paiements de moins de 15 min (relecture du 28/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET" });
+      if (u.includes("payment_intents/search")) return u.includes("&page=")
+        ? new Response("{}", { status: 429 })
+        : new Response(JSON.stringify({ data: [pi()], has_more: true, next_page: "p1" }), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=in.(")) return new Response(JSON.stringify([mission()]), { status: 200 });
+      return new Response("[]", { status: 200 });
+    }));
+    appliquerHeuresSupp.mockResolvedValue({ code: 200, corps: { ok: true } });
+    const bilan = await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });
+    expect(bilan.appliquees).toBe(1);
+    const requete = decodeURIComponent(appels.find(a => a.u.includes("payment_intents/search")).u);
+    expect(requete).toContain(`created<${Math.floor((T - DELAI_AVANT_RATTRAPAGE_MS) / 1000)}`);
+  });
+  it("un repère de prestation malformé est journalisé, jamais avalé en silence", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    simuler({ paiements: [pi({ metadata: { type: "heures_supp", mission: "pas-un-uuid", client: "c1", deja_appliquees: "0" } })], prestation: null });
+    await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });
+    expect(err.mock.calls.some(c => String(c[0]).includes("pi_hs") && String(c[0]).includes("illisible"))).toBe(true);
+    expect(appliquerHeuresSupp).not.toHaveBeenCalled();
+  });
   it("prestations illisibles : rien n'est tranché, au prochain passage", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url) => String(url).includes("payment_intents/search")
       ? new Response(JSON.stringify({ data: [pi()] }), { status: 200 })
@@ -133,6 +158,10 @@ describe("appliquerHeuresSupp : extraite sans rien changer", async () => {
   const { readFileSync } = await import("node:fs");
   const code = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
   const fonction = code.slice(code.indexOf("export async function appliquerHeuresSupp"), code.indexOf("export default async function handler"));
+  it("une base en panne n'est pas une prestation introuvable : 502, pas 404 (relecture du 28/10/2026)", () => {
+    expect(fonction).toMatch(/if \(!mr\.ok\) \{[\s\S]{0,200}return reponseHS\(502/);
+    expect(fonction.indexOf("if (!mr.ok)")).toBeLessThan(fonction.indexOf('reponseHS(404, { error: "Prestation introuvable" })'));
+  });
   it("une panne de Stripe n'est pas un refus du paiement : 502, pas 400 (relecture du 27/10/2026)", () => {
     expect(fonction).toMatch(/if \(pr\.status === 429 \|\| pr\.status >= 500\) \{[\s\S]{0,200}return reponseHS\(502/);
     expect(fonction.indexOf("pr.status === 429")).toBeLessThan(fonction.indexOf("pi = await pr.json()"));
