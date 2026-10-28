@@ -82,19 +82,22 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
 // de la prestation levait la retenue d'une opposition perdue (relecture du
 // 25/10/2026). Illisible : oui — mieux vaut garder une retenue que payer ce que
 // la banque reprendra.
+// `null` : illisible. L'appelant ne tranche pas et répond 500, pour que Stripe
+// réémette : lue comme « bloquante », une panne passagère effaçait le terme de
+// la retenue, et rien ne la levait plus (relecture du 27/10/2026).
 export async function oppositionBloquante(paymentIntent, cle, sauf = null) {
   try {
     const r = await fetch(`https://api.stripe.com/v1/disputes?payment_intent=${encodeURIComponent(paymentIntent)}&limit=10`, { headers: { "Authorization": `Bearer ${cle}` } });
     const d = await r.json().catch(() => null);
     if (!r.ok || !Array.isArray(d?.data)) {
-      console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — retenue maintenue.`);
-      return true;
+      console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — Stripe réémettra.`);
+      return null;
     }
     // `sauf` : l'opposition qui vient de se clore, déjà connue.
     return d.data.some(x => x.id !== sauf && !["won", "warning_closed", "prevented"].includes(x.status));
   } catch (e) {
-    console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles — retenue maintenue :`, e.message);
-    return true;
+    console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles — Stripe réémettra :`, e.message);
+    return null;
   }
 }
 
@@ -159,8 +162,11 @@ export async function signalerPaiementOrphelin(missionId, intent, supabaseUrl, h
     // Ni ticket ni courriel. Panne passagère de la base : 500, Stripe réémettra.
     // Cause permanente (réglage absent, ticket refusé) : réémettre n'y changerait
     // rien et finirait par faire désactiver le webhook — on le journalise fort.
-    console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — ni ticket ni alerte${panneTicket ? " : Stripe réémettra" : " : À TRAITER À LA MAIN"}.`);
-    if (panneTicket) return "illisible";
+    // Sans client, aucun ticket n'est possible : le courriel est la seule trace,
+    // et son échec peut être passager — Stripe réémet (relecture du 27/10/2026).
+    const reemettre = panneTicket || (!client && Boolean(admin));
+    console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — ni ticket ni alerte${reemettre ? " : Stripe réémettra" : " : À TRAITER À LA MAIN"}.`);
+    if (reemettre) return "illisible";
   }
   return "signale";
 }
@@ -1241,8 +1247,10 @@ export default async function handler(req, res) {
           // celles de ce même paiement (plusieurs charges, plusieurs oppositions) —
           // seule l'opposition qui vient d'être gagnée était écartée (relecture du 26/10/2026).
           const autre = [m.stripe_payment_intent, m.extra_hours_payment_intent].find(x => x && x !== pi);
-          const bloque = await oppositionBloquante(pi, STRIPE_SECRET_KEY, dispute.id)
-            || (autre ? await oppositionBloquante(autre, STRIPE_SECRET_KEY) : false);
+          const ici = await oppositionBloquante(pi, STRIPE_SECRET_KEY, dispute.id);
+          const ailleurs = ici === false && autre ? await oppositionBloquante(autre, STRIPE_SECRET_KEY) : false;
+          if (ici === null || ailleurs === null) throw new Error(`oppositions de ${m.id} illisibles — rien n'est tranché`);
+          const bloque = ici || ailleurs;
           if (bloque) {
             // La retenue reste, et SANS TERME : son terme de 90 jours, posé par la
             // première opposition, pouvait échoir pendant que l'autre restait

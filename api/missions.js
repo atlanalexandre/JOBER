@@ -1033,6 +1033,13 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(paymentIntent)}`, {
       headers: { "Authorization": `Bearer ${stripeKey}` },
     });
+    // Une panne de Stripe (429, 5xx) n'est pas un refus du paiement : traitée
+    // comme « non confirmé » (400), elle faisait rembourser par le rattrapage
+    // une prolongation valable (relecture du 27/10/2026).
+    if (pr.status === 429 || pr.status >= 500) {
+      console.error(`[heures_supp] Stripe indisponible (${pr.status}) pour ${missionId} — à réessayer.`);
+      return reponseHS(502, { error: "Vérification du paiement impossible. Réessayez." });
+    }
     pi = await pr.json();
   } catch (e) {
     console.error(`[heures_supp] lecture Stripe impossible pour ${missionId} :`, e.message);
