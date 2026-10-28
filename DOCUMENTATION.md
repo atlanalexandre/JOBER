@@ -2014,8 +2014,9 @@ Depuis le 23/10/2026, l'affectation exige qu'aucun **autre** paiement ne soit ra
 disparu est **signalé à l'équipe** (`signalerPaiementOrphelin()`) : un ticket de support `[Interne]`
 au nom du client (celui du paiement, sinon celui de la prestation), **un seul par paiement**, et un
 courriel ; ni l'un ni l'autre, 500 si la base est en panne (Stripe réémet) **ou s'il n'y a aucun
-client à qui rattacher un ticket** — le courriel était alors la seule trace, et son échec peut être
-passager (27/10/2026) —, sinon journal « À TRAITER À LA MAIN » — réémettre sur une cause permanente finirait par faire désactiver le webhook. Sauf s'il est
+client à qui rattacher un ticket** et que le courriel a échoué sur une **panne** (deux essais sans
+réponse) — le courriel était alors la seule trace (27/10/2026) ; un refus de Resend ou une clé
+absente sont durables et ne font pas réémettre (28/10/2026) —, sinon journal « À TRAITER À LA MAIN » — réémettre sur une cause permanente finirait par faire désactiver le webhook. Sauf s'il est
 déjà celui de la prestation. Le remboursement d'office (23/10) a été retiré le 24/10 : il pouvait croiser le
 rattachement par l'application et laisser une prestation attribuée sur un paiement rendu. Une erreur
 de lecture des candidatures répond 500 (Stripe réémet) au lieu de valoir « introuvable ».
@@ -4905,7 +4906,9 @@ aussi consultées (26/10/2026), et une retenue maintenue parce qu'une autre oppo
 perdue perd son terme : les 90 jours posés par la première pouvaient échoir avant l'issue. Des
 oppositions **illisibles** chez Stripe ne tranchent plus rien : 500, et Stripe réémet — comptées
 « bloquantes », elles effaçaient le terme de la retenue sur une simple panne, et plus rien ne la
-levait (27/10/2026). Côté
+levait (27/10/2026). Seulement sur une panne passagère (429, 5xx, réseau) : un refus durable (clé
+absente ou révoquée, 401) garde la retenue sans terme et le journal le signale — réémettre sans fin
+ferait désactiver le webhook, paiements compris (28/10/2026). Côté
 traitement des versements, le passage en « retenu » exige que le motif soit toujours là. Une
 retenue sans terme n'annonce plus de date au prestataire (« 1 janvier 1970 »). `src/tests/api/contestation-bancaire.test.js`.
 

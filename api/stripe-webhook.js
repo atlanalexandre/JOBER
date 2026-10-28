@@ -82,16 +82,25 @@ async function rembourserDoublon(missionId, intent, supabaseUrl, headers, cle) {
 // de la prestation levait la retenue d'une opposition perdue (relecture du
 // 25/10/2026). Illisible : oui — mieux vaut garder une retenue que payer ce que
 // la banque reprendra.
-// `null` : illisible. L'appelant ne tranche pas et répond 500, pour que Stripe
-// réémette : lue comme « bloquante », une panne passagère effaçait le terme de
-// la retenue, et rien ne la levait plus (relecture du 27/10/2026).
+// `null` : illisible POUR UN TEMPS (429, 5xx, réseau). L'appelant ne tranche pas
+// et répond 500, pour que Stripe réémette : lue comme « bloquante », une panne
+// passagère effaçait le terme de la retenue, et rien ne la levait plus
+// (relecture du 27/10/2026). Un refus durable (clé absente ou révoquée : 401)
+// ne se répare pas en réémettant — Stripe finirait par désactiver le webhook,
+// paiements compris : la retenue est alors maintenue, comme avant, et le
+// journal le crie (relecture du 28/10/2026).
 export async function oppositionBloquante(paymentIntent, cle, sauf = null) {
   try {
     const r = await fetch(`https://api.stripe.com/v1/disputes?payment_intent=${encodeURIComponent(paymentIntent)}&limit=10`, { headers: { "Authorization": `Bearer ${cle}` } });
     const d = await r.json().catch(() => null);
     if (!r.ok || !Array.isArray(d?.data)) {
-      console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — Stripe réémettra.`);
-      return null;
+      if (r.ok || r.status === 429 || r.status >= 500) {
+        console.error(`[dispute.closed] oppositions de ${paymentIntent} illisibles (${r.status}) — Stripe réémettra.`);
+        return null;
+      }
+      console.error(`[dispute.closed] ⚠️ oppositions de ${paymentIntent} REFUSÉES par Stripe (${r.status}) — `
+        + "retenue maintenue sans terme, à lever au back-office. Vérifier STRIPE_SECRET_KEY.");
+      return true;
     }
     // `sauf` : l'opposition qui vient de se clore, déjà connue.
     return d.data.some(x => x.id !== sauf && !["won", "warning_closed", "prevented"].includes(x.status));
@@ -164,7 +173,12 @@ export async function signalerPaiementOrphelin(missionId, intent, supabaseUrl, h
     // rien et finirait par faire désactiver le webhook — on le journalise fort.
     // Sans client, aucun ticket n'est possible : le courriel est la seule trace,
     // et son échec peut être passager — Stripe réémet (relecture du 27/10/2026).
-    const reemettre = panneTicket || (!client && Boolean(admin));
+    // Passager seulement : `sendEmail` rend `false` sur un refus de Resend (4xx,
+    // durable), et rien (`undefined`) après deux pannes — ou sans clé, durable
+    // aussi. Réémettre sur une cause durable finirait par faire désactiver le
+    // webhook (relecture du 28/10/2026).
+    const courrielEnPanne = parti === undefined && Boolean((process.env.RESEND_API_KEY || "").replace(/\s/g, ""));
+    const reemettre = panneTicket || (!client && Boolean(admin) && courrielEnPanne);
     console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — ni ticket ni alerte${reemettre ? " : Stripe réémettra" : " : À TRAITER À LA MAIN"}.`);
     if (reemettre) return "illisible";
   }
