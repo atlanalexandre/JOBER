@@ -117,6 +117,20 @@ describe("candidature introuvable au paiement : l'équipe est prévenue, rien n'
     await handler(requete(sansClient), res);
     expect(res.statut).toBe(500);
   });
+  it("sans client, courriel REFUSÉ par Resend (cause durable) : pas de réémission sans fin (relecture du 28/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
+    vi.stubEnv("RESEND_API_KEY", "re_x");
+    const sansClient = { ...paiement, data: { object: { ...paiement.data.object, metadata: { mission: "m1", candidature_id: "cand1", prestataire_id: "p1" } } } };
+    simuler([
+      [(u) => u.includes("/rest/v1/candidatures?"), []],
+      [(u) => u.includes("/rest/v1/missions?id=eq.m1&select=stripe_payment_intent"), [{ stripe_payment_intent: null, client_id: null }]],
+      [(u) => u.includes("api.resend.com"), () => new Response("{}", { status: 422 })],
+    ]);
+    const res = reponse();
+    await handler(requete(sansClient), res);
+    expect(res.statut).toBe(200);
+  });
   it("déjà rattaché à la prestation : aucune alerte", async () => {
     vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
     const appels = simuler([

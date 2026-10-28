@@ -136,6 +136,23 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
     // Ni levée, ni terme effacé : la retenue garde son échéance de 90 jours.
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("/rest/v1/missions"))).toBe(false);
   });
+  it("gagnée, oppositions REFUSÉES par Stripe (clé révoquée, 401) : retenue maintenue sans terme, pas de réémission sans fin (relecture du 28/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET", corps: o.body });
+      if (u.includes("/rest/v1/missions?and=") && !o.method) return new Response(JSON.stringify([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_1" }]), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=eq.") && o.method === "PATCH") return new Response("[{}]", { status: 200 });
+      if (u.includes("api.stripe.com/v1/disputes")) return new Response(JSON.stringify({ error: { type: "invalid_request_error" } }), { status: 401 });
+      return new Response("[]", { status: 200 });
+    }));
+    const res = reponse();
+    await handler(requete(ferme("won")), res);
+    expect(res.statut).toBe(200);
+    const ecrit = appels.filter(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+    expect(ecrit.map(a => JSON.parse(a.corps))).toEqual([{ payout_hold_until: null }]);
+  });
   it("gagnée, mais l'autre paiement de la prestation est encore contesté : la retenue reste", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_0", extra_hours_payment_intent: "pi_1" }],
       [{ id: "dp_0", status: "needs_response" }]);
