@@ -1,7 +1,7 @@
 import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
-import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
+import { debiterCashback, restituerCashback, plafonnerRemboursement, tauxDuPalier } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour, retardAggraveApresRefus } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
@@ -2202,7 +2202,7 @@ export default async function handler(req, res) {
         // de platform_settings échoue, on crédite donc le taux nominal plutôt que
         // de faire échouer la clôture de mission — le prestataire serait bloqué.
       }
-      const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+      const rate = tauxDuPalier(CASHBACK_TIERS, missionsThisMonth);
       const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
