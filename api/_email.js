@@ -102,7 +102,12 @@ export async function sendEmail({ to, subject, html }) {
       if (r.ok) { console.log(`[email] « ${subject} » accepté par Resend.`); return true; }
       const body = await r.text();
       console.error(`[email] Resend a REFUSÉ « ${subject} » (essai ${attempt + 1}) :`, r.status, body);
-      if (r.status < 500) return false;
+      // Refus durable (adresse rejetée, expéditeur non vérifié) : `false`, sans
+      // second essai. Une limite de débit (429) est passagère : elle est
+      // retentée comme une panne, et rend `undefined` si elle persiste — les
+      // appelants qui distinguent la panne du refus (webhook Stripe) la
+      // comptaient pour un refus durable (relecture du 29/10/2026).
+      if (r.status < 500 && r.status !== 429) return false;
       if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
     } catch (e) {
       console.error(`sendEmail error (attempt ${attempt + 1}):`, e);
