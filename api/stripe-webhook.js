@@ -100,7 +100,10 @@ export async function oppositionBloquante(paymentIntent, cle, sauf = null) {
       }
       console.error(`[dispute.closed] ⚠️ oppositions de ${paymentIntent} REFUSÉES par Stripe (${r.status}) — `
         + "retenue maintenue sans terme, à lever au back-office. Vérifier STRIPE_SECRET_KEY.");
-      return true;
+      // « refus » reste vrai (la retenue est maintenue), mais l'appelant le
+      // distingue d'une opposition réellement ouverte : il prévient l'équipe
+      // (relecture du 29/10/2026).
+      return "refus";
     }
     // `sauf` : l'opposition qui vient de se clore, déjà connue.
     return d.data.some(x => x.id !== sauf && !["won", "warning_closed", "prevented"].includes(x.status));
@@ -1272,7 +1275,22 @@ export default async function handler(req, res) {
             const rm = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC, body: JSON.stringify({ payout_hold_until: null }) });
             const ecritesM = rm.ok ? await rm.json().catch(() => null) : null;
             if (!Array.isArray(ecritesM) || !ecritesM.length) throw new Error(`retenue de ${m.id} non prolongée (${rm.status}) — état changé entre-temps`);
-            console.error(`[dispute.closed] ${dispute.id} gagnée, mais une autre opposition est encore ouverte ou perdue : retenue maintenue sans terme sur ${m.id}.`);
+            if (ici === "refus" || ailleurs === "refus") {
+              // Stripe refuse durablement la lecture des oppositions (clé absente ou
+              // révoquée) : la retenue est maintenue par prudence, mais rien ne la
+              // lèvera seul. Seul le journal le disait — l'équipe est prévenue
+              // (relecture du 29/10/2026).
+              console.error(`[dispute.closed] ${dispute.id} gagnée, oppositions illisibles chez Stripe : retenue maintenue sans terme sur ${m.id}.`);
+              const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
+              const parti = admin ? await sendEmail({ to: admin,
+                subject: "⚠️ Opposition gagnée, retenue maintenue : vérifier la clé Stripe",
+                html: `<p>L'opposition <strong>${esc(dispute.id)}</strong> a été gagnée, mais Stripe a refusé la lecture des autres oppositions du paiement : `
+                  + `la retenue de la prestation <strong>${esc(m.id)}</strong> est maintenue, sans terme.</p>`
+                  + "<p>Vérifier <code>STRIPE_SECRET_KEY</code> dans Vercel, puis lever la retenue depuis le back-office si aucune autre opposition n'est ouverte.</p>" }) : false;
+              if (parti !== true) console.error(`[dispute.closed] ${dispute.id} : alerte « retenue maintenue » NON envoyée.`);
+            } else {
+              console.error(`[dispute.closed] ${dispute.id} gagnée, mais une autre opposition est encore ouverte ou perdue : retenue maintenue sans terme sur ${m.id}.`);
+            }
             continue;
           }
           const levee = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };

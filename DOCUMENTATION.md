@@ -4907,8 +4907,9 @@ perdue perd son terme : les 90 jours posés par la première pouvaient échoir a
 oppositions **illisibles** chez Stripe ne tranchent plus rien : 500, et Stripe réémet — comptées
 « bloquantes », elles effaçaient le terme de la retenue sur une simple panne, et plus rien ne la
 levait (27/10/2026). Seulement sur une panne passagère (429, 5xx, réseau) : un refus durable (clé
-absente ou révoquée, 401) garde la retenue sans terme et le journal le signale — réémettre sans fin
-ferait désactiver le webhook, paiements compris (28/10/2026). Côté
+absente ou révoquée, 401) garde la retenue sans terme — réémettre sans fin ferait désactiver le
+webhook, paiements compris (28/10/2026) — et **l'équipe est prévenue par courriel** (`ADMIN_EMAIL`),
+puisque rien ne lèvera cette retenue seul (29/10/2026). Côté
 traitement des versements, le passage en « retenu » exige que le motif soit toujours là. Une
 retenue sans terme n'annonce plus de date au prestataire (« 1 janvier 1970 »). `src/tests/api/contestation-bancaire.test.js`.
 
