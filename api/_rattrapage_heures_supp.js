@@ -168,13 +168,30 @@ export async function rattraperProlongations({ SUPABASE_URL, headers, cleStripe,
       bilan.signalees++;
       continue;
     }
-    const resultat = await appliquerHeuresSupp({ missionId, paymentIntent: pi.id, clientId: pi.metadata?.client, SUPABASE_URL, headers });
+    // Une exception (connexion coupée) ne doit pas arrêter le passage pour tous
+    // les paiements suivants (relecture du 29/10/2026).
+    let resultat;
+    try {
+      resultat = await appliquerHeuresSupp({ missionId, paymentIntent: pi.id, clientId: pi.metadata?.client, SUPABASE_URL, headers });
+    } catch (e) {
+      console.error(`[rattrapage heures supp] ${pi.id} : application interrompue (${e.message}) — au prochain passage.`);
+      continue;
+    }
     if (resultat.code === 200) {
       bilan.appliquees++;
       console.error(`[rattrapage heures supp] ${pi.id} appliqué à ${missionId} — l'application n'avait pas confirmé.`);
       continue;
     }
-    if (resultat.code >= 500) continue; // panne passagère : au prochain passage
+    // 502 : panne passagère, au prochain passage. Les autres 5xx sont durables
+    // (remboursement refusé, écriture refusée après le paiement, clé Stripe
+    // absente) : sautés en silence, le paiement sortait de la fenêtre de trois
+    // jours sans que personne le sache. Un ticket, une seule fois (29/10/2026).
+    if (resultat.code === 502) continue;
+    if (resultat.code >= 500) {
+      await signaler(pi, m, SUPABASE_URL, headers, `application refusée (${resultat.corps?.error || resultat.code})`);
+      bilan.signalees++;
+      continue;
+    }
     // Remboursé SEULEMENT quand la prolongation n'est plus applicable de façon
     // certaine (409 : plus de prolongation en attente, prestation plus en
     // cours) et jamais appliquée — le compteur l'atteste. Un autre refus
