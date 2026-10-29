@@ -633,7 +633,11 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
     : "")
     + (deduction > 0 ? ` − heures non effectuées (${eurTarif(deduction)} €)` : "");
 
-  // Build HTML
+  // Le document est celui du PRESTATAIRE, émetteur de la facture : son nom en
+  // tête, et pas celui de la plateforme, nulle part (décision d'Alexandre du
+  // 29/10/2026). Le logo ALANE en tête la faisait passer pour le vendeur de la
+  // prestation — l'inverse de sa qualité d'intermédiaire (CGPS art. 4). Le
+  // mandat de facturation reste mentionné, sans nommer le mandataire.
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -883,8 +887,8 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   <div class="page">
     <div class="header">
       <div>
-        <div class="logo">ALANE</div>
-        <div class="logo-sub">Plateforme de services à la demande</div>
+        <div class="logo">${escHtml(prestaCompany || prestaName || "Prestataire")}</div>
+        <div class="logo-sub">Prestataire indépendant${prestaSiret ? ` · SIRET ${escHtml(prestaSiret)}` : ""}</div>
       </div>
       <div class="invoice-meta">
         <div class="invoice-label">${invoiceNum ? "Facture" : "Attestation de prestation"}</div>
@@ -953,7 +957,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
           <span class="total-row-value">${escHtml(ttcFormatted)} €</span>
         </div>
         <div class="total-row">
-          <span class="total-row-label">Frais de service ALANE</span>
+          <span class="total-row-label">Frais de service de la plateforme</span>
           <span class="total-row-value">${escHtml(fraisFormatted)} €</span>
         </div>
         <div class="total-row total-ttc">
@@ -963,7 +967,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       </div>
       <div class="legal">
         Les frais de service rémunèrent la mise en relation et l'usage de la plateforme.
-        Ils sont perçus par ALANE et ne sont pas encaissés par le prestataire : ils ne
+        Ils sont perçus par la plateforme et ne sont pas encaissés par le prestataire : ils ne
         figurent donc pas sur sa facture, dont le total ci-dessus ne concerne que la
         prestation elle-même.
       </div>
@@ -974,17 +978,15 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
         <div class="payment-badge-icon">✅</div>
         <div>
           <div class="payment-badge-title">Prestation validée — Paiement reçu</div>
-          <div class="payment-badge-sub">Paiement sécurisé via Stripe · Plateforme ALANE</div>
+          <div class="payment-badge-sub">Paiement sécurisé via Stripe</div>
         </div>
       </div>
       <div class="legal">
         ${escHtml(legalTvaNote)}
         ${invoiceNum
-          ? "<br/>Facture établie par ALANE au nom et pour le compte du prestataire, en vertu du mandat de facturation qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
+          ? "<br/>Facture établie par le mandataire de facturation du prestataire, en son nom et pour son compte, en vertu du mandat qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
           : "<br/>Ce document est une attestation de prestation. Il ne constitue pas une facture : le prestataire n'a pas accepté le mandat de facturation, et lui seul peut établir la facture correspondante."}
-        ALANE — Plateforme de mise en relation de services à la demande.${mandatAccepte
-          ? " Ce document tient lieu de facture acquittée."
-          : ""}
+        ${mandatAccepte ? "Ce document tient lieu de facture acquittée." : ""}
       </div>
     </div>
 

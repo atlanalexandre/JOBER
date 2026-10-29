@@ -5009,7 +5009,13 @@ L'exécution d'une résolution remet `payout_status` à `pending` — sans quoi 
 le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
 
-**La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
+**La facture** (`api/invoice.js`) est celle du prestataire au client — **le nom de la plateforme
+n'y apparaît pas** (décision d'Alexandre du 29/10/2026) : l'en-tête porte le nom (ou la raison
+sociale) et le SIRET du prestataire, émetteur, là où un logo ALANE la faisait passer pour le vendeur
+de la prestation ; le mandat de facturation reste mentionné sans nommer le mandataire (« établie par
+le mandataire de facturation du prestataire, en son nom et pour son compte », art. 289, I-2 du CGI),
+et le récapitulatif parle des « frais de service de la plateforme »
+(`src/tests/api/facture-sans-nom-plateforme.test.js`). Son montant HT est
 donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`, **moins les heures non
 effectuées** (`heures_perdues` d'une journée écourtée, retard d'une journée d'une série), en ligne
 distincte. Elle les ignorait jusqu'au 13/10/2026 : après une journée écourtée, elle annonçait plus
@@ -5351,7 +5357,7 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `STRIPE_PRICE_ELITE_MONTHLY` | idem, plan Elite |
 | `STRIPE_PRICE_ELITE_YEARLY` | idem |
 | `VITE_VAPID_PUBLIC_KEY` | Contrepartie navigateur des clés VAPID, requise pour l'abonnement push |
-| ~~`VITE_ALANE_SIRET`~~ | **Plus lue par aucun code depuis le 18/08/2026.** Elle n'alimentait que l'écran de facture « dans l'app », supprimé ce jour-là. La facture serveur (`api/invoice.js`) n'a jamais affiché les mentions d'ALANE : elle porte celles du prestataire et du client, ALANE n'étant pas l'émetteur. À rebrancher le jour où ALANE facturera ses frais de service en son nom propre |
+| ~~`VITE_ALANE_SIRET`~~ | **Plus lue par aucun code depuis le 18/08/2026.** Elle n'alimentait que l'écran de facture « dans l'app », supprimé ce jour-là. La facture serveur (`api/invoice.js`) n'a jamais affiché les mentions d'ALANE : elle porte celles du prestataire et du client, ALANE n'étant pas l'émetteur — et depuis le 29/10/2026, plus même son nom. À rebrancher le jour où ALANE facturera ses frais de service en son nom propre |
 | ~~`VITE_ALANE_ADRESSE`~~ | idem |
 | ~~`VITE_ALANE_FORME`~~ | idem |
 | `RESEND_API_KEY` | Envoi d'emails |
