@@ -94,6 +94,35 @@ describe("semaine suivante d'une série", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("limite de débit de Stripe (429) : rejouée, et la série continue (relecture du 29/10/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const a = simuler({ stripeCreation: (n) => n === 1 ? json({ error: { type: "rate_limit_error" } }, 429) : json({ id: "pi_2", status: "succeeded" }) });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(a.creations).toHaveLength(2);
+      expect(a.creations[1]).toBe(a.creations[0]);
+      expect(r.mode).toBe("payee");
+      expect(a.annulations).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("rejouée, en cours, puis 5xx au troisième envoi : issue inconnue, jamais « rien débité » (relecture du 29/10/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const a = simuler({ stripeCreation: (n) => n === 1 ? Promise.reject(new Error("ECONNRESET"))
+        : n === 2 ? json({ error: { type: "idempotency_error" } }, 409)
+        : json({ error: { type: "api_error" } }, 500) });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(r.mode).toBe("echec");
+      expect(a.annulations).toBe(0);
+      expect(a.notifications.some(n => /débité|interrompue/.test(`${n.title} ${n.body}`))).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("carte refusée : la série s'arrête et le client est prévenu", async () => {
     const a = simuler({ stripeCreation: () => json({ error: { type: "card_error", decline_code: "insufficient_funds" } }, 402) });
     const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
