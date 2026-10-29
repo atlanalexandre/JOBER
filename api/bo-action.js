@@ -27,7 +27,7 @@ import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
 import { appUrl } from "./_url.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
-import { restituerCashback } from "./_cashback.js";
+import { restituerCashback, tauxDuPalier } from "./_cashback.js";
 import { rembourserDepuisLeBO, versementAAnnuler } from "./_remboursement_bo.js";
 import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
@@ -2954,7 +2954,7 @@ export default async function handler(req, res) {
       // Commandes du CLIENT, pas le quota prestataire ; une prestation de cinq
       // jours en compte cinq, comme à la validation par le client.
       const mCount = (prof?.commandes_mois||0)+jours;
-      const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
+      const rate = tauxDuPalier(CASHBACK_TIERS, mCount);
       const cashback = Math.round(partPrestataire*rate*100)/100;
       const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:jours }) }).catch(()=>null);
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);

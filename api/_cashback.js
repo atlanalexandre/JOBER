@@ -64,6 +64,25 @@ import { bornesMontant } from "./_paiement.js";
  */
 export const RESTE_A_PAYER_MIN = 1;
 
+/**
+ * Le taux de cashback du palier atteint, comme l'écran l'affiche
+ * (`getCashbackTier`, `src/constants/plans.js`) : paliers triés par seuil, le
+ * dernier atteint ; aucun atteint, le premier. Les trois chemins de crédit
+ * (validation par le client, validation automatique, validation forcée au
+ * back-office) faisaient `[...paliers].reverse().find(...)?.rate || 0.01` :
+ * sur le tableau tel qu'il est enregistré, sans le trier, et un taux réglé à
+ * 0 % devenait 1 % — l'écran annonçait 0 %, le serveur créditait 1 %
+ * (relecture du 29/10/2026). Un taux illisible garde l'ancien repli, 1 %.
+ */
+export function tauxDuPalier(paliers, nombre) {
+  const tries = (Array.isArray(paliers) ? paliers : [])
+    .filter(t => Number.isFinite(Number(t?.min)))
+    .sort((a, b) => Number(a.min) - Number(b.min));
+  const palier = [...tries].reverse().find(t => nombre >= Number(t.min)) || tries[0];
+  const taux = Number(palier?.rate);
+  return Number.isFinite(taux) && taux >= 0 && taux < 1 ? taux : 0.01;
+}
+
 /** Arrondi au centime, sans jamais faire apparaître un centime de plus. */
 const auCentimeInferieur = (x) => Math.floor((Number(x) || 0) * 100) / 100;
 
