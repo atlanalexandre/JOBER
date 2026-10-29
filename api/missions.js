@@ -1007,6 +1007,13 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     + `extra_hours_portee,extra_hours_jours,extra_hours_journee,montant_heures_ajoutees,heures_ajoutees_total,heures_ajoutees_dernier_jour,heures_ajoutees_detail`,
     { headers }
   );
+  // Une base en panne n'est pas une prestation introuvable : le client qui vient
+  // de payer lisait « Prestation introuvable », et le rattrapage ouvrait un
+  // ticket pour un paiement valable au lieu d'attendre (relecture du 28/10/2026).
+  if (!mr.ok) {
+    console.error(`[heures_supp] prestation ${missionId} illisible (${mr.status}) — à réessayer.`);
+    return reponseHS(502, { error: "Vérification impossible pour le moment. Réessayez." });
+  }
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return reponseHS(404, { error: "Prestation introuvable" });
 

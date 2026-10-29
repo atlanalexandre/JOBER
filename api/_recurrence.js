@@ -146,8 +146,22 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
   try {
     if (!cle) throw new Error("STRIPE_SECRET_KEY absente");
     const sh = { Authorization: `Bearer ${cle}` };
-    const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${m.stripe_payment_intent}`, { headers: sh });
-    const parent = await pr.json();
+    // La carte de la première semaine, relue chez Stripe. Une panne passagère
+    // (429, 5xx, réponse illisible) est relue une fois : prise pour « carte non
+    // enregistrée », elle arrêtait la série pour de bon (relecture du 28/10/2026).
+    const lireParent = async () => {
+      const r = await fetch(`https://api.stripe.com/v1/payment_intents/${m.stripe_payment_intent}`, { headers: sh });
+      const j = await r.json().catch(() => null);
+      return { r, j, panne: r.status === 429 || r.status >= 500 || !j };
+    };
+    let lu = await lireParent().catch(e => ({ r: { ok: false, status: 0 }, j: null, panne: true, e }));
+    if (lu.panne) {
+      console.error(`[serie] ${missionId} : paiement d'origine illisible (${lu.r.status}) — relu dans 2 s.`);
+      await new Promise(r => setTimeout(r, 2000));
+      lu = await lireParent().catch(e => ({ r: { ok: false, status: 0 }, j: null, panne: true, e }));
+    }
+    const pr = lu.r;
+    const parent = lu.j;
     const carte = typeof parent?.payment_method === "string" ? parent.payment_method : parent?.payment_method?.id;
     const client = typeof parent?.customer === "string" ? parent.customer : parent?.customer?.id;
     if (!pr.ok || !carte || !client) {
@@ -191,6 +205,11 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         rejoue = true;
         cr = await creer();
       }
+      // Une erreur 5xx de Stripe APRÈS l'envoi ne dit pas si la carte a été
+      // débitée : c'est une issue inconnue, pas un refus. Lue comme un refus, la
+      // semaine était annulée et le client lisait « Rien n'a été débité »
+      // (relecture du 28/10/2026).
+      if (cr.status >= 500) throw new Error(`Stripe ${cr.status} au prélèvement`);
       let cj = await cr.json();
       // Rejouée, la requête peut trouver la PREMIÈRE encore en cours chez Stripe :
       // même clé, mêmes paramètres, réponse 409 « idempotency_error ». Ce n'est
@@ -238,7 +257,7 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         to: admin,
         subject: `⚠️ Série hebdomadaire : prélèvement à vérifier dans Stripe`,
         html: `<p>Le prélèvement de la semaine du ${esc(dateFr(date))} (${esc(euros(montant))}) n'a pas pu être confirmé : `
-          + `deux coupures réseau avec Stripe. On ignore si la carte du client a été débitée.</p>`
+          + `Stripe n'a pas donné de réponse sûre (coupure réseau ou erreur de son côté). On ignore si la carte du client a été débitée.</p>`
           + `<p>Dans Stripe, cherchez un paiement portant la métadonnée <strong>mission = ${esc(nouvelleId)}</strong>. `
           + `S'il existe, la semaine doit être affectée ; sinon, elle peut être annulée.</p>`
           + `<p>Prestation d'origine : ${esc(missionId)}.</p>`,

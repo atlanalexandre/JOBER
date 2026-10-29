@@ -12,12 +12,12 @@ const PARENT = {
 const json = (corps, status = 200) => Promise.resolve(new Response(status === 204 ? null : JSON.stringify(corps), { status }));
 
 /** Routeur de réponses simulées : base (PostgREST) et Stripe. */
-function simuler({ stripeCreation }) {
-  const appels = { creations: [], suppressions: 0, notifications: [] };
+function simuler({ stripeCreation, lectureParent = () => json({ payment_method: "pm_1", customer: "cus_1" }) }) {
+  const appels = { creations: [], suppressions: 0, notifications: [], annulations: 0, lecturesParent: 0 };
   vi.stubGlobal("fetch", vi.fn((url, opts = {}) => {
     const u = String(url);
     const m = opts.method || "GET";
-    if (u.includes("api.stripe.com/v1/payment_intents/pi_parent")) return json({ payment_method: "pm_1", customer: "cus_1" });
+    if (u.includes("api.stripe.com/v1/payment_intents/pi_parent")) return lectureParent(++appels.lecturesParent);
     if (u.includes("api.stripe.com/v1/payment_intents") && m === "POST") {
       appels.creations.push(opts.headers["Idempotency-Key"]);
       return stripeCreation(appels.creations.length);
@@ -27,7 +27,7 @@ function simuler({ stripeCreation }) {
     if (u.includes("platform_settings")) return json([{ value: { single: 4.9, pourcentage: 2 } }]);
     if (u.includes("/rest/v1/missions") && m === "POST") return json([{ id: JSON.parse(opts.body).id }], 201);
     if (u.includes("/rest/v1/missions") && m === "DELETE") { appels.suppressions++; return json(null, 204); }
-    if (u.includes("/rest/v1/missions") && m === "PATCH") return json([{ id: "x" }]);
+    if (u.includes("/rest/v1/missions") && m === "PATCH") { if (/"status":"cancelled"/.test(opts.body || "")) appels.annulations++; return json([{ id: "x" }]); }
     if (u.includes("/rest/v1/notifications")) { appels.notifications.push(JSON.parse(opts.body)); return json(null, 201); }
     return json([]);
   }));
@@ -68,6 +68,30 @@ describe("semaine suivante d'une série", () => {
     const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
     expect(r.mode).toBe("echec");
     expect(a.notifications.some(n => /débité/.test(n.body || ""))).toBe(false);
+  });
+
+  it("erreur 5xx de Stripe au prélèvement : issue inconnue, semaine gardée, rien annoncé au client (relecture du 28/10/2026)", async () => {
+    const a = simuler({ stripeCreation: () => json({ error: { type: "api_error" } }, 500) });
+    const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+    expect(r.mode).toBe("echec");
+    expect(a.annulations).toBe(0);
+    expect(a.notifications.some(n => /débité|interrompue/.test(`${n.title} ${n.body}`))).toBe(false);
+  });
+
+  it("carte d'origine illisible une fois (Stripe 503) : relue, et la série continue (relecture du 28/10/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const a = simuler({
+        lectureParent: (n) => n === 1 ? json({ error: { type: "api_error" } }, 503) : json({ payment_method: "pm_1", customer: "cus_1" }),
+        stripeCreation: () => json({ id: "pi_2", status: "succeeded" }),
+      });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(a.lecturesParent).toBe(2);
+      expect(r.mode).toBe("payee");
+      expect(a.annulations).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 
   it("carte refusée : la série s'arrête et le client est prévenu", async () => {
