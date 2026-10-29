@@ -49,8 +49,12 @@ dépôt : elles vivent dans le dossier de travail de la session.
 4. **Aucune promesse absolue** (« toujours », « garanti », « en 5 minutes ») que le code ne tient pas.
 5. **Aucun prix de frais de service ou d'abonnement**, sauf demande d'Alexandre.
 6. **Aucun nom de client ni de prestataire**, aucune donnée personnelle.
-7. Un texte de 600 à 1 200 caractères, aéré, une question à la fin quand elle vient naturellement,
-   **3 hashtags au plus**, le lien `alane.fr` une fois.
+7. **Une accroche, pas un mode d'emploi** (décision d'Alexandre du 29/10/2026). Le but est de
+   donner envie d'aller voir avant l'ouverture, pas d'expliquer le fonctionnement : quelques
+   phrases courtes, une idée par publication, **300 à 600 caractères**, une question à la fin
+   quand elle vient naturellement, **3 hashtags au plus**, le lien `alane.fr` une fois. L'image
+   suit le même esprit : un titre fort et une phrase (modèle `annonce`), plutôt qu'une liste de
+   points détaillés. Le texte du 29/10 décrivait tout le parcours de paiement : refusé pour cela.
 8. Typographie : apostrophe ’, espace insécable devant ? ! : ; (le générateur s'en charge sur l'image).
 
 ## Où on en est : avant l'ouverture
