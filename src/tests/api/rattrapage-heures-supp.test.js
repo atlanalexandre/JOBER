@@ -175,7 +175,7 @@ describe("appliquerHeuresSupp : extraite sans rien changer", async () => {
     const { MESSAGE_VERIFICATION_DIFFEREE } = await vi.importActual("../../../api/missions.js");
     expect(MESSAGE_VERIFICATION_DIFFEREE).toMatch(/paiement est bien enregistré/);
     expect(MESSAGE_VERIFICATION_DIFFEREE).not.toMatch(/Réessayez/);
-    expect(fonction.match(/reponseHS\(502, \{ error: MESSAGE_VERIFICATION_DIFFEREE \}\)/g)).toHaveLength(3);
+    expect(fonction.match(/reponseHS\(502, \{ error: MESSAGE_VERIFICATION_DIFFEREE \}\)/g)).toHaveLength(4);
     expect(fonction).not.toMatch(/reponseHS\(5\d\d, \{ error: "[^"]*Réessayez/);
   });
   it("une base en panne n'est pas une prestation introuvable : 502, pas 404 (relecture du 28/10/2026)", () => {
