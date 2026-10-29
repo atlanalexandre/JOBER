@@ -27,6 +27,10 @@ describe("sendEmail et la limite de débit", () => {
   it("429 qui persiste : panne (`undefined`), pas refus durable", async () => {
     expect(await envoyer([429, 429])).toEqual({ resultat: undefined, essais: 2 });
   });
+  it("clé absente : `null`, rien n'est tenté — distinct d'une panne (relecture du 29/10/2026)", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    expect(await envoyer([200])).toEqual({ resultat: null, essais: 0 });
+  });
   it("refus durable (422) : `false`, sans second essai", async () => {
     expect(await envoyer([422])).toEqual({ resultat: false, essais: 1 });
   });
