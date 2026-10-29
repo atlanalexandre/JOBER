@@ -173,11 +173,11 @@ export async function signalerPaiementOrphelin(missionId, intent, supabaseUrl, h
     // rien et finirait par faire désactiver le webhook — on le journalise fort.
     // Sans client, aucun ticket n'est possible : le courriel est la seule trace,
     // et son échec peut être passager — Stripe réémet (relecture du 27/10/2026).
-    // Passager seulement : `sendEmail` rend `false` sur un refus de Resend (4xx,
-    // durable), et rien (`undefined`) après deux pannes — ou sans clé, durable
-    // aussi. Réémettre sur une cause durable finirait par faire désactiver le
-    // webhook (relecture du 28/10/2026).
-    const courrielEnPanne = parti === undefined && Boolean((process.env.RESEND_API_KEY || "").replace(/\s/g, ""));
+    // Passager seulement : `sendEmail` rend `undefined` sur une panne, `false`
+    // sur un refus de Resend, `null` sans clé — ces deux derniers sont durables.
+    // Réémettre sur une cause durable finirait par faire désactiver le webhook
+    // (relecture du 28/10/2026).
+    const courrielEnPanne = parti === undefined;
     const reemettre = panneTicket || (!client && Boolean(admin) && courrielEnPanne);
     console.error(`[stripe-webhook] ⚠️ paiement ${intent.id} sans candidature — ni ticket ni alerte${reemettre ? " : Stripe réémettra" : " : À TRAITER À LA MAIN"}.`);
     if (reemettre) return "illisible";

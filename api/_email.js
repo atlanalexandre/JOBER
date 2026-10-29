@@ -84,9 +84,17 @@ export async function sendEmail({ to, subject, html }) {
   // Sans clé, aucun email ne part et rien ne le signalait : ni ici, ni côté
   // front où les appels sont en .catch(()=>{}). Un envoi manquant devient donc
   // invisible de bout en bout (règle 1.2).
+  // Trois issues, toutes fausses sauf la première pour qui teste `if (envoye)` :
+  //   true      — accepté par Resend ;
+  //   false     — refus durable de Resend (adresse, expéditeur) ;
+  //   null      — clé absente : durable aussi, rien n'a été tenté ;
+  //   undefined — panne (deux essais sans réponse, ou limite de débit qui persiste).
+  // Le webhook Stripe distingue la panne du reste : il relisait la variable
+  // d'environnement pour séparer « clé absente » de « panne », qui rendaient
+  // toutes deux `undefined` (relecture du 29/10/2026).
   if (!key) {
     console.error(`[email] RESEND_API_KEY absente — email « ${subject} » NON envoyé.`);
-    return;
+    return null;
   }
   if (!process.env.RESEND_FROM) {
     console.error("[email] RESEND_FROM absente : expéditeur de repli onboarding@resend.dev, "
