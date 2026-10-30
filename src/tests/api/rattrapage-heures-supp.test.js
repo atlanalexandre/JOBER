@@ -150,7 +150,7 @@ describe("rattraperProlongations", () => {
   });
   it("une exception au ticket ou au remboursement n'arrête pas non plus le passage (relecture du 30/10/2026)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
       const u = String(url);
       if (u.includes("payment_intents/search")) return new Response(JSON.stringify({ data: [pi({ id: "pi_a" }), pi({ id: "pi_b" })] }), { status: 200 });
       if (u.includes("/rest/v1/missions?id=in.(")) return new Response(JSON.stringify([mission()]), { status: 200 });
