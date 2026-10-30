@@ -1,13 +1,13 @@
 import { resendBody, sendEmail, euros } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier, serviceDeNotificationReconnu, serviceDe } from "./_push.js";
 
-import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
+import { debiterCashback, restituerCashback, plafonnerRemboursement, tauxDuPalier } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees, retardADeduireDuJour, retardAggraveApresRefus } from "./_decalage.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, finPremierJourMs, dateDuJourFr, texteDelaiReponse, dureeTexte } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
-import { calculerFrais, lireFraisService } from "./_montant.js";
+import { calculerFrais, lireFraisService, lireFraisServiceOuNull } from "./_montant.js";
 import { lireComptesAuth } from "./_auth.js";
 import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
@@ -997,6 +997,14 @@ async function handleEmailAction(req, res) {
 // côtés : la prestation, le client, CETTE prolongation, le montant.
 // Rend { code, corps } — le code HTTP et la réponse de l'action.
 const reponseHS = (code, corps) => ({ code, corps });
+// Rendu sur une panne passagère (502), APRÈS le paiement du client : l'écran
+// l'affiche tel quel, puis ferme le paiement. « Réessayez » laissait croire que
+// rien n'était payé, et renvoyait vers un second règlement (relecture du
+// 29/10/2026). Le rattrapage de cron-abandon applique ce paiement dès que la
+// panne est passée (api/_rattrapage_heures_supp.js).
+export const MESSAGE_VERIFICATION_DIFFEREE = "Votre paiement est bien enregistré. La vérification est momentanément impossible : "
+  + "la prolongation sera appliquée automatiquement dès que possible, sans nouveau paiement de votre part.";
+
 export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, SUPABASE_URL, headers }) {
 
   const mr = await fetch(
@@ -1012,7 +1020,7 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   // ticket pour un paiement valable au lieu d'attendre (relecture du 28/10/2026).
   if (!mr.ok) {
     console.error(`[heures_supp] prestation ${missionId} illisible (${mr.status}) — à réessayer.`);
-    return reponseHS(502, { error: "Vérification impossible pour le moment. Réessayez." });
+    return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
   }
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return reponseHS(404, { error: "Prestation introuvable" });
@@ -1026,14 +1034,18 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   }
 
   const extraH = Number(mission.extra_hours_requested || 0);
-  const frais  = await lireFraisService(SUPABASE_URL, headers);
+  // Frais illisibles : on ne contrôle pas un paiement contre des valeurs par
+  // défaut — panne passagère, le rattrapage réessaie (relecture du 29/10/2026).
+  const frais  = await lireFraisServiceOuNull(SUPABASE_URL, headers);
+  if (!frais) return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
   const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), frais);
   if (!(devisC.total > 0)) return reponseHS(400, { error: "Montant de la prolongation incalculable." });
 
   const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
   if (!stripeKey) {
     console.error(`[heures_supp] STRIPE_SECRET_KEY absente — confirmation impossible pour ${missionId}`);
-    return reponseHS(500, { error: "Paiement indisponible. Réessayez plus tard." });
+    return reponseHS(500, { error: "Votre paiement est bien enregistré mais la prolongation n'a pas pu être appliquée. "
+      + "Écrivez à direction@alane.fr en indiquant la date : nous la reprenons à la main." });
   }
   let pi = null;
   try {
@@ -1045,12 +1057,12 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     // une prolongation valable (relecture du 27/10/2026).
     if (pr.status === 429 || pr.status >= 500) {
       console.error(`[heures_supp] Stripe indisponible (${pr.status}) pour ${missionId} — à réessayer.`);
-      return reponseHS(502, { error: "Vérification du paiement impossible. Réessayez." });
+      return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
     }
     pi = await pr.json();
   } catch (e) {
     console.error(`[heures_supp] lecture Stripe impossible pour ${missionId} :`, e.message);
-    return reponseHS(502, { error: "Vérification du paiement impossible. Réessayez." });
+    return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
   }
   if (!pi?.id || pi.status !== "succeeded") {
     return reponseHS(400, { error: "Le paiement n'est pas confirmé." });
@@ -2190,7 +2202,7 @@ export default async function handler(req, res) {
         // de platform_settings échoue, on crédite donc le taux nominal plutôt que
         // de faire échouer la clôture de mission — le prestataire serait bloqué.
       }
-      const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+      const rate = tauxDuPalier(CASHBACK_TIERS, missionsThisMonth);
       const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 

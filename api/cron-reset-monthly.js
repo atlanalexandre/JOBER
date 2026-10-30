@@ -21,7 +21,7 @@ import { affecteeParLaPlateforme, affecterCandidatSuivant, compterAuQuota } from
 import { comparerPrix, resumeEcart } from "./_prix.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { comptesRecrees, ligneListeNoire, inscrireListeNoire, remiseAZeroMensuelle, COLONNES_PROFIL_LISTE_NOIRE } from "./_liste_noire.js";
-import { restituerCashback } from "./_cashback.js";
+import { restituerCashback, tauxDuPalier } from "./_cashback.js";
 import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
@@ -2401,7 +2401,7 @@ ${(() => {
               const cpData = await cpRes.json();
               const profile = Array.isArray(cpData) && cpData[0] ? cpData[0] : {};
               const missionsThisMonth = (profile.commandes_mois || 0) + jours;
-              const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+              const rate = tauxDuPalier(CASHBACK_TIERS, missionsThisMonth);
               const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 

@@ -135,6 +135,19 @@ describe("rattraperProlongations", () => {
     expect(appliquerHeuresSupp).not.toHaveBeenCalled();
     expect(bilan).toEqual({ appliquees: 0, remboursees: 0, signalees: 0 });
   });
+  it("erreur durable (500) : un ticket, jamais sautée en silence ; une exception n'arrête pas le passage (relecture du 29/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = simuler({ paiements: [pi({ id: "pi_a" }), pi({ id: "pi_b" }), pi({ id: "pi_c" })], prestation: mission() });
+    appliquerHeuresSupp
+      .mockRejectedValueOnce(new Error("ECONNRESET"))
+      .mockResolvedValueOnce({ code: 500, corps: { error: "remboursement à reprendre" } })
+      .mockResolvedValueOnce({ code: 200, corps: { ok: true } });
+    const bilan = await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });
+    expect(appliquerHeuresSupp).toHaveBeenCalledTimes(3);
+    expect(bilan).toEqual({ appliquees: 1, remboursees: 0, signalees: 1 });
+    expect(appels.some(a => a.u.includes("/v1/refunds"))).toBe(false);
+    expect(appels.some(a => a.methode === "POST" && a.u.includes("support_tickets"))).toBe(true);
+  });
   it("dans le doute : un ticket, une seule fois, et rien d'autre", async () => {
     const appels = simuler({ paiements: [pi()], prestation: mission({ extra_hours_appliquees: 2 }) });
     await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });
@@ -158,6 +171,13 @@ describe("appliquerHeuresSupp : extraite sans rien changer", async () => {
   const { readFileSync } = await import("node:fs");
   const code = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
   const fonction = code.slice(code.indexOf("export async function appliquerHeuresSupp"), code.indexOf("export default async function handler"));
+  it("après le paiement, une panne ne dit jamais « Réessayez » : le paiement est enregistré (relecture du 29/10/2026)", async () => {
+    const { MESSAGE_VERIFICATION_DIFFEREE } = await vi.importActual("../../../api/missions.js");
+    expect(MESSAGE_VERIFICATION_DIFFEREE).toMatch(/paiement est bien enregistré/);
+    expect(MESSAGE_VERIFICATION_DIFFEREE).not.toMatch(/Réessayez/);
+    expect(fonction.match(/reponseHS\(502, \{ error: MESSAGE_VERIFICATION_DIFFEREE \}\)/g)).toHaveLength(4);
+    expect(fonction).not.toMatch(/reponseHS\(5\d\d, \{ error: "[^"]*Réessayez/);
+  });
   it("une base en panne n'est pas une prestation introuvable : 502, pas 404 (relecture du 28/10/2026)", () => {
     expect(fonction).toMatch(/if \(!mr\.ok\) \{[\s\S]{0,200}return reponseHS\(502/);
     expect(fonction.indexOf("if (!mr.ok)")).toBeLessThan(fonction.indexOf('reponseHS(404, { error: "Prestation introuvable" })'));

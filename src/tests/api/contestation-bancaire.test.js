@@ -145,13 +145,18 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
       if (u.includes("/rest/v1/missions?and=") && !o.method) return new Response(JSON.stringify([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_1" }]), { status: 200 });
       if (u.includes("/rest/v1/missions?id=eq.") && o.method === "PATCH") return new Response("[{}]", { status: 200 });
       if (u.includes("api.stripe.com/v1/disputes")) return new Response(JSON.stringify({ error: { type: "invalid_request_error" } }), { status: 401 });
+      if (u.includes("api.resend.com")) return new Response(JSON.stringify({ id: "e1" }), { status: 200 });
       return new Response("[]", { status: 200 });
     }));
+    vi.stubEnv("ADMIN_EMAIL", "admin@exemple.fr");
+    vi.stubEnv("RESEND_API_KEY", "re_x");
     const res = reponse();
     await handler(requete(ferme("won")), res);
     expect(res.statut).toBe(200);
     const ecrit = appels.filter(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
     expect(ecrit.map(a => JSON.parse(a.corps))).toEqual([{ payout_hold_until: null }]);
+    // L'équipe est prévenue : rien ne lèvera cette retenue seul (relecture du 29/10/2026).
+    expect(appels.some(a => a.u.includes("api.resend.com") && a.corps.includes("vérifier la clé Stripe"))).toBe(true);
   });
   it("gagnée, mais l'autre paiement de la prestation est encore contesté : la retenue reste", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_0", extra_hours_payment_intent: "pi_1" }],

@@ -78,6 +78,29 @@ export async function lireFraisService(supabaseUrl, headers) {
 }
 
 /**
+ * Comme `lireFraisService`, mais rend `null` quand le réglage est illisible au
+ * lieu de retomber sur les valeurs par défaut. Pour le chemin qui CONTRÔLE un
+ * paiement déjà fait : comparé à des frais par défaut plus bas que les frais
+ * réglés, un paiement valable paraissait insuffisant, et la prolongation était
+ * refusée au client qui venait de payer (relecture du 29/10/2026). Un réglage
+ * absent (aucune ligne) n'est pas une panne : valeurs par défaut.
+ */
+export async function lireFraisServiceOuNull(supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.frais_service&select=value`, { headers });
+    const d = r.ok ? await r.json().catch(() => null) : null;
+    if (!Array.isArray(d)) {
+      console.error(`[montant] frais_service illisible (${r.status}) — contrôle reporté.`);
+      return null;
+    }
+    return { ...FRAIS_PAR_DEFAUT, ...(d[0]?.value || {}) };
+  } catch (e) {
+    console.error("[montant] frais_service illisible — contrôle reporté :", e.message);
+    return null;
+  }
+}
+
+/**
  * Nombre de jours couverts par une prestation récurrente. 1 par défaut.
  */
 export function nombreDeJours(mission) {

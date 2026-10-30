@@ -84,9 +84,17 @@ export async function sendEmail({ to, subject, html }) {
   // Sans clé, aucun email ne part et rien ne le signalait : ni ici, ni côté
   // front où les appels sont en .catch(()=>{}). Un envoi manquant devient donc
   // invisible de bout en bout (règle 1.2).
+  // Trois issues, toutes fausses sauf la première pour qui teste `if (envoye)` :
+  //   true      — accepté par Resend ;
+  //   false     — refus durable de Resend (adresse, expéditeur) ;
+  //   null      — clé absente : durable aussi, rien n'a été tenté ;
+  //   undefined — panne (deux essais sans réponse, ou limite de débit qui persiste).
+  // Le webhook Stripe distingue la panne du reste : il relisait la variable
+  // d'environnement pour séparer « clé absente » de « panne », qui rendaient
+  // toutes deux `undefined` (relecture du 29/10/2026).
   if (!key) {
     console.error(`[email] RESEND_API_KEY absente — email « ${subject} » NON envoyé.`);
-    return;
+    return null;
   }
   if (!process.env.RESEND_FROM) {
     console.error("[email] RESEND_FROM absente : expéditeur de repli onboarding@resend.dev, "
@@ -102,7 +110,12 @@ export async function sendEmail({ to, subject, html }) {
       if (r.ok) { console.log(`[email] « ${subject} » accepté par Resend.`); return true; }
       const body = await r.text();
       console.error(`[email] Resend a REFUSÉ « ${subject} » (essai ${attempt + 1}) :`, r.status, body);
-      if (r.status < 500) return false;
+      // Refus durable (adresse rejetée, expéditeur non vérifié) : `false`, sans
+      // second essai. Une limite de débit (429) est passagère : elle est
+      // retentée comme une panne, et rend `undefined` si elle persiste — les
+      // appelants qui distinguent la panne du refus (webhook Stripe) la
+      // comptaient pour un refus durable (relecture du 29/10/2026).
+      if (r.status < 500 && r.status !== 429) return false;
       if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
     } catch (e) {
       console.error(`sendEmail error (attempt ${attempt + 1}):`, e);

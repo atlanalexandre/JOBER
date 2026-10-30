@@ -210,6 +210,16 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
       // semaine était annulée et le client lisait « Rien n'a été débité »
       // (relecture du 28/10/2026).
       if (cr.status >= 500) throw new Error(`Stripe ${cr.status} au prélèvement`);
+      // 429 : Stripe limite le débit et n'a RIEN exécuté — ni débit ni refus de la
+      // carte. Lu comme un refus, il arrêtait la série d'un client dont la carte
+      // était bonne (validation automatique de nombreuses semaines à la suite).
+      // Rejoué une fois, avec la même clé (relecture du 29/10/2026).
+      if (cr.status === 429) {
+        console.error(`[serie] ${nouvelleId} : Stripe limite le débit (429) — requête rejouée dans 2 s.`);
+        await new Promise(r => setTimeout(r, 2000));
+        cr = await creer();
+        if (cr.status >= 500) throw new Error(`Stripe ${cr.status} au prélèvement`);
+      }
       let cj = await cr.json();
       // Rejouée, la requête peut trouver la PREMIÈRE encore en cours chez Stripe :
       // même clé, mêmes paramètres, réponse 409 « idempotency_error ». Ce n'est
@@ -219,7 +229,11 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
       // redemande ; si c'est encore en cours, l'issue est inconnue.
       if (rejoue && cj?.error?.type === "idempotency_error") {
         await new Promise(r => setTimeout(r, 3000));
-        cj = await (await creer()).json();
+        const cr3 = await creer();
+        // Même règle qu'au premier envoi : une 5xx ici n'est pas un refus
+        // (relecture du 29/10/2026 — ce chemin-là ne la vérifiait pas).
+        if (cr3.status >= 500) throw new Error(`Stripe ${cr3.status} au prélèvement`);
+        cj = await cr3.json();
         if (cj?.error?.type === "idempotency_error") throw new Error("prélèvement encore en cours chez Stripe");
       }
       if (cj?.status === "succeeded") pi = cj.id;
