@@ -64,23 +64,39 @@ import { bornesMontant } from "./_paiement.js";
  */
 export const RESTE_A_PAYER_MIN = 1;
 
+// La grille du code, identique à `CASHBACK_TIERS` (`src/constants/plans.js`) :
+// celle que l'écran garde quand le réglage est absent ou illisible.
+export const PALIERS_CASHBACK_DEFAUT = [
+  { id: "standard", min: 0,  max: 2,   rate: 0.005 },
+  { id: "silver",   min: 3,  max: 5,   rate: 0.0075 },
+  { id: "gold",     min: 6,  max: 9,   rate: 0.01 },
+  { id: "platinum", min: 10, max: 999, rate: 0.015 },
+];
+
 /**
- * Le taux de cashback du palier atteint, comme l'écran l'affiche
- * (`getCashbackTier`, `src/constants/plans.js`) : paliers triés par seuil, le
- * dernier atteint ; aucun atteint, le premier. Les trois chemins de crédit
- * (validation par le client, validation automatique, validation forcée au
- * back-office) faisaient `[...paliers].reverse().find(...)?.rate || 0.01` :
- * sur le tableau tel qu'il est enregistré, sans le trier, et un taux réglé à
- * 0 % devenait 1 % — l'écran annonçait 0 %, le serveur créditait 1 %
- * (relecture du 29/10/2026). Un taux illisible garde l'ancien repli, 1 %.
+ * Le taux de cashback du palier atteint, par la MÊME règle que l'écran :
+ *   1. les paliers réglés sont filtrés comme les sert `?action=paliers_cashback`
+ *      (`api/prestataires.js`) — un identifiant, des seuils et un taux lisibles,
+ *      0 ≤ taux < 1 ;
+ *   2. ils remplacent, identifiant par identifiant, la grille du code, comme
+ *      `appliquerPaliersCashback()` ; un palier réglé sans identifiant ou
+ *      illisible ne remplace rien ;
+ *   3. paliers triés par seuil, le dernier atteint ; aucun, le premier
+ *      (`getCashbackTier`).
+ *
+ * Les trois chemins de crédit faisaient `[...paliers].reverse().find(...)?.rate
+ * || 0.01` : sans tri, et un taux de 0 % devenait 1 % (29/10/2026). Puis la
+ * règle n'appliquait pas le filtre de l'écran : un taux saisi 150 au lieu de
+ * 1,5 était écarté à l'écran (1,5 % affiché) et crédité 1 % (30/10/2026).
  */
 export function tauxDuPalier(paliers, nombre) {
-  const tries = (Array.isArray(paliers) ? paliers : [])
-    .filter(t => Number.isFinite(Number(t?.min)))
-    .sort((a, b) => Number(a.min) - Number(b.min));
-  const palier = [...tries].reverse().find(t => nombre >= Number(t.min)) || tries[0];
-  const taux = Number(palier?.rate);
-  return Number.isFinite(taux) && taux >= 0 && taux < 1 ? taux : 0.01;
+  const reglees = (Array.isArray(paliers) ? paliers : [])
+    .map(t => ({ id: String(t?.id || ""), min: Number(t?.min), max: Number(t?.max), rate: Number(t?.rate) }))
+    .filter(t => t.id && Number.isFinite(t.min) && Number.isFinite(t.max) && Number.isFinite(t.rate) && t.rate >= 0 && t.rate < 1);
+  const grille = PALIERS_CASHBACK_DEFAUT
+    .map(d => ({ ...d, ...(reglees.find(t => t.id === d.id) || {}) }))
+    .sort((a, b) => a.min - b.min);
+  return ([...grille].reverse().find(t => nombre >= t.min) || grille[0]).rate;
 }
 
 /** Arrondi au centime, sans jamais faire apparaître un centime de plus. */

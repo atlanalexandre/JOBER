@@ -1120,7 +1120,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 
 | Clé | Appliquée par |
 |---|---|
-| `cashback_rates` | `api/missions.js` (action `complete`), `cron-reset-monthly.js` (validation automatique), `bo-action.js` (`force_complete`) — le taux crédité passe par `tauxDuPalier()` (`api/_cashback.js`, 29/10/2026) : paliers triés par seuil, comme à l'écran, et un taux de 0 % reste 0 % (il devenait 1 %) |
+| `cashback_rates` | `api/missions.js` (action `complete`), `cron-reset-monthly.js` (validation automatique), `bo-action.js` (`force_complete`) — le taux crédité passe par `tauxDuPalier()` (`api/_cashback.js`, 29/10/2026) : paliers triés par seuil, comme à l'écran, et un taux de 0 % reste 0 % (il devenait 1 %). Depuis le 30/10/2026, la règle est **exactement** celle de l'écran : paliers réglés filtrés comme les sert `paliers_cashback` (identifiant, seuils et taux lisibles, 0 ≤ taux < 1), qui remplacent identifiant par identifiant la grille du code (`PALIERS_CASHBACK_DEFAUT`, testée égale à `CASHBACK_TIERS`) — un taux saisi 150 au lieu de 1,5 était écarté à l'écran et crédité 1 % |
 | `subscription_prices` | `api/plans.js`, écrans d'abonnement |
 | `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()`, appliqué au plan lu dans **`profiles`** |
 | `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (8 prestations/mois aux 100 premiers prestataires) |
