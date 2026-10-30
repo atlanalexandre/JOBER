@@ -2933,7 +2933,11 @@ export function BOModerationTab({ d }) {
     try {
       const r = await boFetch({ action:"send_global_comm", message: commMsg });
       const j = await r.json();
-      setCommResult(j.success ? { ok:true, msg:"Communication envoyée à tous les prestataires actifs." } : { ok:false, msg:"Erreur lors de l'envoi" });
+      // Le nombre réellement accepté par Resend, et les échecs : « envoyée à
+      // tous » s'affichait même quand une partie était refusée (30/10/2026).
+      setCommResult(j.success
+        ? { ok: !j.echecs, msg: j.echecs ? `Envoyée à ${j.sent} prestataire(s) — ${j.echecs} envoi(s) en échec.` : `Communication envoyée à ${j.sent} prestataire(s).` }
+        : { ok:false, msg: j.error || "Erreur lors de l'envoi" });
       if(j.success) setCommMsg("");
     } catch { setCommResult({ ok:false, msg:"Erreur réseau" }); }
     setCommSending(false);
