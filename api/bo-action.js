@@ -1697,20 +1697,21 @@ export default async function handler(req, res) {
       const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
       const emails = authUsers.filter(u => ids.has(u.id)).map(u => u.email).filter(Boolean);
 
-      let sent = 0;
-      const chunks = [];
-      for (let i = 0; i < emails.length; i += 5) chunks.push(emails.slice(i, i + 5));
-      for (const chunk of chunks) {
-        await Promise.all(chunk.map(email =>
-          sendEmail({
-            to: email,
-            subject: "📢 Communication de l'équipe ALANE",
-            html: emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
-          }).then(() => { sent++; }).catch(e => console.error("[bo-action/send_global_comm] échec ignoré :", e?.message))
-        ));
+      // Par lots de 100, comme l'e-mail d'information (api/_diffusion.js). Cinq
+      // envois en parallèle dépassaient la cadence de Resend (2 appels par
+      // seconde) : chaque refus attendait puis réessayait, et au-delà d'une
+      // centaine de destinataires la fonction dépassait sa minute — arrêtée en
+      // plein envoi, sans journal, et un second appui renvoyait le message à
+      // ceux qui l'avaient déjà reçu. Et `sent` comptait aussi les envois
+      // refusés (relecture du 30/10/2026).
+      if (emails.length > MAX_DESTINATAIRES) {
+        return res.status(413).json({ error: `${emails.length} destinataires : au-delà de ${MAX_DESTINATAIRES}, l'envoi ne tient pas dans le délai. Rien n'est parti.` });
       }
-      await journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
-      return res.status(200).json({ success: true, sent });
+      const html = emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`);
+      const { envoyes, echecs, erreur } = await envoyerInformation(emails, { sujet: "📢 Communication de l'équipe ALANE", html });
+      await journaliser("send_global_comm", { details: { envoyes, echecs, extrait: String(message).slice(0, 200) } });
+      if (!envoyes && echecs) return res.status(502).json({ error: erreur || "Communication non envoyée", sent: 0, echecs });
+      return res.status(200).json({ success: true, sent: envoyes, echecs });
     }
 
     // E-mail d'information à TOUS les inscrits — clients et prestataires,
