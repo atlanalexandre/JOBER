@@ -6536,6 +6536,12 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
   // `prixHeuresSupp`, la même fonction que le serveur : l'écran ne recalcule
   // rien de son côté.
   const [paiementSupp, setPaiementSupp] = useState(null);
+  // Prolongations payées dont la confirmation n'a pas abouti (panne passagère) :
+  // le serveur les appliquera seul (rattrapage). Le bouton « Régler » ne doit
+  // plus s'afficher pour elles — il invitait à payer une seconde fois, avec une
+  // autre carte (relecture du 30/10/2026).
+  const [suppPayees, setSuppPayees] = useState(() => new Set());
+  const noterSuppPayee = (id) => setSuppPayees(prev => new Set(prev).add(id));
   const [attestation, setAttestation] = useState(null);
   const [attestationEnCours, setAttestationEnCours] = useState(false);
 
@@ -7281,10 +7287,12 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
               chargerPrestations();
             } else {
               // Le paiement est passé : ne jamais laisser croire le contraire.
+              noterSuppPayee(paiementSupp.id);
               showToast(j.error || "Paiement enregistré, mais la prolongation n'a pas pu être appliquée. Écrivez à direction@alane.fr.");
             }
           } catch (e) {
             console.error("[heures_supp] confirmation impossible :", e.message);
+            noterSuppPayee(paiementSupp.id);
             showToast("Paiement enregistré, mais la confirmation a échoué. Écrivez à direction@alane.fr.");
           }
           setPaiementSupp(null);
@@ -7779,6 +7787,11 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
                 // Le prestataire a accepté et chiffré. RIEN n'est appliqué tant
                 // que ce montant n'est pas réglé : ni la durée, ni le montant de
                 // la prestation. C'est ce paiement qui déclenche la prolongation.
+                if (suppPayees.has(selected.id)) return (
+                  <div style={{ background:"rgba(16,185,129,0.08)", border:"1px solid rgba(16,185,129,0.35)", borderRadius:12, padding:"14px", fontSize:13, color:C.text, lineHeight:1.6 }}>
+                    ✅ Paiement de la prolongation reçu. Elle sera appliquée automatiquement dès que possible, sans nouveau paiement de votre part.
+                  </div>
+                );
                 const nbJ = Number(selected.extra_hours_jours) || 1;
                 const d = prixHeuresSupp(selected.extra_hours_requested, selected.extra_hours_tarif, nbJ);
                 return (

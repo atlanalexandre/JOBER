@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { verifyUser, refuserCompteBloque } from "./_auth.js";
-import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
+import { lireFraisService, lireFraisServiceOuNull, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 import { prixHeuresSupp, joursFactures } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
@@ -421,7 +421,12 @@ export default async function handler(req, res) {
     if (mission.extra_hours_status !== "accepte_presta") {
       return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
     }
-    const fraisS = await lireFraisService(SUPABASE_URL_PI, hdrsPI);
+    // Les frais du complément sont lus comme à la confirmation
+    // (`appliquerHeuresSupp`) : illisibles, on ne fait pas payer sur des valeurs
+    // par défaut que la confirmation refuserait ensuite, au client qui a payé
+    // (relecture du 30/10/2026). Rien n'est encore débité ici.
+    const fraisS = await lireFraisServiceOuNull(SUPABASE_URL_PI, hdrsPI);
+    if (!fraisS) return res.status(502).json({ error: "Le paiement n'a pas pu être préparé. Réessayez dans un instant." });
     // Les journées couvertes, figées à la demande (06/10/2026).
     const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), fraisS);
     if (!(devisS.total > 0)) {
