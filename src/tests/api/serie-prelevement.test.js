@@ -108,6 +108,19 @@ describe("semaine suivante d'une série", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("limite de débit qui persiste : issue inconnue, la série n'est pas arrêtée (relecture du 30/10/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const a = simuler({ stripeCreation: () => json({ error: { type: "rate_limit_error", code: "rate_limit" } }, 429) });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(r.mode).toBe("echec");
+      expect(a.annulations).toBe(0);
+      expect(a.notifications.some(n => /débité|interrompue/.test(`${n.title} ${n.body}`))).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("rejouée, en cours, puis 5xx au troisième envoi : issue inconnue, jamais « rien débité » (relecture du 29/10/2026)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {

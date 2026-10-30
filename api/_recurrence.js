@@ -218,7 +218,10 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         console.error(`[serie] ${nouvelleId} : Stripe limite le débit (429) — requête rejouée dans 2 s.`);
         await new Promise(r => setTimeout(r, 2000));
         cr = await creer();
-        if (cr.status >= 500) throw new Error(`Stripe ${cr.status} au prélèvement`);
+        // Une limite qui persiste n'est toujours pas un refus de la carte : lue
+        // comme tel, la série s'arrêtait quand même. Issue inconnue — la semaine
+        // reste en attente, l'équipe est prévenue (relecture du 30/10/2026).
+        if (cr.status >= 500 || cr.status === 429) throw new Error(`Stripe ${cr.status} au prélèvement`);
       }
       let cj = await cr.json();
       // Rejouée, la requête peut trouver la PREMIÈRE encore en cours chez Stripe :
