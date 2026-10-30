@@ -148,6 +148,22 @@ describe("rattraperProlongations", () => {
     expect(appels.some(a => a.u.includes("/v1/refunds"))).toBe(false);
     expect(appels.some(a => a.methode === "POST" && a.u.includes("support_tickets"))).toBe(true);
   });
+  it("une exception au ticket ou au remboursement n'arrête pas non plus le passage (relecture du 30/10/2026)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      if (u.includes("payment_intents/search")) return new Response(JSON.stringify({ data: [pi({ id: "pi_a" }), pi({ id: "pi_b" })] }), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=in.(")) return new Response(JSON.stringify([mission()]), { status: 200 });
+      if (u.includes("support_tickets")) throw new Error("ECONNRESET");
+      return new Response("[]", { status: 200 });
+    }));
+    appliquerHeuresSupp
+      .mockResolvedValueOnce({ code: 500, corps: { error: "durable" } })
+      .mockResolvedValueOnce({ code: 200, corps: { ok: true } });
+    const bilan = await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });
+    expect(appliquerHeuresSupp).toHaveBeenCalledTimes(2);
+    expect(bilan.appliquees).toBe(1);
+  });
   it("dans le doute : un ticket, une seule fois, et rien d'autre", async () => {
     const appels = simuler({ paiements: [pi()], prestation: mission({ extra_hours_appliquees: 2 }) });
     await rattraperProlongations({ SUPABASE_URL: "https://b.test", headers: {}, cleStripe: "sk", maintenantMs: T });

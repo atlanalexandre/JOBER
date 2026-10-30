@@ -88,6 +88,17 @@ export async function lireFraisService(supabaseUrl, headers) {
 export async function lireFraisServiceOuNull(supabaseUrl, headers) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.frais_service&select=value`, { headers });
+    // Panne passagère (5xx, 429) : null, l'appelant réessaie plus tard. Refus
+    // durable (4xx — colonne ou droit changés par une migration) : valeurs par
+    // défaut, comme `lireFraisService`. Rendre null là aussi faisait répondre
+    // 502 à chaque passage du rattrapage, qui les saute sans ticket : le
+    // paiement sortait de la fenêtre de trois jours sans que personne le sache
+    // (relecture du 30/10/2026). Avec les valeurs par défaut, un écart se voit
+    // (400, puis un ticket).
+    if (!r.ok && r.status !== 429 && r.status < 500) {
+      console.error(`[montant] frais_service refusé (${r.status}) — valeurs par défaut.`);
+      return { ...FRAIS_PAR_DEFAUT };
+    }
     const d = r.ok ? await r.json().catch(() => null) : null;
     if (!Array.isArray(d)) {
       console.error(`[montant] frais_service illisible (${r.status}) — contrôle reporté.`);
