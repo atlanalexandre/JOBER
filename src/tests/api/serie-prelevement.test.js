@@ -111,7 +111,28 @@ describe("semaine suivante d'une série", () => {
   it("limite de débit qui persiste : issue inconnue, la série n'est pas arrêtée (relecture du 30/10/2026)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
+      process.env.ADMIN_EMAIL = "admin@exemple.fr";
+      process.env.RESEND_API_KEY = "re_x";
       const a = simuler({ stripeCreation: () => json({ error: { type: "rate_limit_error", code: "rate_limit" } }, 429) });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(r.mode).toBe("echec");
+      expect(a.annulations).toBe(0);
+      expect(a.notifications.some(n => /débité|interrompue/.test(`${n.title} ${n.body}`))).toBe(false);
+      // Le courriel à l'équipe dit que RIEN n'a été prélevé (relecture du 31/10/2026).
+      const courriel = fetch.mock.calls.find(([u]) => String(u).includes("api.resend.com"));
+      expect(String(courriel?.[1]?.body)).toContain("aucun prélèvement");
+      delete process.env.ADMIN_EMAIL; delete process.env.RESEND_API_KEY;
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("rejouée, en cours, puis 429 au troisième envoi : issue inconnue, jamais « rien débité » (relecture du 31/10/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const a = simuler({ stripeCreation: (n) => n === 1 ? Promise.reject(new Error("ECONNRESET"))
+        : n === 2 ? json({ error: { type: "idempotency_error" } }, 409)
+        : json({ error: { type: "rate_limit_error", code: "rate_limit" } }, 429) });
       const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
       await vi.runAllTimersAsync();
       const r = await p;

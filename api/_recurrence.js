@@ -143,6 +143,10 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
   // l'envoi). On ne dit alors surtout pas au client « rien n'a été débité ».
   let incertain = false;
   let envoye = false;
+  // Deux limites de débit de suite au premier envoi : Stripe n'a RIEN exécuté.
+  // L'issue n'est pas inconnue, et le courriel à l'équipe ne doit pas l'envoyer
+  // chercher un paiement qui ne peut pas exister (relecture du 31/10/2026).
+  let limiteDebit = false;
   try {
     if (!cle) throw new Error("STRIPE_SECRET_KEY absente");
     const sh = { Authorization: `Bearer ${cle}` };
@@ -221,6 +225,7 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         // Une limite qui persiste n'est toujours pas un refus de la carte : lue
         // comme tel, la série s'arrêtait quand même. Issue inconnue — la semaine
         // reste en attente, l'équipe est prévenue (relecture du 30/10/2026).
+        if (cr.status === 429) limiteDebit = true;
         if (cr.status >= 500 || cr.status === 429) throw new Error(`Stripe ${cr.status} au prélèvement`);
       }
       let cj = await cr.json();
@@ -235,7 +240,9 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         const cr3 = await creer();
         // Même règle qu'au premier envoi : une 5xx ici n'est pas un refus
         // (relecture du 29/10/2026 — ce chemin-là ne la vérifiait pas).
-        if (cr3.status >= 500) throw new Error(`Stripe ${cr3.status} au prélèvement`);
+        // 429 compris : le premier envoi est peut-être en train d'aboutir chez
+        // Stripe — ce n'est pas un refus (relecture du 31/10/2026).
+        if (cr3.status >= 500 || cr3.status === 429) throw new Error(`Stripe ${cr3.status} au prélèvement`);
         cj = await cr3.json();
         if (cj?.error?.type === "idempotency_error") throw new Error("prélèvement encore en cours chez Stripe");
       }
@@ -274,9 +281,11 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         to: admin,
         subject: `⚠️ Série hebdomadaire : prélèvement à vérifier dans Stripe`,
         html: `<p>Le prélèvement de la semaine du ${esc(dateFr(date))} (${esc(euros(montant))}) n'a pas pu être confirmé : `
-          + `Stripe n'a pas donné de réponse sûre (coupure réseau ou erreur de son côté). On ignore si la carte du client a été débitée.</p>`
-          + `<p>Dans Stripe, cherchez un paiement portant la métadonnée <strong>mission = ${esc(nouvelleId)}</strong>. `
-          + `S'il existe, la semaine doit être affectée ; sinon, elle peut être annulée.</p>`
+          + (limiteDebit
+            ? `Stripe a refusé deux fois pour limite de débit (429) : <strong>aucun prélèvement n'a été exécuté</strong>. La semaine reste en attente, sans paiement : l'annuler et prévenir le client.</p>`
+            : `Stripe n'a pas donné de réponse sûre (coupure réseau ou erreur de son côté). On ignore si la carte du client a été débitée.</p>`)
+          + (limiteDebit ? "" : `<p>Dans Stripe, cherchez un paiement portant la métadonnée <strong>mission = ${esc(nouvelleId)}</strong>. `
+            + `S'il existe, la semaine doit être affectée ; sinon, elle peut être annulée.</p>`)
           + `<p>Prestation d'origine : ${esc(missionId)}.</p>`,
       });
       if (parti !== true) console.error(`[serie] ${nouvelleId} : alerte « prélèvement incertain » NON envoyée.`);
