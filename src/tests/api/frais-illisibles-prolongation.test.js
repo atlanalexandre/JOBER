@@ -26,6 +26,35 @@ describe("lireFraisServiceOuNull", () => {
   });
 });
 
+describe("refus durable de la base (relecture du 30/10/2026)", () => {
+  it("4xx (colonne ou droit changés) : valeurs par défaut, pas null — sinon 502 à chaque passage, sans ticket", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    servir(new Response("{}", { status: 400 }));
+    expect(await lireFraisServiceOuNull("https://b.test", {})).toEqual(FRAIS_PAR_DEFAUT);
+  });
+  it("429 : panne passagère, null", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    servir(new Response("{}", { status: 429 }));
+    expect(await lireFraisServiceOuNull("https://b.test", {})).toBeNull();
+  });
+});
+
+describe("création du paiement de la prolongation", () => {
+  const intent = readFileSync(new URL("../../../api/stripe-intent.js", import.meta.url), "utf8");
+  it("les frais sont lus comme à la confirmation : illisibles, rien n'est débité (502)", () => {
+    expect(intent).toMatch(/const fraisS = await lireFraisServiceOuNull\(SUPABASE_URL_PI, hdrsPI\);\n\s+if \(!fraisS\) return res\.status\(502\)/);
+  });
+});
+
+describe("écran client", () => {
+  const ecran = readFileSync(new URL("../../components/client-screens.jsx", import.meta.url), "utf8");
+  it("une prolongation payée mais non confirmée ne propose plus de la régler une seconde fois", () => {
+    expect(ecran.match(/noterSuppPayee\(paiementSupp\.id\);/g)).toHaveLength(2);
+    expect(ecran).toMatch(/if \(suppPayees\.has\(selected\.id\)\) return \(/);
+    expect(ecran.indexOf("if (suppPayees.has(selected.id))")).toBeLessThan(ecran.indexOf("Régler {d.total"));
+  });
+});
+
 describe("appliquerHeuresSupp", () => {
   const code = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
   const fonction = code.slice(code.indexOf("export async function appliquerHeuresSupp"), code.indexOf("export default async function handler"));

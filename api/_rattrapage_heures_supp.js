@@ -157,63 +157,70 @@ export async function rattraperProlongations({ SUPABASE_URL, headers, cleStripe,
   }
   const prestations = await lirePrestations([...new Set(paiements.map(pi => pi.metadata.mission).filter(id => uuid.test(id)))], SUPABASE_URL, headers);
   for (const pi of paiements) {
-    const missionId = pi.metadata.mission;
-    // Absente de la carte : lot illisible (au prochain passage) ou repère malformé (signalé plus haut).
-    if (!prestations.has(missionId)) continue;
-    const m = prestations.get(missionId);
-    const decision = decisionRattrapage(m, pi, maintenantMs);
-    if (decision === "rien") continue;
-    if (decision === "signaler") {
-      await signaler(pi, m, SUPABASE_URL, headers, m ? "rattachement incertain" : "prestation introuvable");
-      bilan.signalees++;
-      continue;
-    }
-    // Une exception (connexion coupée) ne doit pas arrêter le passage pour tous
-    // les paiements suivants (relecture du 29/10/2026).
-    let resultat;
+    // Une exception, où qu'elle naisse (application, ticket, remboursement),
+    // ne doit pas arrêter le passage pour les paiements suivants : le garde ne
+    // couvrait que l'application (relecture du 30/10/2026).
     try {
-      resultat = await appliquerHeuresSupp({ missionId, paymentIntent: pi.id, clientId: pi.metadata?.client, SUPABASE_URL, headers });
-    } catch (e) {
-      console.error(`[rattrapage heures supp] ${pi.id} : application interrompue (${e.message}) — au prochain passage.`);
-      continue;
-    }
-    if (resultat.code === 200) {
-      bilan.appliquees++;
-      console.error(`[rattrapage heures supp] ${pi.id} appliqué à ${missionId} — l'application n'avait pas confirmé.`);
-      continue;
-    }
-    // 502 : panne passagère, au prochain passage. Les autres 5xx sont durables
-    // (remboursement refusé, écriture refusée après le paiement, clé Stripe
-    // absente) : sautés en silence, le paiement sortait de la fenêtre de trois
-    // jours sans que personne le sache. Un ticket, une seule fois (29/10/2026).
-    if (resultat.code === 502) continue;
-    if (resultat.code >= 500) {
-      await signaler(pi, m, SUPABASE_URL, headers, `application refusée (${resultat.corps?.error || resultat.code})`);
-      bilan.signalees++;
-      continue;
-    }
-    // Remboursé SEULEMENT quand la prolongation n'est plus applicable de façon
-    // certaine (409 : plus de prolongation en attente, prestation plus en
-    // cours) et jamais appliquée — le compteur l'atteste. Un autre refus
-    // (montant qui ne couvre plus le devis après un changement des frais,
-    // paiement qui ne correspond pas) n'est pas une certitude : un humain
-    // tranche (relecture du 27/10/2026).
-    if (resultat.code !== 409) {
-      await signaler(pi, m, SUPABASE_URL, headers, `non applicable (${resultat.corps?.error || resultat.code})`);
-      bilan.signalees++;
-      continue;
-    }
-    if (await rembourser(pi, cleStripe)) {
-      bilan.remboursees++;
-      console.error(`[rattrapage heures supp] ${pi.id} remboursé : ${resultat.corps?.error || resultat.code}.`);
-      if (m.client_id) {
-        await notifier({ user_id: m.client_id, type: "mission", ref_id: missionId, title: "Prolongation remboursée",
-          body: `Les heures supplémentaires réglées (${euros((pi.amount_received || 0) / 100)}) n'ont pas pu être ajoutées à votre prestation : vous êtes intégralement remboursé.` },
-        SUPABASE_URL, headers).catch(e => console.error("[rattrapage heures supp] notification non envoyée :", e.message));
+      const missionId = pi.metadata.mission;
+      // Absente de la carte : lot illisible (au prochain passage) ou repère malformé (signalé plus haut).
+      if (!prestations.has(missionId)) continue;
+      const m = prestations.get(missionId);
+      const decision = decisionRattrapage(m, pi, maintenantMs);
+      if (decision === "rien") continue;
+      if (decision === "signaler") {
+        await signaler(pi, m, SUPABASE_URL, headers, m ? "rattachement incertain" : "prestation introuvable");
+        bilan.signalees++;
+        continue;
       }
-    } else {
-      await signaler(pi, m, SUPABASE_URL, headers, `non applicable (${resultat.corps?.error || resultat.code}) et remboursement refusé`);
-      bilan.signalees++;
+      // Une exception (connexion coupée) ne doit pas arrêter le passage pour tous
+      // les paiements suivants (relecture du 29/10/2026).
+      let resultat;
+      try {
+        resultat = await appliquerHeuresSupp({ missionId, paymentIntent: pi.id, clientId: pi.metadata?.client, SUPABASE_URL, headers });
+      } catch (e) {
+        console.error(`[rattrapage heures supp] ${pi.id} : application interrompue (${e.message}) — au prochain passage.`);
+        continue;
+      }
+      if (resultat.code === 200) {
+        bilan.appliquees++;
+        console.error(`[rattrapage heures supp] ${pi.id} appliqué à ${missionId} — l'application n'avait pas confirmé.`);
+        continue;
+      }
+      // 502 : panne passagère, au prochain passage. Les autres 5xx sont durables
+      // (remboursement refusé, écriture refusée après le paiement, clé Stripe
+      // absente) : sautés en silence, le paiement sortait de la fenêtre de trois
+      // jours sans que personne le sache. Un ticket, une seule fois (29/10/2026).
+      if (resultat.code === 502) continue;
+      if (resultat.code >= 500) {
+        await signaler(pi, m, SUPABASE_URL, headers, `application refusée (${resultat.corps?.error || resultat.code})`);
+        bilan.signalees++;
+        continue;
+      }
+      // Remboursé SEULEMENT quand la prolongation n'est plus applicable de façon
+      // certaine (409 : plus de prolongation en attente, prestation plus en
+      // cours) et jamais appliquée — le compteur l'atteste. Un autre refus
+      // (montant qui ne couvre plus le devis après un changement des frais,
+      // paiement qui ne correspond pas) n'est pas une certitude : un humain
+      // tranche (relecture du 27/10/2026).
+      if (resultat.code !== 409) {
+        await signaler(pi, m, SUPABASE_URL, headers, `non applicable (${resultat.corps?.error || resultat.code})`);
+        bilan.signalees++;
+        continue;
+      }
+      if (await rembourser(pi, cleStripe)) {
+        bilan.remboursees++;
+        console.error(`[rattrapage heures supp] ${pi.id} remboursé : ${resultat.corps?.error || resultat.code}.`);
+        if (m.client_id) {
+          await notifier({ user_id: m.client_id, type: "mission", ref_id: missionId, title: "Prolongation remboursée",
+            body: `Les heures supplémentaires réglées (${euros((pi.amount_received || 0) / 100)}) n'ont pas pu être ajoutées à votre prestation : vous êtes intégralement remboursé.` },
+          SUPABASE_URL, headers).catch(e => console.error("[rattrapage heures supp] notification non envoyée :", e.message));
+        }
+      } else {
+        await signaler(pi, m, SUPABASE_URL, headers, `non applicable (${resultat.corps?.error || resultat.code}) et remboursement refusé`);
+        bilan.signalees++;
+      }
+    } catch (e) {
+      console.error(`[rattrapage heures supp] ${pi.id} : traitement interrompu (${e.message}) — au prochain passage.`);
     }
   }
   return bilan;
