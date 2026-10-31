@@ -78,36 +78,38 @@ export async function lireFraisService(supabaseUrl, headers) {
 }
 
 /**
- * Comme `lireFraisService`, mais rend `null` quand le réglage est illisible au
- * lieu de retomber sur les valeurs par défaut. Pour le chemin qui CONTRÔLE un
- * paiement déjà fait : comparé à des frais par défaut plus bas que les frais
- * réglés, un paiement valable paraissait insuffisant, et la prolongation était
- * refusée au client qui venait de payer (relecture du 29/10/2026). Un réglage
- * absent (aucune ligne) n'est pas une panne : valeurs par défaut.
+ * Les frais de service, avec l'ÉTAT de leur lecture — pour les chemins qui
+ * font payer ou contrôlent un paiement (prolongation : création du paiement et
+ * confirmation). Rend `{ frais, etat }` :
+ *   - "ok"    : réglage lu (ou absent : valeurs par défaut, ce n'est pas une panne) ;
+ *   - "panne" : 5xx, 429, réseau, réponse illisible — à réessayer, `frais` null ;
+ *   - "refus" : 4xx durable (droit ou colonne changés par une migration) —
+ *     `frais` null aussi.
+ *
+ * Historique : avec repli sur les valeurs par défaut, un paiement valable
+ * paraissait insuffisant (29/10/2026) ; avec `null` sur tout échec, un refus
+ * durable répondait 502 à chaque passage du rattrapage, sauté sans ticket
+ * (30/10/2026) ; avec les valeurs par défaut sur un refus durable, la
+ * prolongation était enregistrée sous le montant payé, et un remboursement
+ * plafonné rendait moins que le débit (31/10/2026). Un refus durable ne fait
+ * donc ni payer ni appliquer : l'appelant le dit, et un humain tranche.
  */
-export async function lireFraisServiceOuNull(supabaseUrl, headers) {
+export async function lireFraisServiceEtat(supabaseUrl, headers) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.frais_service&select=value`, { headers });
-    // Panne passagère (5xx, 429) : null, l'appelant réessaie plus tard. Refus
-    // durable (4xx — colonne ou droit changés par une migration) : valeurs par
-    // défaut, comme `lireFraisService`. Rendre null là aussi faisait répondre
-    // 502 à chaque passage du rattrapage, qui les saute sans ticket : le
-    // paiement sortait de la fenêtre de trois jours sans que personne le sache
-    // (relecture du 30/10/2026). Avec les valeurs par défaut, un écart se voit
-    // (400, puis un ticket).
     if (!r.ok && r.status !== 429 && r.status < 500) {
-      console.error(`[montant] frais_service refusé (${r.status}) — valeurs par défaut.`);
-      return { ...FRAIS_PAR_DEFAUT };
+      console.error(`[montant] frais_service REFUSÉ (${r.status}) — ni paiement ni application de prolongation.`);
+      return { frais: null, etat: "refus" };
     }
     const d = r.ok ? await r.json().catch(() => null) : null;
     if (!Array.isArray(d)) {
       console.error(`[montant] frais_service illisible (${r.status}) — contrôle reporté.`);
-      return null;
+      return { frais: null, etat: "panne" };
     }
-    return { ...FRAIS_PAR_DEFAUT, ...(d[0]?.value || {}) };
+    return { frais: { ...FRAIS_PAR_DEFAUT, ...(d[0]?.value || {}) }, etat: "ok" };
   } catch (e) {
     console.error("[montant] frais_service illisible — contrôle reporté :", e.message);
-    return null;
+    return { frais: null, etat: "panne" };
   }
 }
 
