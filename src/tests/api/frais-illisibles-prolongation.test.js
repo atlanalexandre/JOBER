@@ -38,15 +38,23 @@ describe("lireFraisServiceEtat", () => {
 
 describe("création du paiement de la prolongation (stripe-intent)", () => {
   const intent = readFileSync(new URL("../../../api/stripe-intent.js", import.meta.url), "utf8");
-  it("frais illisibles ou refusés : rien n'est débité (502)", () => {
-    expect(intent).toMatch(/const \{ frais: fraisS \} = await lireFraisServiceEtat\(SUPABASE_URL_PI, hdrsPI\);\n\s+if \(!fraisS\) return res\.status\(502\)/);
+  it("frais illisibles : rien n'est débité (502) ; refus durable : 503 et un ticket interne, un seul (relecture du 01/11/2026)", () => {
+    expect(intent).toMatch(/const \{ frais: fraisS, etat: etatFraisS \} = await lireFraisServiceEtat\(SUPABASE_URL_PI, hdrsPI\);/);
+    expect(intent).toMatch(/if \(!fraisS && etatFraisS === "refus"\) \{[\s\S]{0,1600}support_tickets\?subject=eq\.[\s\S]{0,1600}return res\.status\(503\)/);
+    expect(intent).toMatch(/if \(!fraisS\) return res\.status\(502\)/);
   });
   it("prolongation déjà payée (même repère, non remboursée) : second paiement refusé (409) — relecture du 31/10/2026", () => {
     expect(intent).toMatch(/metadata\['type'\]:'heures_supp' AND status:'succeeded'/);
-    expect(intent).toMatch(/dejaPayee = dq\.data\.find\(p => p\.metadata\?\.deja_appliquees === repere/);
+    expect(intent).toMatch(/p\.metadata\?\.deja_appliquees === repere/);
+    // La liste du client (à jour tout de suite) ET la recherche (qui peut avoir une minute de retard) — 01/11/2026.
+    expect(intent).toMatch(/payment_intents\?customer=\$\{encodeURIComponent\(clientSupp\)\}/);
+    expect(intent.indexOf("// Le client Stripe d'abord")).toBeGreaterThan(0);
+    expect(intent.indexOf("// Le client Stripe d'abord")).toBeLessThan(intent.indexOf("prolongation déjà payée ("));
+    // Sans promettre une application automatique.
+    expect(intent).not.toMatch(/déjà payée : elle sera appliquée automatiquement/);
     expect(intent).toMatch(/if \(dejaPayee\) \{[\s\S]{0,200}return res\.status\(409\)/);
     // Avant la création du paiement, et une recherche illisible ne fait pas payer à l'aveugle.
-    expect(intent.indexOf("if (dejaPayee)")).toBeLessThan(intent.indexOf('"Idempotency-Key": `supp2-'));
+    expect(intent.indexOf("prolongation déjà payée (")).toBeLessThan(intent.indexOf('"Idempotency-Key": `supp2-'));
     expect(intent).toMatch(/paiements antérieurs illisibles[\s\S]{0,120}return res\.status\(502\)/);
   });
 });
@@ -54,8 +62,8 @@ describe("création du paiement de la prolongation (stripe-intent)", () => {
 describe("écran client", () => {
   const ecran = readFileSync(new URL("../../components/client-screens.jsx", import.meta.url), "utf8");
   it("après un paiement non confirmé : plus de bouton « Régler » pour CETTE prolongation, et un message qui dit la suite réelle", () => {
-    expect(ecran).toContain('noterSuppPayee(paiementSupp, res.status === 502 ? "auto" : "equipe");');
-    expect(ecran).toContain('noterSuppPayee(paiementSupp, "equipe");');
+    expect(ecran).toContain('if (res.status !== 409) noterSuppPayee(paiementSupp, res.status === 502 ? "auto" : "equipe");');
+    expect(ecran).toContain('noterSuppPayee(paiementSupp, "auto");');
     expect(ecran).toMatch(/if \(suppPayees\.has\(cleSupp\(selected\)\)\) return \(/);
     expect(ecran.indexOf("if (suppPayees.has(cleSupp(selected)))")).toBeLessThan(ecran.indexOf("Régler {d.total"));
     // La clé suit la prolongation en cours : une prolongation suivante reste réglable.
