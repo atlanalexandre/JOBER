@@ -17,6 +17,10 @@ import { emailHtml, esc, resendBody } from "./_email.js";
 export const STATUTS_EXCLUS = ["rejected", "suspended"];
 // Resend accepte au plus 100 e-mails par appel à /emails/batch.
 export const TAILLE_LOT = 100;
+// Forme d'une adresse acceptée par Resend : un lot ENTIER est refusé pour une
+// seule adresse mal formée (« jean@gmail », sans extension, passait le simple
+// test du « @ ») — 99 destinataires ne recevaient rien (relecture du 01/11/2026).
+export const adresseValide = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 // Pause entre deux lots : Resend limite la cadence (2 appels par seconde par défaut).
 export const PAUSE_ENTRE_LOTS_MS = 600;
 // Au-delà, l'envoi ne tient plus dans la durée d'une fonction (60 s) : chaque
@@ -43,7 +47,7 @@ export function destinatairesInformation(utilisateurs, profils, { inclureNonConf
   const ecartees = { non_confirmees: 0, refusees_ou_suspendues: 0, bannies: 0 };
   for (const u of Array.isArray(utilisateurs) ? utilisateurs : []) {
     const email = String(u?.email || "").trim().toLowerCase();
-    if (!email || !email.includes("@") || vues.has(email)) continue;
+    if (!email || !adresseValide(email) || vues.has(email)) continue;
     if (STATUTS_EXCLUS.includes(statutParId.get(u.id))) { ecartees.refusees_ou_suspendues++; continue; }
     if (u.banned_until && Date.parse(u.banned_until) > maintenant) { ecartees.bannies++; continue; }
     if (!u.email_confirmed_at && !inclureNonConfirmees) { ecartees.non_confirmees++; continue; }

@@ -1695,16 +1695,16 @@ export default async function handler(req, res) {
       if (!authRes) return res.status(503).json({ error: "Adresses des destinataires illisibles — envoi non fait." });
       const authUsers = authRes;
       const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
-      // Adresses normalisées, dédoublonnées et de forme valide, comme
-      // `destinatairesInformation` : l'envoi part par lots de 100, et Resend
-      // refuse un lot ENTIER pour une seule adresse mal formée — 99 prestataires
-      // ne recevaient rien à cause d'un seul (relecture du 31/10/2026).
-      const formeValide = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const brutes = authUsers.filter(u => ids.has(u.id)).map(u => String(u.email || "").trim().toLowerCase()).filter(Boolean);
-      const emails = [...new Set(brutes.filter(e => formeValide.test(e)))];
-      if (emails.length < brutes.length) {
-        console.error(`[send_global_comm] ${brutes.length - emails.length} adresse(s) écartée(s) : doublon ou forme invalide.`);
-      }
+      // Les adresses passent par la MÊME règle que l'e-mail d'information
+      // (`destinatairesInformation`) : normalisées, dédoublonnées, de forme
+      // valide — Resend refuse un lot entier pour une seule adresse mal formée —,
+      // et sans les comptes bannis ni les adresses jamais confirmées, dont les
+      // rejets abaissent la réputation du domaine et envoient en indésirables
+      // les e-mails transactionnels d'ALANE. Le commentaire précédent annonçait
+      // cette règle sans l'appliquer (relecture du 01/11/2026).
+      const { adresses: emails, ecartees } = destinatairesInformation(authUsers.filter(u => ids.has(u.id)), profiles);
+      const nbEcartees = ecartees.non_confirmees + ecartees.refusees_ou_suspendues + ecartees.bannies;
+      if (nbEcartees) console.error(`[send_global_comm] ${nbEcartees} compte(s) écarté(s) :`, JSON.stringify(ecartees));
 
       // Par lots de 100, comme l'e-mail d'information (api/_diffusion.js). Cinq
       // envois en parallèle dépassaient la cadence de Resend (2 appels par
