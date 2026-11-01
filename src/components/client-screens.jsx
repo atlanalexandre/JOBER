@@ -6540,8 +6540,15 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
   // le serveur les appliquera seul (rattrapage). Le bouton « Régler » ne doit
   // plus s'afficher pour elles — il invitait à payer une seconde fois, avec une
   // autre carte (relecture du 30/10/2026).
-  const [suppPayees, setSuppPayees] = useState(() => new Set());
-  const noterSuppPayee = (id) => setSuppPayees(prev => new Set(prev).add(id));
+  // Clé : la prestation ET la prolongation en cours (compteur d'heures déjà
+  // appliquées) — une prolongation suivante sur la même prestation doit pouvoir
+  // être réglée. Valeur : « auto » (panne passagère, le rattrapage l'appliquera)
+  // ou « equipe » (refus : un ticket, l'équipe la reprend) — l'écran ne promet
+  // pas une application automatique qui n'aura pas lieu (relecture du 31/10/2026).
+  // Le serveur refuse de toute façon un second paiement (stripe-intent, 409).
+  const [suppPayees, setSuppPayees] = useState(() => new Map());
+  const cleSupp = (m) => `${m.id}:${Math.round((Number(m.extra_hours_appliquees || 0) + Number(m.heures_ajoutees_total || 0)) * 100) / 100}`;
+  const noterSuppPayee = (m, suite) => setSuppPayees(prev => new Map(prev).set(cleSupp(m), suite));
   const [attestation, setAttestation] = useState(null);
   const [attestationEnCours, setAttestationEnCours] = useState(false);
 
@@ -7287,12 +7294,12 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
               chargerPrestations();
             } else {
               // Le paiement est passé : ne jamais laisser croire le contraire.
-              noterSuppPayee(paiementSupp.id);
+              noterSuppPayee(paiementSupp, res.status === 502 ? "auto" : "equipe");
               showToast(j.error || "Paiement enregistré, mais la prolongation n'a pas pu être appliquée. Écrivez à direction@alane.fr.");
             }
           } catch (e) {
             console.error("[heures_supp] confirmation impossible :", e.message);
-            noterSuppPayee(paiementSupp.id);
+            noterSuppPayee(paiementSupp, "equipe");
             showToast("Paiement enregistré, mais la confirmation a échoué. Écrivez à direction@alane.fr.");
           }
           setPaiementSupp(null);
@@ -7787,9 +7794,11 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
                 // Le prestataire a accepté et chiffré. RIEN n'est appliqué tant
                 // que ce montant n'est pas réglé : ni la durée, ni le montant de
                 // la prestation. C'est ce paiement qui déclenche la prolongation.
-                if (suppPayees.has(selected.id)) return (
+                if (suppPayees.has(cleSupp(selected))) return (
                   <div style={{ background:"rgba(16,185,129,0.08)", border:"1px solid rgba(16,185,129,0.35)", borderRadius:12, padding:"14px", fontSize:13, color:C.text, lineHeight:1.6 }}>
-                    ✅ Paiement de la prolongation reçu. Elle sera appliquée automatiquement dès que possible, sans nouveau paiement de votre part.
+                    {suppPayees.get(cleSupp(selected)) === "auto"
+                      ? "✅ Paiement de la prolongation reçu. Elle sera appliquée automatiquement dès que possible, sans nouveau paiement de votre part."
+                      : "✅ Paiement de la prolongation reçu. Notre équipe finalise la prolongation : inutile de payer à nouveau. Une question ? direction@alane.fr"}
                   </div>
                 );
                 const nbJ = Number(selected.extra_hours_jours) || 1;

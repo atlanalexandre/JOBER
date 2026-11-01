@@ -7,7 +7,7 @@ import { finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes,
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
-import { calculerFrais, lireFraisService, lireFraisServiceOuNull } from "./_montant.js";
+import { calculerFrais, lireFraisService, lireFraisServiceEtat } from "./_montant.js";
 import { lireComptesAuth } from "./_auth.js";
 import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
@@ -1036,8 +1036,12 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
   const extraH = Number(mission.extra_hours_requested || 0);
   // Frais illisibles : on ne contrôle pas un paiement contre des valeurs par
   // défaut — panne passagère, le rattrapage réessaie (relecture du 29/10/2026).
-  const frais  = await lireFraisServiceOuNull(SUPABASE_URL, headers);
-  if (!frais) return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
+  const { frais, etat: etatFrais } = await lireFraisServiceEtat(SUPABASE_URL, headers);
+  if (etatFrais === "panne") return reponseHS(502, { error: MESSAGE_VERIFICATION_DIFFEREE });
+  // Refus durable : 500, que le rattrapage transforme en ticket — jamais une
+  // application sur des frais par défaut (relecture du 31/10/2026).
+  if (!frais) return reponseHS(500, { error: "Votre paiement est bien enregistré mais la prolongation n'a pas pu être appliquée. "
+    + "Écrivez à direction@alane.fr en indiquant la date : nous la reprenons à la main." });
   const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), frais);
   if (!(devisC.total > 0)) return reponseHS(400, { error: "Montant de la prolongation incalculable." });
 

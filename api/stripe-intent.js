@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { verifyUser, refuserCompteBloque } from "./_auth.js";
-import { lireFraisService, lireFraisServiceOuNull, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
+import { lireFraisService, lireFraisServiceEtat, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 import { prixHeuresSupp, joursFactures } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
@@ -421,11 +421,42 @@ export default async function handler(req, res) {
     if (mission.extra_hours_status !== "accepte_presta") {
       return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
     }
+    // Cette prolongation est-elle DÉJÀ payée ? Une confirmation échouée après
+    // le paiement (panne passagère) laisse la prolongation « à régler » jusqu'à
+    // ce que le rattrapage l'applique ; un nouvel appui sur « Régler », avec une
+    // autre carte ou plus de 24 h après, créait un second paiement — la clé
+    // d'idempotence ne couvre que des paramètres identiques (relecture du
+    // 31/10/2026). Le repère `deja_appliquees` désigne la prolongation en cours.
+    // Recherche illisible : on ne fait pas payer à l'aveugle.
+    {
+      const repere = String(Math.round((Number(mission.extra_hours_appliquees || 0)
+        + Number(mission.heures_ajoutees_total || 0)) * 100) / 100);
+      let dejaPayee;
+      try {
+        const q = encodeURIComponent(`metadata['mission']:'${intentMissionId}' AND metadata['type']:'heures_supp' AND status:'succeeded'`);
+        const rq = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`, { headers: stripeHeaders });
+        const dq = await rq.json().catch(() => null);
+        if (!rq.ok || !Array.isArray(dq?.data)) throw new Error(`recherche Stripe refusée (${rq.status})`);
+        // Un paiement déjà APPLIQUÉ a fait avancer le compteur : son repère ne
+        // correspond plus. Seul un paiement abouti pour CETTE prolongation, et
+        // pas remboursé, bloque.
+        dejaPayee = dq.data.find(p => p.metadata?.deja_appliquees === repere
+          && !p.latest_charge?.refunded && !(Number(p.latest_charge?.amount_refunded || 0) > 0));
+      } catch (e) {
+        console.error(`[supplement] paiements antérieurs illisibles pour ${intentMissionId} :`, e.message);
+        return res.status(502).json({ error: "Le paiement n'a pas pu être préparé. Réessayez dans un instant." });
+      }
+      if (dejaPayee) {
+        console.error(`[supplement] ${intentMissionId} : prolongation déjà payée (${dejaPayee.id}) — second paiement refusé.`);
+        return res.status(409).json({ error: "Cette prolongation est déjà payée : elle sera appliquée automatiquement, sans nouveau paiement de votre part." });
+      }
+    }
+
     // Les frais du complément sont lus comme à la confirmation
     // (`appliquerHeuresSupp`) : illisibles, on ne fait pas payer sur des valeurs
     // par défaut que la confirmation refuserait ensuite, au client qui a payé
     // (relecture du 30/10/2026). Rien n'est encore débité ici.
-    const fraisS = await lireFraisServiceOuNull(SUPABASE_URL_PI, hdrsPI);
+    const { frais: fraisS } = await lireFraisServiceEtat(SUPABASE_URL_PI, hdrsPI);
     if (!fraisS) return res.status(502).json({ error: "Le paiement n'a pas pu être préparé. Réessayez dans un instant." });
     // Les journées couvertes, figées à la demande (06/10/2026).
     const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), fraisS);
