@@ -792,6 +792,13 @@ l'acceptation (depuis le 01/10/2026 — voir §5 « La signature du client n'ét
 enregistrée »). `fin_attestee_presta_at` (ajoutée le 01/10/2026) est l'attestation de fin de
 prestation du prestataire (`validate_presta`).
 
+`acceptee_at` (migration `2026-11-01_pilotage_acceptee_at.sql` — **en attente**, à passer par
+Alexandre) est la **première** acceptation par un prestataire : posée par le déclencheur
+`missions_acceptee_at` quand la prestation passe à `assigned`, quel que soit le chemin (e-mail,
+écran, candidature choisie, webhook Stripe, réaffectation du back-office), jamais déplacée ensuite,
+imposée à l'INSERT et jamais écrite par le code ni par le navigateur. Rien n'est inventé pour les
+prestations antérieures. Elle sert au délai d'acceptation du tableau « 📈 Pilotage de l'activité ».
+
 `retractation_renonciation_at` et `retractation_version` portent la preuve que le client a
 demandé l'exécution avant la fin du délai de rétractation et reconnu perdre son droit après
 exécution complète (CGPS art. 8.3). La version est enregistrée avec la date : sans elle, on
