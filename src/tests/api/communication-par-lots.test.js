@@ -23,9 +23,22 @@ describe("send_global_comm", () => {
     expect(action).not.toMatch(/sent\+\+/);
     expect(ecran).toMatch(/\$\{j\.echecs\} envoi\(s\) en échec/);
   });
-  it("adresses normalisées, dédoublonnées et de forme valide avant l'envoi par lots (relecture du 31/10/2026)", () => {
-    expect(action).toMatch(/const emails = \[\.\.\.new Set\(brutes\.filter\(e => formeValide\.test\(e\)\)\)\];/);
-    expect(action).toMatch(/String\(u\.email \|\| ""\)\.trim\(\)\.toLowerCase\(\)/);
-    expect(action.indexOf("formeValide.test")).toBeLessThan(action.indexOf("await envoyerInformation("));
+  it("adresses passées par la règle de l'e-mail d'information : forme valide, ni bannis ni jamais confirmés (relecture du 01/11/2026)", () => {
+    expect(action).toMatch(/const \{ adresses: emails, ecartees \} = destinatairesInformation\(authUsers\.filter\(u => ids\.has\(u\.id\)\), profiles\);/);
+    expect(action.indexOf("destinatairesInformation(")).toBeLessThan(action.indexOf("await envoyerInformation("));
+  });
+});
+
+describe("forme des adresses (api/_diffusion.js)", async () => {
+  const { adresseValide, destinatairesInformation } = await import("../../../api/_diffusion.js");
+  it("« jean@gmail » (sans extension) est écartée : Resend refuserait le lot entier", () => {
+    expect(adresseValide("jean@gmail")).toBe(false);
+    expect(adresseValide("jean@gmail.com")).toBe(true);
+    expect(adresseValide("jean dupont@gmail.com")).toBe(false);
+    const { adresses } = destinatairesInformation([
+      { id: "a", email: "jean@gmail", email_confirmed_at: "2026-01-01" },
+      { id: "b", email: " Paul@Exemple.fr ", email_confirmed_at: "2026-01-01" },
+    ], []);
+    expect(adresses).toEqual(["paul@exemple.fr"]);
   });
 });
