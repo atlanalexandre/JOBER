@@ -7294,13 +7294,21 @@ export function MissionHistoryScreen({ onNavigate, openMissionId }) {
               chargerPrestations();
             } else {
               // Le paiement est passé : ne jamais laisser croire le contraire.
-              noterSuppPayee(paiementSupp, res.status === 502 ? "auto" : "equipe");
+              // 409 : la prestation n'est plus en cours et le paiement est
+              // remboursé — rien à finaliser, la liste est relue. 502 : panne
+              // passagère, le rattrapage l'appliquera. Autre refus : un ticket,
+              // l'équipe la reprend (relecture du 01/11/2026).
+              if (res.status !== 409) noterSuppPayee(paiementSupp, res.status === 502 ? "auto" : "equipe");
               showToast(j.error || "Paiement enregistré, mais la prolongation n'a pas pu être appliquée. Écrivez à direction@alane.fr.");
+              chargerPrestations();
             }
           } catch (e) {
+            // Réponse perdue ou illisible (page d'erreur de Vercel) : le serveur
+            // a pu appliquer, ou le rattrapage le fera — pas un ticket.
             console.error("[heures_supp] confirmation impossible :", e.message);
-            noterSuppPayee(paiementSupp, "equipe");
-            showToast("Paiement enregistré, mais la confirmation a échoué. Écrivez à direction@alane.fr.");
+            noterSuppPayee(paiementSupp, "auto");
+            showToast("Paiement enregistré. La confirmation n'a pas pu être lue : la prolongation sera appliquée automatiquement, sans nouveau paiement.");
+            chargerPrestations();
           }
           setPaiementSupp(null);
         }}

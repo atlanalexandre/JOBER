@@ -421,26 +421,45 @@ export default async function handler(req, res) {
     if (mission.extra_hours_status !== "accepte_presta") {
       return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
     }
+    // Le client Stripe d'abord : la recherche des paiements antérieurs en a besoin.
+    let clientSupp = null;
+    try { clientSupp = await clientStripeDuCompte(callerPi, SUPABASE_URL_PI, SERVICE_ROLE_PI); }
+    catch (e) { console.error(`[supplement] client Stripe indisponible pour ${callerPi.id} :`, e.message); }
+
     // Cette prolongation est-elle DÉJÀ payée ? Une confirmation échouée après
     // le paiement (panne passagère) laisse la prolongation « à régler » jusqu'à
     // ce que le rattrapage l'applique ; un nouvel appui sur « Régler », avec une
     // autre carte ou plus de 24 h après, créait un second paiement — la clé
     // d'idempotence ne couvre que des paramètres identiques (relecture du
     // 31/10/2026). Le repère `deja_appliquees` désigne la prolongation en cours.
-    // Recherche illisible : on ne fait pas payer à l'aveugle.
+    // Deux lectures, comme `paiementDejaAbouti` (`_paiement.js`) : la liste des
+    // paiements du client, à jour tout de suite, et la recherche par prestation,
+    // qui retrouve un paiement fait sans client Stripe mais peut avoir une
+    // minute de retard — seule, elle laissait passer un second paiement fait
+    // dans la foulée (relecture du 01/11/2026). Illisibles : on ne fait pas
+    // payer à l'aveugle.
     {
       const repere = String(Math.round((Number(mission.extra_hours_appliquees || 0)
         + Number(mission.heures_ajoutees_total || 0)) * 100) / 100);
+      const lire = async (url) => {
+        const r = await fetch(url, { headers: stripeHeaders });
+        const d = await r.json().catch(() => null);
+        if (!r.ok || !Array.isArray(d?.data)) throw new Error(`lecture Stripe refusée (${r.status})`);
+        return d.data;
+      };
       let dejaPayee;
       try {
         const q = encodeURIComponent(`metadata['mission']:'${intentMissionId}' AND metadata['type']:'heures_supp' AND status:'succeeded'`);
-        const rq = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`, { headers: stripeHeaders });
-        const dq = await rq.json().catch(() => null);
-        if (!rq.ok || !Array.isArray(dq?.data)) throw new Error(`recherche Stripe refusée (${rq.status})`);
+        const [parRecherche, parClient] = await Promise.all([
+          lire(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`),
+          clientSupp ? lire(`https://api.stripe.com/v1/payment_intents?customer=${encodeURIComponent(clientSupp)}&limit=100&expand[]=data.latest_charge`) : [],
+        ]);
         // Un paiement déjà APPLIQUÉ a fait avancer le compteur : son repère ne
         // correspond plus. Seul un paiement abouti pour CETTE prolongation, et
         // pas remboursé, bloque.
-        dejaPayee = dq.data.find(p => p.metadata?.deja_appliquees === repere
+        dejaPayee = [...parRecherche, ...parClient].find(p => p.status === "succeeded"
+          && p.metadata?.type === "heures_supp" && String(p.metadata?.mission || "") === String(intentMissionId)
+          && p.metadata?.deja_appliquees === repere
           && !p.latest_charge?.refunded && !(Number(p.latest_charge?.amount_refunded || 0) > 0));
       } catch (e) {
         console.error(`[supplement] paiements antérieurs illisibles pour ${intentMissionId} :`, e.message);
@@ -448,7 +467,10 @@ export default async function handler(req, res) {
       }
       if (dejaPayee) {
         console.error(`[supplement] ${intentMissionId} : prolongation déjà payée (${dejaPayee.id}) — second paiement refusé.`);
-        return res.status(409).json({ error: "Cette prolongation est déjà payée : elle sera appliquée automatiquement, sans nouveau paiement de votre part." });
+        // Sans promettre une application automatique : un paiement refusé à la
+        // confirmation (montant, refus durable) attend une décision de l'équipe.
+        return res.status(409).json({ error: "Cette prolongation est déjà payée : inutile de payer à nouveau. "
+          + "Elle sera appliquée dès que possible ; en cas de question, direction@alane.fr." });
       }
     }
 
@@ -456,16 +478,32 @@ export default async function handler(req, res) {
     // (`appliquerHeuresSupp`) : illisibles, on ne fait pas payer sur des valeurs
     // par défaut que la confirmation refuserait ensuite, au client qui a payé
     // (relecture du 30/10/2026). Rien n'est encore débité ici.
-    const { frais: fraisS } = await lireFraisServiceEtat(SUPABASE_URL_PI, hdrsPI);
+    const { frais: fraisS, etat: etatFraisS } = await lireFraisServiceEtat(SUPABASE_URL_PI, hdrsPI);
+    if (!fraisS && etatFraisS === "refus") {
+      // Refus DURABLE du réglage (droit ou colonne changés par une migration) :
+      // plus aucune prolongation ne peut être payée, et seul le journal le disait
+      // (relecture du 01/11/2026). Un ticket interne, un seul tant qu'il est ouvert.
+      try {
+        const sujet = "[Interne] Réglage frais_service illisible — prolongations bloquées";
+        const dj = await fetch(`${SUPABASE_URL_PI}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers: hdrsPI });
+        const deja = dj.ok ? await dj.json().catch(() => null) : null;
+        if (Array.isArray(deja) && !deja.length) {
+          const t = await fetch(`${SUPABASE_URL_PI}/rest/v1/support_tickets`, { method: "POST", headers: { ...hdrsPI, "Prefer": "return=minimal" },
+            body: JSON.stringify({ subject: sujet, user_id: callerPi.id, status: "open",
+              message: "La lecture de platform_settings.frais_service est refusée par la base (erreur 4xx) : aucune prolongation ne peut être payée. Vérifier la dernière migration (droits, colonnes)." }) });
+          if (!t.ok) console.error(`[supplement] ticket « frais_service illisible » NON créé (${t.status}).`);
+        }
+      } catch (e) {
+        console.error("[supplement] ticket « frais_service illisible » NON créé :", e.message);
+      }
+      return res.status(503).json({ error: "Le paiement des prolongations est momentanément indisponible. Notre équipe est prévenue." });
+    }
     if (!fraisS) return res.status(502).json({ error: "Le paiement n'a pas pu être préparé. Réessayez dans un instant." });
     // Les journées couvertes, figées à la demande (06/10/2026).
     const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, joursFactures(mission, nombreDeJours(mission)), fraisS);
     if (!(devisS.total > 0)) {
       return res.status(400).json({ error: "Montant de la prolongation incalculable." });
     }
-    let clientSupp = null;
-    try { clientSupp = await clientStripeDuCompte(callerPi, SUPABASE_URL_PI, SERVICE_ROLE_PI); }
-    catch (e) { console.error(`[supplement] client Stripe indisponible pour ${callerPi.id} :`, e.message); }
 
     const paramsS = {
       amount: String(devisS.centimes),
