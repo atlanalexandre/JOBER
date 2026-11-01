@@ -225,7 +225,11 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         // Une limite qui persiste n'est toujours pas un refus de la carte : lue
         // comme tel, la série s'arrêtait quand même. Issue inconnue — la semaine
         // reste en attente, l'équipe est prévenue (relecture du 30/10/2026).
-        if (cr.status === 429) limiteDebit = true;
+        // « Rien n'a été exécuté » n'est sûr que si le premier envoi a reçu sa
+        // réponse : rejoué après une réponse perdue, le premier a pu aboutir —
+        // Stripe applique sa limite avant de rendre le résultat mémorisé de la
+        // clé (relecture du 01/11/2026).
+        if (cr.status === 429 && !rejoue) limiteDebit = true;
         if (cr.status >= 500 || cr.status === 429) throw new Error(`Stripe ${cr.status} au prélèvement`);
       }
       let cj = await cr.json();

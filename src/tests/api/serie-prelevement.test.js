@@ -127,6 +127,24 @@ describe("semaine suivante d'une série", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("réponse perdue puis deux 429 : le premier envoi a pu aboutir — le courriel n'affirme pas « aucun prélèvement » (relecture du 01/11/2026)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      process.env.ADMIN_EMAIL = "admin@exemple.fr";
+      process.env.RESEND_API_KEY = "re_x";
+      const a = simuler({ stripeCreation: (n) => n === 1 ? Promise.reject(new Error("ECONNRESET")) : json({ error: { type: "rate_limit_error" } }, 429) });
+      const p = programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      await vi.runAllTimersAsync();
+      const r = await p;
+      expect(r.mode).toBe("echec");
+      expect(a.annulations).toBe(0);
+      const courriel = fetch.mock.calls.find(([u]) => String(u).includes("api.resend.com"));
+      expect(String(courriel?.[1]?.body)).not.toContain("aucun prélèvement");
+      expect(String(courriel?.[1]?.body)).toContain("cherchez un paiement");
+      delete process.env.ADMIN_EMAIL; delete process.env.RESEND_API_KEY;
+    } finally { vi.useRealTimers(); }
+  });
+
   it("rejouée, en cours, puis 429 au troisième envoi : issue inconnue, jamais « rien débité » (relecture du 31/10/2026)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
