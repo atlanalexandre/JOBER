@@ -1030,7 +1030,12 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     return reponseHS(200, { ok: true, deja: true, hours: mission.hours });
   }
   if (mission.extra_hours_status !== "accepte_presta") {
-    return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation." });
+    // Arrive APRÈS un paiement : typiquement un second paiement fait dans un
+    // autre onglet, la prolongation ayant déjà été appliquée par le premier. Le
+    // rattrapage le rembourse ou ouvre un ticket ; le client, débité, doit le
+    // savoir — le message seul le laissait sans suite (relecture du 02/11/2026).
+    return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation. "
+      + "Si ce paiement vous a été débité en double, il sera vérifié et remboursé : notre équipe en est avertie." });
   }
 
   const extraH = Number(mission.extra_hours_requested || 0);
