@@ -5308,6 +5308,16 @@ Principales adresses :
 | `/mentions-legales` | Mentions légales — **publique, atteignable sans compte** |
 | `/admin` | Backoffice |
 
+**L'accueil public explique ALANE avant l'inscription** (02/11/2026, retour d'un visiteur :
+« qui sommes-nous ? pourquoi nous choisir ? — si tu comprends pas, tu crées pas »). Sous le premier
+écran, inchangé, `src/components/accueil-sections.jsx` présente : comment ça marche, pourquoi nous
+choisir, l'offre aux indépendants, qui sommes-nous, quatre questions fréquentes (lien vers `/faq`,
+publique ; son retour mène à l'accueil pour un visiteur sans compte). Le didacticiel, lui, ne venait
+qu'après le choix du rôle. **Chaque phrase doit rester vraie** : les chiffres (métiers réglementés,
+taux de cashback) sont lus dans les constantes, et une promesse qui ne correspond plus au service
+est une pratique trompeuse (art. L121-2 du code de la consommation). Le titre s'adresse aussi aux
+particuliers (« pour votre entreprise ou chez vous »), `index.html` compris.
+
 **Les mentions légales ont leur propre adresse** (07/09/2026). L'article 6-III de la loi pour
 la confiance dans l'économie numérique exige qu'elles soient accessibles « de manière directe
 et permanente », donc à un visiteur qui n'a pas de compte. Elles n'existaient que dans le menu

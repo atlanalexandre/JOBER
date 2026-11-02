@@ -179,7 +179,7 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
           Trouvez un <span style={{
             background:`linear-gradient(135deg, ${C.violet}, ${C.violetLight})`,
             WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-          }}>prestataire indépendant</span> pour votre entreprise
+          }}>prestataire indépendant</span> pour votre entreprise ou chez vous
         </h1>
 
         <p style={{ color:C.accentGold, fontSize:15, fontWeight:700, margin:"0 0 14px", fontFamily:font.display }}>
