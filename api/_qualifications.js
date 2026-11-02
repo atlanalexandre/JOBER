@@ -87,7 +87,7 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   // Modelage et ongles : soins esthétiques eux aussi (art. 16 ; les
   // « modelages esthétiques de confort sans finalité médicale » y figurent
   // depuis la loi du 2 août 2005). Ajoutés le 02/11/2026.
-  "Praticien(ne) en modelage bien-être": { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "le modelage de confort est un soin esthétique réglementé ; le massage à visée thérapeutique reste réservé aux masseurs-kinésithérapeutes", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+  "Praticien(ne) en modelage bien-être": { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "le modelage de confort est un soin esthétique réglementé ; le massage à visée thérapeutique reste réservé aux masseurs-kinésithérapeutes ; prestation de bien-être exclusivement, sans aucun caractère sexuel", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
   "Prothésiste ongulaire / Manucure":   { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "la manucure et la pose d'ongles sont des soins esthétiques réglementés", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
 
   // ── Danse (02/11/2026) ───────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService, lireFraisServiceEtat } from "./_montant.js";
 import { lireComptesAuth } from "./_auth.js";
+import { motsSuspects, signalerAuBackOffice } from "./_moderation.js";
 import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
@@ -3636,6 +3637,14 @@ export default async function handler(req, res) {
       if (!ins || !ins.ok || !Array.isArray(lignesMsg) || lignesMsg.length === 0) {
         console.error(`[message] refus d'insertion (${ins?.status}) : ${JSON.stringify(lignesMsg).slice(0, 200)}`);
         return res.status(500).json({ error: "Votre message n'a pas pu être envoyé. Réessayez." });
+      }
+
+      // Modération (02/11/2026) : un message qui parle de services à caractère
+      // sexuel ouvre un ticket au back-office. Rien n'est bloqué : la décision
+      // reste humaine (api/_moderation.js).
+      const motsMsg = motsSuspects(texte);
+      if (motsMsg.length) {
+        await signalerAuBackOffice({ supabaseUrl: SUPABASE_URL, headers, userId: caller.id, origine: "Message", texte, mots: motsMsg });
       }
 
       // ── Le destinataire est prévenu ICI, depuis le message enregistré ──
