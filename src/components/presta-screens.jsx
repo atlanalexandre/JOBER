@@ -12,7 +12,7 @@ import { prixHeuresSupp, joursFactures, tarifSuppFixe } from "../../api/_heures_
 import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
-import { MONTANT_MIN, PLAFOND_MOIS_PAR_AN } from "../../api/_invitation_regles.js";
+import { MONTANT_MIN, PLAFOND_MOIS_PAR_AN, PARRAINAGE_FILLEULS } from "../../api/_invitation_regles.js";
 
 // Quota mensuel de la formule Premium, depuis la seule liste qui fasse foi.
 const quotaPremium = () => ABONNEMENTS_PRESTA.find(p => p.id === "premium")?.missions ?? 8;
@@ -5367,6 +5367,22 @@ export function InviterClientsScreen({ onBack }) {
                   <div style={{ color:C.textSub, fontSize:11 }}>{l}</div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Le parrainage entre prestataires vivait dans l'espace CLIENT seul,
+            alors que sa récompense vise les prestataires (02/11/2026). Le même
+            lien sert : le filleul choisit son rôle à l'inscription. */}
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
+          <p style={{ color:C.text, fontSize:13, fontWeight:700, margin:"0 0 6px" }}>👷 Parrainez aussi des indépendants</p>
+          <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:"0 0 10px" }}>
+            Le même lien sert à inscrire un autre prestataire. Dès que {PARRAINAGE_FILLEULS} de vos filleuls souscrivent une formule payante,
+            vous recevez 1 mois offert.
+          </p>
+          {bilan && (
+            <div style={{ color:C.textSub, fontSize:12 }}>
+              Filleuls inscrits : <strong style={{ color:C.text }}>{bilan.prestataires ?? 0}</strong> · abonnés : <strong style={{ color:C.accentGold }}>{bilan.prestataires_abonnes ?? 0}</strong>
             </div>
           )}
         </div>

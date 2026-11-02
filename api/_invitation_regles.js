@@ -7,3 +7,5 @@
 export const MONTANT_MIN = 50;
 /** Mois offerts au plus, par prestataire, sur douze mois glissants. */
 export const PLAFOND_MOIS_PAR_AN = 6;
+/** Parrainage entre prestataires : filleuls ABONNÉS pour un mois offert (stripe-webhook.js). */
+export const PARRAINAGE_FILLEULS = 3;

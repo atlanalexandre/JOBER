@@ -169,7 +169,7 @@ export async function offrirMoisAbonnement(parrain, cle, { supabaseUrl, headers,
   });
   const lignes = await r.json().catch(() => []);
   if (!r.ok || !Array.isArray(lignes) || lignes.length === 0) return { ok: false, texte: `prolongation refusée (${r.status})` };
-  return { ok: true, texte: `Votre abonnement ${plan === "elite" ? "Elite" : "Premium"} court jusqu'au ${nouvelleFin.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}.` };
+  return { ok: true, texte: `Votre abonnement ${parrain.plan_abonnement === "elite" ? "Elite" : "Premium"} court jusqu'au ${nouvelleFin.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}.` };
 }
 
 /**

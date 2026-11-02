@@ -2758,11 +2758,15 @@ réservation est journalisé avec la marche à suivre à la main. Éprouvé par
 prestation de 65 € terminée, cashback et mois offerts une seule fois — la seconde moitié saute tant
 que la migration n'est pas passée).
 
-> **Défaut constaté le 02/11/2026, non corrigé (signalé à Alexandre)** : l'écran « Parrainage »
-> (`/referral`) n'est accessible que depuis l'espace **client**, alors que sa récompense
-> (« 3 filleuls abonnés ») vise les prestataires ; et sa liste de filleuls lit d'autres fiches
-> `profiles`, que la RLS (`profiles_select` : sa propre ligne seulement) ne laisse pas lire — elle
-> est toujours vide.
+**Le parrainage entre prestataires a changé d'écran** (02/11/2026). Son écran (`/referral`)
+n'était accessible que depuis l'espace **client**, alors que sa récompense vise les prestataires ;
+il affichait un « code de parrainage » qu'aucun formulaire n'accepte (seul le lien `?ref=`
+rattache) et une liste de filleuls lue dans d'autres fiches `profiles`, que la RLS refuse —
+toujours vide. Le parrainage des prestataires est désormais sur `/provider/invite-clients` (même
+lien : le filleul choisit son rôle à l'inscription), ses chiffres comptés par `mes_invitations`.
+Côté client, `/referral` devient « Recommandez ALANE » : un lien à partager, **sans récompense
+promise** — il n'en existe aucune pour un client. Le seuil (3 filleuls abonnés) vit dans
+`api/_invitation_regles.js`, lu par le webhook et par l'écran.
 
 **Contrat-cadre Client Professionnel** — `src/constants/contrat-cadre-pro.js`, huit articles,
 distinct des CGPS. Celles-ci sont acceptées par tous et ne peuvent pas porter les engagements
