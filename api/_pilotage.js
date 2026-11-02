@@ -12,23 +12,28 @@
 // (`pilotage_activite`). Seules comptent les réservations payées
 // (`stripe_payment_intent`) : un panier abandonné n'est pas une demande.
 
-// Un prestataire a dit oui (la prestation a pu se terminer, être contestée, ou
-// chercher un remplaçant après coup — elle a bien été servie).
-export const STATUTS_SERVIS = ["assigned", "completed", "closed", "disputed", "needs_replacement"];
-// La demande attend encore une réponse : ni servie, ni perdue.
-export const STATUTS_EN_ATTENTE = ["open", "pending_acceptance"];
+// Servie : un prestataire est là — la prestation est confirmée, faite, close ou
+// contestée. Une annulation n'est jamais « servie », même après une acceptation :
+// le prestataire qui se retire la veille laisse le client sans personne.
+export const STATUTS_SERVIS = ["assigned", "completed", "closed", "disputed"];
+// En attente : ni servie, ni perdue. `needs_replacement` en fait partie — le
+// webhook la pose aussi sur un paiement dont le prestataire n'a PAS été retenu,
+// sans que personne ait jamais accepté (relecture du 02/11/2026).
+export const STATUTS_EN_ATTENTE = ["open", "pending_acceptance", "needs_replacement"];
 
 /**
- * La réservation a-t-elle trouvé un prestataire ? Une annulation par le client
- * n'est ni un succès ni un manque de prestataires : elle est comptée à part —
- * sauf quand on sait qu'un prestataire avait accepté (`acceptee_at`), auquel cas
- * la demande avait bien été servie.
+ * La réservation a-t-elle trouvé un prestataire ?
+ *
+ * Une annulation compte comme NON servie. La base ne dit pas qui a annulé (le
+ * motif manque presque toujours) : le client, ou le traitement automatique qui
+ * annule et rembourse une réservation restée sans prestataire. Les retirer du
+ * calcul, comme le faisait la première version, gonflait le taux exactement
+ * dans le cas qu'il doit révéler — le manque de prestataires. Le chiffre est
+ * donc prudent : il peut sous-estimer, jamais rassurer à tort (02/11/2026).
  */
 export function estServie(m) {
-  if (STATUTS_SERVIS.includes(m.status)) return true;
-  return m.status === "cancelled" && Boolean(m.acceptee_at);
+  return STATUTS_SERVIS.includes(m.status);
 }
-const estAnnuleeSansSuite = (m) => m.status === "cancelled" && !m.acceptee_at;
 
 const mediane = (valeurs) => {
   if (!valeurs.length) return null;
@@ -49,9 +54,9 @@ export function chiffresPilotage(missions, { depuisMs, delaiDisponible = false }
   const periode = payees.filter(m => Date.parse(m.created_at) >= depuisMs);
 
   const enAttente = periode.filter(m => STATUTS_EN_ATTENTE.includes(m.status)).length;
-  const annulees = periode.filter(estAnnuleeSansSuite).length;
-  // Tranchées : servies, ou perdues faute de prestataire (refusées, expirées).
-  const tranchees = periode.filter(m => !STATUTS_EN_ATTENTE.includes(m.status) && !estAnnuleeSansSuite(m));
+  // Tranchées : servies, ou non (refusées, expirées, annulées — voir estServie).
+  const tranchees = periode.filter(m => !STATUTS_EN_ATTENTE.includes(m.status));
+  const annulees = tranchees.filter(m => m.status === "cancelled").length;
   const servies = tranchees.filter(estServie).length;
 
   // Délai d'acceptation, en minutes : seulement si la base enregistre le moment
@@ -61,11 +66,14 @@ export function chiffresPilotage(missions, { depuisMs, delaiDisponible = false }
       .filter(d => Number.isFinite(d) && d >= 0)
     : [];
 
-  // Retour : sur TOUTE l'histoire, pas seulement la période — un client servi
-  // il y a deux mois qui revient cette semaine est un retour.
+  // Retour : sur tout ce qui a été lu (douze mois), pas seulement la période —
+  // un client servi il y a deux mois qui revient cette semaine est un retour.
+  // Les semaines suivantes d'une série (`parent_mission_id`) ne comptent pas :
+  // elles se réservent seules, et tout client en série paraissait « revenu »
+  // dès la deuxième semaine (relecture du 02/11/2026).
   const serviesParClient = new Map();
   for (const m of payees) {
-    if (!m.client_id || !estServie(m)) continue;
+    if (!m.client_id || !estServie(m) || m.parent_mission_id) continue;
     serviesParClient.set(m.client_id, (serviesParClient.get(m.client_id) || 0) + 1);
   }
   const clientsServis = serviesParClient.size;
