@@ -338,6 +338,11 @@ export const METIERS_TARIFS = {
     "Chauffeur VTC":                        { min:14,   max:20,   default:16, rome:"N4102" },
     "Téléconseiller":                       { min:12,   max:15,   default:13, rome:"D1408" },
     "Éducateur sportif / Coach":            { min:14,   max:22,   default:17, rome:"G1204" },
+    // Distingué du coach le 02/11/2026 (demande d'Alexandre) : le coach
+    // travaille pour un particulier, une salle de sport ou une entreprise ;
+    // l'intervenant sportif, pour un établissement scolaire, et l'école
+    // primaire exige en plus un agrément de l'Éducation nationale.
+    "Intervenant sportif en milieu scolaire": { min:15, max:25,   default:19, rome:"G1204" },
     "Agent de médiation":                   { min:13,   max:18,   default:15, rome:"K1204" },
     "Photographe événementiel":             { min:16,   max:28,   default:21, rome:"E1201" },
     "Technicien son / lumière":             { min:15,   max:25,   default:19, rome:"L1508" },
@@ -368,10 +373,11 @@ export const METIERS_TARIFS = {
     // activités les plus exercées en micro-entreprise.
     //
     // Ce qui est proposé ici, ce sont des COURS et des FORMATIONS vendus comme
-    // prestation de services — pas un poste d'enseignant. L'enseignement dans
-    // un établissement scolaire relève de l'Éducation nationale et ne se
-    // commande pas à l'heure sur une plateforme ; il n'a donc pas sa place au
-    // catalogue.
+    // prestation de services — pas un poste d'enseignant. Le poste d'enseignant
+    // d'un établissement scolaire relève de l'Éducation nationale et ne se
+    // commande pas à l'heure sur une plateforme. Seule exception, décidée le
+    // 02/11/2026 : l'INTERVENANT sportif extérieur, que les établissements
+    // font venir pour des séances (« Intervenant sportif en milieu scolaire »).
     //
     // Une réserve à connaître : la FORMATION PROFESSIONNELLE CONTINUE (celle
     // financée par un OPCO, un employeur ou le CPF) suppose un numéro de
@@ -535,6 +541,10 @@ const ALIAS_METIERS = {
   // « manucure » sont d'autres métiers, qui n'existent pas au catalogue et
   // doivent rester sans résultat.
   "Coiffeur(se) à domicile":  ["coiffure", "barbier", "coiffeur a domicile"],
+  // Le sport, en deux métiers distincts (02/11/2026) : l'école d'un côté, le
+  // particulier, la salle et l'entreprise de l'autre.
+  "Intervenant sportif en milieu scolaire": ["prof de sport", "professeur de sport", "professeur d'eps", "prof d'eps", "eps", "sport scolaire"],
+  "Éducateur sportif / Coach": ["coach sportif", "preparateur physique", "personal trainer", "salle de sport"],
 };
 
 /**
