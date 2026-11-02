@@ -15,6 +15,7 @@ import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fet
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
+import { SectionsAccueil } from "./components/accueil-sections.jsx";
 import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
@@ -114,7 +115,7 @@ const NB_METIERS = new Set(Object.values(METIERS).flat()).size;
 
 // ── SCREENS ───────────────────────────────────────────────────────
 
-function SplashScreen({ onNext, onMentions }) {
+function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
   const [v,setV]=useState(false);
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
@@ -140,6 +141,9 @@ function SplashScreen({ onNext, onMentions }) {
       <div style={{ position:"absolute", bottom:-100, left:-100, width:320, height:320, borderRadius:"50%", background:`radial-gradient(circle, rgba(30,58,123,0.4) 0%, transparent 65%)`, pointerEvents:"none" }} />
       <div style={{ position:"absolute", top:"40%", left:"50%", transform:"translate(-50%,-50%)", width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.10) 0%, transparent 60%)`, pointerEvents:"none" }} />
 
+      {/* Le premier écran garde sa hauteur : les explications viennent dessous,
+          au défilement (02/11/2026). */}
+      <div style={{ minHeight:"100svh", display:"flex", flexDirection:"column" }}>
       {/* Logo aligné à gauche */}
       <div style={{ paddingTop:64, marginBottom:"auto" }}>
         <div onClick={onNext} style={{ cursor:"pointer", display:"inline-flex" }}>
@@ -175,7 +179,7 @@ function SplashScreen({ onNext, onMentions }) {
           Trouvez un <span style={{
             background:`linear-gradient(135deg, ${C.violet}, ${C.violetLight})`,
             WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-          }}>prestataire indépendant</span> pour votre entreprise
+          }}>prestataire indépendant</span> pour votre entreprise ou chez vous
         </h1>
 
         <p style={{ color:C.accentGold, fontSize:15, fontWeight:700, margin:"0 0 14px", fontFamily:font.display }}>
@@ -183,8 +187,8 @@ function SplashScreen({ onNext, onMentions }) {
         </p>
 
         <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:44, maxWidth:340 }}>
-          ALANE est la plateforme française qui met en relation les entreprises avec des prestataires
-          indépendants vérifiés, pour des prestations ponctuelles ou récurrentes partout en France.
+          ALANE est la plateforme française qui met en relation les entreprises et les particuliers avec des
+          prestataires indépendants vérifiés, pour des prestations ponctuelles ou récurrentes partout en France.
         </p>
 
         {/* Stats pills */}
@@ -256,6 +260,12 @@ function SplashScreen({ onNext, onMentions }) {
         <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", marginTop:14, letterSpacing:0.3 }}>
           Gratuit · Sans engagement · Résultats immédiats
         </p>
+        <p style={{ textAlign:"center", marginTop:10 }}>
+          <a href="#decouvrir" onClick={(e)=>{ e.preventDefault(); document.getElementById("decouvrir")?.scrollIntoView({ behavior:"smooth" }); }}
+             style={{ color:C.violetLight, fontSize:14, fontWeight:700, textDecoration:"none" }}>
+            Découvrir ALANE ↓
+          </a>
+        </p>
         {/* Accès « direct et permanent » aux mentions légales, imposé par
             l'article 6-III de la LCEN : un visiteur sans compte n'avait aucun
             moyen de savoir qui édite la plateforme. */}
@@ -266,6 +276,8 @@ function SplashScreen({ onNext, onMentions }) {
           </a>
         </p>
       </div>
+      </div>
+      <SectionsAccueil onCommencer={onNext} onFaq={onFaq} onContact={onContact} />
     </div>
   );
 }
@@ -1862,8 +1874,8 @@ export default function App() {
       />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
-      {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
-      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} />}
+      {screen==="faq"               && <FAQScreen onBack={()=>setScreen(supaUser?"settings":"splash")} role={role} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} onFaq={()=>navigate("faq")} onContact={()=>setScreen("public_contact")} />}
       {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
