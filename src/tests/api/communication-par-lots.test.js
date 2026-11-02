@@ -40,5 +40,7 @@ describe("forme des adresses (api/_diffusion.js)", async () => {
       { id: "b", email: " Paul@Exemple.fr ", email_confirmed_at: "2026-01-01" },
     ], []);
     expect(adresses).toEqual(["paul@exemple.fr"]);
+    // Comptée, pour qu'on sache qui relancer (02/11/2026).
+    expect(destinatairesInformation([{ id: "a", email: "jean@gmail", email_confirmed_at: "2026-01-01" }], []).ecartees.invalides).toBe(1);
   });
 });

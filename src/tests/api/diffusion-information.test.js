@@ -26,7 +26,7 @@ describe("destinatairesInformation()", () => {
   it("joint validés, en attente et inscriptions inachevées ; écarte refusés, suspendus, bannis, non confirmés, doublons", () => {
     const { adresses, ecartees } = destinatairesInformation(comptes, profils);
     expect(adresses).toEqual(["client@exemple.fr", "presta.attente@exemple.fr", "sans.profil@exemple.fr"]);
-    expect(ecartees).toEqual({ non_confirmees: 1, refusees_ou_suspendues: 2, bannies: 1 });
+    expect(ecartees).toEqual({ non_confirmees: 1, refusees_ou_suspendues: 2, bannies: 1, invalides: 0 });
   });
 
   it("inclut les adresses jamais confirmées sur demande", () => {
