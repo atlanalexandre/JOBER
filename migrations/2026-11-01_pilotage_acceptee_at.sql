@@ -13,9 +13,11 @@
 --
 -- Plutôt que d'écrire la date sur chacun des chemins (et d'en oublier un), un
 -- déclencheur la pose dès que la prestation PASSE à `assigned`, quel que soit
--- le chemin. Elle n'est posée qu'une fois : une réaffectation ultérieure
--- (remplacement) ne la déplace pas — c'est le délai de la PREMIÈRE acceptation
--- qui compte pour le client.
+-- le chemin — à la PREMIÈRE acceptation seulement, c'est-à-dire en sortant
+-- d'une demande en attente (`open`, `pending_acceptance`). Un remplacement ou
+-- une réaffectation ne la pose ni ne la déplace : c'est le délai de la première
+-- acceptation qui compte pour le client. Seul l'éditeur SQL (rôle postgres)
+-- peut la corriger à la main.
 --
 -- Le navigateur ne peut pas l'écrire : il n'a aucun droit UPDATE sur cette
 -- colonne (les droits de `missions` sont accordés colonne par colonne), et à
@@ -45,10 +47,18 @@ BEGIN
     -- Imposée, jamais reçue : une ligne créée directement « assigned » (le
     -- serveur) prend l'heure de la base ; toute autre valeur fournie est effacée.
     NEW.acceptee_at := CASE WHEN NEW.status = 'assigned' THEN now() ELSE NULL END;
-  ELSIF NEW.status = 'assigned' AND OLD.status IS DISTINCT FROM 'assigned' AND OLD.acceptee_at IS NULL THEN
+  ELSIF NEW.status = 'assigned' AND OLD.status IN ('open', 'pending_acceptance') AND OLD.acceptee_at IS NULL THEN
+    -- PREMIÈRE acceptation : depuis une demande en attente seulement. Un
+    -- retour à « assigned » depuis « remplaçant recherché » ou une réaffectation
+    -- du back-office est un remplacement : une prestation acceptée AVANT cette
+    -- migration aurait pris l'heure du remplaçant (relecture du 02/11/2026).
     NEW.acceptee_at := now();
+  ELSIF current_user = 'postgres' THEN
+    -- Correction à la main depuis l'éditeur SQL : permise. Ni le code (rôle
+    -- service_role) ni le navigateur (authenticated) ne passent par ici.
+    NULL;
   ELSE
-    -- Jamais déplacée ni effacée après coup.
+    -- Jamais déplacée ni effacée par le code.
     NEW.acceptee_at := OLD.acceptee_at;
   END IF;
   RETURN NEW;
