@@ -3250,6 +3250,76 @@ export function BOExportMissions() {
 // remboursements, versements, frais Stripe, virements bancaires), suivi des
 // totaux par nature. C'est le fichier à remettre au comptable ; l'export des
 // prestations ci-dessus n'en est pas un (api/_journal_comptable.js).
+// Pilotage de l'activité (01/11/2026) : les trois chiffres à suivre chaque
+// semaine. Demandes servies basses → il manque des prestataires ; délai long →
+// les clients attendent ; retour bas → qualité ou prix (api/_pilotage.js).
+export function BOPilotage() {
+  const [jours, setJours] = useState(30);
+  const [p, setP] = useState(null);
+  const [erreur, setErreur] = useState("");
+  useEffect(() => {
+    let actif = true;
+    setErreur("");
+    boFetch({ action: "pilotage_activite", jours })
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => { if (!actif) return; if (!ok) throw new Error(j?.error || "tableau indisponible"); setP(j); })
+      .catch(e => { console.error("[BO] pilotage :", e.message); if (actif) setErreur(e.message); });
+    return () => { actif = false; };
+  }, [jours]);
+  const pct = (x) => x == null ? "—" : `${Math.round(x * 100)} %`;
+  const delai = (min) => {
+    if (min == null) return "—";
+    if (min < 60) return `${Math.round(min)} min`;
+    if (min < 48 * 60) return `${Math.round(min / 6) / 10} h`.replace(".", ",");
+    return `${Math.round(min / 144) / 10} j`.replace(".", ",");
+  };
+  const tuile = (titre, valeur, detail, aide) => (
+    <div style={{ flex:"1 1 150px", background:"#091530", borderRadius:12, padding:"12px", border:`1px solid ${C.border}` }}>
+      <div style={{ color:C.textSub, fontSize:11, fontWeight:700 }}>{titre}</div>
+      <div style={{ color:C.text, fontSize:24, fontWeight:800, margin:"4px 0" }}>{valeur}</div>
+      <div style={{ color:C.textSub, fontSize:11, lineHeight:1.4 }}>{detail}</div>
+      <div style={{ color:C.textMuted, fontSize:10, marginTop:6, lineHeight:1.4 }}>{aide}</div>
+    </div>
+  );
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, gap:8 }}>
+        <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>📈 Pilotage de l'activité</div>
+        <select value={jours} onChange={e => setJours(Number(e.target.value))}
+          style={{ background:"#091530", color:C.text, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 8px", fontSize:16, fontFamily:"inherit" }}>
+          <option value={7}>7 jours</option><option value={30}>30 jours</option><option value={90}>90 jours</option><option value={365}>1 an</option>
+        </select>
+      </div>
+      {erreur && <div style={{ color:C.danger, fontSize:12 }}>Tableau non calculé : {erreur}</div>}
+      {!p && !erreur && <div style={{ color:C.textSub, fontSize:12 }}>Calcul…</div>}
+      {p && <>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {tuile("Demandes servies", pct(p.taux_servies),
+            `${p.servies} sur ${p.tranchees} réservation(s) payée(s)${p.en_attente ? ` · ${p.en_attente} en attente` : ""}${p.annulees ? ` · ${p.annulees} annulée(s) par le client` : ""}`,
+            "Bas : il manque des prestataires validés.")}
+          {tuile("Délai d'acceptation", p.delai_disponible ? delai(p.delai_mediane_min) : "—",
+            p.delai_disponible ? `médiane sur ${p.delai_mesures} acceptation(s)` : "disponible après la mise à jour de la base",
+            "Long : les clients attendent et repartent.")}
+          {tuile("Clients qui reviennent", pct(p.taux_retour),
+            `${p.clients_revenus} sur ${p.clients_servis} client(s) servi(s) ont réservé au moins 2 fois`,
+            "Bas : qualité ou prix à revoir.")}
+        </div>
+        {p.par_secteur?.length > 0 && (
+          <div style={{ marginTop:10 }}>
+            {p.par_secteur.map(s => (
+              <div key={s.secteur} style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.textSub, padding:"4px 0", borderBottom:`1px solid ${C.grayLight}` }}>
+                <span>{s.secteur}</span>
+                <span>{s.servies}/{s.demandes} servie(s) · {pct(s.demandes ? s.servies / s.demandes : null)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {p.demandes === 0 && <div style={{ color:C.textMuted, fontSize:11, marginTop:8 }}>Aucune réservation payée sur la période.</div>}
+      </>}
+    </div>
+  );
+}
+
 export function BOExportJournal() {
   const moisPrecedent = () => {
     const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
@@ -4686,6 +4756,8 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
           {boLoading && <div style={{ textAlign:"center", color:C.textSub, fontSize:13, padding:"30px 0" }}>Chargement des données…</div>}
+
+          <BOPilotage />
 
           {/* Reset mensuel manuel + relances */}
           <BOResetMonthly />

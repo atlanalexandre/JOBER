@@ -1,0 +1,80 @@
+// Pilotage de l'activité (01/11/2026) : demandes servies, délai d'acceptation,
+// retour des clients — sur les seules réservations PAYÉES.
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { chiffresPilotage, estServie } from "../../../api/_pilotage.js";
+
+const T = Date.parse("2026-11-01T12:00:00Z");
+const jour = (n) => new Date(T - n * 86400000).toISOString();
+const m = (extra) => ({ id: Math.random().toString(36).slice(2), client_id: "c1", prestataire_id: "p1", status: "completed",
+  created_at: jour(1), stripe_payment_intent: "pi_x", sector: "hotellerie", ...extra });
+const depuisMs = T - 30 * 86400000;
+
+describe("demandes servies", () => {
+  it("parmi les réservations payées et tranchées ; les paniers abandonnés ne comptent pas", () => {
+    const c = chiffresPilotage([
+      m({ status: "completed" }), m({ status: "assigned" }), m({ status: "refused", prestataire_id: null }),
+      m({ status: "open", stripe_payment_intent: null }), // panier abandonné
+      m({ status: "pending_acceptance" }),                // en attente : ni servie ni perdue
+    ], { depuisMs });
+    expect(c).toMatchObject({ demandes: 4, en_attente: 1, tranchees: 3, servies: 2 });
+    expect(c.taux_servies).toBeCloseTo(2 / 3);
+  });
+  it("une annulation par le client est comptée à part — sauf si un prestataire avait accepté", () => {
+    const c = chiffresPilotage([m({ status: "cancelled" }), m({ status: "cancelled", acceptee_at: jour(1) }), m({ status: "refused" })], { depuisMs });
+    expect(c).toMatchObject({ annulees: 1, tranchees: 2, servies: 1 });
+    expect(estServie({ status: "cancelled" })).toBe(false);
+    expect(estServie({ status: "needs_replacement" })).toBe(true);
+  });
+  it("hors période : non comptée", () => {
+    expect(chiffresPilotage([m({ created_at: jour(40) })], { depuisMs }).demandes).toBe(0);
+  });
+  it("aucune demande : taux « — » (null), pas 0 %", () => {
+    expect(chiffresPilotage([], { depuisMs }).taux_servies).toBeNull();
+  });
+});
+
+describe("délai d'acceptation", () => {
+  it("médiane, en minutes, seulement si la base l'enregistre", () => {
+    const ms = [
+      m({ created_at: "2026-10-31T10:00:00Z", acceptee_at: "2026-10-31T10:30:00Z" }),
+      m({ created_at: "2026-10-31T10:00:00Z", acceptee_at: "2026-10-31T11:00:00Z" }),
+      m({ created_at: "2026-10-31T10:00:00Z", acceptee_at: "2026-10-31T13:00:00Z" }),
+    ];
+    expect(chiffresPilotage(ms, { depuisMs, delaiDisponible: true })).toMatchObject({ delai_mediane_min: 60, delai_mesures: 3 });
+    expect(chiffresPilotage(ms, { depuisMs })).toMatchObject({ delai_disponible: false, delai_mediane_min: null });
+  });
+});
+
+describe("retour des clients", () => {
+  it("clients servis au moins deux fois, sur toute l'histoire", () => {
+    const c = chiffresPilotage([
+      m({ client_id: "a", created_at: jour(60) }), m({ client_id: "a" }),   // revenu
+      m({ client_id: "b" }),                                                 // une fois
+      m({ client_id: "c", status: "refused" }), m({ client_id: "c", status: "refused" }), // jamais servi
+    ], { depuisMs });
+    expect(c).toMatchObject({ clients_servis: 2, clients_revenus: 1 });
+    expect(c.taux_retour).toBe(0.5);
+  });
+});
+
+describe("par secteur", () => {
+  it("où il manque des prestataires", () => {
+    const c = chiffresPilotage([m({ sector: "hotellerie" }), m({ sector: "hotellerie", status: "refused" }), m({ sector: "proprete" })], { depuisMs });
+    expect(c.par_secteur).toEqual([{ secteur: "hotellerie", demandes: 2, servies: 1 }, { secteur: "proprete", demandes: 1, servies: 1 }]);
+  });
+});
+
+describe("l'action et l'écran", () => {
+  const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+  const action = bo.slice(bo.indexOf('if (action === "pilotage_activite")'), bo.indexOf("// ── Journal comptable du mois"));
+  it("toutes les réservations payées (lireTout) ; le délai lu à part, pour qu'une migration absente ne casse pas le tableau", () => {
+    expect(action).toMatch(/lireTout\(`\$\{SUPABASE_URL\}\/rest\/v1\/missions\?stripe_payment_intent=not\.is\.null/);
+    expect(action).toMatch(/missions\?acceptee_at=not\.is\.null&select=id,acceptee_at/);
+    expect(action.match(/select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector&/)).not.toBeNull();
+  });
+  it("le tableau est en tête du tableau de bord", () => {
+    const ecran = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+    expect(ecran).toMatch(/\{tab==="dashboard" && <>[\s\S]{0,300}<BOPilotage \/>/);
+  });
+});
