@@ -255,7 +255,10 @@ describe("peutExercer() et titresNonCouverts()", async () => {
     // Titres ajoutés APRÈS cette reprise unique : aucun justificatif déjà vérifié
     // ne les couvrait (aucun prestataire validé ne déclarait ces métiers le
     // 02/11/2026, vérifié en production en lecture seule) — rien à reprendre.
-    const ajoutesApres = ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection"];
+    const ajoutesApres = ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection",
+      // Métiers nouveaux au catalogue le 02/11/2026 : personne ne pouvait les déclarer.
+      "Praticien(ne) en modelage bien-être", "Prothésiste ongulaire / Manucure",
+      "Professeur de danse classique, jazz ou contemporaine", "Professeur de Pilates"];
     for (const [metier, q] of Object.entries(QUALIFICATIONS_OBLIGATOIRES)) {
       if (ajoutesApres.includes(metier)) continue;
       expect(sqlMig, metier).toContain(`('${metier.replace(/'/g, "''")}', '${q.titre.replace(/'/g, "''")}')`);
@@ -365,5 +368,37 @@ describe("métiers distingués et titres ajoutés (02/11/2026)", async () => {
     const { noteMetier } = await import("../../../api/_qualifications.js");
     expect(qualificationRequise("Jardinier / Paysagiste")).toBeNull();
     expect(noteMetier("Jardinier / Paysagiste")).toContain("Certiphyto");
+  });
+});
+
+// Bien-être, danse et ongles (02/11/2026) : un métier séparé là où la règle change.
+describe("bien-être, danse et ongles : chacun son titre", async () => {
+  const { correspondRecherche, METIERS } = await import("../../constants/data.js");
+  const { noteMetier } = await import("../../../api/_qualifications.js");
+  const tous = Object.values(METIERS).flat();
+  const trouve = (q) => tous.filter(m => correspondRecherche(m, q));
+
+  it("la danse classique, jazz, contemporaine exige le diplôme d'État ; les autres styles non", () => {
+    expect(qualificationRequise("Professeur de danse classique, jazz ou contemporaine").texte).toContain("L362-1");
+    expect(qualificationRequise("Professeur de danse (autres styles)")).toBeNull();
+    expect(noteMetier("Professeur de danse (autres styles)")).toContain("diplôme d'État");
+    expect(trouve("salsa")).toEqual(["Professeur de danse (autres styles)"]);
+    expect(trouve("prof de danse")).toHaveLength(2);
+  });
+  it("le Pilates exige la carte d'éducateur sportif ; le yoga, non tranché, porte une note", () => {
+    expect(qualificationRequise("Professeur de Pilates").texte).toContain("L212-1");
+    expect(qualificationRequise("Professeur de yoga")).toBeNull();
+    expect(noteMetier("Professeur de yoga")).toContain("carte professionnelle");
+  });
+  it("modelage et ongles sont des soins esthétiques : CAP ou 3 ans de pratique", () => {
+    for (const m of ["Praticien(ne) en modelage bien-être", "Prothésiste ongulaire / Manucure"]) {
+      expect(qualificationRequise(m)?.texte, m).toContain("art. 16");
+    }
+    expect(qualificationRequise("Praticien(ne) en modelage bien-être").detail).toContain("kinésithérapeutes");
+  });
+  it("« masseur », « massage », « ongles » trouvent le bon métier, et rien d'autre", () => {
+    for (const q of ["masseur", "masseuse", "massage"]) expect(trouve(q), q).toEqual(["Praticien(ne) en modelage bien-être"]);
+    expect(trouve("ongles")).toEqual(["Prothésiste ongulaire / Manucure"]);
+    expect(trouve("kinésithérapeute")).toHaveLength(0);
   });
 });
