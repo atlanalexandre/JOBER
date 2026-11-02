@@ -489,15 +489,16 @@ sécurité intérieure, art. L617-1) — et que la plateforme, qui organise la m
 aurait eu du mal à expliquer qu'elle n'avait rien demandé.
 
 [`api/_qualifications.js`](api/_qualifications.js) nomme, **métier par métier**, le titre
-attendu et le texte qui l'impose — 36 métiers à ce jour :
+attendu et le texte qui l'impose — 40 métiers à ce jour :
 
 | Famille | Titre attendu |
 |---|---|
 | Sécurité privée (6 métiers) | Carte professionnelle CNAPS, diplôme SSIAP à jour |
-| Sport et baignade (3) | Carte professionnelle d'éducateur sportif, BNSSA ; pour l'intervenant sportif en milieu scolaire, la carte ou l'agrément de l'Éducation nationale |
+| Sport et baignade (4) | Carte professionnelle d'éducateur sportif (dont le professeur de Pilates), BNSSA ; pour l'intervenant sportif en milieu scolaire, la carte ou l'agrément de l'Éducation nationale |
 | Animation (2) | BAFA ou équivalent |
 | Conduite (5) | Carte VTC, permis C ou D avec FIMO/FCO, permis B (chauffeur livreur, voiturier — depuis le 29/09/2026) |
-| Coiffure et esthétique (2) | CAP, BP, ou 3 ans de pratique |
+| Coiffure et esthétique (4) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être et la prothésie ongulaire |
+| Danse (1) | Diplôme d'État de professeur de danse (classique, jazz, contemporaine) |
 | Métiers de bouche (13) | CAP de la spécialité, ou 3 ans de pratique |
 | Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
 | Commerce et recouvrement (2) | Immatriculation au RSAC (agent commercial) ; assurance RC et compte dédié (chargé de recouvrement) |
@@ -553,7 +554,12 @@ professionnelle continue** (OPCO, employeur, CPF), pas à celui qui donne un cou
 particulier. L'exiger de tous aurait écarté la majorité des inscrits. Le Certiphyto n'est
 exigé du jardinier que s'il applique lui-même des produits phytosanitaires, et le Certibiocide
 de l'agent de bionettoyage que s'il utilise des biocides désinfectants : ce sont des notes,
-pas des exigences (02/11/2026). Même logique pour le permis des
+pas des exigences (02/11/2026). Même partage pour la danse et le yoga : la danse classique, jazz et
+contemporaine est un métier à part, qui exige le diplôme d'État (code de l'éducation,
+art. L362-1) ; « Professeur de danse (autres styles) » — salsa, hip-hop — n'en exige aucun.
+Le yoga, dont le statut au regard du code du sport n'est pas tranché, porte une note, quand
+le Pilates, activité physique, exige la carte d'éducateur sportif. Le modelage s'appelle
+« bien-être » : le massage thérapeutique reste réservé aux masseurs-kinésithérapeutes. Même logique pour le permis des
 coursiers (« Coursier / Livreur », « Livreur courses à domicile ») : ils peuvent livrer à vélo
 ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre, 29/09/2026). Ces notes s'affichent au
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas

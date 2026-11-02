@@ -121,9 +121,14 @@ describe("coiffure", () => {
   // Toujours la même règle : on rapproche, on n'élargit pas. Les métiers
   // voisins n'existent pas au catalogue et doivent rester introuvables, plutôt
   // que d'envoyer quelqu'un vers un coiffeur pour une manucure.
+  // La manucure est devenue un métier du catalogue le 02/11/2026 : elle mène
+  // à elle-même, jamais au coiffeur.
   it("n'attire pas les métiers voisins de la beauté", () => {
-    for (const q of ["esthéticienne", "manucure", "maquilleuse", "prothésiste ongulaire"]) {
+    for (const q of ["esthéticienne", "maquilleuse"]) {
       expect(trouve(q), `« ${q} »`).toHaveLength(0);
+    }
+    for (const q of ["manucure", "prothésiste ongulaire"]) {
+      expect(trouve(q), `« ${q} »`).toEqual(["Prothésiste ongulaire / Manucure"]);
     }
   });
 });

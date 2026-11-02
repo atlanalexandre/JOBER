@@ -411,6 +411,26 @@ export const METIERS_TARIFS = {
     // près l'heure, déplacement compris — d'où une fourchette horaire proche
     // des prix à la prestation. Paris tire vers le haut, la province vers le bas.
     "Coiffeur(se) à domicile":              { min:25,   max:45,   default:35, rome:"D1202" },
+    // Bien-être, danse et ongles — ajoutés le 02/11/2026 (demande d'Alexandre :
+    // « distinguer les métiers au plus près, chacun avec le titre qui lui
+    // correspond »). Chaque libellé est séparé là où LA RÈGLE change :
+    //
+    //   • modelage et ongles sont des soins esthétiques (loi n° 96-603, art. 16,
+    //     modelages de confort ajoutés en 2005) : CAP ou 3 ans de pratique.
+    //     Le massage THÉRAPEUTIQUE est réservé aux masseurs-kinésithérapeutes ;
+    //     le libellé dit « bien-être » pour que personne ne s'y trompe ;
+    //   • la danse classique, jazz et contemporaine exige le diplôme d'État
+    //     (code de l'éducation, art. L362-1) — les autres styles non : d'où
+    //     deux métiers ;
+    //   • le Pilates est une activité physique, donc la carte d'éducateur
+    //     sportif ; le yoga, dont le statut n'est pas tranché, porte une note.
+    // Tarifs relevés sur le marché des indépendants à domicile, à l'heure.
+    "Praticien(ne) en modelage bien-être":  { min:25,   max:50,   default:35, rome:"D1208" },
+    "Prothésiste ongulaire / Manucure":     { min:20,   max:40,   default:28, rome:"D1208" },
+    "Professeur de danse classique, jazz ou contemporaine": { min:20, max:40, default:28, rome:"K2105" },
+    "Professeur de danse (autres styles)":  { min:18,   max:38,   default:25, rome:"K2105" },
+    "Professeur de Pilates":                { min:20,   max:45,   default:30, rome:"G1204" },
+    "Professeur de yoga":                   { min:20,   max:45,   default:30, rome:"G1204" },
   },
 };
 
@@ -545,6 +565,12 @@ const ALIAS_METIERS = {
   // particulier, la salle et l'entreprise de l'autre.
   "Intervenant sportif en milieu scolaire": ["prof de sport", "professeur de sport", "professeur d'eps", "prof d'eps", "eps", "sport scolaire"],
   "Éducateur sportif / Coach": ["coach sportif", "preparateur physique", "personal trainer", "salle de sport"],
+  // Bien-être, danse (02/11/2026). « massage » mène au modelage bien-être, pas
+  // à un kinésithérapeute, que le catalogue n'a pas — et le libellé le dit.
+  "Praticien(ne) en modelage bien-être": ["masseur", "massage", "modelage"],
+  "Prothésiste ongulaire / Manucure": ["ongles", "pose d'ongles", "onglerie", "manucure a domicile"],
+  "Professeur de danse (autres styles)": ["hip hop", "salsa", "bachata", "danse orientale", "danse de salon", "kizomba"],
+  "Professeur de Pilates": ["pilate"],
 };
 
 /**

@@ -61,6 +61,9 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   // suit une vérification d'honorabilité. Dans le second degré et le privé,
   // c'est la carte (code du sport, art. L212-1) qui est exigée (02/11/2026).
   "Intervenant sportif en milieu scolaire": { titre: "Carte professionnelle d'éducateur sportif, ou agrément de l'Éducation nationale", detail: "la carte vaut agrément à l'école primaire ; le directeur d'école autorise ensuite chaque intervention", texte: "code du sport, art. L212-1 ; décret n° 2017-766 du 4 mai 2017" },
+  // Le Pilates est une activité physique : son enseignement rémunéré relève
+  // du même article (02/11/2026). Le yoga, non tranché, est en NOTES_METIERS.
+  "Professeur de Pilates":              { titre: "Carte professionnelle d'éducateur sportif", detail: "diplôme des métiers de la forme (BPJEPS, CQP instructeur fitness…) et déclaration à la DRAJES", texte: "code du sport, art. L212-1" },
   "Maître-nageur sauveteur (BNSSA)":    { titre: "BNSSA ou BPJEPS AAN à jour", detail: "révision annuelle du BNSSA, carte professionnelle pour l'enseignement", texte: "code du sport, art. L212-1 et A322-8" },
 
   // ── Animation ────────────────────────────────────────────────────────────
@@ -81,6 +84,18 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   // ── Coiffure et esthétique ───────────────────────────────────────────────
   "Coiffeur(se) à domicile":            { titre: "CAP coiffure, BP, ou 3 ans de pratique", detail: "la qualification peut être détenue par le prestataire ou par celui qui contrôle l'exécution", texte: "loi n° 46-1173 du 23 mai 1946" },
   "Spa praticien / Esthéticien":        { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "les soins esthétiques sont une activité artisanale réglementée", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+  // Modelage et ongles : soins esthétiques eux aussi (art. 16 ; les
+  // « modelages esthétiques de confort sans finalité médicale » y figurent
+  // depuis la loi du 2 août 2005). Ajoutés le 02/11/2026.
+  "Praticien(ne) en modelage bien-être": { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "le modelage de confort est un soin esthétique réglementé ; le massage à visée thérapeutique reste réservé aux masseurs-kinésithérapeutes", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+  "Prothésiste ongulaire / Manucure":   { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "la manucure et la pose d'ongles sont des soins esthétiques réglementés", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+
+  // ── Danse (02/11/2026) ───────────────────────────────────────────────────
+  // Enseigner contre rémunération la danse classique, jazz ou contemporaine
+  // suppose le diplôme d'État de professeur de danse, le certificat
+  // d'aptitude, un titre reconnu équivalent ou une dispense. Les autres styles
+  // ne sont pas visés : « Professeur de danse (autres styles) » n'est pas ici.
+  "Professeur de danse classique, jazz ou contemporaine": { titre: "Diplôme d'État de professeur de danse", detail: "ou certificat d'aptitude, équivalence reconnue ou dispense du ministère de la Culture", texte: "code de l'éducation, art. L362-1" },
 
   // ── Métiers de bouche artisanaux ─────────────────────────────────────────
   // La préparation de produits frais de boulangerie, pâtisserie, boucherie,
@@ -190,6 +205,11 @@ export const NOTES_METIERS = {
   "Jardinier / Paysagiste":               { texte: "Si vous achetez ou appliquez des produits phytopharmaceutiques (désherbants, traitements), le certificat individuel Certiphyto est obligatoire : déposez-le dans « Diplômes & certifications ». Il ne l'est pas pour un entretien sans ces produits." },
   "Agent d'entretien d'espaces verts":    { texte: "Si vous achetez ou appliquez des produits phytopharmaceutiques (désherbants, traitements), le certificat individuel Certiphyto est obligatoire : déposez-le dans « Diplômes & certifications ». Il ne l'est pas pour un entretien sans ces produits." },
   "Agent de bionettoyage (milieu de santé)": { texte: "L'utilisation professionnelle de certains désinfectants suppose le Certibiocide « désinfectants » (arrêté du 9 octobre 2013). Si vous en détenez un, déposez-le dans « Diplômes & certifications »." },
+  // Yoga : aucun texte ne l'impose clairement, et l'administration ne l'a pas
+  // tranché. Exiger la carte écarterait la plupart des professeurs ; ne rien
+  // dire les exposerait (02/11/2026).
+  "Professeur de yoga":                   { texte: "Aucun diplôme n'est exigé par un texte pour enseigner le yoga. Si votre cours est présenté comme une activité physique ou sportive (yoga dynamique, en salle de sport), la carte professionnelle d'éducateur sportif peut vous être demandée : déposez-la dans « Diplômes & certifications » si vous l'avez." },
+  "Professeur de danse (autres styles)":  { texte: "Seules la danse classique, jazz et contemporaine exigent le diplôme d'État. Si votre cours est présenté comme une activité de forme (fitness dansé, zumba), la carte professionnelle d'éducateur sportif peut être exigée." },
   "Auxiliaire de vie":                    { texte: "L'intervention auprès de personnes vulnérables peut relever d'un agrément ou d'une autorisation départementale selon le public accompagné. À vérifier avant d'accepter ce type de prestation." },
 };
 
