@@ -11,7 +11,7 @@ import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-c
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement, VALIDATION_PRESTA } from "../constants/editeur.js";
-import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
+import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban, BoutonSignaler } from "./ui.jsx";
 import { activerNotifications, envoyerNotificationTest, etatNotifications, LIBELLE_NOTIFICATIONS, messageTest, notifierLocalement } from "../lib/push.js";
 import { choisirTheme, themeClairEnregistre } from "../lib/theme.js";
 import { useResponsive } from "../hooks/useResponsive.js";
@@ -2955,6 +2955,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
         {/* ── Actions ── */}
         {p.available && <Btn full onClick={()=>onNavigate("booking",p)} style={{ fontSize:15, padding:"15px" }}>📅 Réserver maintenant</Btn>}
+        <div style={{ textAlign:"center", marginTop:10 }}><BoutonSignaler cibleId={p.id} contexte="Fiche d'un prestataire" /></div>
       </div>
     </div>
   );
@@ -4849,6 +4850,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
           <div style={{ width:44, height:44, borderRadius:r, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
           <div>
             <div style={{ color:C.white, fontWeight:700, fontSize:15 }}>{p.name}</div>
+            <BoutonSignaler cibleId={interlocuteurId} contexte="Messagerie" style={{ color:"rgba(255,255,255,0.6)", fontSize:11, padding:0 }} />
             {/* « ● En ligne », en vert, était écrit en dur : rien dans
                 l'application ne mesure la présence de personne. On annonçait
                 donc à chaque conversation que l'autre était là, y compris à
