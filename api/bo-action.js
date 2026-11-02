@@ -10,6 +10,7 @@ import { manquesCv, metiersSansExperience } from "./_cv.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc, piecesAvantOuverture } from "./_documents.js";
 import { lireTout } from "./_lignes.js";
 import { bornesMois, ligneJournal } from "./_journal_comptable.js";
+import { chiffresPilotage } from "./_pilotage.js";
 import { empreintes, filtreListeNoire, ligneListeNoire, ensemblesListeNoire, correspond, inscrireListeNoire, lireUtilisateurs, dansLaConservation } from "./_liste_noire.js";
 import { destinatairesInformation, envoyerInformation, htmlInformation, MAX_DESTINATAIRES } from "./_diffusion.js";
 import { champsModifies, champsPerimes, gardeEcriture, porteHeuresAjoutees, touchePrixOuJours, valeursNumeriquesInvalides } from "./_modification.js";
@@ -1695,16 +1696,16 @@ export default async function handler(req, res) {
       if (!authRes) return res.status(503).json({ error: "Adresses des destinataires illisibles — envoi non fait." });
       const authUsers = authRes;
       const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
-      // Adresses normalisées, dédoublonnées et de forme valide, comme
-      // `destinatairesInformation` : l'envoi part par lots de 100, et Resend
-      // refuse un lot ENTIER pour une seule adresse mal formée — 99 prestataires
-      // ne recevaient rien à cause d'un seul (relecture du 31/10/2026).
-      const formeValide = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const brutes = authUsers.filter(u => ids.has(u.id)).map(u => String(u.email || "").trim().toLowerCase()).filter(Boolean);
-      const emails = [...new Set(brutes.filter(e => formeValide.test(e)))];
-      if (emails.length < brutes.length) {
-        console.error(`[send_global_comm] ${brutes.length - emails.length} adresse(s) écartée(s) : doublon ou forme invalide.`);
-      }
+      // Les adresses passent par la MÊME règle que l'e-mail d'information
+      // (`destinatairesInformation`) : normalisées, dédoublonnées, de forme
+      // valide — Resend refuse un lot entier pour une seule adresse mal formée —,
+      // et sans les comptes bannis ni les adresses jamais confirmées, dont les
+      // rejets abaissent la réputation du domaine et envoient en indésirables
+      // les e-mails transactionnels d'ALANE. Le commentaire précédent annonçait
+      // cette règle sans l'appliquer (relecture du 01/11/2026).
+      const { adresses: emails, ecartees } = destinatairesInformation(authUsers.filter(u => ids.has(u.id)), profiles);
+      const nbEcartees = ecartees.non_confirmees + ecartees.refusees_ou_suspendues + ecartees.bannies;
+      if (nbEcartees) console.error(`[send_global_comm] ${nbEcartees} compte(s) écarté(s) :`, JSON.stringify(ecartees));
 
       // Par lots de 100, comme l'e-mail d'information (api/_diffusion.js). Cinq
       // envois en parallèle dépassaient la cadence de Resend (2 appels par
@@ -3671,6 +3672,39 @@ export default async function handler(req, res) {
       }
       await journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
       return res.status(200).json(Array.isArray(missions) ? missions : []);
+    }
+
+    // ── Pilotage de l'activité (api/_pilotage.js, 01/11/2026) ──
+    //
+    // Les trois chiffres à suivre chaque semaine : demandes servies, délai
+    // d'acceptation, retour des clients. Le délai a besoin de
+    // `missions.acceptee_at` (migration 2026-11-01_pilotage_acceptee_at.sql) :
+    // lu À PART, pour qu'une migration pas encore passée ne fasse pas échouer
+    // tout le tableau — PostgREST refuse une requête entière pour une colonne
+    // inconnue (CLAUDE.md §4).
+    if (action === "pilotage_activite") {
+      const jours = Math.min(365, Math.max(7, Number(body.jours) || 30));
+      const depuisMs = Date.now() - jours * 86400000;
+      let missions;
+      try {
+        missions = await lireTout(`${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=not.is.null`
+          + "&select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector&order=created_at.asc,id.asc", headers);
+      } catch (e) {
+        console.error("[pilotage_activite] prestations illisibles :", e.message);
+        return res.status(502).json({ error: "Prestations illisibles — tableau non calculé." });
+      }
+      let delaiDisponible = false;
+      try {
+        const acceptees = await lireTout(`${SUPABASE_URL}/rest/v1/missions?acceptee_at=not.is.null&select=id,acceptee_at&order=id.asc`, headers);
+        const parId = new Map(acceptees.map(a => [a.id, a.acceptee_at]));
+        for (const m of missions) if (parId.has(m.id)) m.acceptee_at = parId.get(m.id);
+        delaiDisponible = true;
+      } catch (e) {
+        // Colonne absente tant que la migration n'est pas passée : le délai
+        // s'affiche « disponible après la mise à jour de la base ».
+        console.error("[pilotage_activite] délai d'acceptation indisponible (migration 2026-11-01 non passée ?) :", e.message);
+      }
+      return res.status(200).json({ jours, ...chiffresPilotage(missions, { depuisMs, delaiDisponible }) });
     }
 
     // ── Journal comptable du mois (api/_journal_comptable.js) ──
