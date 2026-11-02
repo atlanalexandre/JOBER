@@ -22,12 +22,14 @@
 import { useState } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { CASHBACK_TIERS } from "../constants/plans.js";
-import { QUALIFICATIONS_OBLIGATOIRES } from "../constants/data.js";
+import { QUALIFICATIONS_OBLIGATOIRES, METIERS, SECTORS } from "../constants/data.js";
 
 const pourcent = (x) => `${(x * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`;
 const TAUX_MIN = Math.min(...CASHBACK_TIERS.map(t => t.rate));
 const TAUX_MAX = Math.max(...CASHBACK_TIERS.map(t => t.rate));
 const NB_METIERS_REGLEMENTES = Object.keys(QUALIFICATIONS_OBLIGATOIRES).length;
+const NB_METIERS_TOTAL = new Set(Object.values(METIERS).flat()).size;
+const NB_SECTEURS = SECTORS.length;
 
 const Titre = ({ sur, children }) => (
   <div style={{ marginBottom:18 }}>
@@ -71,6 +73,42 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
   return (
     <div id="decouvrir" style={{ position:"relative", zIndex:1, paddingBottom:24 }}>
+      {/* ── Ce qui fait la différence (02/11/2026) ──
+          Demande d'Alexandre : « pourquoi moi et pas quelqu'un d'autre ? ».
+          Quatre engagements que peu d'intermédiaires prennent ENSEMBLE, et que
+          l'application tient réellement : aucune commission sur le tarif du
+          prestataire (les frais de service sont payés par le client), le
+          remboursement intégral si personne n'accepte (CGPS 8.2 bis), le
+          titre exigé métier par métier (api/_qualifications.js), et un seul
+          endroit pour les particuliers comme pour les entreprises. Aucun
+          concurrent n'est nommé ni décrit : une comparaison doit être
+          objective et vérifiable (code de la consommation, art. L122-1). */}
+      <section style={{ ...section, paddingTop:8 }}>
+        <div style={{ background:`linear-gradient(135deg, ${C.accentGold}1F, ${C.violet}1A)`, border:`1px solid ${C.accentGold}55`, borderRadius:r + 6, padding:"22px 18px" }}>
+          <Titre sur="Ce qui fait la différence">Pourquoi ALANE, et pas un autre ?</Titre>
+          <div style={{ display:"grid", gap:14 }}>
+            {[
+              ["🤝", "L'indépendant garde 100 % de son tarif",
+                "Aucune commission n'est prélevée sur son travail : il est payé au juste prix, et c'est ce qui fait les prestataires motivés. Vous payez son tarif et nos frais de service, affichés à part."],
+              ["🛡️", "Personne n'accepte ? Vous ne payez rien",
+                "Si aucun prestataire n'accepte votre demande, vous êtes remboursé intégralement, frais de service compris. Et votre argent n'est versé qu'après la prestation."],
+              ["🎓", "Le bon diplôme, vérifié avant la première prestation",
+                `Pour les ${NB_METIERS_REGLEMENTES} métiers réglementés, pas de carte professionnelle ou de diplôme, pas de prestation : nous l'exigeons métier par métier.`],
+              ["🏠", "Un seul endroit, pour chez vous comme pour votre entreprise",
+                `${NB_METIERS_TOTAL} métiers dans ${NB_SECTEURS} secteurs — du ménage à la sécurité, de la cuisine au coaching sportif — avec contrat et factures en règle.`],
+            ].map(([icone, titre, texte]) => (
+              <div key={titre} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+                <div style={{ fontSize:24, lineHeight:1.2, flexShrink:0 }}>{icone}</div>
+                <div>
+                  <div style={{ color:C.text, fontWeight:800, fontSize:15.5, lineHeight:1.3 }}>{titre}</div>
+                  <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6, marginTop:3 }}>{texte}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Comment ça marche ── */}
       <section style={section}>
         <Titre sur="Comment ça marche">Un prestataire en trois étapes</Titre>

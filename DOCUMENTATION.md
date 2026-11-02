@@ -5312,7 +5312,7 @@ Principales adresses :
 **L'accueil public explique ALANE avant l'inscription** (02/11/2026, retour d'un visiteur :
 « qui sommes-nous ? pourquoi nous choisir ? — si tu comprends pas, tu crées pas »). Sous le premier
 écran, inchangé, `src/components/accueil-sections.jsx` présente : comment ça marche, pourquoi nous
-choisir, l'offre aux indépendants, qui sommes-nous, quatre questions fréquentes (lien vers `/faq`,
+choisir, l'offre aux indépendants, qui sommes-nous, quatre questions fréquentes — et, en tête, « Pourquoi ALANE, et pas un autre ? » (quatre engagements : 100 % du tarif à l'indépendant, remboursement si personne n'accepte, titre vérifié métier par métier, un seul endroit pour particuliers et entreprises ; aucun concurrent nommé, art. L122-1 du code de la consommation) (lien vers `/faq`,
 publique ; son retour mène à l'accueil pour un visiteur sans compte). Le didacticiel, lui, ne venait
 qu'après le choix du rôle. **Chaque phrase doit rester vraie** : les chiffres (métiers réglementés,
 taux de cashback) sont lus dans les constantes, et une promesse qui ne correspond plus au service
