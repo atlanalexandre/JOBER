@@ -12,6 +12,7 @@ import { prixHeuresSupp, joursFactures, tarifSuppFixe } from "../../api/_heures_
 import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
+import { MONTANT_MIN, PLAFOND_MOIS_PAR_AN } from "../../api/_invitation_regles.js";
 
 // Quota mensuel de la formule Premium, depuis la seule liste qui fasse foi.
 const quotaPremium = () => ABONNEMENTS_PRESTA.find(p => p.id === "premium")?.missions ?? 8;
@@ -4717,6 +4718,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               que l'onglet Prestations. */}
           <ResumeDuJour onNavigate={onNavigate} actif={missionsEnabled} nbLitiges={litiges.length} resume={resume} />
           <CarteVirements />
+          {missionsEnabled && <CarteInviterClients onNavigate={onNavigate} />}
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <AlerteTitresACompleter onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
@@ -5227,3 +5229,154 @@ export function MicroEntrepriseScreen({ onBack }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// « Invitez vos clients » (décision d'Alexandre du 02/11/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le prestataire envoie son lien à ses clients habituels. Le lien les inscrit
+// avec lui pour parrain et ouvre directement sa fiche. La récompense est versée
+// par le serveur (`api/_invitation.js`), jamais par cet écran : il ne fait
+// qu'expliquer les conditions — tirées des mêmes constantes — et montrer le
+// bilan, compté côté serveur (le navigateur ne lit que sa propre fiche).
+
+/** Encart de l'accueil qui mène à l'écran. */
+export function CarteInviterClients({ onNavigate }) {
+  return (
+    <div onClick={()=>onNavigate("invite_clients")} style={{ background:`linear-gradient(120deg, ${C.accentGold}18, ${C.violet}12)`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"13px 14px", marginBottom:14, cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+      <span style={{ fontSize:22 }}>🎁</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Invitez vos clients sur ALANE</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>1 mois d'abonnement offert pour chaque nouveau client</div>
+      </div>
+      <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
+    </div>
+  );
+}
+
+export function InviterClientsScreen({ onBack }) {
+  const [uid, setUid] = useState(null);
+  const [prenom, setPrenom] = useState("");
+  const [bilan, setBilan] = useState(null);
+  const [erreurBilan, setErreurBilan] = useState(null);
+  const [copie, setCopie] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data?.user;
+      if (!u) return;
+      setUid(u.id);
+      setPrenom(u.user_metadata?.prenom || "");
+    });
+    supabase.auth.getSession().then(async ({ data: sd }) => {
+      const token = sd?.session?.access_token;
+      if (!token) return;
+      try {
+        const r = await fetch("/api/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ action: "mes_invitations" }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `erreur ${r.status}`);
+        setBilan(j);
+      } catch (e) {
+        console.error("[invitations] bilan indisponible :", e.message);
+        setErreurBilan("Le bilan de vos invitations est indisponible pour le moment.");
+      }
+    });
+  }, []);
+
+  // `ref` inscrit le client avec ce prestataire pour parrain ; `profil` ouvre sa fiche.
+  const lien = uid ? `${window.location.origin}/?ref=${uid}&profil=${uid}` : "";
+  const message = `Bonjour, je suis désormais sur ALANE${prenom ? ` (${prenom})` : ""}. Vous pouvez me réserver directement ici, `
+    + `et vos frais de service vous sont offerts sur votre première prestation (dès ${MONTANT_MIN} €) : ${lien}`;
+
+  const copier = () => {
+    navigator.clipboard.writeText(lien)
+      .then(() => { setCopie(true); setTimeout(() => setCopie(false), 2000); })
+      .catch(e => { console.error("[invitations] copie impossible :", e.message); showToast("Copie impossible : sélectionnez le lien à la main.", "error"); });
+  };
+  const partager = () => {
+    if (navigator.share) {
+      navigator.share({ title: "Réservez-moi sur ALANE", text: message, url: lien })
+        .catch(e => { if (e?.name !== "AbortError") console.error("[invitations] partage impossible :", e.message); });
+    } else copier();
+  };
+
+  const conditions = [
+    `Le client s'inscrit avec votre lien : il doit être nouveau sur ALANE.`,
+    `Sa première prestation vaut au moins ${MONTANT_MIN} € hors frais de service.`,
+    `Elle est terminée, et le délai de 48 h pour signaler un problème est passé sans litige.`,
+    `Au plus ${PLAFOND_MOIS_PAR_AN} mois offerts par période de 12 mois.`,
+    `La carte qui paie la prestation ne doit pas être la vôtre.`,
+  ];
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      <div style={{ background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, padding:"40px 22px 30px", borderRadius:"0 0 28px 28px", textAlign:"center" }}>
+        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:16, display:"block" }}>← Retour</button>
+        <div style={{ fontSize:46, marginBottom:8 }}>🎁</div>
+        <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Invitez vos clients</h2>
+        <p style={{ color:"rgba(255,255,255,0.88)", fontSize:14, margin:0, lineHeight:1.5 }}>
+          Vos clients habituels vous réservent sur ALANE.<br/>Vous gagnez <strong>1 mois d'abonnement offert</strong> par nouveau client.
+        </p>
+      </div>
+      <div style={{ padding:"22px 18px", maxWidth:560, margin:"0 auto", boxSizing:"border-box" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px" }}>
+            <div style={{ fontSize:20, marginBottom:4 }}>👑</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:13 }}>Pour vous</div>
+            <div style={{ color:C.textSub, fontSize:11.5, lineHeight:1.5, marginTop:2 }}>1 mois offert : déduit de votre prochaine échéance si vous êtes abonné, 1 mois Premium sinon.</div>
+          </div>
+          <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px" }}>
+            <div style={{ fontSize:20, marginBottom:4 }}>💰</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:13 }}>Pour votre client</div>
+            <div style={{ color:C.textSub, fontSize:11.5, lineHeight:1.5, marginTop:2 }}>Ses frais de service de la première prestation lui sont rendus en cashback.</div>
+          </div>
+        </div>
+
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
+          <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px" }}>Votre lien personnel</p>
+          <div data-testid="lien-invitation" style={{ background:"rgba(255,255,255,0.05)", borderRadius:r, padding:"10px 12px", marginBottom:12, wordBreak:"break-all", fontSize:12, color:C.text, fontFamily:"monospace" }}>
+            {lien || "Chargement…"}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <a href={lien ? `https://wa.me/?text=${encodeURIComponent(message)}` : undefined} target="_blank" rel="noopener noreferrer"
+              style={{ textDecoration:"none", textAlign:"center", background:"#25D366", color:"#fff", borderRadius:r, padding:"11px 8px", fontSize:13, fontWeight:700 }}>WhatsApp</a>
+            <a href={lien ? `sms:?&body=${encodeURIComponent(message)}` : undefined}
+              style={{ textDecoration:"none", textAlign:"center", background:C.violet, color:"#fff", borderRadius:r, padding:"11px 8px", fontSize:13, fontWeight:700 }}>SMS</a>
+            <Btn full variant="gold" onClick={copier} style={{ fontSize:13 }}>{copie ? "✓ Copié !" : "🔗 Copier le lien"}</Btn>
+            <Btn full onClick={partager} style={{ fontSize:13 }}>📤 Partager</Btn>
+          </div>
+        </div>
+
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
+          <p style={{ color:C.text, fontSize:13, fontWeight:700, margin:"0 0 10px" }}>Vos invitations</p>
+          {erreurBilan && <div style={{ color:C.danger, fontSize:12 }}>{erreurBilan}</div>}
+          {!erreurBilan && !bilan && <div style={{ color:C.textSub, fontSize:12 }}>Chargement…</div>}
+          {bilan && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, textAlign:"center" }}>
+              {[
+                ["Inscrits", bilan.inscrits],
+                ["Mois gagnés", bilan.recompenses == null ? "—" : bilan.mois_sur_un_an],
+                ["Restants (12 mois)", bilan.mois_sur_un_an == null ? "—" : Math.max(0, PLAFOND_MOIS_PAR_AN - bilan.mois_sur_un_an)],
+              ].map(([l, v]) => (
+                <div key={l}>
+                  <div style={{ color:C.accentGold, fontSize:20, fontWeight:800 }}>{v}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{l}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}33`, borderRadius:r, padding:"12px 14px", fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          <div style={{ color:C.text, fontWeight:700, marginBottom:6 }}>Conditions (CGPS art. 5B.2)</div>
+          {conditions.map((c, i) => <div key={i}>• {c}</div>)}
+          <div style={{ marginTop:6 }}>Le mois offert et le cashback sont versés automatiquement, sous quelques heures une fois ces conditions réunies. Ils ne sont pas convertibles en espèces.</div>
+        </div>
+      </div>
+    </div>
+  );
+}

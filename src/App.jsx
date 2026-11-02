@@ -15,7 +15,7 @@ import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fet
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
-import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen, InviterClientsScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
 
@@ -1628,7 +1628,7 @@ export default function App() {
     setScreen("role");
   },[authReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_revenus","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_revenus","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise","invite_clients"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
   // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
@@ -2109,6 +2109,7 @@ export default function App() {
       {screen==="client_pro_docs"       && <ClientProDocScreen onBack={()=>setScreen("settings")} />}
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setPrestaOnglet("docs"); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="invite_clients"       && <InviterClientsScreen onBack={()=>setScreen("p_home")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {/* Côté prestataire, le planning s'affiche DANS le tableau de bord (plus
           bas) : la liste des prestations y reste montée, et le pointage

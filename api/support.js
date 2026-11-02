@@ -280,6 +280,43 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     return res.status(200).json({ ok: true, envoye: envoye === true });
   }
 
+  // ── mes_invitations : le bilan « Invitez vos clients » du prestataire ──
+  //
+  // Le navigateur ne lit que SA ligne de `profiles` (RLS) : il ne peut pas
+  // compter les clients qu'il a invités. Le serveur les compte pour lui, et ne
+  // rend que des nombres — jamais un nom ni une adresse (02/11/2026).
+  if (req.body?.action === "mes_invitations") {
+    const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config missing" });
+    const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (!caller) return res.status(401).json({ error: "Non authentifié" });
+    const lecture = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Prefer": "count=exact" };
+    const compter = async (filtre) => {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?referred_by=eq.${caller.id}&role=eq.client${filtre}&select=id`,
+        { method: "HEAD", headers: lecture });
+      if (!r.ok) throw new Error(`comptage refusé (${r.status})`);
+      return parseInt((r.headers.get("content-range") || "").split("/")[1], 10) || 0;
+    };
+    try {
+      const inscrits = await compter("");
+      let recompenses = null, moisSurUnAn = null;
+      try {
+        const depuis = new Date(Date.now() - 365 * 86400000).toISOString();
+        recompenses = await compter("&invitation_recompensee_at=not.is.null");
+        moisSurUnAn = await compter(`&invitation_mois_offert=is.true&invitation_recompensee_at=gte.${encodeURIComponent(depuis)}`);
+      } catch (e) {
+        // Avant la migration 2026-11-02_invitation_clients.sql : les inscrits
+        // se comptent, les récompenses pas encore. On le dit, sans échouer.
+        console.error("[mes_invitations] récompenses illisibles :", e.message);
+      }
+      return res.status(200).json({ inscrits, recompenses, mois_sur_un_an: moisSurUnAn });
+    } catch (e) {
+      console.error("[mes_invitations] lecture impossible :", e.message);
+      return res.status(502).json({ error: "Le bilan de vos invitations est indisponible pour le moment." });
+    }
+  }
+
   // ── track_referral: link new user to referrer ────────────────────
   if (req.body?.action === "track_referral") {
     const { newUserId, referrerUUID } = req.body;
@@ -322,10 +359,20 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
 
       // Déjà rattaché à CE parrain : c'est la base qui l'a fait à la création du
       // compte (handle_new_user, 24/09/2026). Rien à refaire, ce n'est pas une erreur.
-      const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&select=referred_by`, { headers: lecture });
+      const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&select=referred_by,created_at`, { headers: lecture });
       const filleulRows = await fr.json().catch(() => []);
       if (Array.isArray(filleulRows) && filleulRows[0]?.referred_by === referrerUUID) {
         return res.status(200).json({ ok: true, deja: true });
+      }
+      // Un parrainage se noue À L'INSCRIPTION. Un compte ancien pouvait se
+      // rattacher après coup à n'importe quel prestataire, et lui faire gagner
+      // le mois offert de « Invitez vos clients » pour un client qui n'était
+      // pas nouveau (02/11/2026). Le filet ne sert qu'à la session qui suit
+      // l'inscription : vingt-quatre heures suffisent largement.
+      const creeLe = Date.parse(filleulRows?.[0]?.created_at || "");
+      if (!Number.isFinite(creeLe) || Date.now() - creeLe > 24 * 3600000) {
+        console.error(`[track_referral] rattachement refusé — compte ${newUserId} créé il y a plus de 24 h`);
+        return res.status(409).json({ error: "Le parrainage se fait à l'inscription." });
       }
 
       const patchFilleul = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&referred_by=is.null`, {
