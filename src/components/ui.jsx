@@ -887,3 +887,45 @@ async function ouvrirDocumentFacture(construireUrl, { getSession, apiFetch, titr
     return echec("La facture n'a pas pu être ouverte. Réessayez.");
   }
 }
+
+// ── Signaler un utilisateur (02/11/2026) ─────────────────────────────
+// Sur la fiche d'un prestataire et dans la messagerie : un comportement
+// suspect — en particulier une proposition à caractère sexuel, interdite —
+// se signale en deux gestes, sans passer par le formulaire de support. Le
+// ticket arrive au back-office avec l'identifiant du compte signalé.
+export function BoutonSignaler({ cibleId, contexte, style }) {
+  const [envoi, setEnvoi] = useState(false);
+  const signaler = async () => {
+    const motif = await showPrompt("Que souhaitez-vous signaler ? Décrivez ce qui s'est passé.", "Votre message");
+    if (motif === null) return;
+    if (String(motif).trim().length < 10) { showToast("Décrivez le problème en quelques mots (10 caractères au moins).", "error"); return; }
+    setEnvoi(true);
+    try {
+      // Chargé au clic : importé en tête, il créait le client Supabase dès le
+      // chargement de ui.jsx — y compris dans les tests, sans clés.
+      const { supabase } = await import("../lib/supabase.js");
+      const { data: { session } } = await supabase.auth.getSession();
+      const u = session?.user;
+      const r = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({
+          subject: "Signaler un utilisateur",
+          message: `[Signalement] ${contexte} — compte signalé : ${cibleId}\n\n${String(motif).trim()}`,
+          userEmail: u?.email || "", userName: u?.user_metadata?.prenom || u?.email || "Inconnu",
+        }),
+      });
+      if (!r.ok) throw new Error(`erreur ${r.status}`);
+      showToast("Merci, votre signalement a été transmis à l'équipe ALANE.", "success");
+    } catch (e) {
+      console.error("[signaler] envoi impossible :", e.message);
+      showToast("Le signalement n'a pas pu être envoyé. Réessayez, ou écrivez à support@alane.fr.", "error");
+    }
+    setEnvoi(false);
+  };
+  return (
+    <button onClick={signaler} disabled={envoi} style={{ background:"none", border:"none", color:C.textMuted, fontSize:12, cursor:"pointer", textDecoration:"underline", padding:"8px 0", ...style }}>
+      {envoi ? "Envoi…" : "🚩 Signaler"}
+    </button>
+  );
+}

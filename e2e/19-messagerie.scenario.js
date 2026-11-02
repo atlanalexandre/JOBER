@@ -72,4 +72,11 @@ test("écrire, lire, marquer lu : chacun sa conversation, et rien d'autre", asyn
   expect(lu.statut).toBe(200);
   expect(lu.json.lus).toBe(1);
   expect((await rest("GET", nonLus, p.jeton)).corps, "badge éteint").toHaveLength(0);
+
+  // Modération (02/11/2026) : un message suspect part quand même, et ouvre un
+  // ticket au back-office.
+  const suspect = await api("/api/missions", { action: "envoyer_message", recipient_id: p.id, content: "Massage naturiste possible ?" }, c.jeton);
+  expect(suspect.statut, suspect.texte.slice(0, 200)).toBe(200);
+  const [ticket] = await sql(`select count(*)::int n from support_tickets where subject like '[Modération] Message — compte ${c.id.slice(0, 8)} —%'`);
+  expect(ticket.n, "ticket de modération ouvert").toBe(1);
 });

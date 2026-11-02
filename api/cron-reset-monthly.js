@@ -4,6 +4,7 @@ import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temp
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { tirerAuHasard } from "./_lots.js";
+import { contenusSuspects, signalerAuBackOffice } from "./_moderation.js";
 import { lireComptesAuth } from "./_auth.js";
 
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
@@ -1630,6 +1631,28 @@ export default async function handler(req, res) {
   // sont en cours vont à leur terme. Annuler la prestation de demain parce
   // qu'une attestation expire aujourd'hui punirait le client.
   if (queryAction === "documents") {
+    // ── Modération : services à caractère sexuel (02/11/2026) ──────────
+    //
+    // Une fois par jour, la présentation et le CV des prestataires et les
+    // demandes des dernières 24 h sont relus : un mot sans ambiguïté ouvre un
+    // ticket au back-office, une seule fois par contenu (api/_moderation.js).
+    // Rien n'est bloqué ni suspendu automatiquement.
+    try {
+      const depuis = new Date(Date.now() - 864e5).toISOString();
+      const [comptes, profils, demandes] = await Promise.all([
+        lireComptesAuth(SUPABASE_URL, headers),
+        lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&cv=not.is.null&select=id,cv`, headers),
+        lireTout(`${SUPABASE_URL}/rest/v1/missions?created_at=gte.${encodeURIComponent(depuis)}&select=id,client_id,titre,description`, headers),
+      ]);
+      let signales = 0;
+      for (const c of contenusSuspects({ comptes, profils, missions: demandes })) {
+        if (await signalerAuBackOffice({ supabaseUrl: SUPABASE_URL, headers, ...c }) === "cree") signales++;
+      }
+      if (signales) console.log(`[moderation] ${signales} contenu(s) signalé(s) au back-office`);
+    } catch (e) {
+      console.error("[moderation] balayage quotidien interrompu :", e.message);
+    }
+
     // Déclarés ici, dans le bloc qui s'en sert.
     const RESEND_API_KEY_DOCS = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM_DOCS    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
