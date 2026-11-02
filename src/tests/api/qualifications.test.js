@@ -252,7 +252,12 @@ describe("peutExercer() et titresNonCouverts()", async () => {
 
   it("la migration reprend la table au 29/09/2026, métier par métier", () => {
     const sqlMig = readFileSync(new URL("../../../migrations/2026-09-29_titres_couverts_par_justificatif.sql", import.meta.url), "utf8");
+    // Titres ajoutés APRÈS cette reprise unique : aucun justificatif déjà vérifié
+    // ne les couvrait (aucun prestataire validé ne déclarait ces métiers le
+    // 02/11/2026, vérifié en production en lecture seule) — rien à reprendre.
+    const ajoutesApres = ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection"];
     for (const [metier, q] of Object.entries(QUALIFICATIONS_OBLIGATOIRES)) {
+      if (ajoutesApres.includes(metier)) continue;
       expect(sqlMig, metier).toContain(`('${metier.replace(/'/g, "''")}', '${q.titre.replace(/'/g, "''")}')`);
     }
   });
@@ -335,5 +340,30 @@ describe("metiersDeclares()", () => {
   it("l'ouverture de l'accès, la liste et les pièces exigées regardent l'union", () => {
     const src = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
     expect(src).not.toMatch(/(qualificationsPour|docsRequisPour)\([^)]*metiers_list\)/);
+  });
+});
+
+// Demande d'Alexandre du 02/11/2026 : distinguer les métiers, et que chacun porte
+// le titre que la loi exige.
+describe("métiers distingués et titres ajoutés (02/11/2026)", async () => {
+  const { correspondRecherche, METIERS } = await import("../../constants/data.js");
+  it("le sport en deux métiers : l'école d'un côté, le coach de l'autre", () => {
+    expect(METIERS.divers).toContain("Intervenant sportif en milieu scolaire");
+    expect(correspondRecherche("Intervenant sportif en milieu scolaire", "prof de sport")).toBe(true);
+    expect(correspondRecherche("Intervenant sportif en milieu scolaire", "professeur d'EPS")).toBe(true);
+    expect(correspondRecherche("Éducateur sportif / Coach", "coach sportif")).toBe(true);
+    expect(correspondRecherche("Éducateur sportif / Coach", "prof de sport")).toBe(false);
+  });
+  it("chaque nouveau titre nomme son texte", () => {
+    for (const m of ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection"]) {
+      expect(qualificationRequise(m)?.texte, m).toBeTruthy();
+    }
+    expect(qualificationRequise("Agent commercial").texte).toContain("R134-6");
+    expect(qualificationRequise("Chargé de recouvrement").texte).toContain("R124-2");
+  });
+  it("le Certiphyto est une information, pas une exigence : seuls ceux qui utilisent ces produits en ont besoin", async () => {
+    const { noteMetier } = await import("../../../api/_qualifications.js");
+    expect(qualificationRequise("Jardinier / Paysagiste")).toBeNull();
+    expect(noteMetier("Jardinier / Paysagiste")).toContain("Certiphyto");
   });
 });
