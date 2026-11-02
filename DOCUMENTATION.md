@@ -2754,7 +2754,9 @@ validation : il décide (plafond, carte) **avant** de réserver la récompense, 
 écriture conditionnée à `invitation_recompensee_at IS NULL`, puis crédite et offre. Une
 lecture impossible reporte tout au passage suivant ; un crédit ou un avoir refusé APRÈS la
 réservation est journalisé avec la marche à suivre à la main. Éprouvé par
-`src/tests/api/invitation.test.js`.
+`src/tests/api/invitation.test.js` et, en recette, par `e2e/101` (lien, rattachement, bilan ; puis
+prestation de 65 € terminée, cashback et mois offerts une seule fois — la seconde moitié saute tant
+que la migration n'est pas passée).
 
 > **Défaut constaté le 02/11/2026, non corrigé (signalé à Alexandre)** : l'écran « Parrainage »
 > (`/referral`) n'est accessible que depuis l'espace **client**, alors que sa récompense
