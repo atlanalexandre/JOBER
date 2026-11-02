@@ -1704,7 +1704,7 @@ export default async function handler(req, res) {
       // les e-mails transactionnels d'ALANE. Le commentaire précédent annonçait
       // cette règle sans l'appliquer (relecture du 01/11/2026).
       const { adresses: emails, ecartees } = destinatairesInformation(authUsers.filter(u => ids.has(u.id)), profiles);
-      const nbEcartees = ecartees.non_confirmees + ecartees.refusees_ou_suspendues + ecartees.bannies;
+      const nbEcartees = ecartees.non_confirmees + ecartees.refusees_ou_suspendues + ecartees.bannies + ecartees.invalides;
       if (nbEcartees) console.error(`[send_global_comm] ${nbEcartees} compte(s) écarté(s) :`, JSON.stringify(ecartees));
 
       // Par lots de 100, comme l'e-mail d'information (api/_diffusion.js). Cinq

@@ -2673,6 +2673,7 @@ function InfoMailSection() {
             {apercu.ecartees?.non_confirmees > 0 && ` ${apercu.ecartees.non_confirmees} adresse(s) jamais confirmée(s) écartée(s).`}
             {apercu.ecartees?.refusees_ou_suspendues > 0 && ` ${apercu.ecartees.refusees_ou_suspendues} compte(s) refusé(s) ou suspendu(s) écarté(s).`}
             {apercu.ecartees?.bannies > 0 && ` ${apercu.ecartees.bannies} compte(s) banni(s) écarté(s).`}
+            {apercu.ecartees?.invalides > 0 && ` ${apercu.ecartees.invalides} adresse(s) mal formée(s) écartée(s) — à faire corriger.`}
           </div>
         )}
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
