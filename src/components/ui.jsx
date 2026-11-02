@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { appliquerPaliersCashback } from "../constants/plans.js";
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 
 export const Stars = ({ rating, size=13 }) => (
@@ -902,6 +901,9 @@ export function BoutonSignaler({ cibleId, contexte, style }) {
     if (String(motif).trim().length < 10) { showToast("Décrivez le problème en quelques mots (10 caractères au moins).", "error"); return; }
     setEnvoi(true);
     try {
+      // Chargé au clic : importé en tête, il créait le client Supabase dès le
+      // chargement de ui.jsx — y compris dans les tests, sans clés.
+      const { supabase } = await import("../lib/supabase.js");
       const { data: { session } } = await supabase.auth.getSession();
       const u = session?.user;
       const r = await fetch("/api/support", {
