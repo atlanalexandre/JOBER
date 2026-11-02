@@ -3685,17 +3685,24 @@ export default async function handler(req, res) {
     if (action === "pilotage_activite") {
       const jours = Math.min(365, Math.max(7, Number(body.jours) || 30));
       const depuisMs = Date.now() - jours * 86400000;
+      // Douze mois lus au plus, jamais toute l'histoire : la lecture se fait par
+      // pages de 1 000, à chaque ouverture du tableau de bord, et le compte de
+      // test en accumule des milliers par mois — le délai de la fonction aurait
+      // fini par être dépassé (relecture du 02/11/2026).
+      const depuisLecture = new Date(Date.now() - 365 * 86400000).toISOString();
       let missions;
       try {
         missions = await lireTout(`${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=not.is.null`
-          + "&select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector&order=created_at.asc,id.asc", headers);
+          + `&created_at=gte.${encodeURIComponent(depuisLecture)}`
+          + "&select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector,parent_mission_id&order=created_at.asc,id.asc", headers);
       } catch (e) {
         console.error("[pilotage_activite] prestations illisibles :", e.message);
         return res.status(502).json({ error: "Prestations illisibles — tableau non calculé." });
       }
       let delaiDisponible = false;
       try {
-        const acceptees = await lireTout(`${SUPABASE_URL}/rest/v1/missions?acceptee_at=not.is.null&select=id,acceptee_at&order=id.asc`, headers);
+        const acceptees = await lireTout(`${SUPABASE_URL}/rest/v1/missions?acceptee_at=not.is.null`
+          + `&created_at=gte.${encodeURIComponent(new Date(depuisMs).toISOString())}&select=id,acceptee_at&order=id.asc`, headers);
         const parId = new Map(acceptees.map(a => [a.id, a.acceptee_at]));
         for (const m of missions) if (parId.has(m.id)) m.acceptee_at = parId.get(m.id);
         delaiDisponible = true;

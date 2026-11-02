@@ -20,11 +20,16 @@ describe("demandes servies", () => {
     expect(c).toMatchObject({ demandes: 4, en_attente: 1, tranchees: 3, servies: 2 });
     expect(c.taux_servies).toBeCloseTo(2 / 3);
   });
-  it("une annulation par le client est comptée à part — sauf si un prestataire avait accepté", () => {
-    const c = chiffresPilotage([m({ status: "cancelled" }), m({ status: "cancelled", acceptee_at: jour(1) }), m({ status: "refused" })], { depuisMs });
-    expect(c).toMatchObject({ annulees: 1, tranchees: 2, servies: 1 });
-    expect(estServie({ status: "cancelled" })).toBe(false);
-    expect(estServie({ status: "needs_replacement" })).toBe(true);
+  it("une annulation n'est jamais servie, et reste dans le calcul — le chiffre peut sous-estimer, jamais rassurer à tort (02/11/2026)", () => {
+    // Annulée par le traitement automatique faute de prestataire, ou retirée par le prestataire après acceptation.
+    const c = chiffresPilotage([m({ status: "completed" }), m({ status: "cancelled" }), m({ status: "cancelled", acceptee_at: jour(1) })], { depuisMs });
+    expect(c).toMatchObject({ tranchees: 3, servies: 1, annulees: 2 });
+    expect(estServie({ status: "cancelled", acceptee_at: jour(1) })).toBe(false);
+  });
+  it("« remplaçant recherché » est en attente, pas servie : le webhook la pose aussi sans qu'aucun prestataire ait accepté", () => {
+    const c = chiffresPilotage([m({ status: "needs_replacement", prestataire_id: null })], { depuisMs });
+    expect(c).toMatchObject({ en_attente: 1, tranchees: 0, servies: 0 });
+    expect(estServie({ status: "needs_replacement" })).toBe(false);
   });
   it("hors période : non comptée", () => {
     expect(chiffresPilotage([m({ created_at: jour(40) })], { depuisMs }).demandes).toBe(0);
@@ -58,6 +63,15 @@ describe("retour des clients", () => {
   });
 });
 
+describe("retour des clients et séries (02/11/2026)", () => {
+  it("les semaines suivantes d'une série ne font pas d'un client un « client qui revient »", () => {
+    const c = chiffresPilotage([
+      m({ client_id: "s" }), m({ client_id: "s", parent_mission_id: "x1" }), m({ client_id: "s", parent_mission_id: "x2" }),
+    ], { depuisMs });
+    expect(c).toMatchObject({ clients_servis: 1, clients_revenus: 0 });
+  });
+});
+
 describe("par secteur", () => {
   it("où il manque des prestataires", () => {
     const c = chiffresPilotage([m({ sector: "hotellerie" }), m({ sector: "hotellerie", status: "refused" }), m({ sector: "proprete" })], { depuisMs });
@@ -70,8 +84,11 @@ describe("l'action et l'écran", () => {
   const action = bo.slice(bo.indexOf('if (action === "pilotage_activite")'), bo.indexOf("// ── Journal comptable du mois"));
   it("toutes les réservations payées (lireTout) ; le délai lu à part, pour qu'une migration absente ne casse pas le tableau", () => {
     expect(action).toMatch(/lireTout\(`\$\{SUPABASE_URL\}\/rest\/v1\/missions\?stripe_payment_intent=not\.is\.null/);
-    expect(action).toMatch(/missions\?acceptee_at=not\.is\.null&select=id,acceptee_at/);
-    expect(action.match(/select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector&/)).not.toBeNull();
+    expect(action).toMatch(/missions\?acceptee_at=not\.is\.null`/);
+    expect(action).toContain("&select=id,acceptee_at&order=id.asc");
+    expect(action).toContain("select=id,client_id,prestataire_id,status,created_at,stripe_payment_intent,sector,parent_mission_id&");
+    // Douze mois au plus, jamais toute l'histoire (02/11/2026).
+    expect(action).toMatch(/&created_at=gte\.\$\{encodeURIComponent\(depuisLecture\)\}/);
   });
   it("le tableau est en tête du tableau de bord", () => {
     const ecran = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");

@@ -3295,13 +3295,13 @@ export function BOPilotage() {
       {p && <>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {tuile("Demandes servies", pct(p.taux_servies),
-            `${p.servies} sur ${p.tranchees} réservation(s) payée(s)${p.en_attente ? ` · ${p.en_attente} en attente` : ""}${p.annulees ? ` · ${p.annulees} annulée(s) par le client` : ""}`,
+            `${p.servies} sur ${p.tranchees} réservation(s) payée(s)${p.annulees ? `, dont ${p.annulees} annulée(s)` : ""}${p.en_attente ? ` · ${p.en_attente} en attente` : ""}`,
             "Bas : il manque des prestataires validés.")}
           {tuile("Délai d'acceptation", p.delai_disponible ? delai(p.delai_mediane_min) : "—",
             p.delai_disponible ? `médiane sur ${p.delai_mesures} acceptation(s)` : "disponible après la mise à jour de la base",
             "Long : les clients attendent et repartent.")}
           {tuile("Clients qui reviennent", pct(p.taux_retour),
-            `${p.clients_revenus} sur ${p.clients_servis} client(s) servi(s) ont réservé au moins 2 fois`,
+            `${p.clients_revenus} sur ${p.clients_servis} client(s) servi(s) ont réservé au moins 2 fois (hors semaines de série, sur 12 mois)`,
             "Bas : qualité ou prix à revoir.")}
         </div>
         {p.par_secteur?.length > 0 && (
