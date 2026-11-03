@@ -16,6 +16,7 @@ import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
 import { SectionsAccueil } from "./components/accueil-sections.jsx";
+import { useEcranLarge } from "./lib/ecran-large.js";
 import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen, InviterClientsScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
@@ -117,6 +118,9 @@ const NB_METIERS = new Set(Object.values(METIERS).flat()).size;
 
 function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
   const [v,setV]=useState(false);
+  // Sur ordinateur, la page prend la largeur : elle s'affichait comme sur un
+  // téléphone, en colonne étroite à côté d'un panneau fixe (03/11/2026).
+  const large = useEcranLarge();
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
@@ -133,9 +137,10 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
       minHeight:"100%",
       background: `linear-gradient(160deg, #050E20 0%, #0A1628 40%, #162547 70%, #1E3A7B 100%)`,
       display:"flex", flexDirection:"column",
-      padding:"0 28px 48px",
+      padding: large ? "0 48px 64px" : "0 28px 48px",
       position:"relative", overflow:"hidden",
     }}>
+      <div style={{ width:"100%", maxWidth: large ? 1120 : "none", margin:"0 auto", position:"relative" }}>
       {/* Ambient glow effects */}
       <div style={{ position:"absolute", top:-160, right:-160, width:420, height:420, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.25) 0%, transparent 65%)`, pointerEvents:"none" }} />
       <div style={{ position:"absolute", bottom:-100, left:-100, width:320, height:320, borderRadius:"50%", background:`radial-gradient(circle, rgba(30,58,123,0.4) 0%, transparent 65%)`, pointerEvents:"none" }} />
@@ -143,9 +148,9 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
 
       {/* Le premier écran garde sa hauteur : les explications viennent dessous,
           au défilement (02/11/2026). */}
-      <div style={{ minHeight:"100svh", display:"flex", flexDirection:"column" }}>
+      <div style={{ minHeight: large ? "auto" : "100svh", display:"flex", flexDirection:"column" }}>
       {/* Logo aligné à gauche */}
-      <div style={{ paddingTop:64, marginBottom:"auto" }}>
+      <div style={{ paddingTop: large ? 40 : 64, marginBottom: large ? 48 : "auto" }}>
         <div onClick={onNext} style={{ cursor:"pointer", display:"inline-flex" }}>
           <ALANELogo size="lg" />
         </div>
@@ -153,11 +158,13 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
 
       {/* Hero content */}
       <div style={{
-        flex:1, display:"flex", flexDirection:"column",
-        justifyContent:"flex-end", paddingBottom:48,
+        flex:1, display: large ? "grid" : "flex", flexDirection:"column",
+        gridTemplateColumns: large ? "1.3fr 1fr" : undefined, gap: large ? 56 : undefined, alignItems: large ? "center" : undefined,
+        justifyContent:"flex-end", paddingBottom: large ? 24 : 48,
         opacity:v?1:0, transform:v?"translateY(0)":"translateY(24px)",
         transition:"all 0.8s cubic-bezier(0.22,1,0.36,1)",
       }}>
+        <div>
         {/* Tag */}
         <div style={{ marginBottom:20 }}>
           <Badge color={C.violet}>Plateforme de mise en relation</Badge>
@@ -172,7 +179,7 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
             Le H1 dit maintenant ce qu'on vient chercher ; le slogan reste,
             juste en dessous, à la place qui est la sienne. */}
         <h1 style={{
-          color:C.text, fontSize:32, fontWeight:800,
+          color:C.text, fontSize: large ? 48 : 32, fontWeight:800,
           margin:"0 0 12px", lineHeight:1.15,
           fontFamily:font.display, letterSpacing:-0.5,
         }}>
@@ -182,11 +189,11 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
           }}>prestataire indépendant</span> pour votre entreprise ou chez vous
         </h1>
 
-        <p style={{ color:C.accentGold, fontSize:15, fontWeight:700, margin:"0 0 14px", fontFamily:font.display }}>
+        <p style={{ color:C.accentGold, fontSize: large ? 19 : 15, fontWeight:700, margin:"0 0 14px", fontFamily:font.display }}>
           Le bon pro, au bon moment.
         </p>
 
-        <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:44, maxWidth:340 }}>
+        <p style={{ color:C.textSub, fontSize: large ? 16 : 14, lineHeight:1.7, marginBottom: large ? 28 : 44, maxWidth: large ? 560 : 340 }}>
           ALANE est la plateforme française qui met en relation les entreprises et les particuliers avec des
           prestataires indépendants vérifiés, pour des prestations ponctuelles ou récurrentes partout en France.
         </p>
@@ -237,6 +244,9 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
           ))}
         </div>
 
+        </div>
+        {/* Sur ordinateur : l'offre et le bouton dans une carte, à droite du titre. */}
+        <div style={large ? { background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r + 8, padding:"28px 26px" } : undefined}>
         {offerActive && (
           <div style={{
             background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
@@ -275,9 +285,11 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
             Mentions légales
           </a>
         </p>
+        </div>
       </div>
       </div>
-      <SectionsAccueil onCommencer={onNext} onFaq={onFaq} onContact={onContact} />
+      <SectionsAccueil onCommencer={onNext} onFaq={onFaq} onContact={onContact} large={large} />
+      </div>
     </div>
   );
 }
@@ -959,6 +971,18 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","bo_login","bo_dashboard","reset_password"].includes(screen);
 
   const isPreLogin = !["bo_login","bo_dashboard"].includes(screen) && !showSidebar;
+
+  // L'accueil, sur ordinateur, prend toute la largeur : enfermé dans la colonne
+  // de 560 px du formulaire, à côté du panneau de marque qui répétait le même
+  // message, il paraissait disproportionné (retour d'Alexandre du 03/11/2026).
+  if (isPreLogin && screen === "splash") {
+    return (
+      <div style={{ height:"100vh", overflowY:"auto", overflowX:"hidden", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif" }}>
+        {hybridBanner}
+        {children}
+      </div>
+    );
+  }
 
   // Two-column layout for pre-login screens on desktop
   if (isPreLogin) {
