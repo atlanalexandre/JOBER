@@ -85,7 +85,10 @@ describe("relecture du 02/11/2026", () => {
   const code = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
   const intent = readFileSync(new URL("../../../api/stripe-intent.js", import.meta.url), "utf8");
   it("un second paiement arrivé après l'application : le client, débité, sait qu'il sera vérifié et remboursé", () => {
-    expect(code).toContain("Si ce paiement vous a été débité en double, il sera vérifié et remboursé : notre équipe en est avertie.");
+    // Relecture du 03/11/2026 : la vérification est automatique, aucune
+    // alerte « à l'équipe » n'existe à ce stade — le message ne la promet plus.
+    expect(code).toContain("Si un paiement vous a été débité pour rien, il est vérifié automatiquement dans l'heure et remboursé.");
+    expect(code).not.toContain("notre équipe en est avertie");
   });
   it("tickets illisibles pendant un refus des frais : journalisé, jamais en silence", () => {
     expect(intent).toMatch(/\} else if \(!Array\.isArray\(deja\)\) \{[\s\S]{0,300}console\.error/);

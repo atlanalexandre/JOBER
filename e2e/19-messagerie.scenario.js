@@ -77,6 +77,6 @@ test("écrire, lire, marquer lu : chacun sa conversation, et rien d'autre", asyn
   // ticket au back-office.
   const suspect = await api("/api/missions", { action: "envoyer_message", recipient_id: p.id, content: "Massage naturiste possible ?" }, c.jeton);
   expect(suspect.statut, suspect.texte.slice(0, 200)).toBe(200);
-  const [ticket] = await sql(`select count(*)::int n from support_tickets where subject like '[Modération] Message — compte ${c.id.slice(0, 8)} —%'`);
+  const [ticket] = await sql(`select count(*)::int n from support_tickets where subject like '[Modération] Message — compte ${c.id} —%' and user_id is null`);
   expect(ticket.n, "ticket de modération ouvert").toBe(1);
 });

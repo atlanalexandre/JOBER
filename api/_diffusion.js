@@ -51,9 +51,13 @@ export function destinatairesInformation(utilisateurs, profils, { inclureNonConf
   for (const u of Array.isArray(utilisateurs) ? utilisateurs : []) {
     const email = String(u?.email || "").trim().toLowerCase();
     if (!email || vues.has(email)) continue;
-    if (!adresseValide(email)) { ecartees.invalides++; continue; }
+    // Statut et bannissement d'ABORD : un compte suspendu à l'adresse mal
+    // formée est un compte suspendu — compté « à faire corriger », il faisait
+    // relancer quelqu'un qu'on n'aurait jamais écrit (relecture du 03/11/2026).
     if (STATUTS_EXCLUS.includes(statutParId.get(u.id))) { ecartees.refusees_ou_suspendues++; continue; }
     if (u.banned_until && Date.parse(u.banned_until) > maintenant) { ecartees.bannies++; continue; }
+    // Notée comme vue : la même adresse invalide n'est comptée qu'une fois.
+    if (!adresseValide(email)) { ecartees.invalides++; vues.add(email); continue; }
     if (!u.email_confirmed_at && !inclureNonConfirmees) { ecartees.non_confirmees++; continue; }
     vues.add(email);
     adresses.push(email);

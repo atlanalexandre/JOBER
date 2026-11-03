@@ -899,6 +899,8 @@ export function BoutonSignaler({ cibleId, contexte, style }) {
     const motif = await showPrompt("Que souhaitez-vous signaler ? Décrivez ce qui s'est passé.", "Votre message");
     if (motif === null) return;
     if (String(motif).trim().length < 10) { showToast("Décrivez le problème en quelques mots (10 caractères au moins).", "error"); return; }
+    // Le serveur refuse au-delà de 5 000 caractères, préfixe compris.
+    if (String(motif).trim().length > 4500) { showToast("Votre message est trop long : 4 500 caractères au plus.", "error"); return; }
     setEnvoi(true);
     try {
       // Chargé au clic : importé en tête, il créait le client Supabase dès le
@@ -915,11 +917,18 @@ export function BoutonSignaler({ cibleId, contexte, style }) {
           userEmail: u?.email || "", userName: u?.user_metadata?.prenom || u?.email || "Inconnu",
         }),
       });
-      if (!r.ok) throw new Error(`erreur ${r.status}`);
+      if (!r.ok) {
+        // Le message du serveur dit quoi faire (« réessayez dans 10 minutes ») :
+        // le remplacer par « réessayez » faisait réessayer pour rien.
+        const j = await r.json().catch(() => ({}));
+        const err = new Error(`erreur ${r.status}`);
+        err.pourUtilisateur = j?.error;
+        throw err;
+      }
       showToast("Merci, votre signalement a été transmis à l'équipe ALANE.", "success");
     } catch (e) {
       console.error("[signaler] envoi impossible :", e.message);
-      showToast("Le signalement n'a pas pu être envoyé. Réessayez, ou écrivez à support@alane.fr.", "error");
+      showToast(e.pourUtilisateur || "Le signalement n'a pas pu être envoyé. Réessayez, ou écrivez à support@alane.fr.", "error");
     }
     setEnvoi(false);
   };

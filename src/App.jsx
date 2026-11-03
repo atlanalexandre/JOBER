@@ -16,7 +16,7 @@ import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
 import { SectionsAccueil } from "./components/accueil-sections.jsx";
-import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen, InviterClientsScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
 
@@ -1093,6 +1093,10 @@ export default function App() {
   const [authNotice,setAuthNotice]=useState(null);
   // Message non alarmant sur l'écran de choix : « adresse confirmée, connectez-vous ».
   const [authInfo,setAuthInfo]=useState(null);
+  // D'où l'on a ouvert « Nous contacter » : l'accueil ou le choix du profil.
+  // Le retour menait toujours au choix du profil — depuis l'accueil, le
+  // visiteur arrivait sur l'inscription (relecture du 03/11/2026).
+  const [retourContact,setRetourContact]=useState("role");
   // undefined = profil pas encore résolu (aucune décision à prendre) ; une chaîne = résolu.
   const [profileStatus,setProfileStatus]=useState(undefined);
   const [role,setRole]=useState(null);
@@ -1640,7 +1644,7 @@ export default function App() {
     setScreen("role");
   },[authReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_revenus","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_revenus","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise","invite_clients"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
   // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
@@ -1875,9 +1879,9 @@ export default function App() {
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen(supaUser?"settings":"splash")} role={role} />}
-      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} onFaq={()=>navigate("faq")} onContact={()=>setScreen("public_contact")} />}
-      {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} onFaq={()=>navigate("faq")} onContact={()=>{ setRetourContact("splash"); setScreen("public_contact"); }} />}
+      {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setRetourContact("role"); setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
+      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen(retourContact)} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
@@ -2121,6 +2125,7 @@ export default function App() {
       {screen==="client_pro_docs"       && <ClientProDocScreen onBack={()=>setScreen("settings")} />}
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setPrestaOnglet("docs"); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="invite_clients"       && <InviterClientsScreen onBack={()=>setScreen("p_home")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {/* Côté prestataire, le planning s'affiche DANS le tableau de bord (plus
           bas) : la liste des prestations y reste montée, et le pointage
