@@ -9,6 +9,7 @@ import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService, lireFraisServiceEtat } from "./_montant.js";
 import { lireComptesAuth } from "./_auth.js";
+import { motsSuspects, signalerAuBackOffice } from "./_moderation.js";
 import { alerteExterieureDue, nomExpediteur, texteSmsMessage, DELAI_NON_LU_MS, HISTORIQUE_MAX } from "./_messagerie.js";
 import { sansPrestataireTrouve, fraisRetenusAnnulationClient } from "./_annulation.js";
 import { verifierPaiementReservation, delaiReponseMinutes, rembourserDoublonPaiement, messageDoublon } from "./_paiement.js";
@@ -1030,7 +1031,12 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     return reponseHS(200, { ok: true, deja: true, hours: mission.hours });
   }
   if (mission.extra_hours_status !== "accepte_presta") {
-    return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation." });
+    // Arrive APRÈS un paiement : typiquement un second paiement fait dans un
+    // autre onglet, la prolongation ayant déjà été appliquée par le premier. Le
+    // rattrapage le rembourse ou ouvre un ticket ; le client, débité, doit le
+    // savoir — le message seul le laissait sans suite (relecture du 02/11/2026).
+    return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation. "
+      + "Si ce paiement vous a été débité en double, il sera vérifié et remboursé : notre équipe en est avertie." });
   }
 
   const extraH = Number(mission.extra_hours_requested || 0);
@@ -3631,6 +3637,14 @@ export default async function handler(req, res) {
       if (!ins || !ins.ok || !Array.isArray(lignesMsg) || lignesMsg.length === 0) {
         console.error(`[message] refus d'insertion (${ins?.status}) : ${JSON.stringify(lignesMsg).slice(0, 200)}`);
         return res.status(500).json({ error: "Votre message n'a pas pu être envoyé. Réessayez." });
+      }
+
+      // Modération (02/11/2026) : un message qui parle de services à caractère
+      // sexuel ouvre un ticket au back-office. Rien n'est bloqué : la décision
+      // reste humaine (api/_moderation.js).
+      const motsMsg = motsSuspects(texte);
+      if (motsMsg.length) {
+        await signalerAuBackOffice({ supabaseUrl: SUPABASE_URL, headers, userId: caller.id, origine: "Message", texte, mots: motsMsg });
       }
 
       // ── Le destinataire est prévenu ICI, depuis le message enregistré ──

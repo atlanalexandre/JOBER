@@ -38,16 +38,20 @@ export const MAX_DESTINATAIRES = 2000;
  * rejets qu'elle provoque abaissent la réputation du domaine, et ce sont alors
  * TOUS les e-mails d'ALANE (confirmations, factures) qui partent en indésirables.
  *
- * Rend { adresses, ecartees: { non_confirmees, refusees_ou_suspendues, bannies } }.
+ * Rend { adresses, ecartees: { non_confirmees, refusees_ou_suspendues, bannies, invalides } }.
  */
 export function destinatairesInformation(utilisateurs, profils, { inclureNonConfirmees = false, maintenant = Date.now() } = {}) {
   const statutParId = new Map((Array.isArray(profils) ? profils : []).map(p => [p.id, p.status]));
   const vues = new Set();
   const adresses = [];
-  const ecartees = { non_confirmees: 0, refusees_ou_suspendues: 0, bannies: 0 };
+  // `invalides` : adresses de forme invalide, comptées pour qu'on sache qui
+  // relancer — écartées sans être comptées, elles disparaissaient du journal
+  // (relecture du 02/11/2026).
+  const ecartees = { non_confirmees: 0, refusees_ou_suspendues: 0, bannies: 0, invalides: 0 };
   for (const u of Array.isArray(utilisateurs) ? utilisateurs : []) {
     const email = String(u?.email || "").trim().toLowerCase();
-    if (!email || !adresseValide(email) || vues.has(email)) continue;
+    if (!email || vues.has(email)) continue;
+    if (!adresseValide(email)) { ecartees.invalides++; continue; }
     if (STATUTS_EXCLUS.includes(statutParId.get(u.id))) { ecartees.refusees_ou_suspendues++; continue; }
     if (u.banned_until && Date.parse(u.banned_until) > maintenant) { ecartees.bannies++; continue; }
     if (!u.email_confirmed_at && !inclureNonConfirmees) { ecartees.non_confirmees++; continue; }

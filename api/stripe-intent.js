@@ -492,6 +492,10 @@ export default async function handler(req, res) {
             body: JSON.stringify({ subject: sujet, user_id: callerPi.id, status: "open",
               message: "La lecture de platform_settings.frais_service est refusée par la base (erreur 4xx) : aucune prolongation ne peut être payée. Vérifier la dernière migration (droits, colonnes)." }) });
           if (!t.ok) console.error(`[supplement] ticket « frais_service illisible » NON créé (${t.status}).`);
+        } else if (!Array.isArray(deja)) {
+          // La vérification du ticket existant a échoué : ne rien faire en
+          // silence (CLAUDE.md 1.2, relecture du 02/11/2026).
+          console.error(`[supplement] ⚠️ frais_service refusé ET tickets illisibles (${dj.status}) — prolongations bloquées, personne n'est prévenu.`);
         }
       } catch (e) {
         console.error("[supplement] ticket « frais_service illisible » NON créé :", e.message);
