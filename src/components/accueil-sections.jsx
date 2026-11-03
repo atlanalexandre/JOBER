@@ -31,10 +31,10 @@ const NB_METIERS_REGLEMENTES = Object.keys(QUALIFICATIONS_OBLIGATOIRES).length;
 const NB_METIERS_TOTAL = new Set(Object.values(METIERS).flat()).size;
 const NB_SECTEURS = SECTORS.length;
 
-const Titre = ({ sur, children }) => (
-  <div style={{ marginBottom:18 }}>
+const Titre = ({ sur, children, large }) => (
+  <div style={{ marginBottom: large ? 24 : 18 }}>
     {sur && <div style={{ color:C.accentGold, fontSize:12, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>{sur}</div>}
-    <h2 style={{ color:C.text, fontSize:24, fontWeight:800, margin:0, lineHeight:1.2, fontFamily:font.display }}>{children}</h2>
+    <h2 style={{ color:C.text, fontSize: large ? 32 : 24, fontWeight:800, margin:0, lineHeight:1.2, fontFamily:font.display }}>{children}</h2>
   </div>
 );
 
@@ -48,9 +48,9 @@ const Carte = ({ icone, titre, children }) => (
   </div>
 );
 
-const Bouton = ({ onClick, children, secondaire }) => (
+const Bouton = ({ onClick, children, secondaire, large }) => (
   <button onClick={onClick} style={{
-    width:"100%", border: secondaire ? `1px solid ${C.violet}` : "none", cursor:"pointer",
+    width: large ? "auto" : "100%", minWidth: large ? 280 : undefined, border: secondaire ? `1px solid ${C.violet}` : "none", cursor:"pointer",
     background: secondaire ? "transparent" : `linear-gradient(135deg, ${C.violet}, ${C.violetLight})`,
     color: secondaire ? C.violetLight : "#fff", fontWeight:700, fontSize:15, padding:"15px", borderRadius:r + 4,
   }}>{children}</button>
@@ -67,9 +67,11 @@ const QUESTIONS = [
     "Les deux. Un particulier réserve pour chez lui ; une entreprise pour ses locaux, avec un contrat-cadre et des factures à son nom."],
 ];
 
-export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
+export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }) {
   const [ouverte, setOuverte] = useState(null);
-  const section = { padding:"40px 0 0" };
+  const section = { padding: large ? "72px 0 0" : "40px 0 0" };
+  // Sur ordinateur, les cartes se rangent en grille au lieu de s'empiler.
+  const grille = (colonnes, gap) => ({ display:"grid", gap, gridTemplateColumns: large ? `repeat(${colonnes}, minmax(0, 1fr))` : undefined });
 
   return (
     <div id="decouvrir" style={{ position:"relative", zIndex:1, paddingBottom:24 }}>
@@ -84,9 +86,9 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
           concurrent n'est nommé ni décrit : une comparaison doit être
           objective et vérifiable (code de la consommation, art. L122-1). */}
       <section style={{ ...section, paddingTop:8 }}>
-        <div style={{ background:`linear-gradient(135deg, ${C.accentGold}1F, ${C.violet}1A)`, border:`1px solid ${C.accentGold}55`, borderRadius:r + 6, padding:"22px 18px" }}>
-          <Titre sur="Ce qui fait la différence">Pourquoi ALANE, et pas un autre ?</Titre>
-          <div style={{ display:"grid", gap:14 }}>
+        <div style={{ background:`linear-gradient(135deg, ${C.accentGold}1F, ${C.violet}1A)`, border:`1px solid ${C.accentGold}55`, borderRadius:r + 6, padding: large ? "36px 40px" : "22px 18px" }}>
+          <Titre large={large} sur="Ce qui fait la différence">Pourquoi ALANE, et pas un autre ?</Titre>
+          <div style={grille(2, large ? 28 : 14)}>
             {[
               ["🤝", "L'indépendant garde 100 % de son tarif",
                 "Aucune commission n'est prélevée sur son travail : il est payé au juste prix, et c'est ce qui fait les prestataires motivés. Vous payez son tarif et nos frais de service, affichés à part."],
@@ -111,8 +113,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
       {/* ── Comment ça marche ── */}
       <section style={section}>
-        <Titre sur="Comment ça marche">Un prestataire en trois étapes</Titre>
-        <div style={{ display:"grid", gap:10 }}>
+        <Titre large={large} sur="Comment ça marche">Un prestataire en trois étapes</Titre>
+        <div style={grille(3, large ? 16 : 10)}>
           {[
             ["1", "Décrivez votre besoin", "Le métier, la date, l'horaire et l'adresse. Choisissez un prestataire, ou laissez la demande à ceux qui sont disponibles près de chez vous."],
             ["2", "Voyez le prix, puis payez", "Le prix total s'affiche avant de payer. Votre argent est bloqué : il n'est versé au prestataire qu'après la prestation."],
@@ -131,8 +133,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
       {/* ── Pourquoi nous choisir ── */}
       <section style={section}>
-        <Titre sur="Pourquoi ALANE">Pourquoi nous choisir ?</Titre>
-        <div style={{ display:"grid", gap:10 }}>
+        <Titre large={large} sur="Pourquoi ALANE">Pourquoi nous choisir ?</Titre>
+        <div style={grille(3, large ? 16 : 10)}>
           <Carte icone="✅" titre="Des prestataires vérifiés, un par un">
             Avant d'être proposé, chaque prestataire fournit son immatriculation, son attestation Urssaf, son assurance
             responsabilité civile professionnelle et sa pièce d'identité, contrôlées par notre équipe. Pour les {NB_METIERS_REGLEMENTES} métiers
@@ -157,20 +159,20 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
       {/* ── Pour les indépendants ── */}
       <section style={section}>
-        <Titre sur="Vous êtes indépendant ?">Trouvez des clients, gardez votre liberté</Titre>
-        <div style={{ display:"grid", gap:10, marginBottom:16 }}>
+        <Titre large={large} sur="Vous êtes indépendant ?">Trouvez des clients, gardez votre liberté</Titre>
+        <div style={{ ...grille(2, large ? 16 : 10), marginBottom: large ? 24 : 16 }}>
           <Carte icone="🎯" titre="Vous fixez votre tarif">ALANE ne prélève rien sur votre tarif horaire : ses frais de service sont payés par le client.</Carte>
           <Carte icone="🗓️" titre="Vous choisissez vos prestations">Vous acceptez ou refusez librement, sans justification et sans pénalité.</Carte>
           <Carte icone="🏦" titre="Un paiement garanti">Le client paie à la réservation ; vous êtes payé par virement après la prestation. Vos factures sont établies pour vous.</Carte>
           <Carte icone="🆓" titre="Une formule gratuite">Inscrivez-vous sans frais, et passez à une formule supérieure seulement si vous en avez besoin.</Carte>
         </div>
-        <Bouton secondaire onClick={onCommencer}>Je propose mes services</Bouton>
+        <Bouton secondaire large={large} onClick={onCommencer}>Je propose mes services</Bouton>
       </section>
 
       {/* ── Qui sommes-nous ── */}
       <section style={section}>
-        <Titre sur="Qui sommes-nous ?">Une plateforme française, pensée pour les deux côtés</Titre>
-        <div style={{ color:C.textSub, fontSize:14, lineHeight:1.75 }}>
+        <Titre large={large} sur="Qui sommes-nous ?">Une plateforme française, pensée pour les deux côtés</Titre>
+        <div style={{ color:C.textSub, fontSize: large ? 16 : 14, lineHeight:1.75, maxWidth: large ? 760 : undefined }}>
           <p style={{ margin:"0 0 12px" }}>
             ALANE est née d'un constat simple : trouver un indépendant fiable, au bon moment, prend trop de temps — et
             un indépendant sérieux a du mal à se faire connaître.
@@ -184,8 +186,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
       {/* ── Questions fréquentes ── */}
       <section style={section}>
-        <Titre sur="Questions fréquentes">Vous vous demandez peut-être…</Titre>
-        <div style={{ display:"grid", gap:8, marginBottom:12 }}>
+        <Titre large={large} sur="Questions fréquentes">Vous vous demandez peut-être…</Titre>
+        <div style={{ ...grille(2, large ? 12 : 8), alignItems:"start", marginBottom:12 }}>
           {QUESTIONS.map(([q, rep], i) => (
             <div key={q} style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r }}>
               <button onClick={() => setOuverte(ouverte === i ? null : i)} aria-expanded={ouverte === i}
@@ -203,8 +205,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact }) {
 
       {/* ── Appel final ── */}
       <section style={{ ...section, textAlign:"center" }}>
-        <Titre>Prêt à essayer ?</Titre>
-        <Bouton onClick={onCommencer}>Commencer →</Bouton>
+        <Titre large={large}>Prêt à essayer ?</Titre>
+        <Bouton large={large} onClick={onCommencer}>Commencer →</Bouton>
         <p style={{ color:C.textMuted, fontSize:12, marginTop:12 }}>Inscription gratuite · Sans engagement</p>
         <button onClick={onContact} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", textDecoration:"underline" }}>
           Une question ? Écrivez-nous
