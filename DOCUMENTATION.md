@@ -106,6 +106,11 @@ Supabase Auth.
 Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approved`, `rejected`,
 `suspended`), `missions_enabled` (accès aux prestations accordé par l'administration),
 `plan_abonnement`, `cashback_balance`, `prepaid_balance`, `avatar_url`, `cv`.
+« Invitez vos clients » (migration `2026-11-02_invitation_clients.sql` — **en attente**, à passer
+par Alexandre) : sur la fiche du **client invité**, `invitation_recompensee_at` (récompense versée,
+une seule fois), `invitation_mission_id`, `invitation_frais_offerts` (euros crédités en cashback),
+`invitation_mois_offert` (le prestataire a-t-il eu son mois — sert au plafond). Écrites par le
+serveur seul ; le navigateur n'a aucun droit sur elles. Voir §6 « Parrainage ».
 
 **Le CV est obligatoire, et vit dans `profiles.cv`** (29/09/2026, décision d'Alexandre). Il
 était facultatif et rangé dans `user_metadata.cv`, donc dans le jeton de connexion (CLAUDE.md
@@ -1390,7 +1395,7 @@ Deux conséquences pratiques :
 
 ### Les fonctions serveur
 
-Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfixés `_` (compte du 13/10/2026 ; ce paragraphe en annonçait 44). Les principaux :
+Les 76 fichiers de `/api` — 21 points d'entrée et 55 modules partagés préfixés `_` (compte du 02/11/2026 ; il en annonçait 66 depuis le 13/10). Les principaux :
 
 | Fichier | Rôle |
 |---|---|
@@ -1418,6 +1423,7 @@ Les 66 fichiers de `/api` — 21 points d'entrée et 45 modules partagés préfi
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier). Depuis le 06/10/2026, `debutPrestationMs` ne garde que le **jour** de la date reçue : `date_debut` (timestamptz) passée telle quelle donnait un début inconnu pour toute prestation sur plusieurs jours — alerte « sans prestataire » jamais envoyée, clôture repliée sur la veille |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 | `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` des métadonnées — pas `ae_siret`, que personne ne renseigne et que l'empreinte anti-recréation ne lit pas), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
+| `_invitation.js` | « Invitez vos clients » (02/11/2026) — `recompenserInvitations()`, branché sur `cron-reset-monthly` toutes les deux heures ; `prestationQualifiante()`, `fraisAOffrir()`, `decisionMoisOffert()`, `offrirMoisAbonnement()`. Les chiffres (50 €, 6 mois par an) vivent dans `_invitation_regles.js`, lu aussi par l'écran. Action `mes_invitations` de `support.js` : le bilan du prestataire, en nombres seulement |
 | `_moderation.js` | Services à caractère sexuel (02/11/2026) — `motsSuspects()`, `signalerAuBackOffice()`, `contenusSuspects()`. Repère des mots sans ambiguïté (« escort », « naturiste », « happy ending »…) dans chaque message envoyé (`envoyer_message`) et, chaque jour à 7 h (`cron-reset-monthly?action=documents`), dans la présentation (`user_metadata.bio`) et le CV des prestataires et les demandes des dernières 24 h. Ouvre un ticket « [Modération] » au back-office, un seul par contenu (empreinte dans le sujet) ; **ne bloque ni ne suspend rien** : la décision reste humaine. Le ticket **n'est pas rattaché** au compte concerné (`user_id` vide, compte nommé dans le sujet et le message) : rattaché, « Répondre » lui écrivait et la suppression de son compte l'effaçait. Le balayage quotidien passe **après** la surveillance des documents, pour ne jamais lui prendre son temps. « escorte » (français, sécurité) et « sensuel » seul ne sont pas repérés : faux positifs (03/11/2026). Un mot ajouté ne doit crier sur aucun libellé, compétence ou titre des métiers — c'est testé (`moderation.test.js`). Bouton « 🚩 Signaler » (`BoutonSignaler`, `ui.jsx`) sur la fiche d'un prestataire et dans la messagerie : un ticket « Signaler un utilisateur » portant l'identifiant du compte |
 | `_pilotage.js` | Pilotage de l'activité (01/11/2026) — `chiffresPilotage()`, `estServie()`. Sur les seules réservations payées des douze derniers mois : **demandes servies** (confirmées, faites, closes ou contestées ÷ tranchées ; une **annulation compte comme non servie** — la base ne dit pas qui a annulé, et l'automatisme annule les réservations restées sans prestataire : le chiffre peut sous-estimer, jamais rassurer à tort ; `needs_replacement` est en attente, le webhook la posant aussi sans qu'aucun prestataire ait accepté), **délai d'acceptation** (médiane de `acceptee_at − created_at`, dès que la colonne existe), **retour des clients** (servis au moins deux fois ÷ servis, hors semaines suivantes d'une série), et la ventilation par secteur (corrigé le 02/11/2026). Action BO `pilotage_activite`, tuile « 📈 Pilotage de l'activité » en tête du tableau de bord |
 | `_journal_comptable.js` | Journal comptable du mois, depuis le relevé du solde Stripe : `bornesMois()` (heure de Paris), `ligneJournal()`, `totauxJournal()` (partagé avec l'écran), `fraisServiceDeduits()`. Utilisé par l'action `export_comptable` de `bo-action.js`. Voir §5 « Back-office » |
@@ -2727,7 +2733,47 @@ livraisons du webhook n'offrent pas deux mois. Un avoir refusé est journalisé 
 le créer à la main. Un parrain gratuit reçoit, comme avant, un mois de Premium.
 Éprouvé par `parrainage-avoir.test.js` (non éprouvable en recette : abonnement réel requis). `track_referral` ne fait plus que rattacher le filleul, une
 seule fois — le filtre `referred_by IS NULL` interdit de réattribuer un parrainage — et
-recalcule le compteur depuis la source au lieu de l'incrémenter.
+recalcule le compteur depuis la source au lieu de l'incrémenter. Depuis le 02/11/2026, il refuse
+un compte créé **il y a plus de 24 h** : un client ancien pouvait se rattacher après coup à un
+prestataire et lui faire gagner le mois offert ci-dessous.
+
+**« Invitez vos clients »** (décision d'Alexandre du 02/11/2026, option A) — le prestataire
+envoie son lien (`/?ref={son id}&profil={son id}` : le client s'inscrit avec lui pour parrain et
+arrive sur sa fiche), depuis l'encart de son accueil ou l'écran `/provider/invite-clients`.
+Quand un client **nouveau** inscrit par ce lien termine sa **première prestation d'au moins
+50 € hors frais**, sans litige et une fois la fenêtre de contestation de 48 h close :
+
+- le **client** reçoit en **cashback** le montant des frais de service qu'il a payés
+  (`montant_total − payout_amount`), utilisable sur sa prochaine réservation et non
+  convertible en espèces (CGPS 5B.2 et 5B.4) ;
+- le **prestataire** reçoit **un mois offert**, par la même règle que le parrainage : avoir
+  Stripe d'un mois s'il est abonné (clé `invitation-{client}`), un mois Premium sinon.
+  **Six mois au plus sur douze mois glissants**, et **rien si la carte qui a payé est une
+  carte enregistrée du prestataire** (faux client qui se réserve lui-même : il récupère
+  l'argent, le minimum de 50 € ne l'arrête pas seul). Le contrôle de la carte n'est possible
+  que si le prestataire a un client Stripe ; sinon seul le plafond limite.
+
+Pourquoi un crédit après la prestation et pas une remise au paiement : retirer les frais du
+montant prélevé touchait une dizaine de calculs (paiement, remboursements, litiges, facture,
+export comptable, contrôle Stripe). Le crédit n'en touche aucun. Le traitement
+(`recompenserInvitations()`) tourne toutes les deux heures et ne dépend d'aucun chemin de
+validation : il décide (plafond, carte) **avant** de réserver la récompense, réserve par une
+écriture conditionnée à `invitation_recompensee_at IS NULL`, puis crédite et offre. Une
+lecture impossible reporte tout au passage suivant ; un crédit ou un avoir refusé APRÈS la
+réservation est journalisé avec la marche à suivre à la main. Éprouvé par
+`src/tests/api/invitation.test.js` et, en recette, par `e2e/101` (lien, rattachement, bilan ; puis
+prestation de 65 € terminée, cashback et mois offerts une seule fois — la seconde moitié saute tant
+que la migration n'est pas passée).
+
+**Le parrainage entre prestataires a changé d'écran** (02/11/2026). Son écran (`/referral`)
+n'était accessible que depuis l'espace **client**, alors que sa récompense vise les prestataires ;
+il affichait un « code de parrainage » qu'aucun formulaire n'accepte (seul le lien `?ref=`
+rattache) et une liste de filleuls lue dans d'autres fiches `profiles`, que la RLS refuse —
+toujours vide. Le parrainage des prestataires est désormais sur `/provider/invite-clients` (même
+lien : le filleul choisit son rôle à l'inscription), ses chiffres comptés par `mes_invitations`.
+Côté client, `/referral` devient « Recommandez ALANE » : un lien à partager, **sans récompense
+promise** — il n'en existe aucune pour un client. Le seuil (3 filleuls abonnés) vit dans
+`api/_invitation_regles.js`, lu par le webhook et par l'écran.
 
 **Contrat-cadre Client Professionnel** — `src/constants/contrat-cadre-pro.js`, huit articles,
 distinct des CGPS. Celles-ci sont acceptées par tous et ne peuvent pas porter les engagements
@@ -5307,6 +5353,7 @@ Principales adresses :
 | `/provider/calendar` | Planning du prestataire |
 | `/provider/earnings` | Revenus du prestataire (mandats, versements, factures) |
 | `/provider/account` | Profil du prestataire (profil, documents, abonnement, réglages) |
+| `/provider/invite-clients` | « Invitez vos clients » : le lien personnel du prestataire, ses conditions et son bilan (02/11/2026). Écran réservé aux prestataires (`PRESTA_SCREENS`) |
 | `/providers` | Catalogue |
 | `/missions` | Historique des prestations |
 | `/booking` | Réservation |

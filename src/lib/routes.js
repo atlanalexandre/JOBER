@@ -62,6 +62,7 @@ export const SCREEN_TO_PATH = {
   doc_upload:          "/provider/documents",
   presta_profile_edit: "/provider/profile",
   micro_entreprise:    "/provider/micro-entreprise",
+  invite_clients:      "/provider/invite-clients",
   payslip:             "/provider/payslip",
 
   // Commun aux deux espaces

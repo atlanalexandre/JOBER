@@ -27,6 +27,7 @@ import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
+import { recompenserInvitations } from "./_invitation.js";
 
 /**
  * Un refus de virement qui passera de lui-même : solde disponible
@@ -1006,6 +1007,20 @@ export default async function handler(req, res) {
         console.error("[versements] traitement interrompu :", e.message);
       }
     }
+  }
+
+  // ── « Invitez vos clients » : les récompenses dues (02/11/2026) ─────────
+  //
+  // Toutes les deux heures, comme les versements : un client invité dont la
+  // première prestation d'au moins 50 € vient de passer sa fenêtre de
+  // contestation reçoit ses frais de service en cashback, et le prestataire
+  // qui l'a invité un mois offert (api/_invitation.js). Le traitement ne
+  // dépend d'aucun chemin de validation : il rattrape tout ce qui est dû.
+  try {
+    const STRIPE_SK_I = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+    await recompenserInvitations({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_I });
+  } catch (e) {
+    console.error("[invitation] traitement interrompu :", e.message);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
