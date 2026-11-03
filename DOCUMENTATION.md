@@ -825,7 +825,7 @@ prestation du prestataire (`validate_presta`).
 production le 02/11/2026) est la **première** acceptation par un prestataire : posée par le déclencheur
 `missions_acceptee_at` quand la prestation passe à `assigned` **depuis une demande en attente** (`open`,
 `pending_acceptance`), quel que soit le chemin (e-mail, écran, candidature choisie, webhook Stripe) —
-pas sur un remplacement ni une réaffectation ; depuis `needs_replacement` aussi, mais seulement pour une prestation créée à partir du 03/11/2026, quand personne n'a encore accepté (le webhook pose ce statut sur un paiement dont le prestataire n'a pas été retenu — migration `2026-11-03_pilotage_acceptee_at_remplacement.sql`, **en attente**) — jamais déplacée ensuite sauf à la main depuis l'éditeur SQL,
+pas sur un remplacement ni une réaffectation ; depuis `needs_replacement` aussi, mais seulement pour une prestation créée à partir du 03/11/2026, quand personne n'a encore accepté (le webhook pose ce statut sur un paiement dont le prestataire n'a pas été retenu — migration `2026-11-03_pilotage_acceptee_at_remplacement.sql`, passée en recette et vérifiée le 03/11/2026 — production **en attente**) — jamais déplacée ensuite sauf à la main depuis l'éditeur SQL,
 imposée à l'INSERT et jamais écrite par le code ni par le navigateur. Rien n'est inventé pour les
 prestations antérieures. Elle sert au délai d'acceptation du tableau « 📈 Pilotage de l'activité ».
 
