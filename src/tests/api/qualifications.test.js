@@ -357,6 +357,11 @@ describe("métiers distingués et titres ajoutés (02/11/2026)", async () => {
     expect(correspondRecherche("Éducateur sportif / Coach", "coach sportif")).toBe(true);
     expect(correspondRecherche("Éducateur sportif / Coach", "prof de sport")).toBe(false);
   });
+  it("la carte vérifiée du coach couvre l'intervenant scolaire : même titre (relecture du 03/11/2026)", async () => {
+    const { peutExercer } = await import("../../../api/_qualifications.js");
+    const carte = { titres_couverts: [qualificationRequise("Éducateur sportif / Coach").titre] };
+    expect(peutExercer("Intervenant sportif en milieu scolaire", carte)).toBe(true);
+  });
   it("chaque nouveau titre nomme son texte", () => {
     for (const m of ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection"]) {
       expect(qualificationRequise(m)?.texte, m).toBeTruthy();

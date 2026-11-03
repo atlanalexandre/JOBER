@@ -1093,6 +1093,10 @@ export default function App() {
   const [authNotice,setAuthNotice]=useState(null);
   // Message non alarmant sur l'écran de choix : « adresse confirmée, connectez-vous ».
   const [authInfo,setAuthInfo]=useState(null);
+  // D'où l'on a ouvert « Nous contacter » : l'accueil ou le choix du profil.
+  // Le retour menait toujours au choix du profil — depuis l'accueil, le
+  // visiteur arrivait sur l'inscription (relecture du 03/11/2026).
+  const [retourContact,setRetourContact]=useState("role");
   // undefined = profil pas encore résolu (aucune décision à prendre) ; une chaîne = résolu.
   const [profileStatus,setProfileStatus]=useState(undefined);
   const [role,setRole]=useState(null);
@@ -1875,9 +1879,9 @@ export default function App() {
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen(supaUser?"settings":"splash")} role={role} />}
-      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} onFaq={()=>navigate("faq")} onContact={()=>setScreen("public_contact")} />}
-      {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} onFaq={()=>navigate("faq")} onContact={()=>{ setRetourContact("splash"); setScreen("public_contact"); }} />}
+      {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setRetourContact("role"); setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
+      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen(retourContact)} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
