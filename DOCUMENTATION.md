@@ -494,7 +494,7 @@ attendu et le texte qui l'impose — 40 métiers à ce jour :
 | Famille | Titre attendu |
 |---|---|
 | Sécurité privée (6 métiers) | Carte professionnelle CNAPS, diplôme SSIAP à jour |
-| Sport et baignade (4) | Carte professionnelle d'éducateur sportif (dont le professeur de Pilates), BNSSA ; pour l'intervenant sportif en milieu scolaire, la carte ou l'agrément de l'Éducation nationale |
+| Sport et baignade (4) | Carte professionnelle d'éducateur sportif (dont le professeur de Pilates), BNSSA ; pour l'intervenant sportif en milieu scolaire, la même carte (une carte vérifiée pour le coach le couvre) ou, à l'école primaire, l'agrément de l'Éducation nationale |
 | Animation (2) | BAFA ou équivalent |
 | Conduite (5) | Carte VTC, permis C ou D avec FIMO/FCO, permis B (chauffeur livreur, voiturier — depuis le 29/09/2026) |
 | Coiffure et esthétique (4) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être et la prothésie ongulaire |
@@ -503,6 +503,12 @@ attendu et le texte qui l'impose — 40 métiers à ce jour :
 | Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
 | Commerce et recouvrement (2) | Immatriculation au RSAC (agent commercial) ; assurance RC et compte dédié (chargé de recouvrement) |
 | Désinfection (1) | Certibiocide « désinfectants » |
+
+Agent commercial, chargé de recouvrement et agent de désinfection **existaient déjà** au catalogue
+quand leur titre est devenu obligatoire (02/11/2026) : un prestataire déjà inscrit sous l'un d'eux
+n'y est plus proposé tant que son justificatif n'est pas déposé et vérifié — le bandeau « Justificatif
+à fournir » le lui dit. Vérifié en production ce jour-là, en lecture seule : aucun prestataire
+**validé** ne les déclarait, personne n'a donc perdu de prestation.
 
 **Le sport est distingué selon le lieu** (02/11/2026, demande d'Alexandre) : « Éducateur
 sportif / Coach » vise le particulier et la salle de sport (alias « coach sportif »,
