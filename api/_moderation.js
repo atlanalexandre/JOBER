@@ -33,7 +33,9 @@ export function normaliser(texte) {
 // Chaque entrée : le libellé montré au back-office, et le motif sur le texte
 // normalisé (encadré d'espaces). Les mots isolés sont bornés aux deux bouts.
 export const MOTS_SUSPECTS = [
-  ["escort", / escort(e|es|s)? /],
+  // « escort » seul, en anglais : « escorte » est un mot français ordinaire de
+  // la sécurité (escorte de fonds, agent d'escorte) — relecture du 03/11/2026.
+  ["escort", / escorts? /],
   ["escort girl", / escort ?girls? /],
   ["call girl", / call ?girls? /],
   ["prostitution", / prostitu/],
@@ -45,7 +47,6 @@ export const MOTS_SUSPECTS = [
   ["happy ending", / happy end(ing)? /],
   ["fin heureuse", / fin(ition)? heureuse /],
   ["massage sensuel", / massages? (sensuels?|intimes?|prostatiques?) /],
-  ["sensuel", / sensuel(le|les|s)? /],
   ["plan cul", / plans? culs? /],
   ["sans tabou", / sans tabous? /],
   ["relation tarifée", / (relations?|rapports?) tarife(e|es|s)? /],
@@ -69,7 +70,7 @@ export const empreinte = (texte) => createHash("sha256").update(normaliser(texte
  * @returns {Promise<"cree"|"deja"|"echec">}
  */
 export async function signalerAuBackOffice({ supabaseUrl, headers, userId, origine, texte, mots }) {
-  const sujet = `[Modération] ${origine} — compte ${String(userId).slice(0, 8)} — ${empreinte(texte)}`;
+  const sujet = `[Modération] ${origine} — compte ${userId} — ${empreinte(texte)}`;
   try {
     const dj = await fetch(`${supabaseUrl}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&select=id&limit=1`, { headers });
     const deja = dj.ok ? await dj.json().catch(() => null) : null;
@@ -78,8 +79,13 @@ export async function signalerAuBackOffice({ supabaseUrl, headers, userId, origi
     const extrait = String(texte).length > 600 ? `${String(texte).slice(0, 600)}…` : String(texte);
     const t = await fetch(`${supabaseUrl}/rest/v1/support_tickets`, {
       method: "POST", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=minimal" },
-      body: JSON.stringify({ subject: sujet, user_id: userId, status: "open",
-        message: `Mots repérés : ${mots.join(", ")}.\n\nTexte (${origine}) :\n${extrait}\n\n`
+      // `user_id` reste VIDE : le compte concerné n'est pas l'auteur du ticket.
+      // Rattaché à lui, le ticket lui aurait été répondu par « Répondre »
+      // (repondre_ticket écrit à `user_id`), lui apprenant qu'il était repéré,
+      // et la suppression de son compte l'aurait effacé — la trace avec
+      // (relecture du 03/11/2026). Il est nommé dans le sujet et le message.
+      body: JSON.stringify({ subject: sujet, user_id: null, status: "open",
+        message: `Compte concerné : ${userId}\nMots repérés : ${mots.join(", ")}.\n\nTexte (${origine}) :\n${extrait}\n\n`
           + "À vérifier : une prestation à caractère sexuel est interdite. Rien n'a été bloqué automatiquement — "
           + "suspendre le compte depuis le back-office si le doute se confirme, ou fermer ce ticket s'il s'agit d'un faux positif." }),
     });

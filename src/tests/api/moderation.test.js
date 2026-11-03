@@ -28,6 +28,9 @@ describe("les mots repérés", () => {
       "Massage relaxant aux huiles, soin du visage, épilation",
       "Rapport de fin de chantier, finitions soignées",
       "Body scrub et gommage", "Je suis disponible pour un extra en salle ce soir",
+      // Relecture du 03/11/2026 : le vocabulaire ordinaire de la sécurité et du spa.
+      "Agent d'escorte, escorte de fonds et protection rapprochée", "Escortes de convois exceptionnels",
+      "Parfum sensuel et bougies pour le spa",
     ];
     const crient = textes.filter(t => motsSuspects(t).length);
     expect(crient).toEqual([]);
@@ -57,7 +60,12 @@ describe("le ticket au back-office", () => {
       return new Response(o.method === "POST" ? null : "[]", { status: o.method === "POST" ? 201 : 200 }); }));
     expect(await signalerAuBackOffice(ctx)).toBe("cree");
     const post = appels.find(a => a.m === "POST");
-    expect(JSON.parse(post.corps).subject).toBe(`[Modération] Message — compte 11111111 — ${empreinte("escort ce soir")}`);
+    const corps = JSON.parse(post.corps);
+    expect(corps.subject).toBe(`[Modération] Message — compte 11111111-aaaa — ${empreinte("escort ce soir")}`);
+    // Le compte concerné n'est pas l'auteur : rattaché à lui, « Répondre » lui
+    // écrivait, et la suppression de son compte effaçait la trace.
+    expect(corps.user_id).toBeNull();
+    expect(corps.message).toContain("Compte concerné : 11111111-aaaa");
     vi.stubGlobal("fetch", vi.fn(async () => new Response('[{"id":1}]', { status: 200 })));
     expect(await signalerAuBackOffice(ctx)).toBe("deja");
   });
@@ -77,8 +85,10 @@ describe("branchements", () => {
     const bloc = missions.slice(missions.indexOf('if (action === "envoyer_message")'));
     expect(bloc.indexOf("motsSuspects(texte)")).toBeGreaterThan(bloc.indexOf("lignesMsg.length === 0"));
   });
-  it("le balayage tourne chaque jour, avec la surveillance des documents", () => {
-    expect(cron.slice(cron.indexOf('if (queryAction === "documents")')).indexOf("contenusSuspects(")).toBeGreaterThan(0);
+  it("le balayage tourne chaque jour, APRÈS la surveillance des documents", () => {
+    const bloc = cron.slice(cron.indexOf('if (queryAction === "documents")'));
+    expect(bloc.indexOf("contenusSuspects(")).toBeGreaterThan(bloc.indexOf("derniere_surveillance_documents"));
+    expect(bloc.indexOf("contenusSuspects(")).toBeLessThan(bloc.indexOf("return res.status(200).json({ success: true, datees"));
   });
   it("un bouton Signaler sur la fiche du prestataire et dans la messagerie", () => {
     expect(ecrans.match(/<BoutonSignaler /g)).toHaveLength(2);
