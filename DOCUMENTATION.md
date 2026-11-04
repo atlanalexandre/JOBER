@@ -112,7 +112,7 @@ une seule fois), `invitation_mission_id`, `invitation_frais_offerts` (euros cré
 `invitation_mois_offert` (le prestataire a-t-il eu son mois — sert au plafond). Écrites par le
 serveur seul ; le navigateur n'a aucun droit sur elles. Voir §6 « Parrainage ».
 Garantie « mois sans proposition » (migration `2026-11-04_garantie_mois_sans_proposition.sql` —
-**en attente**) : `garantie_mois_offert_at` et `garantie_mois_offert_mois` sur la fiche du
+passée en recette puis en production et vérifiée le 04/11/2026) : `garantie_mois_offert_at` et `garantie_mois_offert_mois` sur la fiche du
 prestataire, et la table **`propositions_recues`** (`prestataire_id`, `mission_id`, `canal` :
 `directe` | `diffusion`, `created_at`) — le registre de chaque prestation proposée, écrit par le
 serveur seul (RLS sans policy, aucun droit au navigateur). Les notifications ne pouvaient pas servir
