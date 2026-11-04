@@ -60,7 +60,13 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   // l'IA-DASEN ; la carte professionnelle vaut agrément. Sans carte, l'agrément
   // suit une vérification d'honorabilité. Dans le second degré et le privé,
   // c'est la carte (code du sport, art. L212-1) qui est exigée (02/11/2026).
-  "Intervenant sportif en milieu scolaire": { titre: "Carte professionnelle d'éducateur sportif, ou agrément de l'Éducation nationale", detail: "la carte vaut agrément à l'école primaire ; le directeur d'école autorise ensuite chaque intervention", texte: "code du sport, art. L212-1 ; décret n° 2017-766 du 4 mai 2017" },
+  //
+  // Le titre est le MÊME que celui du coach : `peutExercer()` compare les
+  // titres à l'identique, et une carte déjà vérifiée pour le coach ne couvrait
+  // pas l'intervenant — il fallait la faire revalider (relecture du 03/11/2026).
+  // L'agrément seul, à l'école primaire, est dit dans le détail : le
+  // back-office le vérifie à l'œil sous ce titre.
+  "Intervenant sportif en milieu scolaire": { titre: "Carte professionnelle d'éducateur sportif", detail: "ou, à l'école primaire, l'agrément de l'Éducation nationale — la carte vaut agrément ; le directeur d'école autorise ensuite chaque intervention", texte: "code du sport, art. L212-1 ; décret n° 2017-766 du 4 mai 2017" },
   // Le Pilates est une activité physique : son enseignement rémunéré relève
   // du même article (02/11/2026). Le yoga, non tranché, est en NOTES_METIERS.
   "Professeur de Pilates":              { titre: "Carte professionnelle d'éducateur sportif", detail: "diplôme des métiers de la forme (BPJEPS, CQP instructeur fitness…) et déclaration à la DRAJES", texte: "code du sport, art. L212-1" },

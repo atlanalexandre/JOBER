@@ -1502,9 +1502,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ width:42, height:42, borderRadius:12, background:`${C.accentGold}1F`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🎁</div>
           <div style={{ flex:1, position:"relative" }}>
             <div style={{ fontSize:13.5, fontWeight:600, color:C.text, marginBottom:2 }}>
-              Parrainez & gagnez <span style={{ color:C.accentGold }}>1 mois Premium</span>
+              Recommandez <span style={{ color:C.accentGold }}>ALANE</span>
             </div>
-            <div style={{ fontSize:11.5, color:C.textSub }}>3 filleuls abonnés = 1 mois offert</div>
+            <div style={{ fontSize:11.5, color:C.textSub }}>Partagez votre lien avec vos proches et partenaires</div>
           </div>
           <span style={{ color:C.accentGold, fontSize:18 }}>›</span>
         </div>
@@ -4999,7 +4999,8 @@ export function FAQScreen({ onBack, role }) {
     { q:"Que se passe-t-il si je refuse une prestation ?", a:"Rien. Vous êtes libre de refuser toute prestation, sans avoir à vous justifier, sans délai imposé et sans aucune conséquence : un refus n'entraîne ni pénalité, ni baisse de visibilité, ni restriction d'accès (CGPS art. 4.2). La prestation est simplement proposée à un autre professionnel disponible dans votre secteur." },
     { q:"Et si je dois me désister ?", a:"Prévenez le client et ALANE au plus tôt. Le client est alors intégralement remboursé (CGPS art. 8.2). Vous pouvez aussi proposer un remplaçant parmi les professionnels vérifiés : le remplacement n'est effectif qu'avec son accord et celui du client (CGPS art. 9). Des annulations répétées peuvent entraîner une restriction d'accès, après notification écrite." },
     { q:"Le client me demande des heures supplémentaires, comment ça marche ?", a:"Vous êtes libre d'accepter ou non, et vous annoncez le tarif horaire de ces heures. Le client voit le montant exact avant de payer ; la prestation n'est prolongée qu'une fois ce complément réglé (CGPS art. 6.2)." },
-    { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage avec d'autres prestataires. Dès que 3 de vos filleuls souscrivent une formule payante (Premium ou Elite), vous recevez un mois offert : déduit de votre prochaine échéance si vous êtes abonné, ou un mois Premium sinon." },
+    { q:"Comment fonctionne le parrainage ?", a:"Envoyez votre lien, depuis « Invitez vos clients » sur votre accueil, à d'autres prestataires : ils s'inscrivent avec lui. Dès que 3 de vos filleuls souscrivent une formule payante (Premium ou Elite), vous recevez un mois offert : déduit de votre prochaine échéance si vous êtes abonné, ou un mois Premium sinon." },
+    { q:"Comment inviter mes clients ?", a:"Depuis l'encart « Invitez vos clients » de votre accueil, envoyez votre lien à vos clients habituels. Quand un client nouveau inscrit par ce lien termine sa première prestation d'au moins 50 € hors frais, sans litige, ses frais de service lui sont rendus en cashback et vous recevez 1 mois d'abonnement offert — 6 au plus par période de 12 mois." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages, ou par e-mail à support@alane.fr." },
   ] : [
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des professionnels indépendants dans votre secteur, dont l'immatriculation, l'attestation URSSAF et l'assurance sont vérifiées. Vous décrivez votre besoin, la date et l'horaire, et un prestataire accepte la prestation." },
@@ -5046,47 +5047,37 @@ export function FAQScreen({ onBack, role }) {
   );
 }
 
+// « Recommandez ALANE » — l'écran Parrainage de l'espace client (refait le 02/11/2026).
+//
+// Il promettait « 1 mois Premium offert pour 3 filleuls abonnés » : une
+// récompense de PRESTATAIRE (stripe-webhook.js), sans objet pour un client,
+// qui n'a pas d'abonnement. Il affichait un « code de parrainage » qu'aucun
+// formulaire n'accepte — seul le lien rattache —, et une liste de filleuls
+// lue dans d'autres fiches `profiles`, que la RLS refuse : toujours vide.
+// Une promesse sans contenu est une pratique trompeuse (code de la
+// consommation, art. L121-2). L'écran ne garde que ce qui est vrai : le lien.
+// Le parrainage des prestataires vit dans leur espace (« Invitez vos clients »).
 export function ReferralScreen({ onBack }) {
-  const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [code, setCode] = useState("ALANE-…");
-  const [filleuls, setFilleuls] = useState(0);
   const [userId, setUserId] = useState(null);
-  const [filleulsList, setFilleulsList] = useState([]);
 
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{
-      const uid = data?.user?.id;
-      if(!uid) return;
-      setUserId(uid);
-      const c = "ALANE-" + uid.slice(0,6).toUpperCase();
-      setCode(c);
-      supabase.from("profiles").select("referral_count").eq("id",uid).single()
-        .then(({data:pd})=>{ if(pd?.referral_count) setFilleuls(pd.referral_count); });
-      supabase.from("profiles").select("prenom,nom,created_at,plan_abonnement").eq("referred_by",uid).order("created_at",{ascending:false})
-        .then(({data:fl})=>{ if(Array.isArray(fl)) setFilleulsList(fl); });
-    });
+    supabase.auth.getUser().then(({data})=>{ if(data?.user?.id) setUserId(data.user.id); });
   },[]);
 
-  const referralLink = userId ? `${window.location.origin}?ref=${userId}` : "";
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(code).then(()=>{
-      setCopiedCode(true);
-      setTimeout(()=>setCopiedCode(false), 2000);
-    });
-  };
+  const referralLink = userId ? `${window.location.origin}/?ref=${userId}` : "";
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(referralLink).then(()=>{
       setCopiedLink(true);
       setTimeout(()=>setCopiedLink(false), 2000);
-    });
+    }).catch(e => { console.error("[recommander] copie impossible :", e.message); showToast("Copie impossible : sélectionnez le lien à la main.", "error"); });
   };
 
   const handleShare = () => {
     if(navigator.share) {
-      navigator.share({ title:"Rejoignez ALANE", text:`Utilisez mon lien de parrainage et inscrivez-vous sur ALANE ! Code : ${code}`, url:referralLink });
+      navigator.share({ title:"ALANE", text:"Je réserve mes prestataires indépendants sur ALANE : ils sont vérifiés et le prix affiché est le prix payé.", url:referralLink })
+        .catch(e => { if (e?.name !== "AbortError") console.error("[recommander] partage impossible :", e.message); });
     } else {
       handleCopyLink();
     }
@@ -5094,87 +5085,28 @@ export function ReferralScreen({ onBack }) {
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <div style={{ background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, padding:"48px 22px 36px", borderRadius:"0 0 28px 28px", textAlign:"center" }}>
+      <div style={{ background:`linear-gradient(135deg,${C.violet},${C.violetLight})`, padding:"48px 22px 36px", borderRadius:"0 0 28px 28px", textAlign:"center" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:20, display:"block" }}>← Retour</button>
-        <div style={{ fontSize:52, marginBottom:10 }}>🎁</div>
-        <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Parrainez & gagnez</h2>
-        <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, margin:0 }}>1 mois Premium offert pour 3 filleuls abonnés</p>
-        <div style={{ marginTop:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-          {[0,1,2].map(i=>(
-            <div key={i} style={{ width:32, height:32, borderRadius:"50%", background:i<filleuls?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.25)", border:"2px solid rgba(255,255,255,0.5)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>
-              {i<filleuls?"✓":""}
-            </div>
-          ))}
-          <span style={{ color:"rgba(255,255,255,0.8)", fontSize:13, marginLeft:6 }}>{filleuls}/3 filleuls</span>
-        </div>
+        <div style={{ fontSize:52, marginBottom:10 }}>💬</div>
+        <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Recommandez ALANE</h2>
+        <p style={{ color:"rgba(255,255,255,0.85)", fontSize:15, margin:0 }}>Partagez ALANE avec vos proches et vos partenaires</p>
       </div>
       <div style={{ padding:"24px 18px" }}>
-        {/* Récompense */}
-        <div style={{ background:`linear-gradient(135deg,${C.violet}22,${C.accentGold}15)`, border:`1px solid ${C.accentGold}55`, borderRadius:18, padding:"18px 16px", marginBottom:16, textAlign:"center" }}>
-          <div style={{ fontSize:32, marginBottom:6 }}>👑</div>
-          <div style={{ color:C.text, fontWeight:800, fontSize:15, marginBottom:4 }}>1 mois Premium offert</div>
-          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>Dès que 3 de vos filleuls souscrivent un abonnement Premium, vous recevez 1 mois Premium gratuit.</div>
-        </div>
-        {/* Code */}
-        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
-          <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px" }}>Votre code de parrainage</p>
-          <div style={{ background:`${C.accentGold}15`, border:`2px dashed ${C.accentGold}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-            <div style={{ fontSize:24, fontWeight:800, color:C.text, letterSpacing:3 }}>{code}</div>
-          </div>
-          <div style={{ display:"flex", gap:10, marginBottom:0 }}>
-            <Btn full variant="gold" onClick={handleCopyCode} style={{ fontSize:13 }}>
-              {copiedCode ? "✓ Copié !" : "📋 Copier le code"}
-            </Btn>
-            <Btn full onClick={handleShare} style={{ fontSize:13 }}>
-              📤 Partager
-            </Btn>
-          </div>
-        </div>
-        {/* Lien */}
         <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 20px", marginBottom:16 }}>
-          <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px" }}>Lien de parrainage</p>
+          <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px" }}>Votre lien</p>
           <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:r, padding:"10px 12px", marginBottom:12, wordBreak:"break-all", fontSize:12, color:C.text, fontFamily:"monospace" }}>
             {referralLink || "Chargement…"}
           </div>
-          <Btn full onClick={handleCopyLink} style={{ fontSize:13 }}>
-            {copiedLink ? "✓ Lien copié !" : "🔗 Copier le lien"}
-          </Btn>
-        </div>
-        <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          💡 Votre filleul utilise votre code ou votre lien à l’inscription. Le mois offert est crédité dès que le 3ème filleul passe en Premium.
-        </div>
-        {/* Filleuls list */}
-        {filleulsList.length > 0 && (
-          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 20px", marginBottom:16 }}>
-            <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", fontWeight:700 }}>Vos filleuls ({filleulsList.length})</p>
-            {filleulsList.map((f,i)=>(
-              <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom: i<filleulsList.length-1 ? `1px solid rgba(255,255,255,0.06)` : "none" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:34, height:34, borderRadius:"50%", background:`${C.accentGold}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:800, color:C.accentGold }}>
-                    {(f.prenom||"?")[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{f.prenom} {f.nom}</div>
-                    <div style={{ fontSize:11, color:C.textSub }}>{new Date(f.created_at).toLocaleDateString("fr-FR")}</div>
-                  </div>
-                </div>
-                <div style={{ fontSize:11, padding:"3px 8px", borderRadius:8, background: f.plan_abonnement==="premium"||f.plan_abonnement==="elite" ? `${C.accentGold}25` : "rgba(255,255,255,0.07)", color: f.plan_abonnement==="premium"||f.plan_abonnement==="elite" ? C.accentGold : C.textSub, fontWeight:700 }}>
-                  {f.plan_abonnement==="premium"?"Premium":f.plan_abonnement==="elite"?"Elite":"Gratuit"}
-                </div>
-              </div>
-            ))}
+          <div style={{ display:"flex", gap:10 }}>
+            <Btn full variant="gold" onClick={handleCopyLink} style={{ fontSize:13 }}>
+              {copiedLink ? "✓ Lien copié !" : "🔗 Copier le lien"}
+            </Btn>
+            <Btn full onClick={handleShare} style={{ fontSize:13 }}>📤 Partager</Btn>
           </div>
-        )}
-        {[
-          {i:"🔗", t:"Partagez votre lien", s:"Via SMS, email ou réseaux sociaux"},
-          {i:"✅", t:"3 filleuls passent Premium", s:"Ils utilisent votre code ou lien à l’inscription"},
-          {i:"👑", t:"1 mois Premium offert", s:"Crédité automatiquement sur votre compte"},
-        ].map((s,i)=>(
-          <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:9, display:"flex", gap:12, alignItems:"center" }}>
-            <div style={{ width:42, height:42, borderRadius:12, background:`${C.accentGold}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{s.i}</div>
-            <div><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{s.t}</div><div style={{ color:C.textSub, fontSize:11 }}>{s.s}</div></div>
-          </div>
-        ))}
+        </div>
+        <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}33`, borderRadius:r, padding:"12px 14px", fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          💡 Vous connaissez un indépendant de confiance ? Envoyez-lui ce lien : il pourra s'inscrire comme prestataire, et vous le retrouverez sur ALANE.
+        </div>
       </div>
     </div>
   );

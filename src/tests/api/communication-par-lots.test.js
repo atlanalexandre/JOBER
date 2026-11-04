@@ -43,4 +43,12 @@ describe("forme des adresses (api/_diffusion.js)", async () => {
     // Comptée, pour qu'on sache qui relancer (02/11/2026).
     expect(destinatairesInformation([{ id: "a", email: "jean@gmail", email_confirmed_at: "2026-01-01" }], []).ecartees.invalides).toBe(1);
   });
+  it("une adresse invalide d'un compte suspendu compte comme suspendue, et une seule fois (03/11/2026)", () => {
+    const { ecartees } = destinatairesInformation([
+      { id: "s", email: "susp@gmail", email_confirmed_at: "2026-01-01" },
+      { id: "a", email: "jean@gmail", email_confirmed_at: "2026-01-01" },
+      { id: "b", email: "JEAN@gmail", email_confirmed_at: "2026-01-01" },
+    ], [{ id: "s", status: "suspended" }]);
+    expect(ecartees).toMatchObject({ refusees_ou_suspendues: 1, invalides: 1 });
+  });
 });

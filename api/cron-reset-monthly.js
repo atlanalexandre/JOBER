@@ -27,6 +27,7 @@ import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
+import { recompenserInvitations } from "./_invitation.js";
 
 /**
  * Un refus de virement qui passera de lui-même : solde disponible
@@ -1008,6 +1009,20 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── « Invitez vos clients » : les récompenses dues (02/11/2026) ─────────
+  //
+  // Toutes les deux heures, comme les versements : un client invité dont la
+  // première prestation d'au moins 50 € vient de passer sa fenêtre de
+  // contestation reçoit ses frais de service en cashback, et le prestataire
+  // qui l'a invité un mois offert (api/_invitation.js). Le traitement ne
+  // dépend d'aucun chemin de validation : il rattrape tout ce qui est dû.
+  try {
+    const STRIPE_SK_I = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+    await recompenserInvitations({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_I });
+  } catch (e) {
+    console.error("[invitation] traitement interrompu :", e.message);
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // Conservation des documents — CGPS art. 14.4 (purge RGPD) et 19.1 (RC Pro)
   // ═══════════════════════════════════════════════════════════════════════
@@ -1631,28 +1646,6 @@ export default async function handler(req, res) {
   // sont en cours vont à leur terme. Annuler la prestation de demain parce
   // qu'une attestation expire aujourd'hui punirait le client.
   if (queryAction === "documents") {
-    // ── Modération : services à caractère sexuel (02/11/2026) ──────────
-    //
-    // Une fois par jour, la présentation et le CV des prestataires et les
-    // demandes des dernières 24 h sont relus : un mot sans ambiguïté ouvre un
-    // ticket au back-office, une seule fois par contenu (api/_moderation.js).
-    // Rien n'est bloqué ni suspendu automatiquement.
-    try {
-      const depuis = new Date(Date.now() - 864e5).toISOString();
-      const [comptes, profils, demandes] = await Promise.all([
-        lireComptesAuth(SUPABASE_URL, headers),
-        lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&cv=not.is.null&select=id,cv`, headers),
-        lireTout(`${SUPABASE_URL}/rest/v1/missions?created_at=gte.${encodeURIComponent(depuis)}&select=id,client_id,titre,description`, headers),
-      ]);
-      let signales = 0;
-      for (const c of contenusSuspects({ comptes, profils, missions: demandes })) {
-        if (await signalerAuBackOffice({ supabaseUrl: SUPABASE_URL, headers, ...c }) === "cree") signales++;
-      }
-      if (signales) console.log(`[moderation] ${signales} contenu(s) signalé(s) au back-office`);
-    } catch (e) {
-      console.error("[moderation] balayage quotidien interrompu :", e.message);
-    }
-
     // Déclarés ici, dans le bloc qui s'en sert.
     const RESEND_API_KEY_DOCS = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM_DOCS    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -2022,6 +2015,32 @@ export default async function handler(req, res) {
           });
         }
       }).catch(e => console.error("[documents] horodatage du passage :", e.message));
+
+      // ── Modération : services à caractère sexuel (02/11/2026) ──────────
+      //
+      // Une fois par jour, la présentation et le CV des prestataires et les
+      // demandes des dernières 24 h sont relus : un mot sans ambiguïté ouvre un
+      // ticket au back-office, une seule fois par contenu (api/_moderation.js).
+      // Rien n'est bloqué ni suspendu automatiquement.
+      //
+      // Il passe APRÈS la surveillance des documents : placé en tête, la lecture de
+      // tous les comptes et les tickets créés un à un pouvaient épuiser le temps
+      // de la fonction avant les échéances et les suspensions (relecture du 03/11/2026).
+      try {
+        const depuis = new Date(Date.now() - 864e5).toISOString();
+        const [comptes, profils, demandes] = await Promise.all([
+          lireComptesAuth(SUPABASE_URL, headers),
+          lireTout(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&cv=not.is.null&select=id,cv`, headers),
+          lireTout(`${SUPABASE_URL}/rest/v1/missions?created_at=gte.${encodeURIComponent(depuis)}&select=id,client_id,titre,description`, headers),
+        ]);
+        let signales = 0;
+        for (const c of contenusSuspects({ comptes, profils, missions: demandes })) {
+          if (await signalerAuBackOffice({ supabaseUrl: SUPABASE_URL, headers, ...c }) === "cree") signales++;
+        }
+        if (signales) console.log(`[moderation] ${signales} contenu(s) signalé(s) au back-office`);
+      } catch (e) {
+        console.error("[moderation] balayage quotidien interrompu :", e.message);
+      }
 
       return res.status(200).json({ success: true, datees: docs.length, prevenus, suspendus });
     } catch (e) {

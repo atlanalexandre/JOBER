@@ -1036,7 +1036,11 @@ export async function appliquerHeuresSupp({ missionId, paymentIntent, clientId, 
     // rattrapage le rembourse ou ouvre un ticket ; le client, débité, doit le
     // savoir — le message seul le laissait sans suite (relecture du 02/11/2026).
     return reponseHS(409, { error: "Aucune prolongation en attente de paiement sur cette prestation. "
-      + "Si ce paiement vous a été débité en double, il sera vérifié et remboursé : notre équipe en est avertie." });
+      // La vérification est AUTOMATIQUE (api/_rattrapage_heures_supp.js, toutes
+      // les 30 minutes) : elle rembourse un paiement abouti qui n'a servi à rien.
+      // « Notre équipe en est avertie » promettait une alerte qui n'existe pas à
+      // ce stade — et l'appel arrive aussi sans aucun paiement (relecture du 03/11/2026).
+      + "Si un paiement vous a été débité pour rien, il est vérifié automatiquement dans l'heure et remboursé." });
   }
 
   const extraH = Number(mission.extra_hours_requested || 0);

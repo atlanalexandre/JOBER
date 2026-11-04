@@ -1,3 +1,4 @@
+import { PARRAINAGE_FILLEULS } from "./_invitation_regles.js";
 import { notifier } from "./_push.js";
 import { resendBody, euros, sendEmail, esc } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
@@ -695,7 +696,7 @@ export default async function handler(req, res) {
             { method: "HEAD", headers: { ...hdrs, "Prefer": "count=exact" } }
           );
           const abonnes = parseInt((cRes.headers.get("content-range") || "").split("/")[1], 10) || 0;
-          const duesTotal = Math.floor(abonnes / 3);
+          const duesTotal = Math.floor(abonnes / PARRAINAGE_FILLEULS);
           const dejaAccordees = Number(parrain.referral_rewards_granted) || 0;
           if (duesTotal <= dejaAccordees) return;
 

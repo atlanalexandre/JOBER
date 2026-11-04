@@ -95,3 +95,16 @@ describe("l'action et l'écran", () => {
     expect(ecran).toMatch(/\{tab==="dashboard" && <>[\s\S]{0,300}<BOPilotage \/>/);
   });
 });
+
+// Relecture du 03/11/2026 : la première acceptation depuis `needs_replacement`
+// (paiement dont le prestataire n'a pas été retenu) n'était jamais datée.
+import { readFileSync as lireFichier } from "node:fs";
+describe("migration 2026-11-03 : première acceptation après un prestataire non retenu", () => {
+  const sqlMig = lireFichier(new URL("../../../migrations/2026-11-03_pilotage_acceptee_at_remplacement.sql", import.meta.url), "utf8");
+  it("date l'acceptation depuis needs_replacement, pour les seules prestations récentes et jamais acceptées", () => {
+    expect(sqlMig).toMatch(/OLD\.acceptee_at IS NULL[\s\S]*OLD\.status = 'needs_replacement' AND OLD\.created_at >= '2026-11-03/);
+  });
+  it("ne réécrit aucune donnée", () => {
+    expect(sqlMig).not.toMatch(/^\s*(UPDATE|DELETE|DROP)\b/m);
+  });
+});
