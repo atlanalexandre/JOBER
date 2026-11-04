@@ -2760,7 +2760,7 @@ export comptable, contrôle Stripe). Le crédit n'en touche aucun. Le traitement
 validation : il décide (plafond, carte) **avant** de réserver la récompense, réserve par une
 écriture conditionnée à `invitation_recompensee_at IS NULL`, puis crédite et offre. Une
 lecture impossible reporte tout au passage suivant ; un crédit ou un avoir refusé APRÈS la
-réservation est journalisé avec la marche à suivre à la main. Éprouvé par
+réservation est journalisé avec la marche à suivre à la main. Garde-fous ajoutés le 04/11/2026 : seuls les clients **inscrits depuis le lancement** (03/11/2026) sont lus — le rattachement par lien existe depuis le 24/09, sans promesse ; seul un **paiement par carte** (`pi_…`, pas `wallet_…`) et une **part du prestataire fixée à la clôture** (`payout_amount`) ouvrent la récompense ; le **prix de l'abonnement** est lu avant la réservation (une panne Stripe reporte, ne perd plus le mois) ; le traitement ne tourne qu'en mode **rappels** (ni à 7 h avant les documents, ni au passage mensuel du 1er, qui aurait pu doubler un mois en courant sur le même plafond). Éprouvé par
 `src/tests/api/invitation.test.js` et, en recette, par `e2e/101` (lien, rattachement, bilan ; puis
 prestation de 65 € terminée, cashback et mois offerts une seule fois — la seconde moitié saute tant
 que la migration n'est pas passée).

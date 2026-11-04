@@ -299,18 +299,27 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       return parseInt((r.headers.get("content-range") || "").split("/")[1], 10) || 0;
     };
     try {
-      const inscrits = await compter("");
+      // Les comptages partent ensemble : l'un après l'autre, l'écran attendait
+      // cinq allers-retours (relecture du 04/11/2026).
+      const depuis = new Date(Date.now() - 365 * 86400000).toISOString();
+      // allSettled : ne rejette jamais — un échec se lit dans son résultat, plus bas.
+      const recompensesP = Promise.allSettled([
+        compter("&invitation_recompensee_at=not.is.null"),
+        compter(`&invitation_mois_offert=is.true&invitation_recompensee_at=gte.${encodeURIComponent(depuis)}`),
+      ]);
       // Le parrainage entre prestataires (« 3 filleuls abonnés = 1 mois offert »,
       // stripe-webhook.js) : le même lien sert aux deux, le rôle se choisit à
       // l'inscription. Son écran lisait les fiches des filleuls depuis le
       // navigateur, que la RLS refuse : il affichait toujours zéro.
-      const prestataires = await compter("", "prestataire");
-      const prestatairesAbonnes = await compter("&plan_abonnement=neq.free", "prestataire");
+      const [inscrits, prestataires, prestatairesAbonnes] = await Promise.all([
+        compter(""), compter("", "prestataire"), compter("&plan_abonnement=neq.free", "prestataire"),
+      ]);
       let recompenses = null, moisSurUnAn = null;
       try {
-        const depuis = new Date(Date.now() - 365 * 86400000).toISOString();
-        recompenses = await compter("&invitation_recompensee_at=not.is.null");
-        moisSurUnAn = await compter(`&invitation_mois_offert=is.true&invitation_recompensee_at=gte.${encodeURIComponent(depuis)}`);
+        const [r1, r2] = await recompensesP;
+        if (r1.status === "rejected") throw r1.reason;
+        if (r2.status === "rejected") throw r2.reason;
+        [recompenses, moisSurUnAn] = [r1.value, r2.value];
       } catch (e) {
         // Avant la migration 2026-11-02_invitation_clients.sql : les inscrits
         // se comptent, les récompenses pas encore. On le dit, sans échouer.
