@@ -576,6 +576,14 @@ ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre,
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas
 figurer dans les deux tables — c'est testé.
 
+**Diplôme obligatoire ou non, dit au choix du métier** (04/11/2026, demande d'Alexandre). Un même
+encart (`src/components/qualification-metier.jsx`) s'affiche sous le métier choisi, **à l'inscription**
+comme dans « Ajouter un métier » du profil : « ⚖️ Diplôme ou titre obligatoire » avec le titre, son
+détail et le texte qui l'impose, ou « ✅ Aucun diplôme obligatoire pour ce métier » ; puis la note
+éventuelle. L'inscription n'en disait rien jusque-là : le prestataire découvrait l'exigence après
+coup. La liste des métiers ajoutés à l'inscription porte aussi une pastille par métier. Éprouvé par
+`diplome-par-metier.test.js` et par `e2e/03` (inscription).
+
 **Avant d'ajouter une entrée** : vérifier que le titre est exigé par un *texte*, et pas
 seulement recommandé par l'usage. Le CACES en est le contre-exemple — c'est une recommandation
 de la CNAM, et c'est l'autorisation de conduite délivrée par l'employeur qui est obligatoire ;

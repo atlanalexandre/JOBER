@@ -96,6 +96,8 @@ export async function remplirInscriptionPrestataire(page, { email, motDePasse = 
   await expect(page.getByText("ÉTAPE 2/7", { exact: false })).toBeVisible();
   await page.locator("select").nth(0).selectOption({ label: "Propreté" });
   await page.locator("select").nth(1).selectOption({ label: "Agent de propreté" });
+  // Diplôme obligatoire ou non : dit au moment du choix (04/11/2026).
+  await expect(page.getByTestId("diplome-non-obligatoire")).toBeVisible();
   await page.getByRole("button", { name: /Ajouter ce métier/ }).click();
   await expect(page.getByText("Vos métiers (1)")).toBeVisible();
   await continuer(page);
