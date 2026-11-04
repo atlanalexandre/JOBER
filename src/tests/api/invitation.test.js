@@ -5,12 +5,12 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   prestationQualifiante, fraisAOffrir, partPrestation, premieresQualifiantes, decisionMoisOffert,
-  recompenserInvitations, MONTANT_MIN, PLAFOND_MOIS_PAR_AN,
+  recompenserInvitations, MONTANT_MIN, PLAFOND_MOIS_PAR_AN, LANCEMENT,
 } from "../../../api/_invitation.js";
 
 const MAINTENANT = Date.parse("2026-11-02T12:00:00Z");
 const terminee = (x = {}) => ({
-  id: "m1", client_id: "c1", status: "completed", payout_status: "pending", stripe_payment_intent: "pi_1",
+  id: "m1", client_id: "c1", status: "completed", payout_status: "pending", stripe_payment_intent: "pi_TEST12345",
   date: "2026-10-20", heure_debut: "09:00", hours: 5, tarif_horaire: 12, payout_amount: 60, montant_total: 66.1,
   created_at: "2026-10-18T10:00:00Z", ...x,
 });
@@ -40,6 +40,12 @@ describe("la prestation qui ouvre la récompense", () => {
     expect(fraisAOffrir(terminee({ montant_total: 500 }))).toBe(0);
     expect(fraisAOffrir(terminee({ montant_total: null }))).toBe(0);
     expect(partPrestation({ tarif_horaire: 15, hours: 4, date_debut: "2026-10-01 00:00:00+00", date_fin: "2026-10-02 00:00:00+00" })).toBe(120);
+  });
+  it("relecture du 04/11/2026 : ni portefeuille, ni part du prestataire devinée", () => {
+    expect(prestationQualifiante(terminee({ stripe_payment_intent: "wallet_abc123456" }), MAINTENANT))
+      .toEqual({ ok: false, raison: "paiement hors carte" });
+    expect(prestationQualifiante(terminee({ payout_amount: null }), MAINTENANT))
+      .toEqual({ ok: false, raison: "part du prestataire inconnue" });
   });
   it("une seule par client : la plus ancienne qui remplit les conditions", () => {
     const m = premieresQualifiantes([
@@ -82,7 +88,7 @@ function simuler({ dejaOfferts = 0, carteClient = "fpA", cartesPresta = ["fpB"],
     if (u.includes("/rest/v1/missions?client_id=in.(c1)")) return ok([terminee()]);
     if (u.includes("profiles?id=in.(p1)")) return ok([parrain || { id: "p1", role: "prestataire", plan_abonnement: "free", stripe_customer_id: "cus_p" }]);
     if (m === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${dejaOfferts}` } });
-    if (u.includes("/v1/payment_intents/pi_1")) return ok({ latest_charge: { payment_method_details: { card: { fingerprint: carteClient } } } });
+    if (u.includes("/v1/payment_intents/pi_TEST12345")) return ok({ latest_charge: { payment_method_details: { card: { fingerprint: carteClient } } } });
     if (u.includes("/v1/customers/cus_p/payment_methods")) return ok({ data: cartesPresta.map(f => ({ card: { fingerprint: f } })) });
     if (u.includes("profiles?id=eq.c1&invitation_recompensee_at=is.null")) return ok(reservation);
     if (u.includes("/rpc/increment_cashback")) return ok([{ cashback_balance: 6.1 }]);
@@ -142,6 +148,20 @@ describe("le traitement automatique", () => {
     expect(await lancer()).toMatchObject({ mois: 0, ignores: 1 });
   });
 
+  it("seuls les clients inscrits depuis le lancement sont lus (04/11/2026)", async () => {
+    const appels = simuler();
+    await lancer();
+    expect(appels.find(a => a.u.includes("profiles?role=eq.client")).u).toContain(`created_at=gte.${encodeURIComponent(LANCEMENT)}`);
+  });
+
+  it("prix de l'abonnement illisible : rien n'est réservé, le mois n'est pas perdu (04/11/2026)", async () => {
+    const appels = simuler({ parrain: { id: "p1", role: "prestataire", plan_abonnement: "premium", stripe_customer_id: "cus_p", stripe_subscription_id: "sub_p" } });
+    const f = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url, o) => String(url).includes("/v1/subscriptions/") ? new Response("{}", { status: 503 }) : f(url, o)));
+    expect(await lancer()).toEqual({ clients: 0, mois: 0, ignores: 0 });
+    expect(appels.some(a => a.u.includes("invitation_recompensee_at=is.null") && a.m === "PATCH")).toBe(false);
+  });
+
   it("Stripe illisible : rien n'est réservé, tout est reporté au passage suivant", async () => {
     const appels = simuler();
     const f = globalThis.fetch;
@@ -161,6 +181,9 @@ describe("branchements", () => {
   const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
   const support = readFileSync(new URL("../../../api/support.js", import.meta.url), "utf8");
   const app = readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
+  it("en mode rappels seulement : ni à la surveillance des documents, ni au passage mensuel (04/11/2026)", () => {
+    expect(cron).toMatch(/if \(queryAction === "reminders"\) try \{\s*const STRIPE_SK_I[\s\S]{0,200}recompenserInvitations\(/);
+  });
   it("le traitement tourne toutes les deux heures, avant le retour anticipé du mode rappels", () => {
     expect(cron.indexOf("recompenserInvitations({")).toBeGreaterThan(0);
     expect(cron.indexOf("recompenserInvitations({")).toBeLessThan(cron.indexOf('if (req.query?.action === "reminders")'));

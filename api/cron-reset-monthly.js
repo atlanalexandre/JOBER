@@ -1016,7 +1016,12 @@ export default async function handler(req, res) {
   // contestation reçoit ses frais de service en cashback, et le prestataire
   // qui l'a invité un mois offert (api/_invitation.js). Le traitement ne
   // dépend d'aucun chemin de validation : il rattrape tout ce qui est dû.
-  try {
+  //
+  // En mode « rappels » SEULEMENT (relecture du 04/11/2026) : appelé à chaque
+  // action, il passait avant la surveillance des documents à 7 h, et, le 1er du
+  // mois à minuit, deux passages simultanés (mensuel et rappels) lisaient le
+  // même plafond et pouvaient offrir chacun un mois — 7 sur 12 mois.
+  if (queryAction === "reminders") try {
     const STRIPE_SK_I = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
     await recompenserInvitations({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_I });
   } catch (e) {
