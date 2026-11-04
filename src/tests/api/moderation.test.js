@@ -85,10 +85,13 @@ describe("branchements", () => {
     const bloc = missions.slice(missions.indexOf('if (action === "envoyer_message")'));
     expect(bloc.indexOf("motsSuspects(texte)")).toBeGreaterThan(bloc.indexOf("lignesMsg.length === 0"));
   });
-  it("le balayage tourne chaque jour, APRÈS la surveillance des documents", () => {
+  it("le balayage tourne chaque jour, APRÈS la surveillance des documents — et même si elle échoue (04/11/2026)", () => {
     const bloc = cron.slice(cron.indexOf('if (queryAction === "documents")'));
-    expect(bloc.indexOf("contenusSuspects(")).toBeGreaterThan(bloc.indexOf("derniere_surveillance_documents"));
-    expect(bloc.indexOf("contenusSuspects(")).toBeLessThan(bloc.indexOf("return res.status(200).json({ success: true, datees"));
+    const appels = [...bloc.matchAll(/await balayerModeration\(\);/g)].map(m => m.index);
+    expect(appels).toHaveLength(2);
+    expect(appels[0]).toBeGreaterThan(bloc.indexOf("derniere_surveillance_documents"));
+    expect(appels[0]).toBeLessThan(bloc.indexOf("return res.status(200).json({ success: true, datees"));
+    expect(bloc.slice(bloc.indexOf('console.error("[documents] balayage interrompu'), appels[1] + 1)).not.toContain("return");
   });
   it("un bouton Signaler sur la fiche du prestataire et dans la messagerie", () => {
     expect(ecrans.match(/<BoutonSignaler /g)).toHaveLength(2);
