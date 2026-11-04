@@ -4,7 +4,7 @@ import { enregistrerDocument, maPhoto, deposerPhoto } from "../lib/documents.js"
 import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
@@ -13,6 +13,7 @@ import { nombreDeJours } from "../../api/_montant.js";
 import { manquesCv, metiersSansExperience, nettoyerCv, CV_LIMITES } from "../../api/_cv.js";
 import { debutLocalMs, prochainePrestation } from "../lib/prochaine-prestation.js";
 import { MONTANT_MIN, PLAFOND_MOIS_PAR_AN, PARRAINAGE_FILLEULS } from "../../api/_invitation_regles.js";
+import { InfoQualificationMetier } from "./qualification-metier.jsx";
 
 // Quota mensuel de la formule Premium, depuis la seule liste qui fasse foi.
 const quotaPremium = () => ABONNEMENTS_PRESTA.find(p => p.id === "premium")?.missions ?? 8;
@@ -980,30 +981,9 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                 est exigé par un texte et que la plateforme réclamera, et ce
                 qu'il faut simplement savoir. Les mélanger ferait prendre une
                 information pour une obligation, et l'inverse. */}
-            {(() => {
-              const q = qualificationRequise(newMetier.metier);
-              if (!q) return null;
-              return (
-                <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
-                  <div style={{ color:"#F0B429", fontWeight:800, fontSize:12.5, marginBottom:5 }}>⚖️ Métier réglementé — justificatif obligatoire</div>
-                  <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
-                    <strong style={{ color:C.text }}>{q.titre}</strong>{q.detail ? ` — ${q.detail}` : ""}.
-                    <br/>Vous devrez le déposer dans vos documents : ce métier ne vous sera proposé qu'une fois ce justificatif vérifié.
-                    <div style={{ color:C.textMuted, fontSize:11, marginTop:5 }}>{q.texte}</div>
-                  </div>
-                </div>
-              );
-            })()}
-            {(() => {
-              const n = noteMetier(newMetier.metier);
-              if (!n) return null;
-              return (
-                <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}33`, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
-                  <div style={{ color:C.violet, fontWeight:800, fontSize:12.5, marginBottom:5 }}>ℹ️ Bon à savoir</div>
-                  <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>{n}</div>
-                </div>
-              );
-            })()}
+            {/* Le même encart qu'à l'inscription (qualification-metier.jsx) :
+                il dit aussi quand AUCUN diplôme n'est exigé (04/11/2026). */}
+            {newMetier.metier && <InfoQualificationMetier metier={newMetier.metier} />}
             <Input label="Certifications (optionnel)" placeholder="Ex : CACES 1, HACCP, SST…" value={newMetier.certifs} onChange={e=>setNewMetier({...newMetier,certifs:e.target.value})} hint="Laissez vide si aucune certification" />
             <Btn
               full
