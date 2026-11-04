@@ -8,6 +8,7 @@ import { resendBody, euros } from "./_email.js";
 import { notifier } from "./_push.js";
 import { texteDelaiReponse } from "./_temps.js";
 import { appUrl } from "./_url.js";
+import { noterProposition } from "./_propositions.js";
 
 const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
@@ -42,6 +43,10 @@ export async function prevenirNouvelleDemande(missionId, supabaseUrl, headers) {
   const delai = texteDelaiReponse(echeanceMs);
   const libelle = m.titre || m.metier || "Prestation";
   const tarif = Number(m.tarif_horaire) > 0 ? euros(m.tarif_horaire) : "";
+
+  // Notée au registre : elle compte pour la garantie « mois sans proposition »,
+  // qu'il l'accepte ou non (api/_garantie.js, 04/11/2026).
+  await noterProposition({ supabaseUrl, headers, prestataireId, missionId: m.id, canal: "directe" });
 
   await notifier({
       user_id: prestataireId,

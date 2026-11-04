@@ -69,6 +69,7 @@ import { dateImmatriculation } from "./_sirene.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
+import { noterProposition } from "./_propositions.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { joursCouverts, conflitDeCreneau, premierJourEnConflit, filtrePeriode } from "./_creneaux.js";
@@ -3427,6 +3428,10 @@ export default async function handler(req, res) {
                   }
                 }
               }
+
+              // Notée au registre : la diffusion est une proposition, qu'il s'y
+              // propose ou non (garantie « mois sans proposition », 04/11/2026).
+              await noterProposition({ supabaseUrl: SUPABASE_URL, headers, prestataireId: p.id, missionId: mission_id, canal: "diffusion" });
 
               // In-app notification
               await notifier({

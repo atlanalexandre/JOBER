@@ -27,6 +27,7 @@ import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
+import { appliquerGarantie, estDebutDeMois } from "./_garantie.js";
 import { recompenserInvitations } from "./_invitation.js";
 
 /**
@@ -1026,6 +1027,22 @@ export default async function handler(req, res) {
     await recompenserInvitations({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_I });
   } catch (e) {
     console.error("[invitation] traitement interrompu :", e.message);
+  }
+
+  // ── Garantie « mois sans proposition » (04/11/2026) ─────────────────────
+  //
+  // Les trois premiers jours du mois, à chaque passage des rappels : un abonné
+  // à qui rien n'a été proposé le mois écoulé reçoit son mois suivant offert,
+  // une seule fois (api/_garantie.js). Plusieurs passages plutôt qu'un seul :
+  // une panne passagère reporte l'examen au passage suivant au lieu de faire
+  // perdre le mois ; la réservation conditionnelle n'offre jamais deux fois.
+  if (queryAction === "reminders") try {
+    if (estDebutDeMois()) {
+      const STRIPE_SK_G = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      await appliquerGarantie({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_G });
+    }
+  } catch (e) {
+    console.error("[garantie] traitement interrompu :", e.message);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
