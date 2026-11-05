@@ -130,6 +130,8 @@ describe("branchements", () => {
   it("chaque proposition est notée : choix direct (et cascade, série) et diffusion", () => {
     expect(lire("_nouvelle_demande.js")).toContain('canal: "directe"');
     expect(lire("missions.js")).toContain('canal: "diffusion"');
+    // En une seule écriture, après la boucle (05/11/2026).
+    expect(lire("missions.js")).toContain("noterPropositions({ supabaseUrl: SUPABASE_URL, headers, prestataireIds: proposes");
   });
   it("l'examen tourne avec les rappels les trois premiers jours ; le relevé chaque matin, même si les documents échouent", () => {
     const cron = lire("cron-reset-monthly.js");
