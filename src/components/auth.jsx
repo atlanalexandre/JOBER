@@ -4,6 +4,7 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, SOURCES_CONNAISSANCE, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Input, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
+import { InfoQualificationMetier, PastilleQualification } from "./qualification-metier.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
 //
@@ -455,6 +456,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                       <span style={{ fontSize:13, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet)}</span>
                       <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet, m.sector||"divers"))}</span>
                     </div>
+                    <PastilleQualification metier={m.metier} />
                   </div>
                   <button onClick={()=>setMetiers(prev=>prev.filter((_,j)=>j!==i))} style={{ background:"rgba(242,94,94,0.1)", border:"none", borderRadius:8, width:30, height:30, color:"#F25E5E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>×</button>
                 </div>
@@ -597,6 +599,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               <input type="range" min={0} max={20} value={newMetier.experienceAns}
                 onChange={e=>setNewMetier({...newMetier,experienceAns:Number(e.target.value)})}
                 style={{ width:"100%", accentColor, marginBottom:16 }} />
+              {/* Diplôme obligatoire ou non : dit au moment du choix (04/11/2026). */}
+              <InfoQualificationMetier metier={newMetier.metier} />
             </>}
             <Btn full onClick={addMetier} disabled={!newMetier.sector||!newMetier.metier} variant={justAdded?"success":"primary"} style={{ padding:"12px", fontSize:14 }}>
               {justAdded ? "✓ Métier ajouté !" : metiers.length===0 ? "+ Ajouter ce métier" : "+ Ajouter un autre métier"}

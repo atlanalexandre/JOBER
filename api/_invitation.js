@@ -52,6 +52,13 @@ export { MONTANT_MIN, PLAFOND_MOIS_PAR_AN };
 export const FRAIS_OFFERTS_MAX = 50;
 
 const UN_AN_MS = 365 * 86400000;
+/**
+ * Lancement du programme (mise en production du 03/11/2026). Un client inscrit
+ * AVANT par un lien de parrainage (le rattachement existe depuis le 24/09)
+ * n'a reçu aucune promesse : le récompenser serait verser pour rien — et il
+ * n'est pas « nouveau » au sens de l'offre (relecture du 04/11/2026).
+ */
+export const LANCEMENT = "2026-11-03T00:00:00Z";
 const arrondi = (x) => Math.round((Number(x) || 0) * 100) / 100;
 
 /** Part de la prestation hors frais de service, en euros. */
@@ -59,6 +66,9 @@ export function partPrestation(m) {
   if (m?.payout_amount != null && Number.isFinite(Number(m.payout_amount))) return arrondi(m.payout_amount);
   return arrondi(Number(m?.tarif_horaire || 0) * Number(m?.hours || 0) * nombreDeJours(m));
 }
+
+/** Un paiement par carte Stripe (`pi_…`), le seul dont on lit la carte. */
+const PAIEMENT_CARTE = /^pi_[A-Za-z0-9]{8,}$/;
 
 /** Les frais de service payés sur cette prestation, à offrir. 0 si illisibles. */
 export function fraisAOffrir(m) {
@@ -75,6 +85,14 @@ export function fraisAOffrir(m) {
 export function prestationQualifiante(m, maintenantMs = Date.now()) {
   if (!m || m.status !== "completed") return { ok: false, raison: "non terminée" };
   if (!m.stripe_payment_intent) return { ok: false, raison: "sans paiement" };
+  // Un ancien paiement par portefeuille (`wallet_…`) n'a pas de carte à lire :
+  // Stripe refusait la lecture, et le client était reporté à chaque passage,
+  // indéfiniment (relecture du 04/11/2026).
+  if (!PAIEMENT_CARTE.test(m.stripe_payment_intent)) return { ok: false, raison: "paiement hors carte" };
+  // La part du prestataire est celle fixée à la clôture. Sans elle, une
+  // estimation tarif × heures ignore les heures réelles et les prolongations :
+  // on ne devine pas un montant d'argent (relecture du 04/11/2026).
+  if (m.payout_amount == null || !Number.isFinite(Number(m.payout_amount))) return { ok: false, raison: "part du prestataire inconnue" };
   if (["held", "annule", "failed"].includes(m.payout_status)) return { ok: false, raison: `versement ${m.payout_status}` };
   if (echeanceVersementMs(m, maintenantMs) > maintenantMs) return { ok: false, raison: "contestation encore ouverte" };
   if (partPrestation(m) < MONTANT_MIN) return { ok: false, raison: `moins de ${MONTANT_MIN} €` };
@@ -140,17 +158,30 @@ async function empreintesCartesPresta(customerId, stripeKey) {
  * prolonge sans jamais déclasser.
  * @returns {Promise<{ok:boolean, texte:string}>}
  */
-export async function offrirMoisAbonnement(parrain, cle, { supabaseUrl, headers, stripeKey }) {
-  const abonnePayant = !!(parrain.stripe_subscription_id && parrain.stripe_customer_id
-    && parrain.plan_abonnement && parrain.plan_abonnement !== "free");
-  if (abonnePayant) {
-    const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
-      { headers: { "Authorization": `Bearer ${stripeKey}` } });
-    const sd = await sr.json().catch(() => ({}));
-    const prix = sd?.items?.data?.[0]?.price;
-    const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
-    const centimes = Math.round(Number.isFinite(mensuel) ? mensuel : 0);
-    if (!(centimes > 0)) return { ok: false, texte: `prix de l'abonnement illisible (${sr.status})` };
+/** Le prestataire paie-t-il un abonnement Stripe ? Son mois offert est alors un avoir. */
+export const estAbonnePayant = (parrain) => !!(parrain?.stripe_subscription_id && parrain?.stripe_customer_id
+  && parrain?.plan_abonnement && parrain.plan_abonnement !== "free");
+
+/**
+ * Prix d'un mois de son abonnement, en centimes. LÈVE si Stripe ne répond pas :
+ * lu AVANT la réservation, une panne reporte la récompense au passage suivant.
+ * Lu après, elle perdait le mois — compté pourtant dans le plafond (relecture
+ * du 04/11/2026).
+ */
+export async function prixMensuelCentimes(parrain, stripeKey) {
+  const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
+    { headers: { "Authorization": `Bearer ${stripeKey}` } });
+  const sd = await sr.json().catch(() => ({}));
+  const prix = sd?.items?.data?.[0]?.price;
+  const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
+  const centimes = Math.round(Number.isFinite(mensuel) ? mensuel : 0);
+  if (!sr.ok || !(centimes > 0)) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
+  return centimes;
+}
+
+export async function offrirMoisAbonnement(parrain, cle, { supabaseUrl, headers, stripeKey, centimes }) {
+  if (estAbonnePayant(parrain)) {
+    if (!(centimes > 0)) return { ok: false, texte: "prix de l'abonnement non lu" };
     const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(parrain.stripe_customer_id)}/balance_transactions`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": cle },
@@ -184,7 +215,7 @@ export async function recompenserInvitations({ supabaseUrl, headers, stripeKey, 
   let invites;
   try {
     invites = await lireTout(`${supabaseUrl}/rest/v1/profiles?role=eq.client&referred_by=not.is.null`
-      + `&invitation_recompensee_at=is.null&select=id,referred_by`, lecture);
+      + `&invitation_recompensee_at=is.null&created_at=gte.${encodeURIComponent(LANCEMENT)}&select=id,referred_by`, lecture);
   } catch (e) {
     // Avant la migration 2026-11-02_invitation_clients.sql, la colonne
     // n'existe pas : la lecture est refusée, et rien n'est versé. On le dit.
@@ -244,6 +275,7 @@ export async function recompenserInvitations({ supabaseUrl, headers, stripeKey, 
         const carteClient = stripeKey ? await empreinteCarteClient(m.stripe_payment_intent, stripeKey) : null;
         const cartesPresta = stripeKey ? await empreintesCartesPresta(parrain.stripe_customer_id, stripeKey) : [];
         decision = decisionMoisOffert({ parrain, dejaOffertsSurUnAn, carteClient, cartesPresta });
+        if (decision.offrir && estAbonnePayant(parrain)) decision.centimes = await prixMensuelCentimes(parrain, stripeKey);
       }
 
       // Réservation : une seule fois par client, quelles que soient les
@@ -281,7 +313,7 @@ export async function recompenserInvitations({ supabaseUrl, headers, stripeKey, 
         console.log(`[invitation] pas de mois offert pour le client ${clientId} : ${decision.raison}`);
         continue;
       }
-      const offert = await offrirMoisAbonnement(parrain, `invitation-${clientId}`, { supabaseUrl, headers, stripeKey });
+      const offert = await offrirMoisAbonnement(parrain, `invitation-${clientId}`, { supabaseUrl, headers, stripeKey, centimes: decision.centimes });
       if (!offert.ok) {
         console.error(`[invitation] MOIS NON OFFERT au prestataire ${parrain.id} (client ${clientId}) : ${offert.texte} `
           + "— récompense marquée : l'accorder à la main (Stripe, Clients → le client → Solde → Ajuster, ou un mois Premium).");
