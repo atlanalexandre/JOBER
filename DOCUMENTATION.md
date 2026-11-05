@@ -585,7 +585,7 @@ figurer dans les deux tables — c'est testé.
 **Diplôme obligatoire ou non, dit au choix du métier** (04/11/2026, demande d'Alexandre). Un même
 encart (`src/components/qualification-metier.jsx`) s'affiche sous le métier choisi, **à l'inscription**
 comme dans « Ajouter un métier » du profil : « ⚖️ Diplôme ou titre obligatoire » avec le titre, son
-détail et le texte qui l'impose, ou « ✅ Aucun diplôme obligatoire pour ce métier » ; puis la note
+détail et le texte qui l'impose, ou « ✅ Aucun diplôme obligatoire pour ce métier » — « dans le cas général » quand une note suit, car le métier peut alors exiger un titre pour une partie de l'activité (05/11/2026) ; puis la note
 éventuelle. L'inscription n'en disait rien jusque-là : le prestataire découvrait l'exigence après
 coup. La liste des métiers ajoutés à l'inscription porte aussi une pastille par métier. Éprouvé par
 `diplome-par-metier.test.js` et par `e2e/03` (inscription).

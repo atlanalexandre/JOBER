@@ -24,4 +24,9 @@ describe("le diplôme exigé, au choix du métier", () => {
     expect(qualificationRequise("Agent de sécurité")).not.toBeNull();
     expect(qualificationRequise("Agent de propreté")).toBeNull();
   });
+  it("un métier avec une note ne se dit pas « aucun texte n'impose » sans nuance (05/11/2026)", () => {
+    const encart = lire("qualification-metier.jsx");
+    expect(encart).toContain("Pas de diplôme obligatoire dans le cas général");
+    expect(encart).toMatch(/n \? "✅ Pas de diplôme obligatoire dans le cas général" : "✅ Aucun diplôme obligatoire pour ce métier"/);
+  });
 });

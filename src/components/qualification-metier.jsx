@@ -38,9 +38,17 @@ export function InfoQualificationMetier({ metier }) {
         </div>
       ) : (
         <div data-testid="diplome-non-obligatoire" style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
-          <div style={{ color:C.success, fontWeight:800, fontSize:12.5, marginBottom:5 }}>✅ Aucun diplôme obligatoire pour ce métier</div>
+          {/* Avec une note, le métier peut exiger un titre pour UNE PARTIE de
+              l'activité (Certiphyto du jardinier qui traite, permis du coursier
+              motorisé) : un « aucun texte n'impose » sans nuance contredisait
+              la note juste dessous (relecture du 05/11/2026). */}
+          <div style={{ color:C.success, fontWeight:800, fontSize:12.5, marginBottom:5 }}>
+            {n ? "✅ Pas de diplôme obligatoire dans le cas général" : "✅ Aucun diplôme obligatoire pour ce métier"}
+          </div>
           <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
-            Aucun texte n'impose de diplôme pour l'exercer. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil.
+            {n
+              ? "Certaines activités de ce métier demandent un titre : lisez la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
+              : "Aucun texte n'impose de diplôme pour l'exercer. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."}
           </div>
         </div>
       )}
@@ -57,12 +65,13 @@ export function InfoQualificationMetier({ metier }) {
 /** La pastille, dans la liste des métiers ajoutés. */
 export function PastilleQualification({ metier }) {
   const q = qualificationRequise(metier);
+  const n = noteMetier(metier);
   return (
     <span style={{
       display:"inline-block", marginTop:4, fontSize:10.5, fontWeight:700, borderRadius:6, padding:"2px 7px",
       background: q ? "rgba(240,180,41,0.15)" : `${C.success}18`, color: q ? "#F0B429" : C.success,
     }}>
-      {q ? `⚖️ ${q.titre} obligatoire` : "✅ Sans diplôme obligatoire"}
+      {q ? `⚖️ ${q.titre} obligatoire` : n ? "✅ Sans diplôme obligatoire (voir la note)" : "✅ Sans diplôme obligatoire"}
     </span>
   );
 }
