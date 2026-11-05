@@ -69,7 +69,7 @@ import { dateImmatriculation } from "./_sirene.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
-import { noterProposition } from "./_propositions.js";
+import { noterPropositions } from "./_propositions.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { joursCouverts, conflitDeCreneau, premierJourEnConflit, filtrePeriode } from "./_creneaux.js";
@@ -3393,6 +3393,7 @@ export default async function handler(req, res) {
       const missionCoords = await geocodeFR(mission?.ville).catch(() => null);
 
       let notified = 0;
+      const proposes = [];
       // Métier réglementé : on ne prévient que ceux dont le titre est vérifié.
       const justifsNotif = mission?.metier && Array.isArray(profiles)
         ? await justificatifsDe(profiles.map(p => p.id), SUPABASE_URL, headers) : new Map();
@@ -3431,7 +3432,9 @@ export default async function handler(req, res) {
 
               // Notée au registre : la diffusion est une proposition, qu'il s'y
               // propose ou non (garantie « mois sans proposition », 04/11/2026).
-              await noterProposition({ supabaseUrl: SUPABASE_URL, headers, prestataireId: p.id, missionId: mission_id, canal: "diffusion" });
+              // Écrite en UNE fois après la boucle : une écriture par prestataire
+              // allongeait la diffusion d'autant (relecture du 05/11/2026).
+              proposes.push(p.id);
 
               // In-app notification
               await notifier({
@@ -3505,6 +3508,8 @@ export default async function handler(req, res) {
           }));
         }
       }
+      await noterPropositions({ supabaseUrl: SUPABASE_URL, headers, prestataireIds: proposes, missionId: mission_id, canal: "diffusion" });
+
       // S-06: stamp broadcast_sent_at to prevent duplicate sends within 1h
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",

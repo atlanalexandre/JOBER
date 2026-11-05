@@ -31,3 +31,29 @@ export async function noterProposition({ supabaseUrl, headers, prestataireId, mi
     return false;
   }
 }
+
+/**
+ * Plusieurs prestataires prévenus pour la même prestation (diffusion) : une
+ * seule écriture, au lieu d'une par prestataire. Ne lève jamais.
+ * @returns {Promise<boolean>}
+ */
+export async function noterPropositions({ supabaseUrl, headers, prestataireIds, missionId = null, canal }) {
+  const ids = [...new Set((prestataireIds || []).filter(Boolean))];
+  if (!ids.length) return true;
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/propositions_recues`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=minimal" },
+      body: JSON.stringify(ids.map(id => ({ prestataire_id: id, mission_id: missionId, canal }))),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.error(`[propositions] ${ids.length} proposition(s) NON notée(s) (${canal}, prestation ${missionId}) : ${r.status} ${t.slice(0, 160)}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`[propositions] ${ids.length} proposition(s) NON notée(s) (${canal}, prestation ${missionId}) :`, e.message);
+    return false;
+  }
+}
