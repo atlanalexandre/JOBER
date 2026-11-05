@@ -128,6 +128,7 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
 
       // Le prix est lu AVANT la réservation : une panne Stripe reporte, ne perd rien.
       const centimes = await prixMensuelCentimes(profil, stripeKey);
+      if (!centimes) { console.log(`[garantie] ${profil.id} — ${mois} : rien à déduire chez Stripe (abonnement disparu ou gratuit)`); continue; }
 
       const rv = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profil.id}&garantie_mois_offert_at=is.null`, {
         method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" },

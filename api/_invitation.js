@@ -172,11 +172,17 @@ export async function prixMensuelCentimes(parrain, stripeKey) {
   const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
     { headers: { "Authorization": `Bearer ${stripeKey}` } });
   const sd = await sr.json().catch(() => ({}));
+  // Abonnement disparu chez Stripe : rien à déduire, définitivement. Rendre
+  // null — et non lever — évite de reporter à l'infini, chaque passage, une
+  // récompense qui ne viendra jamais, et avec elle le cashback du client
+  // invité (relecture du 05/11/2026).
+  if (sr.status === 404) return null;
+  if (!sr.ok) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
   const prix = sd?.items?.data?.[0]?.price;
   const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
   const centimes = Math.round(Number.isFinite(mensuel) ? mensuel : 0);
-  if (!sr.ok || !(centimes > 0)) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
-  return centimes;
+  // Prix nul (remise à 100 %) : il ne paie rien, un avoir n'aurait pas de sens.
+  return centimes > 0 ? centimes : null;
 }
 
 export async function offrirMoisAbonnement(parrain, cle, { supabaseUrl, headers, stripeKey, centimes }) {
@@ -275,7 +281,12 @@ export async function recompenserInvitations({ supabaseUrl, headers, stripeKey, 
         const carteClient = stripeKey ? await empreinteCarteClient(m.stripe_payment_intent, stripeKey) : null;
         const cartesPresta = stripeKey ? await empreintesCartesPresta(parrain.stripe_customer_id, stripeKey) : [];
         decision = decisionMoisOffert({ parrain, dejaOffertsSurUnAn, carteClient, cartesPresta });
-        if (decision.offrir && estAbonnePayant(parrain)) decision.centimes = await prixMensuelCentimes(parrain, stripeKey);
+        if (decision.offrir && estAbonnePayant(parrain)) {
+          decision.centimes = await prixMensuelCentimes(parrain, stripeKey);
+          // Rien à déduire chez Stripe : le mois est offert comme à un
+          // prestataire non abonné, en prolongeant sa formule.
+          if (decision.centimes === null) decision.sansAvoir = true;
+        }
       }
 
       // Réservation : une seule fois par client, quelles que soient les
@@ -313,7 +324,8 @@ export async function recompenserInvitations({ supabaseUrl, headers, stripeKey, 
         console.log(`[invitation] pas de mois offert pour le client ${clientId} : ${decision.raison}`);
         continue;
       }
-      const offert = await offrirMoisAbonnement(parrain, `invitation-${clientId}`, { supabaseUrl, headers, stripeKey, centimes: decision.centimes });
+      const parrainOffre = decision.sansAvoir ? { ...parrain, stripe_subscription_id: null } : parrain;
+      const offert = await offrirMoisAbonnement(parrainOffre, `invitation-${clientId}`, { supabaseUrl, headers, stripeKey, centimes: decision.centimes });
       if (!offert.ok) {
         console.error(`[invitation] MOIS NON OFFERT au prestataire ${parrain.id} (client ${clientId}) : ${offert.texte} `
           + "— récompense marquée : l'accorder à la main (Stripe, Clients → le client → Solde → Ajuster, ou un mois Premium).");
