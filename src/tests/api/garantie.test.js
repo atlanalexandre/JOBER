@@ -23,6 +23,9 @@ describe("le relevé du matin", () => {
   it("un paiement en échec (past_due) n'est pas un abonné à jour (05/11/2026)", () => {
     expect(etatDuJour({ profil: profil(), meta, statutAbonnement: "past_due" }).disponible).toBe(false);
   });
+  it("rayon jamais renseigné : le rayon par défaut de l'application s'applique (06/11/2026)", () => {
+    expect(etatDuJour({ profil: profil(), meta: { dispon_jours: ["Lundi"] }, statutAbonnement: "active" }).disponible).toBe(true);
+  });
   it("accès fermé, aucune disponibilité, rayon trop petit : indisponible", () => {
     expect(etatDuJour({ profil: profil({ missions_enabled: false }), meta, statutAbonnement: "active" }).raison).toBe("accès aux prestations fermé");
     expect(etatDuJour({ profil: profil(), meta: { ...meta, dispon_jours: [] }, statutAbonnement: "active" }).disponible).toBe(false);
@@ -60,7 +63,8 @@ describe("le droit au mois offert", () => {
   });
 });
 
-function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservation = [{ id: "p1" }], abonnementKo = false, avoirKo = false } = {}) {
+function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservation = [{ id: "p1" }], abonnementKo = false, avoirKo = false,
+  avoirsExistants = [], avoirsKo = false, coupure = false, metaUtil = meta } = {}) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url), m = o.method || "GET";
@@ -68,7 +72,7 @@ function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservatio
     const ok = (x) => new Response(JSON.stringify(x), { status: 200 });
     const compte = (n) => new Response(null, { status: 200, headers: { "content-range": `*/${n}` } });
     if (u.includes("profiles?role=eq.prestataire&plan_abonnement=in.")) return ok([profil()]);
-    if (u.includes("/auth/v1/admin/users/p1")) return ok({ user_metadata: meta });
+    if (u.includes("/auth/v1/admin/users/p1")) return ok({ user_metadata: metaUtil });
     if (u.includes("propositions_recues")) return compte(propositions);
     if (u.includes("garantie_releves") && m === "HEAD") return compte(u.includes("disponible=is.false") ? indisponibles : releves);
     if (u.includes("garantie_releves") && m === "POST") return new Response(null, { status: 201 });
@@ -77,7 +81,11 @@ function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservatio
       return ok({ status: "active", start_date: Math.floor(abo.debutMs / 1000), items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] } });
     }
     if (u.includes("profiles?id=eq.p1") && m === "PATCH") return ok(u.includes("garantie_mois_offert_at=is.null") ? reservation : [{ id: "p1" }]);
-    if (u.includes("/balance_transactions")) return avoirKo ? new Response("{}", { status: 500 }) : ok({ id: "cbtxn_1" });
+    if (u.includes("/balance_transactions") && m === "GET") return avoirsKo ? new Response("{}", { status: 503 }) : ok({ data: avoirsExistants });
+    if (u.includes("/balance_transactions")) {
+      if (coupure) throw new Error("connexion coupée");
+      return avoirKo ? new Response("{}", { status: 500 }) : ok({ id: "cbtxn_1" });
+    }
     if (u.includes("/notifications")) return new Response(null, { status: 201 });
     return ok([]);
   }));
@@ -93,7 +101,7 @@ describe("l'examen du début de mois", () => {
   it("rien proposé, disponible tout le mois : un avoir d'un mois, une seule lecture Stripe", async () => {
     const appels = simuler();
     expect(await lancer()).toEqual({ examines: 1, offerts: 1 });
-    expect(appels.find(a => a.u.includes("/balance_transactions")).cle).toBe("garantie-p1");
+    expect(appels.find(a => a.u.includes("/balance_transactions") && a.m === "POST").cle).toBe("garantie-p1-2026-12");
     expect(appels.filter(a => a.u.includes("/v1/subscriptions/")).length).toBe(1);
   });
   it("une proposition reçue : arrêt avant tout appel à Stripe", async () => {
@@ -113,6 +121,22 @@ describe("l'examen du début de mois", () => {
   });
   it("Stripe illisible : rien n'est réservé, l'examen est repris au passage suivant", async () => {
     const appels = simuler({ abonnementKo: true });
+    expect((await lancer()).offerts).toBe(0);
+    expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
+  it("avoir déjà créé par un essai précédent : pas de second avoir, le mois est compté offert (06/11/2026)", async () => {
+    const appels = simuler({ avoirsExistants: [{ id: "cbtxn_0", metadata: { garantie_prestataire: "p1", garantie_mois: "2026-12" } }] });
+    expect((await lancer()).offerts).toBe(1);
+    expect(appels.some(a => a.u.includes("/balance_transactions") && a.m === "POST")).toBe(false);
+  });
+  it("coupure réseau pendant l'avoir : la réservation est rendue (06/11/2026)", async () => {
+    const appels = simuler({ coupure: true });
+    expect((await lancer()).offerts).toBe(0);
+    const rendu = appels.filter(a => a.u.includes("profiles?id=eq.p1") && a.m === "PATCH").pop();
+    expect(JSON.parse(rendu.corps)).toEqual({ garantie_mois_offert_at: null, garantie_mois_offert_mois: null });
+  });
+  it("avoirs illisibles : rien n'est réservé (06/11/2026)", async () => {
+    const appels = simuler({ avoirsKo: true });
     expect((await lancer()).offerts).toBe(0);
     expect(appels.some(a => a.m === "PATCH")).toBe(false);
   });
