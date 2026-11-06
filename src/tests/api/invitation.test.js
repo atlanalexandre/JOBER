@@ -162,6 +162,15 @@ describe("le traitement automatique", () => {
     expect(appels.some(a => a.u.includes("invitation_recompensee_at=is.null") && a.m === "PATCH")).toBe(false);
   });
 
+  it("abonnement disparu chez Stripe : le client est crédité, le mois offert en Premium — plus de report sans fin (05/11/2026)", async () => {
+    const appels = simuler({ parrain: { id: "p1", role: "prestataire", plan_abonnement: "premium", stripe_customer_id: "cus_p", stripe_subscription_id: "sub_p" } });
+    const f = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url, o) => String(url).includes("/v1/subscriptions/") ? new Response("{}", { status: 404 }) : f(url, o)));
+    expect(await lancer()).toEqual({ clients: 1, mois: 1, ignores: 0 });
+    expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
+    expect(appels.find(a => a.u.includes("profiles?id=eq.p1") && a.m === "PATCH").corps.plan_abonnement).toBe("premium");
+  });
+
   it("Stripe illisible : rien n'est réservé, tout est reporté au passage suivant", async () => {
     const appels = simuler();
     const f = globalThis.fetch;

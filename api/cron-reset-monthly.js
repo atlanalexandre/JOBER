@@ -27,7 +27,7 @@ import { valeurHeuresRetirees, rembourserHeuresRetirees } from "./_decalage.js";
 import { lireTout } from "./_lignes.js";
 import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js";
 import { rafraichirStatutCompte } from "./_connect.js";
-import { appliquerGarantie, estDebutDeMois } from "./_garantie.js";
+import { appliquerGarantie, estDebutDeMois, noterReleves } from "./_garantie.js";
 import { recompenserInvitations } from "./_invitation.js";
 
 /**
@@ -1698,6 +1698,18 @@ export default async function handler(req, res) {
       }
     };
 
+    // Relevé quotidien de la garantie « mois sans proposition » (05/11/2026) :
+    // chaque matin, l'état de chaque abonné (api/_garantie.js). Même place que
+    // la modération : après les documents, et même si ceux-ci échouent.
+    const releverGarantie = async () => {
+      try {
+        const STRIPE_SK_R = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+        await noterReleves({ supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_R });
+      } catch (e) {
+        console.error("[garantie] relevé du jour interrompu :", e.message);
+      }
+    };
+
     // Déclarés ici, dans le bloc qui s'en sert.
     const RESEND_API_KEY_DOCS = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM_DOCS    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -2069,11 +2081,13 @@ export default async function handler(req, res) {
       }).catch(e => console.error("[documents] horodatage du passage :", e.message));
 
       await balayerModeration();
+      await releverGarantie();
 
       return res.status(200).json({ success: true, datees: docs.length, prevenus, suspendus });
     } catch (e) {
       console.error("[documents] balayage interrompu :", e.message);
       await balayerModeration();
+      await releverGarantie();
       return res.status(500).json({ error: "Balayage des documents interrompu" });
     }
   }
