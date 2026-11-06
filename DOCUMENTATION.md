@@ -170,6 +170,14 @@ Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers 
   un `includes` (voir CLAUDE.md §4) : « gouvernante » ne se trouve pas dans « Gouvernant(e)
   d'étage », et « femme de ménage » ne se trouve nulle part sans `ALIAS_METIERS`. La recherche
   reste littérale sur l'identité, les coordonnées, la ville et le code postal.
+  Depuis le 06/11/2026, **chaque mot tapé doit commencer un mot du métier** (ou d'un alias) :
+  « chat » trouvait la danse par « baCHATa », « sport » le planificateur par « tranSPORT »,
+  « ménage » le déménageur et l'électroménager. La saisie en cours (« gouv », « prép ») marche
+  toujours. Seule exception, un mot d'au moins 7 lettres peut se trouver au cœur d'un mot
+  composé (« conseiller » → téléconseiller, « nettoyage » → bionettoyage). La terminaison
+  « -ienne » est ramenée à « -ien » (« esthéticienne »), et une quinzaine d'alias ont été
+  ajoutés pour des mots courants qui ne trouvaient rien (« aide ménagère », « maître-chien »,
+  « prof de maths », « cantine », « repassage »…).
 
 Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
 qu'une entrée.
