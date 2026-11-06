@@ -3432,8 +3432,11 @@ export default async function handler(req, res) {
 
               // Notée au registre : la diffusion est une proposition, qu'il s'y
               // propose ou non (garantie « mois sans proposition », 04/11/2026).
-              // Écrite en UNE fois après la boucle : une écriture par prestataire
-              // allongeait la diffusion d'autant (relecture du 05/11/2026).
+              // Écrite en une fois par lot de 20 : une écriture par prestataire
+              // allongeait la diffusion d'autant (relecture du 05/11/2026), et une
+              // seule à la fin perdait tout le registre si la fonction était
+              // coupée en route — or le prestataire, lui, a bien été prévenu
+              // (relecture du 06/11/2026).
               proposes.push(p.id);
 
               // In-app notification
@@ -3506,9 +3509,9 @@ export default async function handler(req, res) {
               notified++;
             } catch (e) { console.error("[missions] diffusion à un prestataire échouée :", e.message); }
           }));
+          await noterPropositions({ supabaseUrl: SUPABASE_URL, headers, prestataireIds: proposes.splice(0), missionId: mission_id, canal: "diffusion" });
         }
       }
-      await noterPropositions({ supabaseUrl: SUPABASE_URL, headers, prestataireIds: proposes, missionId: mission_id, canal: "diffusion" });
 
       // S-06: stamp broadcast_sent_at to prevent duplicate sends within 1h
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
