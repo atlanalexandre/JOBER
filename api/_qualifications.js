@@ -216,6 +216,9 @@ export const NOTES_METIERS = {
   // dire les exposerait (02/11/2026).
   "Professeur de yoga":                   { texte: "Aucun diplôme n'est exigé par un texte pour enseigner le yoga. Si votre cours est présenté comme une activité physique ou sportive (yoga dynamique, en salle de sport), la carte professionnelle d'éducateur sportif peut vous être demandée : déposez-la dans « Diplômes & certifications » si vous l'avez." },
   "Professeur de danse (autres styles)":  { texte: "Seules la danse classique, jazz et contemporaine exigent le diplôme d'État. Si votre cours est présenté comme une activité de forme (fitness dansé, zumba), la carte professionnelle d'éducateur sportif peut être exigée." },
+  // Garde d'animaux (06/11/2026) : aucun titre pour garder ou promener chez le
+  // propriétaire ; l'hébergement chez soi est réglementé et exclu.
+  "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": { texte: "Aucun diplôme n'est exigé pour garder ou promener un animal chez son propriétaire. Héberger l'animal chez vous est une autre activité, réglementée (déclaration en préfecture, certificat ACACED, locaux conformes) : elle n'est pas proposée sur ALANE. Le crédit d'impôt des services à la personne ne s'applique à la garde d'animaux que pour les personnes âgées ou dépendantes. Une assurance responsabilité civile professionnelle est vivement conseillée." },
   "Auxiliaire de vie":                    { texte: "L'intervention auprès de personnes vulnérables peut relever d'un agrément ou d'une autorisation départementale selon le public accompagné. À vérifier avant d'accepter ce type de prestation." },
 };
 
