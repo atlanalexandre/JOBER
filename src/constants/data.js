@@ -431,6 +431,14 @@ export const METIERS_TARIFS = {
     "Professeur de danse (autres styles)":  { min:18,   max:38,   default:25, rome:"K2105" },
     "Professeur de Pilates":                { min:20,   max:45,   default:30, rome:"G1204" },
     "Professeur de yoga":                   { min:20,   max:45,   default:30, rome:"G1204" },
+    // Garde d'animaux — ajouté le 06/11/2026 (demande d'Alexandre). AU DOMICILE
+    // DU PROPRIÉTAIRE seulement : promenade, visite, nourrir, garder chez lui.
+    // Héberger l'animal chez soi (« pension ») est une autre activité,
+    // réglementée — déclaration en préfecture, ACACED, locaux conformes (code
+    // rural, art. L214-6-1) — que la plateforme ne propose pas : le libellé le
+    // dit, et la note aussi. Tarif : une simple valeur de départ, que le
+    // prestataire change librement.
+    "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": { min:12, max:16, default:13, rome:"A1501" },
   },
 };
 
@@ -571,6 +579,7 @@ const ALIAS_METIERS = {
   "Prothésiste ongulaire / Manucure": ["ongles", "pose d'ongles", "onglerie", "manucure a domicile"],
   "Professeur de danse (autres styles)": ["hip hop", "salsa", "bachata", "danse orientale", "danse de salon", "kizomba"],
   "Professeur de Pilates": ["pilate"],
+  "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["dog sitter", "dogsitter", "pet sitter", "petsitter", "garde de chien", "garde de chat", "garde d'animaux", "promeneur", "promenade de chien", "chat sitter"],
 };
 
 /**
@@ -786,6 +795,7 @@ export const COMPETENCES_PAR_METIER = {
   "Agent de sécurité":                    ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Gestion de crise","Main courante","SST"],
   "Hôte(sse) d'accueil":                 ["Accueil physique","Standard téléphonique","Orientation visiteurs","Gestion badges","Tenue professionnelle","Langues étrangères"],
   "Animateur événementiel":              ["Animation","Prise de parole","Gestion foule","Microphone","Dynamisme","Gestion du temps","BAFA"],
+  "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["Promenade de chiens","Visites à domicile","Nourrir et abreuver","Garde de chats","Garde de chiens","Administration de médicaments prescrits","Nettoyage de litière","Arrosage et relève du courrier","Compte rendu au propriétaire"],
   "Coiffeur(se) à domicile":              ["CAP coiffure","Coupe homme","Coupe femme","Coupe enfant","Coloration","Mèches / balayage","Brushing","Coiffure de mariée","Barbe et rasage","Soins capillaires","Matériel personnel","Hygiène du matériel"],
   "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],
 };

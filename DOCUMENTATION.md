@@ -580,7 +580,12 @@ contemporaine est un métier à part, qui exige le diplôme d'État (code de l'�
 art. L362-1) ; « Professeur de danse (autres styles) » — salsa, hip-hop — n'en exige aucun.
 Le yoga, dont le statut au regard du code du sport n'est pas tranché, porte une note, quand
 le Pilates, activité physique, exige la carte d'éducateur sportif. Le modelage s'appelle
-« bien-être » : le massage thérapeutique reste réservé aux masseurs-kinésithérapeutes. Même logique pour le permis des
+« bien-être » : le massage thérapeutique reste réservé aux masseurs-kinésithérapeutes. La garde
+d'animaux (06/11/2026) s'exerce **chez le propriétaire** seulement — « Garde d'animaux / Promeneur de
+chiens (chez le propriétaire) », alias « dog sitter », « pet sitter » : aucun titre exigé, mais une note
+qui exclut l'hébergement chez le prestataire (réglementé : déclaration en préfecture, ACACED,
+locaux conformes — code rural, art. L214-6-1), borne le crédit d'impôt aux personnes âgées ou
+dépendantes et conseille une assurance RC professionnelle. Même logique pour le permis des
 coursiers (« Coursier / Livreur », « Livreur courses à domicile ») : ils peuvent livrer à vélo
 ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre, 29/09/2026). Ces notes s'affichent au
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas

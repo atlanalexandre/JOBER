@@ -407,3 +407,25 @@ describe("bien-être, danse et ongles : chacun son titre", async () => {
     expect(trouve("kinésithérapeute")).toHaveLength(0);
   });
 });
+
+// Garde d'animaux (06/11/2026) : chez le propriétaire seulement, sans titre exigé.
+describe("garde d'animaux : chez le propriétaire, sans diplôme, pension exclue", async () => {
+  const { correspondRecherche, METIERS } = await import("../../constants/data.js");
+  const { noteMetier } = await import("../../../api/_qualifications.js");
+  const M = "Garde d'animaux / Promeneur de chiens (chez le propriétaire)";
+  const tous = Object.values(METIERS).flat();
+  const trouve = (q) => tous.filter(m => correspondRecherche(m, q));
+
+  it("aucun titre exigé ; la note exclut l'hébergement et borne le crédit d'impôt", () => {
+    expect(qualificationRequise(M)).toBeNull();
+    expect(noteMetier(M)).toContain("ACACED");
+    expect(noteMetier(M)).toContain("n'est pas proposée sur ALANE");
+    expect(noteMetier(M)).toContain("personnes âgées ou dépendantes");
+  });
+  it("« dog sitter », « pet sitter », « garde de chat », « promeneur » le trouvent", () => {
+    for (const q of ["dog sitter", "pet sitter", "garde de chat", "promeneur", "garde de chien"]) expect(trouve(q), q).toEqual([M]);
+  });
+  it("on rapproche, on n'élargit pas : ni toiletteur, ni pension, ni vétérinaire", () => {
+    for (const q of ["toiletteur", "pension canine", "vétérinaire"]) expect(trouve(q), q).toHaveLength(0);
+  });
+});
