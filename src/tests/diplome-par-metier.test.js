@@ -29,4 +29,11 @@ describe("le diplôme exigé, au choix du métier", () => {
     expect(encart).toContain("Pas de diplôme obligatoire dans le cas général");
     expect(encart).toMatch(/n \? "✅ Pas de diplôme obligatoire dans le cas général" : "✅ Aucun diplôme obligatoire pour ce métier"/);
   });
+  it("avec une note, le texte renvoie à la note sans redire « aucun texte n'impose » (07/11/2026)", () => {
+    const encart = lire("qualification-metier.jsx");
+    const avecNote = [...encart.matchAll(/\{?n\s*\?\s*"([^"]+)"\s*:\s*"([^"]+)"\}?/g)].find(m => m[1].includes("atout"));
+    expect(avecNote, "branche « avec note » introuvable").not.toBeNull();
+    expect(avecNote[1]).toContain("lisez la note ci-dessous");
+    expect(avecNote[1]).not.toMatch(/aucun texte/i);
+  });
 });
