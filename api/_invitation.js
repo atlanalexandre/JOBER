@@ -163,6 +163,17 @@ export const estAbonnePayant = (parrain) => !!(parrain?.stripe_subscription_id &
   && parrain?.plan_abonnement && parrain.plan_abonnement !== "free");
 
 /**
+ * Prix d'un mois, en centimes, lu dans un abonnement Stripe déjà relu : un
+ * douzième du prix annuel pour un abonnement annuel. Fonction pure, SEULE
+ * règle — partagée avec la garantie (api/_garantie.js, 06/11/2026).
+ */
+export function prixMensuelDepuisAbonnement(abonnement) {
+  const prix = abonnement?.items?.data?.[0]?.price;
+  const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
+  return Math.round(Number.isFinite(mensuel) ? mensuel : 0);
+}
+
+/**
  * Prix d'un mois de son abonnement, en centimes. LÈVE si Stripe ne répond pas :
  * lu AVANT la réservation, une panne reporte la récompense au passage suivant.
  * Lu après, elle perdait le mois — compté pourtant dans le plafond (relecture
@@ -178,9 +189,7 @@ export async function prixMensuelCentimes(parrain, stripeKey) {
   // invité (relecture du 05/11/2026).
   if (sr.status === 404) return null;
   if (!sr.ok) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
-  const prix = sd?.items?.data?.[0]?.price;
-  const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
-  const centimes = Math.round(Number.isFinite(mensuel) ? mensuel : 0);
+  const centimes = prixMensuelDepuisAbonnement(sd);
   // Prix nul (remise à 100 %) : il ne paie rien, un avoir n'aurait pas de sens.
   return centimes > 0 ? centimes : null;
 }

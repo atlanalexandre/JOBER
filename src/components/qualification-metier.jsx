@@ -41,13 +41,15 @@ export function InfoQualificationMetier({ metier }) {
           {/* Avec une note, le métier peut exiger un titre pour UNE PARTIE de
               l'activité (Certiphyto du jardinier qui traite, permis du coursier
               motorisé) : un « aucun texte n'impose » sans nuance contredisait
-              la note juste dessous (relecture du 05/11/2026). */}
+              la note juste dessous (relecture du 05/11/2026). Mais toutes les notes ne
+              parlent pas d'un titre — celles du crédit d'impôt (SAP), par exemple :
+              le texte reste donc neutre et renvoie à la note (06/11/2026). */}
           <div style={{ color:C.success, fontWeight:800, fontSize:12.5, marginBottom:5 }}>
             {n ? "✅ Pas de diplôme obligatoire dans le cas général" : "✅ Aucun diplôme obligatoire pour ce métier"}
           </div>
           <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
             {n
-              ? "Certaines activités de ce métier demandent un titre : lisez la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
+              ? "Aucun texte n'impose de diplôme pour l'exercer en règle générale — lisez tout de même la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
               : "Aucun texte n'impose de diplôme pour l'exercer. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."}
           </div>
         </div>
@@ -71,7 +73,7 @@ export function PastilleQualification({ metier }) {
       display:"inline-block", marginTop:4, fontSize:10.5, fontWeight:700, borderRadius:6, padding:"2px 7px",
       background: q ? "rgba(240,180,41,0.15)" : `${C.success}18`, color: q ? "#F0B429" : C.success,
     }}>
-      {q ? `⚖️ ${q.titre} obligatoire` : n ? "✅ Sans diplôme obligatoire (voir la note)" : "✅ Sans diplôme obligatoire"}
+      {q ? `⚖️ ${q.titre} obligatoire` : n ? "✅ Sans diplôme obligatoire (cas général)" : "✅ Sans diplôme obligatoire"}
     </span>
   );
 }

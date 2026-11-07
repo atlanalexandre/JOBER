@@ -124,11 +124,59 @@ describe("coiffure", () => {
   // La manucure est devenue un métier du catalogue le 02/11/2026 : elle mène
   // à elle-même, jamais au coiffeur.
   it("n'attire pas les métiers voisins de la beauté", () => {
-    for (const q of ["esthéticienne", "maquilleuse"]) {
+    for (const q of ["maquilleuse"]) {
       expect(trouve(q), `« ${q} »`).toHaveLength(0);
     }
     for (const q of ["manucure", "prothésiste ongulaire"]) {
       expect(trouve(q), `« ${q} »`).toEqual(["Prothésiste ongulaire / Manucure"]);
     }
+  });
+});
+
+// Relecture du 06/11/2026 : un mot tapé doit COMMENCER un mot du métier.
+describe("un mot tapé commence un mot du métier", () => {
+  it("plus de rencontres de hasard au milieu d'un mot", () => {
+    expect(trouve("chat")).not.toContain("Professeur de danse (autres styles)"); // baChATa
+    expect(trouve("sport")).not.toContain("Planificateur transport");          // tranSPORT
+    expect(trouve("ménage")).not.toContain("Déménageur");
+    expect(trouve("ménage")).not.toContain("Vendeur en électroménager");
+    expect(trouve("rat")).toHaveLength(0);
+  });
+  it("la saisie en cours marche toujours", () => {
+    expect(trouve("gouv")).toContain("Gouvernant(e) d'étage");
+    expect(trouve("prép")).toContain("Préparateur de commandes");
+  });
+  it("un mot long se trouve encore au cœur d'un mot composé", () => {
+    expect(trouve("conseiller")).toContain("Téléconseiller");
+    expect(trouve("nettoyage")).toContain("Agent de bionettoyage (milieu de santé)");
+    expect(trouve("scolaire")).toContain("Animateur périscolaire (BAFA)");
+    expect(trouve("vendeur")).toContain("Télévendeur");
+  });
+});
+
+describe("des mots courants qui ne trouvaient rien (06/11/2026)", () => {
+  const attendus = {
+    "esthéticienne": "Spa praticien / Esthéticien",
+    "technicienne de surface": "Technicien de surface",
+    "aide ménagère": "Aide à domicile",
+    "maître-chien": "Agent cynophile de sécurité",
+    "garde-malade": "Auxiliaire de vie",
+    "prof de maths": "Professeur particulier / Soutien scolaire",
+    "aide aux devoirs": "Professeur particulier / Soutien scolaire",
+    "cours d'anglais": "Professeur de langues",
+    "piano": "Professeur de musique",
+    "zumba": "Professeur de danse (autres styles)",
+    "cantine": "Agent de restauration scolaire",
+    "inventaire": "Inventoriste",
+    "mise en rayon": "Employé de rayon",
+    "déménagement": "Déménageur",
+    "repassage": "Agent de blanchisserie / Repasseur",
+    "médiatrice": "Agent de médiation",
+    "baignade": "Maître-nageur sauveteur (BNSSA)",
+    "télémarketing": "Télévendeur",
+  };
+  for (const [q, m] of Object.entries(attendus)) it(`« ${q} » → ${m}`, () => expect(trouve(q)).toContain(m));
+  it("on rapproche, on n'élargit pas : « surveillant », « taxi », « aide-soignante » restent sans résultat", () => {
+    for (const q of ["surveillant", "taxi", "aide-soignante", "infirmière"]) expect(trouve(q), q).toHaveLength(0);
   });
 });

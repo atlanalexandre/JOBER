@@ -431,6 +431,14 @@ export const METIERS_TARIFS = {
     "Professeur de danse (autres styles)":  { min:18,   max:38,   default:25, rome:"K2105" },
     "Professeur de Pilates":                { min:20,   max:45,   default:30, rome:"G1204" },
     "Professeur de yoga":                   { min:20,   max:45,   default:30, rome:"G1204" },
+    // Garde d'animaux — ajouté le 06/11/2026 (demande d'Alexandre). AU DOMICILE
+    // DU PROPRIÉTAIRE seulement : promenade, visite, nourrir, garder chez lui.
+    // Héberger l'animal chez soi (« pension ») est une autre activité,
+    // réglementée — déclaration en préfecture, ACACED, locaux conformes (code
+    // rural, art. L214-6-1) — que la plateforme ne propose pas : le libellé le
+    // dit, et la note aussi. Tarif : une simple valeur de départ, que le
+    // prestataire change librement.
+    "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": { min:12, max:16, default:13, rome:"A1501" },
   },
 };
 
@@ -466,6 +474,7 @@ export const METIERS_TARIFS = {
 // Le repliement s'applique des DEUX côtés — au libellé comme à la recherche —
 // si bien qu'il ne peut pas créer d'écart : il rapproche, il n'invente pas.
 const TERMINAISONS_FEMININES = [
+  [/ienne$/, "ien"],    // esthéticienne → esthéticien (06/11/2026 : ne trouvait rien)
   [/trice$/, "teur"],   // animatrice  → animateur
   [/euse$/,  "eur"],    // vendeuse    → vendeur
   [/eure$/,  "eur"],    // professeure → professeur
@@ -554,12 +563,12 @@ const ALIAS_METIERS = {
   "Agent de propreté":        ["femme de ménage", "homme de ménage", "ménage", "nettoyage"],
   "Agent d'entretien des bureaux": ["femme de ménage bureaux", "ménage bureaux"],
   "Agent de sécurité":        ["vigile", "videur"],
-  "Professeur particulier / Soutien scolaire": ["enseignant", "instituteur", "cours particuliers", "prof"],
+  "Professeur particulier / Soutien scolaire": ["enseignant", "instituteur", "cours particuliers", "prof", "maths", "mathematiques", "aide aux devoirs"],
   // « coiffeuse » est déjà trouvé par la normalisation des terminaisons
   // (euse → eur). « coiffure » et « barbier », non : ce sont pourtant les mots
-  // que les gens tapent. On rapproche, on n'élargit pas — « esthéticienne » ou
-  // « manucure » sont d'autres métiers, qui n'existent pas au catalogue et
-  // doivent rester sans résultat.
+  // que les gens tapent. On rapproche, on n'élargit pas — « esthéticienne » et
+  // « manucure » mènent à leur propre métier, jamais au coiffeur ;
+  // « maquilleuse », absente du catalogue, reste sans résultat.
   "Coiffeur(se) à domicile":  ["coiffure", "barbier", "coiffeur a domicile"],
   // Le sport, en deux métiers distincts (02/11/2026) : l'école d'un côté, le
   // particulier, la salle et l'entreprise de l'autre.
@@ -569,8 +578,26 @@ const ALIAS_METIERS = {
   // à un kinésithérapeute, que le catalogue n'a pas — et le libellé le dit.
   "Praticien(ne) en modelage bien-être": ["masseur", "massage", "modelage"],
   "Prothésiste ongulaire / Manucure": ["ongles", "pose d'ongles", "onglerie", "manucure a domicile"],
-  "Professeur de danse (autres styles)": ["hip hop", "salsa", "bachata", "danse orientale", "danse de salon", "kizomba"],
+  "Professeur de danse (autres styles)": ["hip hop", "salsa", "bachata", "danse orientale", "danse de salon", "kizomba", "zumba"],
   "Professeur de Pilates": ["pilate"],
+  // Relevés le 06/11/2026 : des mots courants qui ne trouvaient rien, alors
+  // que le métier existe. « Surveillant » n'est pas repris seul : il désigne
+  // d'abord le surveillant d'école, que le catalogue n'a pas.
+  "Agent cynophile de sécurité": ["maitre chien"],
+  "Aide à domicile": ["aide menagere"],
+  "Auxiliaire de vie": ["garde malade"],
+  "Professeur de langues": ["anglais", "espagnol", "allemand", "italien", "cours de langue"],
+  "Professeur de musique": ["piano", "guitare", "violon", "solfege", "batterie"],
+  "Inventoriste": ["inventaire"],
+  "Inventoriste logistique": ["inventaire"],
+  "Employé de rayon": ["mise en rayon"],
+  "Déménageur": ["demenagement"],
+  "Agent de blanchisserie / Repasseur": ["repassage"],
+  "Agent de médiation": ["mediateur"],
+  "Maître-nageur sauveteur (BNSSA)": ["baignade"],
+  "Agent de restauration scolaire": ["cantine", "dame de cantine"],
+  "Télévendeur": ["telemarketing", "teleprospection"],
+  "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["dog sitter", "dogsitter", "pet sitter", "petsitter", "garde de chien", "garde de chat", "garde d'animaux", "promeneur", "promenade de chien", "chat sitter"],
 };
 
 /**
@@ -582,9 +609,18 @@ export function correspondRecherche(libelle, recherche) {
   const termes = normaliserTexte(recherche).split(" ").filter(Boolean);
   if (termes.length === 0) return true;
   const alias = (ALIAS_METIERS[libelle] || []).map(normaliserTexte).join(" ");
-  const foin = alias ? `${motsCherchables(libelle)} ${alias}` : motsCherchables(libelle);
-  return termes.every(t => foin.includes(t));
+  const foin = ` ${alias ? `${motsCherchables(libelle)} ${alias}` : motsCherchables(libelle)}`;
+  return termes.every(t => foin.includes(` ${t}`) || (t.length >= MOT_INTERIEUR_MIN && foin.includes(t)));
 }
+
+// Un mot tapé doit commencer un mot du libellé : « chat » trouvait la danse
+// par « baChATa », « sport » le planificateur par « tranSPORT », « ménage »
+// le déménageur et l'électroménager (06/11/2026). La saisie en cours
+// (« gouv », « prép ») marche toujours, puisqu'elle commence un mot.
+// Seule exception, un mot long, qui peut se trouver au cœur d'un mot composé
+// sans risque de hasard : « conseiller » → téléconseiller, « nettoyage » →
+// bionettoyage, « scolaire » → périscolaire.
+const MOT_INTERIEUR_MIN = 7;
 
 /**
  * Les métiers d'un prestataire — TOUS ses métiers.
@@ -786,6 +822,7 @@ export const COMPETENCES_PAR_METIER = {
   "Agent de sécurité":                    ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Gestion de crise","Main courante","SST"],
   "Hôte(sse) d'accueil":                 ["Accueil physique","Standard téléphonique","Orientation visiteurs","Gestion badges","Tenue professionnelle","Langues étrangères"],
   "Animateur événementiel":              ["Animation","Prise de parole","Gestion foule","Microphone","Dynamisme","Gestion du temps","BAFA"],
+  "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["Promenade de chiens","Visites à domicile","Nourrir et abreuver","Garde de chats","Garde de chiens","Administration de médicaments prescrits","Nettoyage de litière","Arrosage et relève du courrier","Compte rendu au propriétaire"],
   "Coiffeur(se) à domicile":              ["CAP coiffure","Coupe homme","Coupe femme","Coupe enfant","Coloration","Mèches / balayage","Brushing","Coiffure de mariée","Barbe et rasage","Soins capillaires","Matériel personnel","Hygiène du matériel"],
   "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],
 };

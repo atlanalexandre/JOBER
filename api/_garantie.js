@@ -29,6 +29,7 @@
 
 import { bornesMois } from "./_journal_comptable.js";
 import { lireTout } from "./_lignes.js";
+import { prixMensuelDepuisAbonnement } from "./_invitation.js";
 import { notifier } from "./_push.js";
 import { euros } from "./_email.js";
 import { frenchOffsetMs } from "./_temps.js";
@@ -39,6 +40,8 @@ export const PREMIER_MOIS = "2026-12";
 export const ZONE_MIN_KM = 10;
 /** Relevés quotidiens manquants tolérés sur un mois (passage du traitement manqué). */
 export const RELEVES_MANQUANTS_ADMIS = 2;
+/** Rayon retenu quand le prestataire n'en a pas renseigné — celui de la diffusion. */
+export const RAYON_PAR_DEFAUT_KM = 50;
 
 /** Date du jour à Paris, « 2026-12-03 ». */
 export function jourParis(maintenantMs = Date.now()) {
@@ -70,7 +73,11 @@ export function etatDuJour({ profil, meta = {}, statutAbonnement }) {
   if (statutAbonnement !== "active") return non(`abonnement ${statutAbonnement || "illisible"}`);
   if (profil?.status !== "approved" || profil?.missions_enabled !== true) return non("accès aux prestations fermé");
   if (!(Array.isArray(meta.dispon_jours) && meta.dispon_jours.length > 0)) return non("aucun jour de disponibilité");
-  if (!(Number(meta.zone_km) >= ZONE_MIN_KM)) return non(`rayon inférieur à ${ZONE_MIN_KM} km`);
+  // Rayon absent = 50 km, la valeur que retient la diffusion (`broadcast`) :
+  // un prestataire prévenu dans un rayon de 50 km ne peut pas être relevé
+  // « indisponible » faute de rayon (relecture du 06/11/2026).
+  const rayon = Number(meta.zone_km) || RAYON_PAR_DEFAUT_KM;
+  if (!(rayon >= ZONE_MIN_KM)) return non(`rayon inférieur à ${ZONE_MIN_KM} km`);
   return { disponible: true, raison: null };
 }
 
@@ -107,10 +114,9 @@ async function lireAbonnement(subscriptionId, stripeKey) {
   if (r.status === 404) return null;
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`abonnement ${subscriptionId} illisible (${r.status})`);
-  const prix = d?.items?.data?.[0]?.price;
-  const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
-  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000,
-    centimes: Math.round(Number.isFinite(mensuel) ? mensuel : 0) };
+  // Le prix d'un mois : la MÊME règle que la récompense d'invitation, partagée
+  // (relecture du 06/11/2026 — deux copies auraient pu créditer deux montants).
+  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes: prixMensuelDepuisAbonnement(d) };
 }
 
 /** Les abonnés payants, lus EN ENTIER (PostgREST plafonne à 1 000 lignes). */
@@ -129,35 +135,54 @@ export async function noterReleves({ supabaseUrl, headers, stripeKey, maintenant
   const lecture = { apikey: headers.apikey, Authorization: headers.Authorization };
   const jour = jourParis(maintenantMs);
   let abonnes;
-  try { abonnes = await lireAbonnes(supabaseUrl, lecture); }
+  // Ceux qui ont déjà eu leur mois ne peuvent plus y prétendre : inutile de
+  // les relever (relecture du 06/11/2026).
+  try { abonnes = await lireAbonnes(supabaseUrl, lecture, "&garantie_mois_offert_at=is.null"); }
   catch (e) { console.error("[garantie] abonnés illisibles — relevé du jour non fait :", e.message); return bilan; }
-  const lignes = [];
-  for (const profil of abonnes) {
+  // Écrit PAR LOTS, au fil de la boucle : écrit en une fois à la fin, un
+  // dépassement du temps de la fonction ne laissait AUCUN relevé du jour, pour
+  // personne (relecture du 06/11/2026). Chaque lot est lu en parallèle.
+  const ecrire = async (lignes) => {
+    if (!lignes.length) return;
+    const w = await fetch(`${supabaseUrl}/rest/v1/garantie_releves`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
+      body: JSON.stringify(lignes),
+    });
+    if (!w.ok) {
+      const t = await w.text().catch(() => "");
+      console.error(`[garantie] relevé du ${jour} NON écrit pour ${lignes.length} abonné(s) (${w.status}) — migration 2026-11-05_garantie_releve_quotidien.sql passée ? ${t.slice(0, 160)}`);
+      return;
+    }
+    bilan.releves += lignes.length;
+  };
+  for (let i = 0; i < abonnes.length; i += 10) {
+    const lot = await Promise.all(abonnes.slice(i, i + 10).map(async (profil) => {
     try {
       const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users/${profil.id}`, { headers: lecture });
       const u = await ur.json().catch(() => ({}));
       if (!ur.ok) throw new Error(`compte illisible (${ur.status})`);
       const abonnement = await lireAbonnement(profil.stripe_subscription_id, stripeKey);
       const etat = etatDuJour({ profil, meta: u.user_metadata || {}, statutAbonnement: abonnement?.statut || "disparu" });
-      lignes.push({ prestataire_id: profil.id, jour, disponible: etat.disponible, raison: etat.raison });
+      return { prestataire_id: profil.id, jour, disponible: etat.disponible, raison: etat.raison };
     } catch (e) {
       // Pas de relevé ce jour-là pour lui : la tolérance de RELEVES_MANQUANTS_ADMIS l'absorbe.
       console.error(`[garantie] relevé du ${jour} manqué pour ${profil.id} :`, e.message);
+      return null;
     }
+    }));
+    await ecrire(lot.filter(Boolean));
   }
-  if (!lignes.length) return bilan;
-  const w = await fetch(`${supabaseUrl}/rest/v1/garantie_releves`, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
-    body: JSON.stringify(lignes),
-  });
-  if (!w.ok) {
-    const t = await w.text().catch(() => "");
-    console.error(`[garantie] relevé du ${jour} NON écrit (${w.status}) — migration 2026-11-05_garantie_releve_quotidien.sql passée ? ${t.slice(0, 160)}`);
-    return bilan;
-  }
-  bilan.releves = lignes.length;
   return bilan;
+}
+
+/** Un avoir de garantie existe-t-il déjà pour ce prestataire et ce mois ? LÈVE si Stripe ne répond pas. */
+async function avoirDejaCree(profil, mois, stripeKey) {
+  const r = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions?limit=100`,
+    { headers: { "Authorization": `Bearer ${stripeKey}` } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`avoirs illisibles (${r.status})`);
+  return (d?.data || []).some(t => t?.metadata?.garantie_prestataire === profil.id && t?.metadata?.garantie_mois === mois);
 }
 
 const compter = async (url, lecture) => {
@@ -206,6 +231,13 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
       if (!droit.ok) { console.log(`[garantie] ${profil.id} — ${mois} : pas de mois offert (${droit.raison})`); continue; }
       if (!(abonnement.centimes > 0)) { console.log(`[garantie] ${profil.id} — ${mois} : rien à déduire (abonnement gratuit)`); continue; }
 
+      // L'avoir existe-t-il déjà ? Un essai précédent a pu le créer sans que la
+      // réponse arrive. La clé d'idempotence ne suffit pas : Stripe rejoue
+      // l'échec mis en cache 24 h, puis l'oublie — le passage du lendemain
+      // aurait crédité deux fois. On cherche l'avoir à sa marque (06/11/2026).
+      // Lu AVANT la réservation : si Stripe ne répond pas, rien n'est réservé.
+      const dejaCree = await avoirDejaCree(profil, mois, stripeKey);
+
       const marque = (corps, filtre) => fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profil.id}${filtre}`, {
         method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" },
         body: JSON.stringify(corps),
@@ -215,20 +247,34 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
       if (!rv.ok) throw new Error(`réservation refusée (${rv.status})`);
       if (!Array.isArray(rvl) || rvl.length === 0) continue; // déjà offert par un autre passage
 
-      const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `garantie-${profil.id}` },
-        body: new URLSearchParams({ amount: String(-abonnement.centimes), currency: "eur", description: `ALANE : mois offert, aucune prestation proposée en ${mois}` }).toString(),
-      });
-      const ad = await ar.json().catch(() => ({}));
-      if (!ar.ok || !ad?.id) {
+      let avoirOk = dejaCree, detailEchec = "";
+      if (!dejaCree) {
+        try {
+          const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `garantie-${profil.id}-${mois}` },
+            body: new URLSearchParams({ amount: String(-abonnement.centimes), currency: "eur",
+              description: `ALANE : mois offert, aucune prestation proposée en ${mois}`,
+              "metadata[garantie_prestataire]": profil.id, "metadata[garantie_mois]": mois }).toString(),
+          });
+          const ad = await ar.json().catch(() => ({}));
+          avoirOk = ar.ok && !!ad?.id;
+          if (!avoirOk) detailEchec = ad?.error?.message || String(ar.status);
+        } catch (e) {
+          // Une coupure réseau après la réservation : sans ce bloc, elle sautait
+          // au « reporté » général sans rendre la réservation — la garantie
+          // unique était consommée en silence (relecture du 06/11/2026).
+          detailEchec = e.message;
+        }
+      }
+      if (!avoirOk) {
         // La garantie ne se joue qu'une fois : un avoir refusé ne doit pas la
-        // consommer. La réservation est rendue, le passage suivant réessaie —
-        // la clé d'idempotence empêche tout double avoir (relecture du 05/11/2026).
+        // consommer. La réservation est rendue ; le passage suivant réessaie.
         const rendu = await marque({ garantie_mois_offert_at: null, garantie_mois_offert_mois: null }, "").catch(() => null);
-        console.error(`[garantie] avoir refusé pour ${profil.id} (${abonnement.centimes} c) : ${ad?.error?.message || ar.status} — `
-          + (rendu?.ok ? "réservation rendue, nouvel essai au passage suivant."
-            : "réservation NON rendue : créer l'avoir à la main (Stripe, Clients → le client → Solde → Ajuster)."));
+        const encoreUnPassage = estDebutDeMois(maintenantMs + 2 * 3600e3);
+        console.error(`[garantie] avoir refusé pour ${profil.id} (${abonnement.centimes} c) : ${detailEchec} — `
+          + (rendu?.ok && encoreUnPassage ? "réservation rendue, nouvel essai au passage suivant."
+            : "À FAIRE À LA MAIN : créer l'avoir dans Stripe (Clients → le client → Solde → Ajuster), puis renseigner garantie_mois_offert_at."));
         continue;
       }
       bilan.offerts++;
