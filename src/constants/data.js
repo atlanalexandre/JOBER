@@ -495,15 +495,16 @@ const replierGenre = (mot) => {
  * féminines repliées au masculin.
  */
 export function normaliserTexte(t) {
+  return normaliserSansGenre(t).split(" ").filter(Boolean).map(replierGenre).join(" ");
+}
+
+/** Comme normaliserTexte, sans replier les terminaisons féminines. */
+function normaliserSansGenre(t) {
   return String(t || "")
     .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(" ")
-    .filter(Boolean)
-    .map(replierGenre)
-    .join(" ");
+    .trim();
 }
 
 /**
@@ -523,15 +524,17 @@ export function normaliserTexte(t) {
  * ainsi générées ne gênent personne, elles ne font qu'allonger le texte de
  * recherche — alors qu'une forme manquante rend un métier introuvable.
  */
-export function motsCherchables(libelle) {
+export function motsCherchables(libelle, normaliser = normaliserTexte) {
   const brut = String(libelle || "");
-  if (!brut.includes("(")) return normaliserTexte(brut);
+  if (!brut.includes("(")) return normaliser(brut);
 
   // Chaque parenthèse est développée indépendamment, sur la base du libellé
   // débarrassé de toutes les autres : un libellé en portant deux — « Caissier
   // (ère) principal(e) » — donne ainsi les deux mots féminins.
   const sansToutes = brut.replace(/\([^)]*\)/g, "");
-  const formes = new Set([brut, sansToutes]);
+  // Le libellé brut n'y figure pas : « Animateur(trice) » y laissait traîner
+  // le morceau « trice », et « tri » trouvait l'animateur (07/11/2026).
+  const formes = new Set([sansToutes]);
 
   const parentheses = brut.match(/\(([^)]*)\)/g) || [];
   for (const p of parentheses) {
@@ -544,7 +547,7 @@ export function motsCherchables(libelle) {
       formes.add(avant.slice(0, avant.length - coupe) + contenu + apres);
     }
   }
-  return [...new Set([...formes].map(normaliserTexte))].filter(Boolean).join(" ");
+  return [...new Set([...formes].map(normaliser))].filter(Boolean).join(" ");
 }
 
 // ── Les mots que les gens tapent, et qui ne sont pas ceux du catalogue ─────
@@ -600,19 +603,6 @@ const ALIAS_METIERS = {
   "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["dog sitter", "dogsitter", "pet sitter", "petsitter", "garde de chien", "garde de chat", "garde d'animaux", "promeneur", "promenade de chien", "chat sitter"],
 };
 
-/**
- * Le libellé répond-il à cette recherche ? Tous les mots tapés doivent s'y
- * retrouver, dans n'importe quel ordre — « etage gouvernante » fonctionne.
- * Une recherche vide accepte tout : c'est à l'appelant de ne pas filtrer.
- */
-export function correspondRecherche(libelle, recherche) {
-  const termes = normaliserTexte(recherche).split(" ").filter(Boolean);
-  if (termes.length === 0) return true;
-  const alias = (ALIAS_METIERS[libelle] || []).map(normaliserTexte).join(" ");
-  const foin = ` ${alias ? `${motsCherchables(libelle)} ${alias}` : motsCherchables(libelle)}`;
-  return termes.every(t => foin.includes(` ${t}`) || (t.length >= MOT_INTERIEUR_MIN && foin.includes(t)));
-}
-
 // Un mot tapé doit commencer un mot du libellé : « chat » trouvait la danse
 // par « baChATa », « sport » le planificateur par « tranSPORT », « ménage »
 // le déménageur et l'électroménager (06/11/2026). La saisie en cours
@@ -621,6 +611,34 @@ export function correspondRecherche(libelle, recherche) {
 // sans risque de hasard : « conseiller » → téléconseiller, « nettoyage » →
 // bionettoyage, « scolaire » → périscolaire.
 const MOT_INTERIEUR_MIN = 7;
+//
+// Et un mot en cours de frappe se compare AUSSI tel quel, sans repliement du
+// féminin : « gouve » devenait « gouf » (règle -ve → -f), « serve » « serf »,
+// « praticienn » ne trouvait plus rien — la liste se vidait au milieu de
+// « gouvernante » (relecture du 07/11/2026).
+
+/**
+ * Le libellé répond-il à cette recherche ? Chaque mot tapé doit COMMENCER un
+ * mot du libellé ou d'un alias (sauf un mot d'au moins MOT_INTERIEUR_MIN
+ * lettres, qui peut se trouver au cœur d'un mot composé), dans n'importe quel
+ * ordre — « etage gouvernante » fonctionne. Chaque mot est essayé replié au
+ * masculin et tel quel. Une recherche vide accepte tout : c'est à l'appelant
+ * de ne pas filtrer.
+ */
+export function correspondRecherche(libelle, recherche) {
+  const bruts = normaliserSansGenre(recherche).split(" ").filter(Boolean);
+  if (bruts.length === 0) return true;
+  const aliasListe = ALIAS_METIERS[libelle] || [];
+  const foin = ` ${[motsCherchables(libelle), motsCherchables(libelle, normaliserSansGenre),
+    ...aliasListe.map(normaliserTexte), ...aliasListe.map(normaliserSansGenre)].filter(Boolean).join(" ")}`;
+  const trouve = (t) => foin.includes(` ${t}`) || (t.length >= MOT_INTERIEUR_MIN && foin.includes(t));
+  // `b + "e"` : le féminin à une lettre de sa fin — « esthéticienn »,
+  // « vendeus » — se replie déjà sur le masculin. Pas pour « -ve » : « cav »
+  // serait devenu « caf » et aurait trouvé la cafétéria.
+  const fini = (b) => { const f = `${b}e`, p = replierGenre(f); return p !== f && !f.endsWith("ve") ? p : null; };
+  return bruts.every(b => trouve(b) || trouve(replierGenre(b)) || (fini(b) !== null && trouve(fini(b))));
+}
+
 
 /**
  * Les métiers d'un prestataire — TOUS ses métiers.

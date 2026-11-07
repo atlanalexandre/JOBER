@@ -177,7 +177,10 @@ Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers 
   composé (« conseiller » → téléconseiller, « nettoyage » → bionettoyage). La terminaison
   « -ienne » est ramenée à « -ien » (« esthéticienne »), et une quinzaine d'alias ont été
   ajoutés pour des mots courants qui ne trouvaient rien (« aide ménagère », « maître-chien »,
-  « prof de maths », « cantine », « repassage »…).
+  « prof de maths », « cantine », « repassage »…). Le 07/11/2026, la saisie en cours a été réparée :
+  chaque mot est aussi comparé tel quel, sans repliement du féminin, si bien que la liste ne se vide
+  plus au milieu de « gouvernante », « serveuse » ou « praticienne » ; et les morceaux de parenthèse
+  (« trice » d'« Animateur(trice) ») ne trouvent plus rien par hasard.
 
 Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
 qu'une entrée.
