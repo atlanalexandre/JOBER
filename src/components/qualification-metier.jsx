@@ -43,13 +43,16 @@ export function InfoQualificationMetier({ metier }) {
               motorisé) : un « aucun texte n'impose » sans nuance contredisait
               la note juste dessous (relecture du 05/11/2026). Mais toutes les notes ne
               parlent pas d'un titre — celles du crédit d'impôt (SAP), par exemple :
-              le texte reste donc neutre et renvoie à la note (06/11/2026). */}
+              le texte reste donc neutre et renvoie à la note (06/11/2026). Et il
+              ne redit pas « aucun texte n'impose » : le titre dit déjà « dans le
+              cas général », et la phrase contredisait les notes du coursier
+              (permis) et du jardinier (Certiphyto) — relecture du 07/11/2026. */}
           <div style={{ color:C.success, fontWeight:800, fontSize:12.5, marginBottom:5 }}>
             {n ? "✅ Pas de diplôme obligatoire dans le cas général" : "✅ Aucun diplôme obligatoire pour ce métier"}
           </div>
           <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
             {n
-              ? "Aucun texte n'impose de diplôme pour l'exercer en règle générale — lisez tout de même la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
+              ? "Selon votre façon d'exercer, une condition peut s'ajouter : lisez la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
               : "Aucun texte n'impose de diplôme pour l'exercer. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."}
           </div>
         </div>
