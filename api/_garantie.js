@@ -119,9 +119,13 @@ async function lireAbonnement(subscriptionId, stripeKey) {
   return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes: prixMensuelDepuisAbonnement(d) };
 }
 
-/** Les abonnés payants, lus EN ENTIER (PostgREST plafonne à 1 000 lignes). */
-const lireAbonnes = (supabaseUrl, lecture, filtre = "") => lireTout(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire`
-  + `&plan_abonnement=in.(premium,elite)&stripe_subscription_id=not.is.null&stripe_customer_id=not.is.null${filtre}`
+/**
+ * Les abonnés payants qui n'ont pas encore eu leur mois offert, lus EN ENTIER
+ * (PostgREST plafonne à 1 000 lignes). Le filtre vit ici, une seule fois : les
+ * deux appelants le passaient à l'identique (relecture du 07/11/2026).
+ */
+const lireAbonnes = (supabaseUrl, lecture) => lireTout(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire`
+  + "&plan_abonnement=in.(premium,elite)&stripe_subscription_id=not.is.null&stripe_customer_id=not.is.null&garantie_mois_offert_at=is.null"
   + "&select=id,status,missions_enabled,plan_abonnement,stripe_subscription_id,stripe_customer_id,garantie_mois_offert_at", lecture);
 
 /**
@@ -137,7 +141,7 @@ export async function noterReleves({ supabaseUrl, headers, stripeKey, maintenant
   let abonnes;
   // Ceux qui ont déjà eu leur mois ne peuvent plus y prétendre : inutile de
   // les relever (relecture du 06/11/2026).
-  try { abonnes = await lireAbonnes(supabaseUrl, lecture, "&garantie_mois_offert_at=is.null"); }
+  try { abonnes = await lireAbonnes(supabaseUrl, lecture); }
   catch (e) { console.error("[garantie] abonnés illisibles — relevé du jour non fait :", e.message); return bilan; }
   // Écrit PAR LOTS, au fil de la boucle : écrit en une fois à la fin, un
   // dépassement du temps de la fonction ne laissait AUCUN relevé du jour, pour
@@ -176,14 +180,37 @@ export async function noterReleves({ supabaseUrl, headers, stripeKey, maintenant
   return bilan;
 }
 
-/** Un avoir de garantie existe-t-il déjà pour ce prestataire et ce mois ? LÈVE si Stripe ne répond pas. */
-async function avoirDejaCree(profil, mois, stripeKey) {
-  const r = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions?limit=100`,
-    { headers: { "Authorization": `Bearer ${stripeKey}` } });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`avoirs illisibles (${r.status})`);
-  return (d?.data || []).some(t => t?.metadata?.garantie_prestataire === profil.id && t?.metadata?.garantie_mois === mois);
+/**
+ * L'avoir de garantie déjà créé pour ce prestataire, QUEL QUE SOIT LE MOIS, ou
+ * null. La garantie ne se joue qu'une fois : un avoir créé le mois dernier
+ * sans que la réponse arrive doit l'avoir consommée, faute de quoi le mois
+ * suivant en créerait un second (relecture du 07/11/2026 — la recherche se
+ * limitait au mois examiné, et à la première page de 100 mouvements).
+ * LÈVE si Stripe ne répond pas.
+ */
+async function avoirDejaCree(profil, stripeKey) {
+  let apres = "";
+  for (let page = 0; page < 20; page++) {
+    const r = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions?limit=100${apres}`,
+      { headers: { "Authorization": `Bearer ${stripeKey}` } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`avoirs illisibles (${r.status})`);
+    const lignes = Array.isArray(d?.data) ? d.data : [];
+    const trouve = lignes.find(t => t?.metadata?.garantie_prestataire === profil.id);
+    if (trouve) return trouve;
+    if (!d?.has_more || lignes.length === 0) return null;
+    apres = `&starting_after=${encodeURIComponent(lignes[lignes.length - 1].id)}`;
+  }
+  throw new Error("avoirs trop nombreux pour être relus en entier");
 }
+
+/**
+ * L'intervalle entre deux passages des rappels, en heures — la même valeur
+ * que la planification « reminders » de vercel.json (« 0 *\/2 * * * »), ce
+ * qu'un test vérifie. Il sert à savoir si un passage est le dernier du début
+ * de mois (relecture du 07/11/2026 : la valeur était écrite en dur).
+ */
+export const INTERVALLE_RAPPELS_H = 2;
 
 const compter = async (url, lecture) => {
   const r = await fetch(url, { method: "HEAD", headers: { ...lecture, "Prefer": "count=exact" } });
@@ -206,7 +233,7 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
 
   const lecture = { apikey: headers.apikey, Authorization: headers.Authorization };
   let abonnes;
-  try { abonnes = await lireAbonnes(supabaseUrl, lecture, "&garantie_mois_offert_at=is.null"); }
+  try { abonnes = await lireAbonnes(supabaseUrl, lecture); }
   catch (e) {
     console.error("[garantie] abonnés illisibles — migration 2026-11-04_garantie_mois_sans_proposition.sql passée ? :", e.message);
     return bilan;
@@ -236,18 +263,25 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
       // l'échec mis en cache 24 h, puis l'oublie — le passage du lendemain
       // aurait crédité deux fois. On cherche l'avoir à sa marque (06/11/2026).
       // Lu AVANT la réservation : si Stripe ne répond pas, rien n'est réservé.
-      const dejaCree = await avoirDejaCree(profil, mois, stripeKey);
+      const dejaCree = await avoirDejaCree(profil, stripeKey);
+      const moisAvoir = dejaCree?.metadata?.garantie_mois || mois;
 
       const marque = (corps, filtre) => fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profil.id}${filtre}`, {
         method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" },
         body: JSON.stringify(corps),
       });
-      const rv = await marque({ garantie_mois_offert_at: new Date(maintenantMs).toISOString(), garantie_mois_offert_mois: mois }, "&garantie_mois_offert_at=is.null");
+      const rv = await marque({ garantie_mois_offert_at: new Date(maintenantMs).toISOString(), garantie_mois_offert_mois: moisAvoir }, "&garantie_mois_offert_at=is.null");
       const rvl = await rv.json().catch(() => []);
       if (!rv.ok) throw new Error(`réservation refusée (${rv.status})`);
       if (!Array.isArray(rvl) || rvl.length === 0) continue; // déjà offert par un autre passage
 
-      let avoirOk = dejaCree, detailEchec = "";
+      if (dejaCree && moisAvoir !== mois) {
+        // Un essai d'un mois précédent avait abouti sans que la réponse arrive :
+        // la garantie est consommée, rien de plus n'est crédité.
+        console.error(`[garantie] ${profil.id} : avoir ${dejaCree.id} déjà créé pour ${moisAvoir} — garantie marquée consommée, aucun nouvel avoir.`);
+        continue;
+      }
+      let avoirOk = !!dejaCree, detailEchec = "";
       if (!dejaCree) {
         try {
           const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(profil.stripe_customer_id)}/balance_transactions`, {
@@ -271,10 +305,13 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
         // La garantie ne se joue qu'une fois : un avoir refusé ne doit pas la
         // consommer. La réservation est rendue ; le passage suivant réessaie.
         const rendu = await marque({ garantie_mois_offert_at: null, garantie_mois_offert_mois: null }, "").catch(() => null);
-        const encoreUnPassage = estDebutDeMois(maintenantMs + 2 * 3600e3);
+        const encoreUnPassage = estDebutDeMois(maintenantMs + INTERVALLE_RAPPELS_H * 3600e3);
         console.error(`[garantie] avoir refusé pour ${profil.id} (${abonnement.centimes} c) : ${detailEchec} — `
           + (rendu?.ok && encoreUnPassage ? "réservation rendue, nouvel essai au passage suivant."
-            : "À FAIRE À LA MAIN : créer l'avoir dans Stripe (Clients → le client → Solde → Ajuster), puis renseigner garantie_mois_offert_at."));
+            // Une coupure ou une erreur 5xx ne dit pas si Stripe a créé l'avoir :
+            // créer à la main sans regarder aurait pu créditer deux fois (07/11/2026).
+            : "À FAIRE À LA MAIN : regarder d'abord le solde du client dans Stripe (Clients → le client → Solde) ; "
+              + "si un avoir « mois offert » y figure déjà, ne rien créer ; sinon le créer (Ajuster). Puis renseigner garantie_mois_offert_at."));
         continue;
       }
       bilan.offerts++;
