@@ -78,7 +78,10 @@ export default async function handler(req, res) {
   }
 
   // ── Le prestataire ajoute une référence ────────────────────────────────────
-  if (action !== "ajouter") return res.status(400).json({ error: "Action inconnue" });
+  // Écrit « action === » : l'audit statique (.github/scripts/audit.cjs) relève
+  // ainsi les actions gérées, et refusait la forme négative.
+  const ajouter = action === "ajouter";
+  if (!ajouter) return res.status(400).json({ error: "Action inconnue" });
   const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
   if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
   if (await refuserCompteBloque(res, caller, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
