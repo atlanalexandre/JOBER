@@ -1413,6 +1413,21 @@ function BOComptes() {
                               🔎 {doc.verification.nom}
                             </a>
                           )}
+                          {doc.verification?.autre && (
+                            <a href={doc.verification.autre.url} target="_blank" rel="noopener noreferrer"
+                               style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, borderRadius:6, padding:"4px 8px", textDecoration:"none", whiteSpace:"nowrap" }}>
+                              🔎 {doc.verification.autre.nom}
+                            </a>
+                          )}
+                          {/* La référence donnée par le prestataire (09/11/2026) : du
+                              texte à recopier dans le service officiel, jamais un lien. */}
+                          {doc.reference_verification && (
+                            <button onClick={()=>{ navigator.clipboard?.writeText(doc.reference_verification).then(()=>showToast("Référence copiée", "success"), e=>console.error("[bo] copie de la référence :", e?.message)); }}
+                              title="Copier, puis coller dans le service officiel"
+                              style={{ fontSize:10, color:"rgba(255,255,255,0.85)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:6, padding:"4px 8px", cursor:"pointer", fontFamily:"monospace" }}>
+                              Réf. : {doc.reference_verification} 📋
+                            </button>
+                          )}
                           {!doc.isVirtual && doc.regleValidite && doc.regleValidite.mois !== null && (
                             <input type="date" defaultValue={doc.expires_at ? String(doc.expires_at).slice(0,10) : ""}
                               title={doc.regleValidite.note || "Date de fin de validité"}

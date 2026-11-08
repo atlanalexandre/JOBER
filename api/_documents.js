@@ -235,7 +235,8 @@ export const VERIFICATIONS_OFFICIELLES = {
   diplomes: {
     nom: "Vérifier un diplôme (QR code)",
     url: "https://siec.education.fr/candidats/demarches/nouveau/verification-diplome",
-    mode: "Depuis 2025, les diplômes de l'Éducation nationale — CAP, BTS, bac, examens professionnels — portent un QR code. L'application CycladesVerif en confirme l'authenticité en quelques secondes.",
+    mode: "Depuis 2025, les diplômes de l'Éducation nationale — CAP, BTS, bac, examens professionnels — portent un QR code. L'application CycladesVerif en confirme l'authenticité en quelques secondes. Pour un diplôme plus ancien, la clé de vérification que le prestataire a pu donner (« Référence » à côté) s'ouvre sur diplome.gouv.fr.",
+    autre: { nom: "diplome.gouv.fr", url: "https://diplome.gouv.fr/" },
   },
 };
 

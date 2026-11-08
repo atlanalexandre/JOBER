@@ -203,6 +203,21 @@ test("garde d'enfants : l'extrait de casier judiciaire s'enregistre, et l'accès
   expect(ouvert.statut, ouvert.texte.slice(0, 200)).toBe(200);
 });
 
+test("la référence d'un titre s'ajoute au justificatif déposé, jamais une adresse", async () => {
+  // Décision d'Alexandre du 09/11/2026 — migration 2026-11-09_documents_reference_verification.sql.
+  const p = await prestataireOperationnel();
+  const avant = await api("/api/notify-doc", { docType: "diplomes", referenceVerification: "CAR-075-2031-01-15" }, p.jeton);
+  expect(avant.statut, "sans justificatif déposé").toBe(409);
+  await deposer(p, "diplomes");
+  const lien = await api("/api/notify-doc", { docType: "diplomes", referenceVerification: "https://faux.fr/carte" }, p.jeton);
+  expect(lien.statut, "une adresse est refusée").toBe(400);
+  const ok = await api("/api/notify-doc", { docType: "diplomes", referenceVerification: "CAR-075-2031-01-15" }, p.jeton);
+  expect(ok.statut, ok.texte.slice(0, 200)).toBe(200);
+  const [d] = await sql(`select reference_verification, verified from documents where prestataire_id = '${p.id}' and type = 'diplomes'`);
+  expect(d.reference_verification).toBe("CAR-075-2031-01-15");
+  expect(d.verified, "une référence ne vaut pas vérification").toBe(false);
+});
+
 test("ALANE écrit à un prestataire, à tout moment : e-mail ET message dans l'application", async () => {
   // Décision du 28/09/2026 : seule l'équipe ALANE peut écrire à un prestataire une
   // fois la prestation finie. Le « Contacter » du back-office n'envoyait qu'un e-mail.
