@@ -117,7 +117,7 @@ export function courrielReference({ prenom, initiale, entreprise, metier, debut,
         <a href="${esc(lien)}" style="background:#4F46E5;color:#ffffff;padding:13px 26px;border-radius:10px;text-decoration:none;font-weight:700">Répondre</a>
       </p>
       <p style="color:#666;font-size:13px">Vous ne connaissez pas cette personne ? Indiquez-le simplement : c'est tout aussi utile. Le lien est valable ${DUREE_JETON_JOURS} jours et ne sert qu'une fois.</p>
-      <p style="color:#888;font-size:12px">Vos nom et adresse nous ont été donnés par cette personne, avec votre accord déclaré. ALANE ne s'en sert que pour cette vérification et les supprime avec le compte du prestataire. Pour toute question : support@alane.fr.</p>
+      <p style="color:#888;font-size:12px">Vos nom et adresse nous ont été donnés par cette personne, avec votre accord déclaré. ALANE ne s'en sert que pour vérifier l'expérience déclarée (intérêt légitime) et les supprime avec le compte du prestataire. Vous pouvez vous y opposer, ou demander l'accès à vos données ou leur suppression, à rgpd@alane.fr — détail dans notre politique de confidentialité (article 9 bis), sur www.alane.fr.</p>
     `),
   };
 }

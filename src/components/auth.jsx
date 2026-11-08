@@ -950,8 +950,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { title:"Données collectées", text:"Identité (nom, email, téléphone), documents professionnels (SIRET, pièce d'identité), données de paiement (via Stripe), géolocalisation (avec votre consentement)." },
               { title:"Utilisation", text:"Gestion de votre compte, mise en relation client/prestataire, traitement des paiements, amélioration des services, lutte contre la fraude." },
               { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale). Documents d'identité supprimés après vérification." },
-              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité, opposition. Contact : privacy@alane.fr" },
-              { title:"Partage", text:"Vos données ne sont jamais vendues. Partagées uniquement avec Stripe (paiements) et sur réquisition judiciaire." },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité, opposition. Contact : rgpd@alane.fr" },
+              { title:"Partage", text:"Vos données ne sont jamais vendues. Elles ne sont confiées qu'aux prestataires techniques d'ALANE — Stripe (paiements), Supabase (hébergement), Vercel (application), Resend (e-mails), Brevo (SMS) — et transmises sur réquisition judiciaire. Le détail figure dans la politique de confidentialité et à l'article 14 des CGPS." },
             ].map((s,i)=>(
               <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
@@ -1359,7 +1359,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               { title:"Données collectées", text:"Identité (nom, email, téléphone), données de facturation (IBAN), géolocalisation (avec votre consentement)." },
               { title:"Utilisation", text:"Gestion de votre compte, mise en relation avec les prestataires, traitement des paiements." },
               { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale)." },
-              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité. Contact : privacy@alane.fr" },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité, opposition. Contact : rgpd@alane.fr" },
             ].map((s,i)=>(
               <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
