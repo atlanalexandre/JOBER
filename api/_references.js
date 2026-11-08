@@ -23,10 +23,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createHash, randomBytes } from "node:crypto";
-import { emailHtml, esc } from "./_email.js";
+import { emailHtml, esc, sendEmail } from "./_email.js";
+import { lireTout } from "./_lignes.js";
+import { appUrl } from "./_url.js";
 
 export const MAX_REFERENCES = 5;
 export const DUREE_JETON_JOURS = 30;
+/** Une relance, une seule, si la référence n'a pas répondu au bout de 7 jours. */
+export const RELANCE_APRES_JOURS = 7;
 
 /** Les messageries grand public : une adresse d'entreprise y est rare. */
 const DOMAINES_PERSONNELS = new Set([
@@ -99,12 +103,13 @@ export function alerteDe({ contactEmail, autresPrestataires = 0 }) {
 export const periodeDe = (debut, fin) => (fin && fin !== debut ? `de ${debut} à ${fin}` : fin === debut ? `en ${debut}` : `depuis ${debut}`);
 
 /** Le message à la référence : tout y vient du serveur, et tout est échappé. */
-export function courrielReference({ prenom, initiale, entreprise, metier, debut, fin, lien }) {
+export function courrielReference({ prenom, initiale, entreprise, metier, debut, fin, lien, relance = false }) {
   const qui = `${prenom || "Un prestataire"}${initiale ? ` ${initiale}.` : ""}`;
   return {
-    subject: `${qui} vous cite comme référence — une minute pour confirmer ?`,
+    subject: `${relance ? "Rappel — " : ""}${qui} vous cite comme référence — une minute pour confirmer ?`,
     html: emailHtml(`
       <p>Bonjour,</p>
+      ${relance ? "<p><em>Nous vous avions écrit il y a une semaine ; voici un nouveau lien, le précédent n'est plus valable. C'est notre seul rappel.</em></p>" : ""}
       <p><strong>${esc(qui)}</strong> s'inscrit comme prestataire indépendant sur ALANE, une plateforme de mise en relation avec des professionnels vérifiés.
       Il ou elle indique avoir travaillé chez <strong>${esc(entreprise)}</strong> comme <strong>${esc(metier)}</strong>, ${esc(periodeDe(debut, fin))}, et vous cite comme référence.</p>
       <p>Pourriez-vous le confirmer ? Trois questions, une minute :</p>
@@ -132,3 +137,67 @@ export function validerReponse(corps) {
 /** Le lien a-t-il dépassé sa durée ? */
 export const jetonExpire = (createdAt, maintenant = Date.now()) =>
   !(new Date(createdAt).getTime() + DUREE_JETON_JOURS * 86400000 > maintenant);
+
+/**
+ * Cette référence attend-elle sa relance ? En attente, envoyée une première
+ * fois il y a 7 jours au moins, jamais relancée, lien encore valable.
+ *
+ * « Jamais relancée » se lit sans colonne de plus : la relance repousse
+ * `envoyee_at`, qui s'écarte alors de plus d'un jour de `created_at`.
+ */
+export function aRelancer(ref, maintenantMs = Date.now()) {
+  if (ref?.statut !== "en_attente" || !ref.envoyee_at || !ref.created_at) return false;
+  const envoi = new Date(ref.envoyee_at).getTime(), creation = new Date(ref.created_at).getTime();
+  if (!(envoi - creation < 86400000)) return false;
+  if (maintenantMs - envoi < RELANCE_APRES_JOURS * 86400000) return false;
+  return !jetonExpire(ref.created_at, maintenantMs);
+}
+
+/**
+ * La relance du matin (tâche « documents » de cron-reset-monthly). Le jeton
+ * n'étant conservé que par son empreinte, l'ancien lien ne peut pas être
+ * renvoyé : un nouveau le remplace, et l'ancien cesse de valoir. Si l'e-mail
+ * ne part pas, l'ancien est rétabli — personne ne se retrouve sans lien.
+ * @returns {Promise<{relancees:number}>}
+ */
+export async function relancerReferences({ supabaseUrl, headers, maintenantMs = Date.now() }) {
+  const bilan = { relancees: 0 };
+  const table = `${supabaseUrl}/rest/v1/references_experience`;
+  const avant = new Date(maintenantMs - RELANCE_APRES_JOURS * 86400000).toISOString();
+  const candidates = (await lireTout(`${table}?statut=eq.en_attente&envoyee_at=lt.${encodeURIComponent(avant)}`
+    + "&select=id,prestataire_id,entreprise,metier,annee_debut,annee_fin,contact_email,jeton_hash,envoyee_at,created_at", headers))
+    .filter(r => aRelancer(r, maintenantMs));
+  const ecrire = (ref, filtre, corps) => fetch(`${table}?id=eq.${ref.id}${filtre}`, {
+    method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" }, body: JSON.stringify(corps),
+  });
+  for (const ref of candidates.slice(0, 50)) {
+    try {
+      const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ref.prestataire_id}`, { headers });
+      const u = await ur.json().catch(() => ({}));
+      if (!ur.ok) throw new Error(`compte ${ref.prestataire_id} illisible (${ur.status})`);
+      const { jeton, hash } = genererJeton();
+      const maintenantIso = new Date(maintenantMs).toISOString();
+      // Conditionnée à l'ancienne empreinte : deux passages simultanés ne
+      // relancent pas deux fois.
+      const wr = await ecrire(ref, `&statut=eq.en_attente&jeton_hash=eq.${ref.jeton_hash}`, { jeton_hash: hash, envoyee_at: maintenantIso });
+      const lignes = await wr.json().catch(() => null);
+      if (!wr.ok) throw new Error(`nouveau lien non enregistré (${wr.status})`);
+      if (!Array.isArray(lignes) || lignes.length === 0) continue;
+      const meta = u?.user_metadata || {};
+      const courriel = courrielReference({
+        prenom: String(meta.prenom || "").trim(), initiale: String(meta.nom || "").trim().charAt(0).toUpperCase(),
+        entreprise: ref.entreprise, metier: ref.metier, debut: ref.annee_debut, fin: ref.annee_fin,
+        lien: `${appUrl()}/reference?t=${jeton}`,
+        relance: true,
+      });
+      const envoye = await sendEmail({ to: ref.contact_email, subject: courriel.subject, html: courriel.html });
+      if (envoye === true) { bilan.relancees++; continue; }
+      const rr = await ecrire(ref, `&jeton_hash=eq.${hash}`, { jeton_hash: ref.jeton_hash, envoyee_at: ref.envoyee_at });
+      console.error(`[references] relance de ${ref.id} NON envoyée (${envoye}) — ${rr.ok ? "ancien lien rétabli" : `ancien lien NON rétabli (${rr.status})`}`);
+    } catch (e) {
+      console.error(`[references] relance de ${ref.id} reportée :`, e.message);
+    }
+  }
+  if (candidates.length) console.log(`[references] ${bilan.relancees} relance(s) sur ${candidates.length} référence(s) sans réponse`);
+  return bilan;
+}

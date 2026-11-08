@@ -1,5 +1,6 @@
 // Références d'expérience confirmées par e-mail (09/11/2026, décision d'Alexandre).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   validerReference, validerReponse, alerteDe, courrielReference, empreinte, genererJeton, jetonExpire, MAX_REFERENCES,
 } from "../../../api/_references.js";
@@ -142,5 +143,61 @@ describe("/api/references", () => {
     base.parJeton = [{ id: "r1", prestataire_id: "p1", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null, statut: "en_attente", created_at: new Date().toISOString() }];
     const r = await appel({ action: "lire", jeton: "x".repeat(43) });
     expect(r.corps).toEqual({ prenom: "Léa", initiale: "D", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null });
+  });
+});
+
+// La relance, une seule, 7 jours après l'envoi (09/11/2026).
+describe("la relance d'une référence sans réponse", async () => {
+  const { aRelancer, relancerReferences, RELANCE_APRES_JOURS, empreinte: emp } = await import("../../../api/_references.js");
+  const J = 86400000, maintenant = Date.parse("2026-11-20T07:00:00Z");
+  const ref = (x = {}) => ({ id: "r1", prestataire_id: "p1", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null,
+    contact_email: "c@ent.fr", jeton_hash: "ancien", statut: "en_attente",
+    created_at: new Date(maintenant - 8 * J).toISOString(), envoyee_at: new Date(maintenant - 8 * J + 5000).toISOString(), ...x });
+
+  it(`relancée après ${RELANCE_APRES_JOURS} jours, une seule fois, jamais après réponse ni expiration`, () => {
+    expect(aRelancer(ref(), maintenant)).toBe(true);
+    expect(aRelancer(ref({ envoyee_at: new Date(maintenant - 3 * J).toISOString(), created_at: new Date(maintenant - 3 * J).toISOString() }), maintenant)).toBe(false);
+    expect(aRelancer(ref({ envoyee_at: new Date(maintenant - 1 * J).toISOString() }), maintenant), "déjà relancée").toBe(false);
+    expect(aRelancer(ref({ statut: "confirmee" }), maintenant)).toBe(false);
+    expect(aRelancer(ref({ envoyee_at: null }), maintenant), "jamais partie").toBe(false);
+    expect(aRelancer(ref({ created_at: new Date(maintenant - 31 * J).toISOString(), envoyee_at: new Date(maintenant - 31 * J).toISOString() }), maintenant)).toBe(false);
+  });
+
+  const simuler = (envoi = true) => {
+    const appels = [];
+    sendEmail.mockReset(); sendEmail.mockImplementation(async () => envoi);
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url), m = o.method || "GET";
+      appels.push({ u, m, corps: o.body ? JSON.parse(o.body) : null });
+      const ok = (x) => new Response(JSON.stringify(x), { status: 200 });
+      if (u.includes("references_experience?statut=eq.en_attente")) return ok([ref()]);
+      if (u.includes("/auth/v1/admin/users/")) return ok({ user_metadata: { prenom: "Léa", nom: "Durand" } });
+      if (m === "PATCH") return ok([{ id: "r1" }]);
+      return ok([]);
+    }));
+    return appels;
+  };
+  beforeEach(() => { vi.spyOn(console, "error").mockImplementation(() => {}); vi.spyOn(console, "log").mockImplementation(() => {}); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it("un nouveau lien remplace l'ancien, conditionné à l'ancienne empreinte, et le message dit « Rappel »", async () => {
+    const appels = simuler(true);
+    expect(await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant })).toEqual({ relancees: 1 });
+    const p = appels.find(a => a.m === "PATCH");
+    expect(p.u).toContain("jeton_hash=eq.ancien");
+    expect(p.corps.envoyee_at).toBe(new Date(maintenant).toISOString());
+    const envoi = sendEmail.mock.calls.at(-1)[0];
+    expect(envoi.subject).toMatch(/^Rappel/);
+    expect(emp(envoi.html.match(/reference\?t=([A-Za-z0-9_-]+)/)[1])).toBe(p.corps.jeton_hash);
+  });
+  it("e-mail non parti : l'ancien lien est rétabli, la référence peut toujours répondre", async () => {
+    const appels = simuler(false);
+    expect((await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant })).relancees).toBe(0);
+    const retour = appels.filter(a => a.m === "PATCH")[1];
+    expect(retour.corps).toEqual({ jeton_hash: "ancien", envoyee_at: ref().envoyee_at });
+  });
+  it("branchée sur le balayage du matin, après le relevé de la garantie, même s'il échoue", () => {
+    const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
+    expect(cron.match(/await relancerLesReferences\(\);/g)).toHaveLength(2);
   });
 });

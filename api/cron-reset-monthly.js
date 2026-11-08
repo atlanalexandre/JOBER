@@ -29,6 +29,7 @@ import { cleVersement, virementDejaEmis, avisDeVersement } from "./_virement.js"
 import { rafraichirStatutCompte } from "./_connect.js";
 import { appliquerGarantie, estDebutDeMois, noterReleves } from "./_garantie.js";
 import { recompenserInvitations } from "./_invitation.js";
+import { relancerReferences } from "./_references.js";
 
 /**
  * Un refus de virement qui passera de lui-même : solde disponible
@@ -1710,6 +1711,14 @@ export default async function handler(req, res) {
       }
     };
 
+    // Relance des références d'expérience restées sans réponse (09/11/2026),
+    // avec le balayage du matin. Comme le relevé : jamais au détriment du
+    // reste, et une panne n'est que journalisée.
+    const relancerLesReferences = async () => {
+      try { await relancerReferences({ supabaseUrl: SUPABASE_URL, headers }); }
+      catch (e) { console.error("[references] relance interrompue :", e.message); }
+    };
+
     // Déclarés ici, dans le bloc qui s'en sert.
     const RESEND_API_KEY_DOCS = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM_DOCS    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -2082,12 +2091,14 @@ export default async function handler(req, res) {
 
       await balayerModeration();
       await releverGarantie();
+      await relancerLesReferences();
 
       return res.status(200).json({ success: true, datees: docs.length, prevenus, suspendus });
     } catch (e) {
       console.error("[documents] balayage interrompu :", e.message);
       await balayerModeration();
       await releverGarantie();
+      await relancerLesReferences();
       return res.status(500).json({ error: "Balayage des documents interrompu" });
     }
   }
