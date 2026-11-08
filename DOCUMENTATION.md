@@ -122,6 +122,15 @@ par jour, clé unique `(prestataire_id, jour)`, écrite par le serveur seul — 
 `2026-11-05_garantie_releve_quotidien.sql`, passée en recette puis en production le 05/11/2026) :
 le relevé du matin qui prouve que l'abonné était disponible tout le mois.
 
+**`references_experience`** (décision d'Alexandre du 09/11/2026 — migration
+`2026-11-09_references_experience.sql`, **à passer en recette puis en production**) : les
+références d'expérience que le prestataire cite (`siret`, `entreprise` — le nom lu dans SIRENE,
+jamais celui qu'il tape —, `metier`, `annee_debut`/`annee_fin`, `contact_nom`, `contact_email`),
+l'empreinte sha-256 du jeton envoyé par e-mail (`jeton_hash`), le `statut` (`en_attente` |
+`confirmee` | `refusee` | `expiree`), l'`alerte` anti-fraude, la `reponse` (jsonb) et les dates.
+RLS : le prestataire **lit** ses lignes, **sans** `reponse`, `alerte` ni `jeton_hash` (droits par
+colonne) ; **aucune écriture** au navigateur. Supprimée avec le compte (cascade).
+
 **Le CV est obligatoire, et vit dans `profiles.cv`** (29/09/2026, décision d'Alexandre). Il
 était facultatif et rangé dans `user_metadata.cv`, donc dans le jeton de connexion (CLAUDE.md
 §1.1) : un CV imposé à tous, avec ses descriptions libres, n'avait rien à y faire. La migration
@@ -1470,6 +1479,7 @@ Les 78 fichiers de `/api` — 21 points d'entrée et 57 modules partagés préfi
 | `bo-action.js` | Toutes les actions du backoffice |
 | `prestataires.js` | Catalogue des prestataires ; `?action=places` (offre de lancement) ; `?action=paliers_cashback` (23/10/2026) : seuils et taux de `platform_settings.cashback_rates`, que les clients ne peuvent pas lire directement — `chargerPaliersCashback()` (`ui.jsx`) les reporte dans `CASHBACK_TIERS` au démarrage (`appliquerPaliersCashback()`, `plans.js`), pour que les écrans affichent le taux réellement crédité et non la grille du code |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
+| `references.js` | **Références d'expérience confirmées par e-mail** (09/11/2026). `ajouter` (prestataire connecté, rôle lu sur `profiles`) : 5 au plus, SIRET contrôlé dans SIRENE (entreprise active), contact différent du prestataire, doublon refusé ; alerte au back-office pour une adresse personnelle ou un contact qui sert déjà à d'autres prestataires ; e-mail construit par le serveur seul (nom officiel de l'entreprise, métier du catalogue) — s'il ne part pas, la ligne est retirée. `lire` / `repondre` (publics, par jeton à usage unique, 30 jours) : la page `public/reference.html` ; la réponse ne s'écrit qu'une fois (`statut=eq.en_attente`). Règles dans `_references.js`. Le catalogue (`prestataires.js`) en donne le **nombre** confirmé (`references_confirmees`), affiché sur le profil ; le back-office (`list_references`) en montre le détail |
 | `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
@@ -5355,6 +5365,13 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 ---
 
 ## 7. Navigation et URLs
+
+**`/reference` — la page de réponse d'une référence** (09/11/2026) : `public/reference.html` et
+`public/reference.js`, **hors de l'application** — la personne citée n'a pas de compte, et
+l'écran n'entre donc ni dans `SCREEN_TO_PATH` ni dans les contrôles de rôle. Le script est un
+fichier à part : la politique de sécurité (`script-src 'self'`) refuse le JavaScript écrit dans la
+page. Tout le texte affiché passe par `textContent`. Le lien porte un jeton à usage unique
+(`?t=…`), valable 30 jours ; voir `api/references.js`.
 
 **La barre du bas reste sur les écrans secondaires du prestataire** (13/10/2026, décision
 d'Alexandre) : Abonnement, Modifier mon profil, Dépôt d'un document, Micro-entreprise, Messagerie,

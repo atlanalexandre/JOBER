@@ -2013,6 +2013,113 @@ export function CarteVirements({ compact = false }) {
   );
 }
 
+const STATUTS_REFERENCE = {
+  en_attente: { texte: "⏳ En attente de réponse", couleur: "#F0B429" },
+  confirmee:  { texte: "✅ Confirmée",              couleur: "#2ECC8F" },
+  refusee:    { texte: "❌ Non confirmée",          couleur: "#F25E5E" },
+  expiree:    { texte: "⌛ Sans réponse",           couleur: "#8890A8" },
+};
+
+/**
+ * Les références d'expérience (09/11/2026, décision d'Alexandre) : pour les
+ * métiers sans diplôme, l'expérience du CV se vérifie par une personne citée,
+ * à qui ALANE écrit elle-même. Une réponse positive donne « Référence
+ * confirmée ». La lecture passe par la RLS (ses propres lignes, sans la
+ * réponse détaillée) ; l'ajout et l'envoi, par /api/references.
+ */
+function MesReferences() {
+  const [refs, setRefs] = useState(null);
+  const [indispo, setIndispo] = useState(false);
+  const [metiers, setMetiers] = useState([]);
+  const [ouvert, setOuvert] = useState(false);
+  const vide = { siret:"", metier:"", annee_debut:"", annee_fin:"", contact_nom:"", contact_email:"", accord:false };
+  const [f, setF] = useState(vide);
+  const [etat, setEtat] = useState({ envoi:false, message:null, ok:false });
+
+  const charger = async () => {
+    const { data:u } = await supabase.auth.getUser();
+    setMetiers([...new Set(metiersDeclares(u?.user?.user_metadata).map(m => (typeof m === "string" ? m : m?.metier)).filter(Boolean))]);
+    const { data, error } = await supabase.from("references_experience")
+      .select("id,entreprise,metier,annee_debut,annee_fin,contact_nom,statut,created_at").order("created_at");
+    if (error) { console.error("[references] lecture :", error.message); setIndispo(true); return; }
+    setRefs(data || []);
+  };
+  useEffect(() => { charger(); }, []);
+
+  const envoyer = async () => {
+    setEtat({ envoi:true, message:null, ok:false });
+    try {
+      const { data } = await supabase.auth.getSession();
+      const jeton = data?.session?.access_token;
+      if (!jeton) throw new Error("Session expirée — reconnectez-vous.");
+      const r = await fetch("/api/references", { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${jeton}` },
+        body: JSON.stringify({ action:"ajouter", ...f, annee_debut:Number(f.annee_debut), annee_fin:f.annee_fin ? Number(f.annee_fin) : null }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `La référence n'a pas pu être envoyée (${r.status}).`);
+      setEtat({ envoi:false, message:`Demande envoyée à votre référence chez ${j.entreprise}.`, ok:true });
+      setF(vide); setOuvert(false); charger();
+    } catch (e) {
+      setEtat({ envoi:false, message:e.message, ok:false });
+    }
+  };
+
+  const champ = { width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:10, padding:"9px 11px", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:8 };
+  if (indispo) return null;
+  return (
+    <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", margin:"14px 0 10px" }}>
+      <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>🤝 Mes références</div>
+      <div style={{ color:C.textSub, fontSize:11.5, lineHeight:1.5, marginBottom:10 }}>
+        Facultatif. Citez un responsable d'une entreprise où vous avez travaillé : ALANE lui écrit, et sa confirmation s'affiche sur votre profil (« Référence confirmée »). Prévenez-le avant.
+      </div>
+      {(refs || []).map(x => {
+        const st = STATUTS_REFERENCE[x.statut] || STATUTS_REFERENCE.en_attente;
+        return (
+          <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"8px 0", borderTop:`1px solid ${C.border}` }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ color:C.text, fontSize:12.5, fontWeight:600 }}>{x.entreprise}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{x.metier} · {x.annee_fin && x.annee_fin !== x.annee_debut ? `${x.annee_debut}–${x.annee_fin}` : x.annee_debut} · {x.contact_nom}</div>
+            </div>
+            <span style={{ color:st.couleur, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>{st.texte}</span>
+          </div>
+        );
+      })}
+      {etat.message && <div style={{ margin:"8px 0", fontSize:11.5, color: etat.ok ? C.success : "#F25E5E" }}>{etat.message}</div>}
+      {refs && refs.length < 5 && !ouvert && (
+        <button onClick={()=>{ setOuvert(true); setEtat({ envoi:false, message:null, ok:false }); }}
+          style={{ marginTop:8, background:"none", border:`1px solid ${C.violet}66`, color:C.violet, borderRadius:10, padding:"8px 12px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          + Ajouter une référence
+        </button>
+      )}
+      {ouvert && (
+        <div style={{ marginTop:10 }}>
+          <input style={champ} inputMode="numeric" placeholder="SIRET de l'entreprise (14 chiffres)" value={f.siret} onChange={e=>setF({...f, siret:e.target.value})} />
+          <select style={champ} value={f.metier} onChange={e=>setF({...f, metier:e.target.value})}>
+            <option value="">Métier exercé…</option>
+            {metiers.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <div style={{ display:"flex", gap:8 }}>
+            <input style={champ} inputMode="numeric" placeholder="Année de début" value={f.annee_debut} onChange={e=>setF({...f, annee_debut:e.target.value})} />
+            <input style={champ} inputMode="numeric" placeholder="Année de fin (vide = en cours)" value={f.annee_fin} onChange={e=>setF({...f, annee_fin:e.target.value})} />
+          </div>
+          <input style={champ} placeholder="Nom de votre responsable" value={f.contact_nom} onChange={e=>setF({...f, contact_nom:e.target.value})} />
+          <input style={champ} type="email" placeholder="Son adresse e-mail professionnelle" value={f.contact_email} onChange={e=>setF({...f, contact_email:e.target.value})} />
+          <label style={{ display:"flex", gap:8, alignItems:"flex-start", color:C.textSub, fontSize:11.5, lineHeight:1.45, margin:"4px 0 10px" }}>
+            <input type="checkbox" checked={f.accord} onChange={e=>setF({...f, accord:e.target.checked})} />
+            Cette personne m'a donné son accord pour qu'ALANE la contacte.
+          </label>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={()=>setOuvert(false)} style={{ flex:1, background:"none", border:`1px solid ${C.border}`, color:C.textSub, borderRadius:10, padding:"9px", fontSize:12, cursor:"pointer" }}>Annuler</button>
+            <button onClick={envoyer} disabled={etat.envoi || !f.accord}
+              style={{ flex:2, background:C.violet, color:"#fff", border:"none", borderRadius:10, padding:"9px", fontWeight:700, fontSize:12, cursor:"pointer", opacity:(etat.envoi || !f.accord) ? 0.5 : 1 }}>
+              {etat.envoi ? "Envoi…" : "Envoyer la demande"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * La référence d'un titre : numéro de carte professionnelle (CNAPS, éducateur
  * sportif…) ou clé de vérification diplome.gouv.fr. Facultative ; elle permet
@@ -4769,6 +4876,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             }} />
           ))}
           {uploadedDocIds.includes("diplomes") && !verifiedDocIds.includes("diplomes") && <ChampReferenceTitre />}
+          <MesReferences />
         </>}
         {vue==="prestations" && sousPrestations==="terminees" && (()=>{
           // `disputed` n'apparaît plus ici : un litige en cours vit dans

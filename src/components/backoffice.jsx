@@ -1311,6 +1311,9 @@ function BOComptes() {
                     </div>
                   </div>
 
+                  {/* Références d'expérience (09/11/2026), chargées avec les pièces. */}
+                  {docs[p.id] && <ReferencesBO profileId={p.id} />}
+
                   {/* Checklist docs requis */}
                   {docs[p.id] && (() => {
                     const REQ = p.role === "client" && p.type_compte === "entreprise"
@@ -2397,6 +2400,42 @@ export function BOVersements() {
 // suspension trente jours après l'échéance — reste une promesse sans effet.
 // Le titre de séjour aussi : son expiration retire l'accès (EXPIRATION_BLOQUANTE).
 const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour", "casier"];
+
+const STATUTS_REF_BO = { en_attente:"⏳ en attente", confirmee:"✅ confirmée", refusee:"❌ non confirmée", expiree:"⌛ sans réponse" };
+
+/**
+ * Les références d'expérience d'un prestataire (09/11/2026) : la réponse
+ * détaillée et les alertes anti-fraude, que le prestataire ne voit pas. Une
+ * référence confirmée AIDE à juger un dossier ; elle ne prouve pas seule.
+ */
+function ReferencesBO({ profileId }) {
+  const [refs, setRefs] = useState(null);
+  useEffect(() => {
+    boFetch({ action:"list_references", profileId })
+      .then(r => r.json().then(j => (r.ok && Array.isArray(j) ? j : (console.error("[bo] références :", j?.error || r.status), []))))
+      .then(setRefs, e => { console.error("[bo] références :", e?.message); setRefs([]); });
+  }, [profileId]);
+  if (!refs || refs.length === 0) return null;
+  return (
+    <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, padding:"8px 10px", marginBottom:10 }}>
+      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>🤝 Références ({refs.filter(x=>x.statut==="confirmee").length}/{refs.length} confirmées)</div>
+      {refs.map(x => (
+        <div key={x.id} style={{ fontSize:11, color:"rgba(255,255,255,0.8)", padding:"5px 0", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+          <div><strong>{x.entreprise}</strong> (SIRET {x.siret}) · {x.metier} · {x.annee_debut}{x.annee_fin ? `–${x.annee_fin}` : "–…"} · {STATUTS_REF_BO[x.statut] || x.statut}</div>
+          <div style={{ color:"rgba(255,255,255,0.55)" }}>{x.contact_nom} · {x.contact_email}{x.envoyee_at ? "" : " · e-mail non envoyé"}</div>
+          {x.alerte && <div style={{ color:"#F0B429", fontWeight:700 }}>⚠️ {x.alerte}</div>}
+          {x.reponse && (
+            <div style={{ color:"rgba(255,255,255,0.7)", marginTop:2 }}>
+              Réponse{x.reponse.repondant ? ` de ${x.reponse.repondant}` : ""} : {x.reponse.a_travaille ? "a travaillé avec lui" : "ne confirme pas"}
+              {x.reponse.recommande === true ? " · recommande" : x.reponse.recommande === false ? " · ne recommande pas" : ""}
+              {x.reponse.commentaire ? ` — « ${x.reponse.commentaire} »` : ""}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 async function demanderValidite(type) {
   if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };
