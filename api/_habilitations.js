@@ -1,12 +1,14 @@
 // Lecture, côté serveur, des justificatifs de qualification — pour savoir quels
 // métiers réglementés un prestataire peut réellement exercer (voir
 // `peutExercer()` de api/_qualifications.js).
-import { peutExercer, qualificationRequise } from "./_qualifications.js";
+import { peutExercer, qualificationRequise, casierExige } from "./_qualifications.js";
 
 /**
- * Les justificatifs (`documents` de type diplomes) de plusieurs prestataires.
+ * Les justificatifs (`documents` de type diplomes) de plusieurs prestataires,
+ * et leur extrait de casier judiciaire (`casier`, 09/11/2026), rangé sous la
+ * clé `casier` de la même entrée.
  *
- * @returns {Promise<Map<string, {verified:boolean, titres_couverts:string[]|null}>|null>}
+ * @returns {Promise<Map<string, {verified:boolean, titres_couverts:string[]|null, casier?:{verified:boolean, expires_at:string|null}}>|null>}
  *          null si la lecture échoue : l'appelant refuse alors les métiers
  *          réglementés — on ne propose pas un agent de sécurité sans savoir.
  */
@@ -21,14 +23,19 @@ export async function justificatifsDe(ids, supabaseUrl, headers) {
     // réglementés disparaissaient pour tout le monde (relecture du 30/09/2026).
     for (let i = 0; i < liste.length; i += 100) {
       const lot = liste.slice(i, i + 100);
-      const r = await fetch(`${supabaseUrl}/rest/v1/documents?type=eq.diplomes`
-        + `&prestataire_id=in.(${lot.join(",")})&select=prestataire_id,verified,titres_couverts`, { headers });
+      const r = await fetch(`${supabaseUrl}/rest/v1/documents?type=in.(diplomes,casier)`
+        + `&prestataire_id=in.(${lot.join(",")})&select=prestataire_id,type,verified,titres_couverts,expires_at`, { headers });
       const lignes = await r.json().catch(() => null);
       if (!r.ok || !Array.isArray(lignes)) {
         console.error(`[habilitations] justificatifs illisibles (${r.status}) — métiers réglementés refusés.`);
         return null;
       }
-      for (const l of lignes) carte.set(l.prestataire_id, l);
+      for (const l of lignes) {
+        const entree = carte.get(l.prestataire_id) || { prestataire_id: l.prestataire_id, verified: false, titres_couverts: null };
+        if (l.type === "casier") entree.casier = { verified: l.verified === true, expires_at: l.expires_at || null };
+        else Object.assign(entree, { verified: l.verified, titres_couverts: l.titres_couverts });
+        carte.set(l.prestataire_id, entree);
+      }
     }
     return carte;
   } catch (e) {
@@ -42,7 +49,7 @@ export async function justificatifsDe(ids, supabaseUrl, headers) {
  * est réglementé — les autres ne coûtent rien.
  */
 export async function habilitePour(prestataireId, metier, supabaseUrl, headers) {
-  if (!metier || !qualificationRequise(metier)) return true;
+  if (!metier || (!qualificationRequise(metier) && !casierExige(metier))) return true;
   const carte = await justificatifsDe([prestataireId], supabaseUrl, headers);
   if (!carte) return false;
   return peutExercer(metier, carte.get(prestataireId) || null);
@@ -50,7 +57,7 @@ export async function habilitePour(prestataireId, metier, supabaseUrl, headers) 
 
 /** Même question, la carte des justificatifs déjà lue (listes de prestataires). */
 export function habiliteDans(carte, prestataireId, metier) {
-  if (!metier || !qualificationRequise(metier)) return true;
+  if (!metier || (!qualificationRequise(metier) && !casierExige(metier))) return true;
   if (!carte) return false;
   return peutExercer(metier, carte.get(prestataireId) || null);
 }

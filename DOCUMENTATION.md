@@ -1038,7 +1038,19 @@ l'accès aux propositions est suspendu 30 jours après (`missions_enabled = fals
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
 terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
-`autre`, `titre_sejour`. **Un seul document par prestataire et par type** (contrainte unique).
+`autre`, `titre_sejour`, `casier`. **Un seul document par prestataire et par type** (contrainte unique).
+
+**`casier` — l'extrait de casier judiciaire** (bulletin n° 3 ; décision d'Alexandre du 09/11/2026,
+migration `2026-11-09_documents_casier_judiciaire.sql` — **à passer en recette puis en
+production**). ALANE l'exige — aucun texte ne l'impose — pour les métiers au contact d'enfants,
+`METIERS_CASIER` d'`api/_qualifications.js` : les deux gardes d'enfants, l'animateur club
+enfants, l'animateur périscolaire et le professeur particulier. Comme un titre professionnel, il
+ouvre le **métier** et non le compte : `peutExercer()` refuse ces métiers tant que l'extrait
+n'est pas vérifié ou qu'il a dépassé son échéance, que le back-office saisit à la vérification
+(un an après l'émission). `justificatifsDe()` d'`api/_habilitations.js` le lit avec le
+justificatif `diplomes`, sous la clé `casier`. `docsRequisPour()` ne le demande qu'à qui
+déclare un de ces métiers, et l'exige alors pour ouvrir l'accès. Les CGPS (art. 3) le disent
+depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`.
 
 **`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
 25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`, appliquée en production le

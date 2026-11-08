@@ -185,6 +185,24 @@ test("hors Union européenne : le titre de séjour s'enregistre, et l'accès n'o
   expect(ouvert.statut, ouvert.texte.slice(0, 200)).toBe(200);
 });
 
+test("garde d'enfants : l'extrait de casier judiciaire s'enregistre, et l'accès n'ouvre qu'une fois vérifié", async () => {
+  // Décision d'Alexandre du 09/11/2026 — migration 2026-11-09_documents_casier_judiciaire.sql.
+  const p = await prestataireOperationnel({ metier: "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)", secteur: "divers" });
+  expect(p.ouverture.statut, `accès sans extrait : ${p.ouverture.texte.slice(0, 200)}`).toBe(409);
+  expect(p.ouverture.texte).toContain("casier");
+
+  await deposer(p, "casier");
+  expect((await doc(p.id, "casier"))?.verified, "l'extrait est enregistré, en attente").toBe(false);
+  const encore = await bo("enable_missions", { profileId: p.id });
+  expect(encore.statut, "déposé mais pas vérifié : toujours fermé").toBe(409);
+
+  const [{ id }] = await sql(`select id from documents where prestataire_id = '${p.id}' and type = 'casier'`);
+  const v = await bo("verify_doc", { profileId: p.id, docId: id, expiresAt: "2027-11-09" });
+  expect(v.statut, v.texte.slice(0, 200)).toBe(200);
+  const ouvert = await bo("enable_missions", { profileId: p.id });
+  expect(ouvert.statut, ouvert.texte.slice(0, 200)).toBe(200);
+});
+
 test("ALANE écrit à un prestataire, à tout moment : e-mail ET message dans l'application", async () => {
   // Décision du 28/09/2026 : seule l'équipe ALANE peut écrire à un prestataire une
   // fois la prestation finie. Le « Contacter » du back-office n'envoyait qu'un e-mail.

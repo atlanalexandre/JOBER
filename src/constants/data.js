@@ -743,7 +743,7 @@ export const METIERS = Object.fromEntries(
 // Les qualifications obligatoires vivent dans `api/_qualifications.js` : le
 // back-office refuse d'ouvrir l'accès aux prestations sans le justificatif, et
 // cette règle-là s'applique côté serveur. Une copie ici aurait divergé.
-export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier } from "../../api/_qualifications.js";
+export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier, casierExige } from "../../api/_qualifications.js";
 
 // `DOCS_REQUIS` et `docsRequisPour()` vivent dans `api/_documents.js` : le
 // serveur en a besoin pour dire, dans le courriel de validation, exactement ce

@@ -459,3 +459,46 @@ describe("les métiers du 09/11/2026 : chacun sa règle", async () => {
     expect(qualificationRequise("Assistance informatique à domicile")).toBeNull();
   });
 });
+
+// L'extrait de casier judiciaire (09/11/2026) : il ouvre le MÉTIER, pas le compte.
+describe("l'extrait de casier judiciaire, pour les métiers au contact d'enfants", async () => {
+  const { casierExige, casierValide, peutExercer: peut } = await import("../../../api/_qualifications.js");
+  const { docsRequisPour, VALIDITE_DOCUMENTS } = await import("../../../api/_documents.js");
+  const { habiliteDans } = await import("../../../api/_habilitations.js");
+  const G3 = "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)";
+  const G0 = "Garde d'enfants de moins de 3 ans (agrément)";
+  const casierOk = { verified: true, expires_at: "2099-01-01" };
+  it("exigé pour la garde d'enfants, l'animation et le soutien scolaire — pas pour le ménage", () => {
+    for (const m of [G3, G0, "Animateur club enfants", "Animateur périscolaire (BAFA)", "Professeur particulier / Soutien scolaire"]) expect(casierExige(m), m).toBe(true);
+    expect(casierExige("Agent de propreté")).toBe(false);
+  });
+  it("sans extrait vérifié et valable, le métier reste fermé ; le ménage, lui, reste ouvert", () => {
+    expect(peut(G3, null)).toBe(false);
+    expect(peut(G3, { casier: { verified: false } })).toBe(false);
+    expect(peut(G3, { casier: { verified: true, expires_at: "2020-01-01" } })).toBe(false);
+    expect(peut(G3, { casier: casierOk })).toBe(true);
+    expect(habiliteDans(new Map(), "p1", G3)).toBe(false);
+    expect(habiliteDans(new Map(), "p1", "Agent de propreté")).toBe(true);
+  });
+  it("avant 3 ans : l'agrément ET l'extrait", () => {
+    const titre = qualificationRequise(G0).titre;
+    expect(peut(G0, { casier: casierOk })).toBe(false);
+    expect(peut(G0, { titres_couverts: [titre] })).toBe(false);
+    expect(peut(G0, { titres_couverts: [titre], casier: casierOk })).toBe(true);
+    expect(casierValide({ casier: { verified: true, expires_at: "2026-11-09" } }, new Date("2026-11-09T12:00:00Z"))).toBe(true);
+  });
+  it("la pièce n'est demandée qu'à qui déclare un tel métier, et vaut un an", () => {
+    expect(docsRequisPour("France", ["Agent de propreté"]).some(d => d.id === "casier")).toBe(false);
+    const c = docsRequisPour("France", [G3, "Agent de propreté"]).find(d => d.id === "casier");
+    expect(c.required).toBe(true);
+    expect(c.info).toContain(G3);
+    expect(VALIDITE_DOCUMENTS.casier.mois).toBe(12);
+  });
+  it("le type est connu de la contrainte, du dépôt et de l'enregistrement", () => {
+    const lire = (f) => readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8");
+    expect(lire("migrations/2026-11-09_documents_casier_judiciaire.sql")).toContain("'titre_sejour', 'casier'");
+    expect(lire("api/notify-doc.js")).toMatch(/TYPES_ENREGISTRABLES = \[[^\]]*"casier"/);
+    expect(lire("api/upload-document.js")).toMatch(/TYPES_PIECES = \[[^\]]*"casier"/);
+    expect(lire("api/_habilitations.js")).toContain("type=in.(diplomes,casier)");
+  });
+});
