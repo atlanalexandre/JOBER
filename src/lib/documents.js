@@ -29,6 +29,27 @@ export async function enregistrerDocument(type, { renouvellement = false } = {})
 }
 
 /**
+ * La référence qui permet à ALANE de vérifier un titre sur le site officiel
+ * (numéro de carte professionnelle, clé diplome.gouv.fr) — 09/11/2026.
+ * LÈVE avec un message à montrer.
+ */
+export async function enregistrerReference(reference) {
+  const { data } = await supabase.auth.getSession();
+  const jeton = data?.session?.access_token;
+  if (!jeton) throw new Error("Session expirée — reconnectez-vous.");
+  const r = await fetch("/api/notify-doc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jeton}` },
+    body: JSON.stringify({ docType: "diplomes", referenceVerification: reference }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.enregistre) {
+    console.error(`[documents] référence non enregistrée : ${r.status}`, j.error || "");
+    throw new Error(j.error || `La référence n'a pas pu être enregistrée (${r.status}).`);
+  }
+}
+
+/**
  * La photo du prestataire connecté, telle que les clients la verront : le
  * document `photo` du bucket, et non plus `profiles.avatar_url` (30/09/2026).
  * @returns {Promise<{ url: string|null, verifiee: boolean, deposee: boolean }>}

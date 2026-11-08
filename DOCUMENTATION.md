@@ -710,7 +710,7 @@ correspondante :
 | Document | Service | Ce qu'il prouve |
 |---|---|---|
 | Attestation URSSAF | `urssaf.fr` — code de sécurité | Distingue une vraie attestation d'une reconstitution graphique |
-| Diplôme Éducation nationale | CycladesVerif — QR code depuis 2025 | Authenticité du CAP, BTS, bac |
+| Diplôme Éducation nationale | CycladesVerif — QR code depuis 2025 ; `diplome.gouv.fr` — clé de vérification pour un diplôme plus ancien | Authenticité du CAP, BEP, BTS, bac |
 | Carte professionnelle CNAPS | téléservice du ministère | La carte est-elle toujours active |
 
 Aucune plateforme payante de conformité ne fait mieux : la plupart se contentent d'appeler ces
@@ -718,6 +718,17 @@ mêmes services. Le lien affiché **suit le métier** — pour un agent de sécu
 renvoie au CNAPS ; pour un pâtissier, à CycladesVerif. Les liens pointent toujours vers le site
 officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur classique de la
 fausse attestation.
+
+**La référence à saisir, donnée par le prestataire** (décision d'Alexandre du 09/11/2026 —
+migration `2026-11-09_documents_reference_verification.sql`, **à passer en recette puis en
+production**). Le service officiel demande un numéro — de carte, ou la clé d'un diplôme — qu'il
+fallait lire sur le scan ou réclamer au prestataire. Celui-ci peut désormais le donner depuis son
+onglet Documents, une fois le justificatif « Diplômes & certifications » déposé et tant qu'il
+n'est pas vérifié. `/api/notify-doc` l'écrit dans `documents.reference_verification` (3 à 80
+caractères, lettres, chiffres, espaces, points, tirets, barres — **jamais une adresse**), sur la
+pièce déjà déposée ; le back-office l'affiche à côté du lien officiel, avec un bouton « copier ».
+Les vérifications restent faites sur le site officiel, par l'équipe : la référence ne vaut pas
+preuve.
 
 **L'offre de lancement : éligible par l'ancienneté, déclenchée par le travail** (15/09/2026).
 Les 100 premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de

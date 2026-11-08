@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
-import { enregistrerDocument, maPhoto, deposerPhoto } from "../lib/documents.js";
+import { enregistrerDocument, enregistrerReference, maPhoto, deposerPhoto } from "../lib/documents.js";
 import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
@@ -2009,6 +2009,43 @@ export function CarteVirements({ compact = false }) {
         style={{ width:"100%", padding:"11px", borderRadius:12, border:"none", background:C.accentGold, color:"#231A04", fontWeight:800, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.6:1 }}>
         {envoi ? "Ouverture…" : etat.compte ? "Terminer la configuration →" : "Configurer mes virements →"}
       </button>
+    </div>
+  );
+}
+
+/**
+ * La référence d'un titre : numéro de carte professionnelle (CNAPS, éducateur
+ * sportif…) ou clé de vérification diplome.gouv.fr. Facultative ; elle permet
+ * au back-office de vérifier le titre en un clic sur le site officiel, au lieu
+ * de lire un numéro sur un scan ou de rappeler le prestataire (09/11/2026).
+ */
+function ChampReferenceTitre() {
+  const [valeur, setValeur] = useState("");
+  const [etat, setEtat] = useState({ envoi: false, message: null, ok: false });
+  const envoyer = async () => {
+    setEtat({ envoi: true, message: null, ok: false });
+    try {
+      await enregistrerReference(valeur.trim());
+      setEtat({ envoi: false, message: "Référence enregistrée : ALANE vérifiera votre titre sur le site officiel.", ok: true });
+    } catch (e) {
+      setEtat({ envoi: false, message: e.message, ok: false });
+    }
+  };
+  return (
+    <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+      <div style={{ fontWeight:700, color:C.text, fontSize:12.5, marginBottom:4 }}>🔎 Accélérer la vérification de vos titres</div>
+      <div style={{ color:C.textSub, fontSize:11.5, lineHeight:1.5, marginBottom:8 }}>
+        Facultatif : le numéro de votre carte professionnelle (CNAPS, éducateur sportif…) ou la clé de vérification de votre diplôme obtenue sur diplome.gouv.fr.
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <input value={valeur} onChange={e=>setValeur(e.target.value)} maxLength={80} placeholder="Numéro ou clé"
+          style={{ flex:1, minWidth:0, background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:10, padding:"9px 11px", color:C.text, fontSize:13, fontFamily:"inherit" }} />
+        <button onClick={envoyer} disabled={etat.envoi || valeur.trim().length < 3}
+          style={{ background:C.violet, color:"#fff", border:"none", borderRadius:10, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", opacity:(etat.envoi || valeur.trim().length < 3) ? 0.5 : 1 }}>
+          {etat.envoi ? "Envoi…" : "Enregistrer"}
+        </button>
+      </div>
+      {etat.message && <div style={{ marginTop:7, fontSize:11.5, color: etat.ok ? C.success : "#F25E5E" }}>{etat.message}</div>}
     </div>
   );
 }
@@ -4731,6 +4768,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               setVerifiedDocIds(prev => prev.filter(t => t !== newType));
             }} />
           ))}
+          {uploadedDocIds.includes("diplomes") && !verifiedDocIds.includes("diplomes") && <ChampReferenceTitre />}
         </>}
         {vue==="prestations" && sousPrestations==="terminees" && (()=>{
           // `disputed` n'apparaît plus ici : un litige en cours vit dans
