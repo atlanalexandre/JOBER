@@ -258,7 +258,9 @@ describe("peutExercer() et titresNonCouverts()", async () => {
     const ajoutesApres = ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection",
       // Métiers nouveaux au catalogue le 02/11/2026 : personne ne pouvait les déclarer.
       "Praticien(ne) en modelage bien-être", "Prothésiste ongulaire / Manucure",
-      "Professeur de danse classique, jazz ou contemporaine", "Professeur de Pilates"];
+      "Professeur de danse classique, jazz ou contemporaine", "Professeur de Pilates",
+      // Et le 09/11/2026.
+      "Maquilleur(se) (mariage, événement)", "Garde d'enfants de moins de 3 ans (agrément)"];
     for (const [metier, q] of Object.entries(QUALIFICATIONS_OBLIGATOIRES)) {
       if (ajoutesApres.includes(metier)) continue;
       expect(sqlMig, metier).toContain(`('${metier.replace(/'/g, "''")}', '${q.titre.replace(/'/g, "''")}')`);
@@ -427,5 +429,76 @@ describe("garde d'animaux : chez le propriétaire, sans diplôme, pension exclue
   });
   it("on rapproche, on n'élargit pas : ni toiletteur, ni pension, ni vétérinaire", () => {
     for (const q of ["toiletteur", "pension canine", "vétérinaire"]) expect(trouve(q), q).toHaveLength(0);
+  });
+});
+
+// Garde d'enfants, petits travaux, informatique, maquillage (09/11/2026).
+describe("les métiers du 09/11/2026 : chacun sa règle", async () => {
+  const { correspondRecherche, METIERS } = await import("../../constants/data.js");
+  const { noteMetier } = await import("../../../api/_qualifications.js");
+  const tous = Object.values(METIERS).flat();
+  const trouve = (q) => tous.filter(m => correspondRecherche(m, q));
+  const G3 = "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)";
+  const G0 = "Garde d'enfants de moins de 3 ans (agrément)";
+  const BR = "Petits travaux de bricolage (montage de meubles, fixations)";
+  it("la garde d'enfants : sans agrément dès 3 ans, avec agrément avant ; jamais chez le prestataire", () => {
+    expect(qualificationRequise(G3)).toBeNull();
+    expect(noteMetier(G3)).toContain("assistante maternelle");
+    expect(qualificationRequise(G0).texte).toContain("L7232-1");
+    expect(trouve("nounou")).toEqual(expect.arrayContaining([G3, G0]));
+    expect(trouve("baby-sitter")).toContain(G3);
+  });
+  it("les petits travaux excluent le bâtiment ; le plombier reste introuvable", () => {
+    expect(qualificationRequise(BR)).toBeNull();
+    expect(noteMetier(BR)).toContain("plomberie");
+    expect(trouve("homme toutes mains")).toEqual([BR]);
+    expect(trouve("plombier")).toHaveLength(0);
+  });
+  it("le maquillage est un soin esthétique : même titre que l'esthéticienne", () => {
+    expect(qualificationRequise("Maquilleur(se) (mariage, événement)").titre).toBe(qualificationRequise("Spa praticien / Esthéticien").titre);
+    expect(qualificationRequise("Assistance informatique à domicile")).toBeNull();
+  });
+});
+
+// L'extrait de casier judiciaire (09/11/2026) : il ouvre le MÉTIER, pas le compte.
+describe("l'extrait de casier judiciaire, pour les métiers au contact d'enfants", async () => {
+  const { casierExige, casierValide, peutExercer: peut } = await import("../../../api/_qualifications.js");
+  const { docsRequisPour, VALIDITE_DOCUMENTS } = await import("../../../api/_documents.js");
+  const { habiliteDans } = await import("../../../api/_habilitations.js");
+  const G3 = "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)";
+  const G0 = "Garde d'enfants de moins de 3 ans (agrément)";
+  const casierOk = { verified: true, expires_at: "2099-01-01" };
+  it("exigé pour la garde d'enfants, l'animation et le soutien scolaire — pas pour le ménage", () => {
+    for (const m of [G3, G0, "Animateur club enfants", "Animateur périscolaire (BAFA)", "Professeur particulier / Soutien scolaire"]) expect(casierExige(m), m).toBe(true);
+    expect(casierExige("Agent de propreté")).toBe(false);
+  });
+  it("sans extrait vérifié et valable, le métier reste fermé ; le ménage, lui, reste ouvert", () => {
+    expect(peut(G3, null)).toBe(false);
+    expect(peut(G3, { casier: { verified: false } })).toBe(false);
+    expect(peut(G3, { casier: { verified: true, expires_at: "2020-01-01" } })).toBe(false);
+    expect(peut(G3, { casier: casierOk })).toBe(true);
+    expect(habiliteDans(new Map(), "p1", G3)).toBe(false);
+    expect(habiliteDans(new Map(), "p1", "Agent de propreté")).toBe(true);
+  });
+  it("avant 3 ans : l'agrément ET l'extrait", () => {
+    const titre = qualificationRequise(G0).titre;
+    expect(peut(G0, { casier: casierOk })).toBe(false);
+    expect(peut(G0, { titres_couverts: [titre] })).toBe(false);
+    expect(peut(G0, { titres_couverts: [titre], casier: casierOk })).toBe(true);
+    expect(casierValide({ casier: { verified: true, expires_at: "2026-11-09" } }, new Date("2026-11-09T12:00:00Z"))).toBe(true);
+  });
+  it("la pièce n'est demandée qu'à qui déclare un tel métier, et vaut un an", () => {
+    expect(docsRequisPour("France", ["Agent de propreté"]).some(d => d.id === "casier")).toBe(false);
+    const c = docsRequisPour("France", [G3, "Agent de propreté"]).find(d => d.id === "casier");
+    expect(c.required).toBe(true);
+    expect(c.info).toContain(G3);
+    expect(VALIDITE_DOCUMENTS.casier.mois).toBe(12);
+  });
+  it("le type est connu de la contrainte, du dépôt et de l'enregistrement", () => {
+    const lire = (f) => readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8");
+    expect(lire("migrations/2026-11-09_documents_casier_judiciaire.sql")).toContain("'titre_sejour', 'casier'");
+    expect(lire("api/notify-doc.js")).toMatch(/TYPES_ENREGISTRABLES = \[[^\]]*"casier"/);
+    expect(lire("api/upload-document.js")).toMatch(/TYPES_PIECES = \[[^\]]*"casier"/);
+    expect(lire("api/_habilitations.js")).toContain("type=in.(diplomes,casier)");
   });
 });

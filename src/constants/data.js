@@ -439,6 +439,24 @@ export const METIERS_TARIFS = {
     // dit, et la note aussi. Tarif : une simple valeur de départ, que le
     // prestataire change librement.
     "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": { min:12, max:16, default:13, rome:"A1501" },
+    // Ajoutés le 09/11/2026 (décision d'Alexandre, sur l'étude du 06/11) :
+    //   • la garde d'enfants, en DEUX métiers, là où la règle change : de
+    //     3 ans et plus sans agrément ; de moins de 3 ans avec l'agrément
+    //     « services à la personne » (code du travail, art. L7232-1). Chez
+    //     les parents seulement : garder chez soi est le métier d'assistante
+    //     maternelle (agrément de la PMI), que la plateforme ne propose pas ;
+    //   • les petits travaux (« homme toutes mains ») : ni électricité, ni
+    //     plomberie, ni gaz, ni bâtiment — la garantie décennale et la
+    //     qualification du bâtiment restent hors de la plateforme ;
+    //   • l'assistance informatique à domicile, sans diplôme ;
+    //   • le maquillage, soin esthétique (loi n° 96-603, art. 16) : CAP
+    //     esthétique ou 3 ans de pratique, comme l'esthéticienne.
+    // Tarifs : une valeur de départ, que le prestataire change librement.
+    "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)": { min:12, max:16, default:13, rome:"K1303" },
+    "Garde d'enfants de moins de 3 ans (agrément)": { min:13, max:18, default:14.5, rome:"K1303" },
+    "Petits travaux de bricolage (montage de meubles, fixations)": { min:18, max:35, default:25, rome:"I1203" },
+    "Assistance informatique à domicile": { min:20, max:40, default:28, rome:"I1401" },
+    "Maquilleur(se) (mariage, événement)": { min:25, max:50, default:35, rome:"D1208" },
   },
 };
 
@@ -563,7 +581,7 @@ export function motsCherchables(libelle, normaliser = normaliserTexte) {
 //
 // Ces alias ne sont pas des à-peu-près : chacun désigne le même métier que le
 // libellé auquel il est rattaché. On rapproche, on n'élargit pas. Un mot dont
-// le métier n'existe pas au catalogue — « nounou », « plombier » — reste
+// le métier n'existe pas au catalogue — « plombier », « serrurier » — reste
 // volontairement sans résultat : mieux vaut ne rien trouver que d'être envoyé
 // vers autre chose.
 const ALIAS_METIERS = {
@@ -604,6 +622,13 @@ const ALIAS_METIERS = {
   "Maître-nageur sauveteur (BNSSA)": ["baignade"],
   "Agent de restauration scolaire": ["cantine", "dame de cantine"],
   "Télévendeur": ["telemarketing", "teleprospection"],
+  // 09/11/2026. « nounou » et « baby-sitter » mènent aux deux gardes
+  // d'enfants : c'est l'âge de l'enfant qui sépare les deux métiers.
+  "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)": ["baby sitter", "babysitter", "baby sitting", "babysitting", "nounou", "garde d'enfant", "garde d'enfants", "sortie d'ecole"],
+  "Garde d'enfants de moins de 3 ans (agrément)": ["nounou", "garde d'enfant", "garde d'enfants", "garde de bebe", "baby sitter", "babysitter"],
+  "Petits travaux de bricolage (montage de meubles, fixations)": ["bricolage", "bricoleur", "homme toutes mains", "homme a tout faire", "montage de meubles", "petits travaux"],
+  "Assistance informatique à domicile": ["depannage informatique", "aide informatique", "informatique a domicile"],
+  "Maquilleur(se) (mariage, événement)": ["maquillage", "maquillage mariee", "make up"],
   "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["dog sitter", "dogsitter", "pet sitter", "petsitter", "garde de chien", "garde de chat", "garde d'animaux", "promeneur", "promenade de chien", "chat sitter"],
 };
 
@@ -718,7 +743,7 @@ export const METIERS = Object.fromEntries(
 // Les qualifications obligatoires vivent dans `api/_qualifications.js` : le
 // back-office refuse d'ouvrir l'accès aux prestations sans le justificatif, et
 // cette règle-là s'applique côté serveur. Une copie ici aurait divergé.
-export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier } from "../../api/_qualifications.js";
+export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier, casierExige } from "../../api/_qualifications.js";
 
 // `DOCS_REQUIS` et `docsRequisPour()` vivent dans `api/_documents.js` : le
 // serveur en a besoin pour dire, dans le courriel de validation, exactement ce
@@ -854,6 +879,11 @@ export const COMPETENCES_PAR_METIER = {
   "Agent de sécurité":                    ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Gestion de crise","Main courante","SST"],
   "Hôte(sse) d'accueil":                 ["Accueil physique","Standard téléphonique","Orientation visiteurs","Gestion badges","Tenue professionnelle","Langues étrangères"],
   "Animateur événementiel":              ["Animation","Prise de parole","Gestion foule","Microphone","Dynamisme","Gestion du temps","BAFA"],
+  "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)": ["Sortie d'école","Aide aux devoirs","Préparation du repas","Bain et coucher","Jeux et activités","Garde du soir","Mercredis et vacances"],
+  "Garde d'enfants de moins de 3 ans (agrément)": ["Agrément SAP","Soins du nourrisson","Préparation des biberons","Change","Éveil","Sécurité domestique","Gestes de premiers secours"],
+  "Petits travaux de bricolage (montage de meubles, fixations)": ["Montage de meubles","Fixations murales","Pose d'étagères","Changement d'ampoules","Petites réparations","Rideaux et tringles"],
+  "Assistance informatique à domicile": ["Installation d'ordinateur","Box et Wi-Fi","Imprimante","Smartphone et tablette","Sauvegarde","Accompagnement des seniors"],
+  "Maquilleur(se) (mariage, événement)": ["Maquillage mariée","Maquillage événementiel","Essai maquillage","Hygiène du matériel","Matériel personnel"],
   "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": ["Promenade de chiens","Visites à domicile","Nourrir et abreuver","Garde de chats","Garde de chiens","Administration de médicaments prescrits","Nettoyage de litière","Arrosage et relève du courrier","Compte rendu au propriétaire"],
   "Coiffeur(se) à domicile":              ["CAP coiffure","Coupe homme","Coupe femme","Coupe enfant","Coloration","Mèches / balayage","Brushing","Coiffure de mariée","Barbe et rasage","Soins capillaires","Matériel personnel","Hygiène du matériel"],
   "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],

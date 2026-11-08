@@ -20,11 +20,12 @@ const DOC_LABELS = {
   diplomes: "Diplômes",
   autre:    "Autre document",
   titre_sejour: "Titre de séjour",
+  casier:   "Extrait de casier judiciaire",
 };
 
 // Types acceptés — ceux de la contrainte CHECK de `documents.type`. Un type hors
 // de cette liste serait refusé par la base : on le refuse ici, avec un message.
-const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour"];
+const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour", "casier"];
 
 // ── Enregistrer le document en base ─────────────────────────────────────────
 //

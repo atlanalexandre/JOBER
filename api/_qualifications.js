@@ -94,6 +94,12 @@ export const QUALIFICATIONS_OBLIGATOIRES = {
   // « modelages esthétiques de confort sans finalité médicale » y figurent
   // depuis la loi du 2 août 2005). Ajoutés le 02/11/2026.
   "Praticien(ne) en modelage bien-être": { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "le modelage de confort est un soin esthétique réglementé ; le massage à visée thérapeutique reste réservé aux masseurs-kinésithérapeutes ; prestation de bien-être exclusivement, sans aucun caractère sexuel", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+  // Maquillage (09/11/2026) : soin esthétique, même titre que l'esthéticienne
+  // — un justificatif vérifié pour l'un couvre l'autre.
+  "Maquilleur(se) (mariage, événement)": { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "le maquillage est un soin esthétique réglementé", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
+  // Garde d'enfants de moins de 3 ans (09/11/2026) : l'agrément est
+  // obligatoire, y compris pour un micro-entrepreneur.
+  "Garde d'enfants de moins de 3 ans (agrément)": { titre: "Agrément « services à la personne » pour la garde d'enfants de moins de 3 ans", detail: "délivré par la DDETS de votre département (démarche sur NOVA), valable 5 ans", texte: "code du travail, art. L7232-1" },
   "Prothésiste ongulaire / Manucure":   { titre: "CAP esthétique-cosmétique, ou 3 ans de pratique", detail: "la manucure et la pose d'ongles sont des soins esthétiques réglementés", texte: "loi n° 96-603 du 5 juillet 1996, art. 16" },
 
   // ── Danse (02/11/2026) ───────────────────────────────────────────────────
@@ -216,6 +222,10 @@ export const NOTES_METIERS = {
   // dire les exposerait (02/11/2026).
   "Professeur de yoga":                   { texte: "Aucun diplôme n'est exigé par un texte pour enseigner le yoga. Si votre cours est présenté comme une activité physique ou sportive (yoga dynamique, en salle de sport), la carte professionnelle d'éducateur sportif peut vous être demandée : déposez-la dans « Diplômes & certifications » si vous l'avez." },
   "Professeur de danse (autres styles)":  { texte: "Seules la danse classique, jazz et contemporaine exigent le diplôme d'État. Si votre cours est présenté comme une activité de forme (fitness dansé, zumba), la carte professionnelle d'éducateur sportif peut être exigée." },
+  // 09/11/2026 — garde d'enfants dès 3 ans, petits travaux, informatique.
+  "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)": { texte: "Aucun diplôme n'est exigé pour garder un enfant de 3 ans ou plus chez ses parents. Pour un enfant de moins de 3 ans, l'agrément « services à la personne » est obligatoire : c'est l'autre métier, « Garde d'enfants de moins de 3 ans ». Garder un enfant chez vous est le métier d'assistante maternelle (agrément de la PMI) : il n'est pas proposé sur ALANE. Une assurance responsabilité civile professionnelle est vivement conseillée." },
+  "Petits travaux de bricolage (montage de meubles, fixations)": { texte: "Aucun diplôme n'est exigé pour le petit bricolage. Sont exclus : l'électricité, la plomberie, le gaz, le chauffage et tous les travaux du bâtiment, qui demandent une qualification et une garantie décennale. Le crédit d'impôt des services à la personne ne vaut que pour des interventions de 2 heures au plus." },
+  "Assistance informatique à domicile": { texte: "Aucun diplôme n'est exigé. N'accédez qu'aux données dont la prestation a besoin, et ne conservez rien après." },
   // Garde d'animaux (06/11/2026) : aucun titre pour garder ou promener chez le
   // propriétaire ; l'hébergement chez soi est réglementé et exclu.
   "Garde d'animaux / Promeneur de chiens (chez le propriétaire)": { texte: "Aucun diplôme n'est exigé pour garder ou promener un animal chez son propriétaire. Héberger l'animal chez vous est une autre activité, réglementée (déclaration en préfecture, certificat ACACED, locaux conformes) : elle n'est pas proposée sur ALANE. Le crédit d'impôt des services à la personne ne s'applique à la garde d'animaux que pour les personnes âgées ou dépendantes. Une assurance responsabilité civile professionnelle est vivement conseillée." },
@@ -252,7 +262,34 @@ export function noteMetier(metier) {
 // navigateur n'a aucun droit d'écriture sur `documents`.
 
 /** @param {{titres_couverts?:string[]|null}|null} justificatif  la ligne `documents` de type diplomes */
+// ── L'extrait de casier judiciaire (décision d'Alexandre du 09/11/2026) ────
+//
+// Exigé par ALANE — non par un texte — pour les métiers au contact d'enfants :
+// un incident avec un enfant serait le pire risque de la plateforme. C'est le
+// bulletin n° 3, demandé gratuitement en ligne. Comme un titre, il ouvre le
+// MÉTIER, pas le compte : un prestataire qui fait aussi du ménage n'est pas
+// bloqué pour le ménage. Il vaut un an à compter de son dépôt.
+export const METIERS_CASIER = new Set([
+  "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)",
+  "Garde d'enfants de moins de 3 ans (agrément)",
+  "Animateur club enfants",
+  "Animateur périscolaire (BAFA)",
+  "Professeur particulier / Soutien scolaire",
+]);
+
+/** Ce métier demande-t-il l'extrait de casier judiciaire ? */
+export const casierExige = (metier) => METIERS_CASIER.has(metier);
+
+/** L'extrait du prestataire est-il vérifié et encore valable ? */
+export function casierValide(justificatif, maintenant = new Date()) {
+  const c = justificatif?.casier;
+  if (c?.verified !== true) return false;
+  if (!c.expires_at) return true;
+  return new Date(`${String(c.expires_at).slice(0, 10)}T23:59:59Z`).getTime() >= maintenant.getTime();
+}
+
 export function peutExercer(metier, justificatif) {
+  if (casierExige(metier) && !casierValide(justificatif)) return false;
   const q = QUALIFICATIONS_OBLIGATOIRES[metier];
   if (!q) return true;
   return Array.isArray(justificatif?.titres_couverts) && justificatif.titres_couverts.includes(q.titre);
