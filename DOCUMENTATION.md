@@ -517,7 +517,7 @@ sécurité intérieure, art. L617-1) — et que la plateforme, qui organise la m
 aurait eu du mal à expliquer qu'elle n'avait rien demandé.
 
 [`api/_qualifications.js`](api/_qualifications.js) nomme, **métier par métier**, le titre
-attendu et le texte qui l'impose — 40 métiers à ce jour :
+attendu et le texte qui l'impose — 42 métiers à ce jour :
 
 | Famille | Titre attendu |
 |---|---|
@@ -525,7 +525,8 @@ attendu et le texte qui l'impose — 40 métiers à ce jour :
 | Sport et baignade (4) | Carte professionnelle d'éducateur sportif (dont le professeur de Pilates), BNSSA ; pour l'intervenant sportif en milieu scolaire, la même carte (une carte vérifiée pour le coach le couvre) ou, à l'école primaire, l'agrément de l'Éducation nationale |
 | Animation (2) | BAFA ou équivalent |
 | Conduite (5) | Carte VTC, permis C ou D avec FIMO/FCO, permis B (chauffeur livreur, voiturier — depuis le 29/09/2026) |
-| Coiffure et esthétique (4) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être et la prothésie ongulaire |
+| Coiffure et esthétique (5) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être, la prothésie ongulaire et le maquillage (09/11/2026) |
+| Petite enfance (1) | Agrément « services à la personne » pour la garde d'enfants de moins de 3 ans (code du travail, art. L7232-1 — 09/11/2026) |
 | Danse (1) | Diplôme d'État de professeur de danse (classique, jazz, contemporaine) |
 | Métiers de bouche (13) | CAP de la spécialité, ou 3 ans de pratique |
 | Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
@@ -598,7 +599,14 @@ d'animaux (06/11/2026) s'exerce **chez le propriétaire** seulement — « Garde
 chiens (chez le propriétaire) », alias « dog sitter », « pet sitter » : aucun titre exigé, mais une note
 qui exclut l'hébergement chez le prestataire (réglementé : déclaration en préfecture, ACACED,
 locaux conformes — code rural, art. L214-6-1), borne le crédit d'impôt aux personnes âgées ou
-dépendantes et conseille une assurance RC professionnelle. Même logique pour le permis des
+dépendantes et conseille une assurance RC professionnelle. Le 09/11/2026 (décision d'Alexandre) : la **garde
+d'enfants** en deux métiers — « de 3 ans et plus / Baby-sitting (chez les parents) », sans titre, et
+« de moins de 3 ans (agrément) », qui exige l'agrément SAP ; garder chez soi (assistante maternelle,
+agrément PMI) reste hors plateforme, et « nounou », jusque-là volontairement sans résultat, mène
+aux deux. Les **petits travaux de bricolage** (note : ni électricité, ni plomberie, ni gaz, ni
+bâtiment ; crédit d'impôt limité aux interventions de 2 h), l'**assistance informatique à
+domicile** (sans titre) et le **maquillage** (même titre que l'esthéticienne) rejoignent le
+catalogue. Même logique pour le permis des
 coursiers (« Coursier / Livreur », « Livreur courses à domicile ») : ils peuvent livrer à vélo
 ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre, 29/09/2026). Ces notes s'affichent au
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas

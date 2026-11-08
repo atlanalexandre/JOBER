@@ -258,7 +258,9 @@ describe("peutExercer() et titresNonCouverts()", async () => {
     const ajoutesApres = ["Intervenant sportif en milieu scolaire", "Agent commercial", "Chargé de recouvrement", "Agent de désinfection",
       // Métiers nouveaux au catalogue le 02/11/2026 : personne ne pouvait les déclarer.
       "Praticien(ne) en modelage bien-être", "Prothésiste ongulaire / Manucure",
-      "Professeur de danse classique, jazz ou contemporaine", "Professeur de Pilates"];
+      "Professeur de danse classique, jazz ou contemporaine", "Professeur de Pilates",
+      // Et le 09/11/2026.
+      "Maquilleur(se) (mariage, événement)", "Garde d'enfants de moins de 3 ans (agrément)"];
     for (const [metier, q] of Object.entries(QUALIFICATIONS_OBLIGATOIRES)) {
       if (ajoutesApres.includes(metier)) continue;
       expect(sqlMig, metier).toContain(`('${metier.replace(/'/g, "''")}', '${q.titre.replace(/'/g, "''")}')`);
@@ -427,5 +429,33 @@ describe("garde d'animaux : chez le propriétaire, sans diplôme, pension exclue
   });
   it("on rapproche, on n'élargit pas : ni toiletteur, ni pension, ni vétérinaire", () => {
     for (const q of ["toiletteur", "pension canine", "vétérinaire"]) expect(trouve(q), q).toHaveLength(0);
+  });
+});
+
+// Garde d'enfants, petits travaux, informatique, maquillage (09/11/2026).
+describe("les métiers du 09/11/2026 : chacun sa règle", async () => {
+  const { correspondRecherche, METIERS } = await import("../../constants/data.js");
+  const { noteMetier } = await import("../../../api/_qualifications.js");
+  const tous = Object.values(METIERS).flat();
+  const trouve = (q) => tous.filter(m => correspondRecherche(m, q));
+  const G3 = "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)";
+  const G0 = "Garde d'enfants de moins de 3 ans (agrément)";
+  const BR = "Petits travaux de bricolage (montage de meubles, fixations)";
+  it("la garde d'enfants : sans agrément dès 3 ans, avec agrément avant ; jamais chez le prestataire", () => {
+    expect(qualificationRequise(G3)).toBeNull();
+    expect(noteMetier(G3)).toContain("assistante maternelle");
+    expect(qualificationRequise(G0).texte).toContain("L7232-1");
+    expect(trouve("nounou")).toEqual(expect.arrayContaining([G3, G0]));
+    expect(trouve("baby-sitter")).toContain(G3);
+  });
+  it("les petits travaux excluent le bâtiment ; le plombier reste introuvable", () => {
+    expect(qualificationRequise(BR)).toBeNull();
+    expect(noteMetier(BR)).toContain("plomberie");
+    expect(trouve("homme toutes mains")).toEqual([BR]);
+    expect(trouve("plombier")).toHaveLength(0);
+  });
+  it("le maquillage est un soin esthétique : même titre que l'esthéticienne", () => {
+    expect(qualificationRequise("Maquilleur(se) (mariage, événement)").titre).toBe(qualificationRequise("Spa praticien / Esthéticien").titre);
+    expect(qualificationRequise("Assistance informatique à domicile")).toBeNull();
   });
 });
