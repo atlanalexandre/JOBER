@@ -2231,7 +2231,7 @@ export default async function handler(req, res) {
       const LABELS = {
         kbis:"KBIS / SIRET", rib:"RIB / IBAN", cni:"Pièce d'identité", photo:"Photo de profil",
         urssaf:"Attestation URSSAF", domicile:"Justificatif de domicile", rc_pro:"RC Professionnelle",
-        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
+        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour", casier:"Extrait de casier judiciaire",
       };
       const label = LABELS[doc.type] || doc.type;
       await notifier({

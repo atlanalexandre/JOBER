@@ -18,7 +18,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { C } from "../constants/colors.js";
-import { qualificationRequise, noteMetier } from "../constants/data.js";
+import { qualificationRequise, noteMetier, casierExige } from "../constants/data.js";
 
 /** L'encart complet, sous le choix du métier. */
 export function InfoQualificationMetier({ metier }) {
@@ -54,6 +54,15 @@ export function InfoQualificationMetier({ metier }) {
             {n
               ? "Selon votre façon d'exercer, une condition peut s'ajouter : lisez la note ci-dessous. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."
               : "Aucun texte n'impose de diplôme pour l'exercer. Vos diplômes et certifications restent un atout : ajoutez-les à votre profil."}
+          </div>
+        </div>
+      )}
+      {casierExige(metier) && (
+        <div data-testid="casier-exige" style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+          <div style={{ color:"#F0B429", fontWeight:800, fontSize:12.5, marginBottom:5 }}>⚖️ Extrait de casier judiciaire demandé</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
+            Ce métier se fait au contact d&apos;enfants : ALANE demande un extrait de casier judiciaire (bulletin n° 3) daté de moins de 3 mois,
+            gratuit, à demander en ligne sur casier-judiciaire.justice.gouv.fr. Ce métier ne vous sera proposé qu&apos;une fois l&apos;extrait vérifié ; il se renouvelle chaque année.
           </div>
         </div>
       )}

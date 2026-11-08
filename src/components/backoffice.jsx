@@ -25,14 +25,14 @@ const estRecette = typeof window !== "undefined"
 const DOC_LABELS = {
   kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN",
   tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil",
-  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
+  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour", casier:"Casier judiciaire",
 };
 
 // Icônes des types de documents — même raison que DOC_LABELS ci-dessus : trois
 // copies divergentes coexistaient, dont deux sans `tva`.
 const DOC_ICONS = {
   kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
-  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄", titre_sejour:"🛂",
+  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄", titre_sejour:"🛂", casier:"⚖️",
 };
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
@@ -2381,12 +2381,17 @@ export function BOVersements() {
 // l'expiration et l'article 19.1 des CGPS — renouvellement annuel de la RC Pro,
 // suspension trente jours après l'échéance — reste une promesse sans effet.
 // Le titre de séjour aussi : son expiration retire l'accès (EXPIRATION_BLOQUANTE).
-const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour"];
+const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour", "casier"];
 
 async function demanderValidite(type) {
   if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };
-  const saisie = await showPrompt(
-    `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
+  // L'extrait de casier n'a pas de date de fin : ALANE le demande chaque année.
+  // Son échéance ferme les métiers au contact d'enfants, pas le compte (09/11/2026).
+  const saisie = await showPrompt(type === "casier"
+    ? `Échéance de l'extrait de casier judiciaire (AAAA-MM-JJ) : un an après sa date d'émission.\n\n`
+      + `Avant de valider : au nom de la pièce d'identité, daté de moins de 3 mois, mention « Néant ».\n\n`
+      + `À l'échéance, les métiers au contact d'enfants se ferment jusqu'au dépôt d'un nouvel extrait.`
+    : `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
     + `Elle déclenche la relance du prestataire avant l'échéance, puis la suspension `
     + `de son accès trente jours après (CGPS art. 19.1).\n\n`
     + `Laissez vide si le document n'en porte pas.`

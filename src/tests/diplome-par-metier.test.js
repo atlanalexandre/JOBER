@@ -18,7 +18,7 @@ describe("le diplôme exigé, au choix du métier", () => {
     const encart = lire("qualification-metier.jsx");
     expect(encart).toContain("Aucun diplôme obligatoire pour ce métier");
     expect(encart).toContain("Diplôme ou titre obligatoire pour ce métier");
-    expect(encart).toContain('import { qualificationRequise, noteMetier } from "../constants/data.js"');
+    expect(encart).toContain('import { qualificationRequise, noteMetier, casierExige } from "../constants/data.js"');
   });
   it("la règle elle-même : réglementé pour l'agent de sécurité, libre pour l'agent de propreté", () => {
     expect(qualificationRequise("Agent de sécurité")).not.toBeNull();

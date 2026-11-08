@@ -23,7 +23,7 @@ export const config = {
 // part à son tour.
 
 
-const TYPES_PIECES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour"];
+const TYPES_PIECES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour", "casier"];
 
 export default async function handler(req) {
   // Trace de survie — voir le bandeau ci-dessus. `console.warn` et non `log` :

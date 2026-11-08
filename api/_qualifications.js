@@ -262,7 +262,34 @@ export function noteMetier(metier) {
 // navigateur n'a aucun droit d'écriture sur `documents`.
 
 /** @param {{titres_couverts?:string[]|null}|null} justificatif  la ligne `documents` de type diplomes */
+// ── L'extrait de casier judiciaire (décision d'Alexandre du 09/11/2026) ────
+//
+// Exigé par ALANE — non par un texte — pour les métiers au contact d'enfants :
+// un incident avec un enfant serait le pire risque de la plateforme. C'est le
+// bulletin n° 3, demandé gratuitement en ligne. Comme un titre, il ouvre le
+// MÉTIER, pas le compte : un prestataire qui fait aussi du ménage n'est pas
+// bloqué pour le ménage. Il vaut un an à compter de son dépôt.
+export const METIERS_CASIER = new Set([
+  "Garde d'enfants de 3 ans et plus / Baby-sitting (chez les parents)",
+  "Garde d'enfants de moins de 3 ans (agrément)",
+  "Animateur club enfants",
+  "Animateur périscolaire (BAFA)",
+  "Professeur particulier / Soutien scolaire",
+]);
+
+/** Ce métier demande-t-il l'extrait de casier judiciaire ? */
+export const casierExige = (metier) => METIERS_CASIER.has(metier);
+
+/** L'extrait du prestataire est-il vérifié et encore valable ? */
+export function casierValide(justificatif, maintenant = new Date()) {
+  const c = justificatif?.casier;
+  if (c?.verified !== true) return false;
+  if (!c.expires_at) return true;
+  return new Date(`${String(c.expires_at).slice(0, 10)}T23:59:59Z`).getTime() >= maintenant.getTime();
+}
+
 export function peutExercer(metier, justificatif) {
+  if (casierExige(metier) && !casierValide(justificatif)) return false;
   const q = QUALIFICATIONS_OBLIGATOIRES[metier];
   if (!q) return true;
   return Array.isArray(justificatif?.titres_couverts) && justificatif.titres_couverts.includes(q.titre);
