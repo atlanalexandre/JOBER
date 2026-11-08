@@ -180,3 +180,23 @@ describe("des mots courants qui ne trouvaient rien (06/11/2026)", () => {
     for (const q of ["surveillant", "taxi", "aide-soignante", "infirmière"]) expect(trouve(q), q).toHaveLength(0);
   });
 });
+
+// Relecture du 07/11/2026 : la liste ne se vide plus au milieu d'un mot tapé.
+describe("la saisie en cours, lettre après lettre", () => {
+  const tapeLettreParLettre = (mot, metier, depuis = 3) => {
+    for (let n = depuis; n <= mot.length; n++) expect(trouve(mot.slice(0, n)), `« ${mot.slice(0, n)} »`).toContain(metier);
+  };
+  it("« gouvernante », « serveuse », « praticienne », « esthéticienne », « vendeuse » ne vident jamais la liste", () => {
+    tapeLettreParLettre("gouvernante", "Gouvernant(e) d'étage");
+    tapeLettreParLettre("serveuse", "Serveur(se)");
+    tapeLettreParLettre("praticienne", "Praticien(ne) en modelage bien-être");
+    tapeLettreParLettre("esthéticienne", "Spa praticien / Esthéticien");
+    tapeLettreParLettre("vendeuse", "Vendeur en restauration");
+    tapeLettreParLettre("caissière", "Caissier(ère) principal(e)");
+  });
+  it("les morceaux de parenthèse ne trouvent plus rien par hasard", () => {
+    expect(trouve("tri")).not.toContain("Animateur(trice) événementiel(le)");
+    expect(trouve("cav")).not.toContain("Employé de cafétéria");
+    expect(trouve("inv")).not.toContain("Formateur bureautique / informatique");
+  });
+});

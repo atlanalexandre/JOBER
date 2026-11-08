@@ -6,7 +6,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   droitGarantie, etatDuJour, moisEcoule, estDebutDeMois, jourParis, joursDuMois,
-  appliquerGarantie, noterReleves, PREMIER_MOIS, ZONE_MIN_KM, RELEVES_MANQUANTS_ADMIS,
+  appliquerGarantie, noterReleves, PREMIER_MOIS, ZONE_MIN_KM, RELEVES_MANQUANTS_ADMIS, INTERVALLE_RAPPELS_H,
 } from "../../../api/_garantie.js";
 
 const profil = (x = {}) => ({ id: "p1", status: "approved", missions_enabled: true, plan_abonnement: "premium",
@@ -64,7 +64,7 @@ describe("le droit au mois offert", () => {
 });
 
 function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservation = [{ id: "p1" }], abonnementKo = false, avoirKo = false,
-  avoirsExistants = [], avoirsKo = false, coupure = false, metaUtil = meta } = {}) {
+  avoirsExistants = [], avoirsKo = false, coupure = false, pages = false, metaUtil = meta } = {}) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url), m = o.method || "GET";
@@ -81,7 +81,12 @@ function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservatio
       return ok({ status: "active", start_date: Math.floor(abo.debutMs / 1000), items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] } });
     }
     if (u.includes("profiles?id=eq.p1") && m === "PATCH") return ok(u.includes("garantie_mois_offert_at=is.null") ? reservation : [{ id: "p1" }]);
-    if (u.includes("/balance_transactions") && m === "GET") return avoirsKo ? new Response("{}", { status: 503 }) : ok({ data: avoirsExistants });
+    if (u.includes("/balance_transactions") && m === "GET") {
+      if (avoirsKo) return new Response("{}", { status: 503 });
+      // Deux pages quand on le demande : la première sans l'avoir.
+      if (pages && !u.includes("starting_after")) return ok({ data: [{ id: "cbtxn_facture", metadata: {} }], has_more: true });
+      return ok({ data: avoirsExistants, has_more: false });
+    }
     if (u.includes("/balance_transactions")) {
       if (coupure) throw new Error("connexion coupée");
       return avoirKo ? new Response("{}", { status: 500 }) : ok({ id: "cbtxn_1" });
@@ -129,6 +134,20 @@ describe("l'examen du début de mois", () => {
     expect((await lancer()).offerts).toBe(1);
     expect(appels.some(a => a.u.includes("/balance_transactions") && a.m === "POST")).toBe(false);
   });
+  it("avoir créé un mois PRÉCÉDENT sans que la réponse arrive : garantie consommée, aucun second avoir (07/11/2026)", async () => {
+    const appels = simuler({ avoirsExistants: [{ id: "cbtxn_0", metadata: { garantie_prestataire: "p1", garantie_mois: "2026-11" } }] });
+    expect((await lancer()).offerts).toBe(0);
+    expect(appels.some(a => a.u.includes("/balance_transactions") && a.m === "POST")).toBe(false);
+    const reserve = appels.find(a => a.u.includes("profiles?id=eq.p1") && a.m === "PATCH");
+    expect(JSON.parse(reserve.corps).garantie_mois_offert_mois).toBe("2026-11");
+    expect(appels.filter(a => a.u.includes("profiles?id=eq.p1") && a.m === "PATCH")).toHaveLength(1); // jamais rendue
+  });
+  it("l'avoir est cherché au-delà de la première page de mouvements (07/11/2026)", async () => {
+    const appels = simuler({ pages: true, avoirsExistants: [{ id: "cbtxn_0", metadata: { garantie_prestataire: "p1", garantie_mois: "2026-12" } }] });
+    expect((await lancer()).offerts).toBe(1);
+    expect(appels.some(a => a.u.includes("starting_after=cbtxn_facture"))).toBe(true);
+    expect(appels.some(a => a.u.includes("/balance_transactions") && a.m === "POST")).toBe(false);
+  });
   it("coupure réseau pendant l'avoir : la réservation est rendue (06/11/2026)", async () => {
     const appels = simuler({ coupure: true });
     expect((await lancer()).offerts).toBe(0);
@@ -161,6 +180,11 @@ describe("branchements", () => {
     const cron = lire("cron-reset-monthly.js");
     expect(cron).toMatch(/if \(queryAction === "reminders"\) try \{\s*if \(estDebutDeMois\(\)\) \{[\s\S]{0,200}appliquerGarantie\(/);
     expect(cron.match(/await releverGarantie\(\);/g)).toHaveLength(2);
+  });
+  it("l'intervalle des rappels est celui de vercel.json (07/11/2026)", () => {
+    const cron = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8")).crons
+      .find(c => c.path.includes("action=reminders"));
+    expect(cron.schedule).toBe(`0 */${INTERVALLE_RAPPELS_H} * * *`);
   });
   it("les abonnés sont lus en entier (lireTout)", () => {
     expect(lire("_garantie.js")).toMatch(/const lireAbonnes = [^\n]*lireTout\(/);
