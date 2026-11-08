@@ -90,7 +90,9 @@ describe("appellations courantes", () => {
   // catalogue doit rester sans résultat. Mieux vaut ne rien trouver que d'être
   // envoyé vers autre chose.
   it("ne renvoie rien pour un métier réellement absent", () => {
-    for (const q of ["nounou", "plombier", "électricien", "aide-soignant"]) {
+    // « nounou » a quitté cette liste le 09/11/2026 : la garde d'enfants est
+    // devenue un métier du catalogue.
+    for (const q of ["plombier", "électricien", "aide-soignant", "serrurier"]) {
       expect(trouve(q), `« ${q} »`).toHaveLength(0);
     }
   });
@@ -124,9 +126,9 @@ describe("coiffure", () => {
   // La manucure est devenue un métier du catalogue le 02/11/2026 : elle mène
   // à elle-même, jamais au coiffeur.
   it("n'attire pas les métiers voisins de la beauté", () => {
-    for (const q of ["maquilleuse"]) {
-      expect(trouve(q), `« ${q} »`).toHaveLength(0);
-    }
+    // Le maquillage est devenu un métier du catalogue le 09/11/2026 : il mène
+    // à lui-même, jamais au coiffeur.
+    expect(trouve("maquilleuse")).toEqual(["Maquilleur(se) (mariage, événement)"]);
     for (const q of ["manucure", "prothésiste ongulaire"]) {
       expect(trouve(q), `« ${q} »`).toEqual(["Prothésiste ongulaire / Manucure"]);
     }
