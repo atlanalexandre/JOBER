@@ -168,9 +168,28 @@ export const estAbonnePayant = (parrain) => !!(parrain?.stripe_subscription_id &
  * règle — partagée avec la garantie (api/_garantie.js, 06/11/2026).
  */
 export function prixMensuelDepuisAbonnement(abonnement) {
-  const prix = abonnement?.items?.data?.[0]?.price;
-  const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
-  return Math.round(Number.isFinite(mensuel) ? mensuel : 0);
+  const ligne = abonnement?.items?.data?.[0];
+  const prix = ligne?.price;
+  const quantite = Number(ligne?.quantity) > 0 ? Number(ligne.quantity) : 1;
+  const compte = Number(prix?.recurring?.interval_count) > 0 ? Number(prix.recurring.interval_count) : 1;
+  const moisParPeriode = (prix?.recurring?.interval === "year" ? 12 : 1) * compte;
+  let mensuel = (Number(prix?.unit_amount) * quantite) / moisParPeriode;
+  // Ce qu'il PAIE, et non le prix affiché : une remise posée depuis le
+  // dashboard laissait unit_amount intact, et l'avoir valait un mois plein à
+  // qui payait moitié prix, ou rien (relecture du 08/11/2026). Une remise
+  // dont le coupon n'est pas lisible LÈVE : mieux vaut reporter que créditer
+  // trop.
+  const remises = Array.isArray(abonnement?.discounts) && abonnement.discounts.some(r => r && typeof r === "object")
+    ? abonnement.discounts.filter(r => r && typeof r === "object")
+    : (abonnement?.discount ? [abonnement.discount] : []);
+  if (!remises.length && Array.isArray(abonnement?.discounts) && abonnement.discounts.length) throw new Error("remise de l'abonnement illisible");
+  for (const r of remises) {
+    const c = r?.coupon;
+    if (!c) throw new Error("remise de l'abonnement illisible");
+    if (Number(c.percent_off) > 0) mensuel *= 1 - Number(c.percent_off) / 100;
+    else if (Number(c.amount_off) > 0) mensuel -= Number(c.amount_off) / moisParPeriode;
+  }
+  return Math.max(0, Math.round(Number.isFinite(mensuel) ? mensuel : 0));
 }
 
 /**
@@ -190,7 +209,7 @@ export async function prixMensuelCentimes(parrain, stripeKey) {
   if (sr.status === 404) return null;
   if (!sr.ok) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
   const centimes = prixMensuelDepuisAbonnement(sd);
-  // Prix nul (remise à 100 %) : il ne paie rien, un avoir n'aurait pas de sens.
+  // Prix nul (remise à 100 %, désormais lue) : il ne paie rien, un avoir n'aurait pas de sens.
   return centimes > 0 ? centimes : null;
 }
 

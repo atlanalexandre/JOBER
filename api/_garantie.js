@@ -71,6 +71,9 @@ export const joursDuMois = (mois) => new Date(Date.UTC(Number(mois.slice(0, 4)),
 export function etatDuJour({ profil, meta = {}, statutAbonnement }) {
   const non = (raison) => ({ disponible: false, raison });
   if (statutAbonnement !== "active") return non(`abonnement ${statutAbonnement || "illisible"}`);
+  // Un paiement en échec repasse la fiche en « free » (webhook) : relevé
+  // « indisponible », et non pas absent (relecture du 08/11/2026).
+  if (!["premium", "elite"].includes(profil?.plan_abonnement)) return non("pas d'abonnement payant");
   if (profil?.status !== "approved" || profil?.missions_enabled !== true) return non("accès aux prestations fermé");
   if (!(Array.isArray(meta.dispon_jours) && meta.dispon_jours.length > 0)) return non("aucun jour de disponibilité");
   // Rayon absent = 50 km, la valeur que retient la diffusion (`broadcast`) :
@@ -100,6 +103,9 @@ export function droitGarantie({ profil, abonnement, propositions, releves, mois 
   if (releves.indisponibles > 0) return non(`${releves.indisponibles} jour(s) sans être disponible`);
   if (releves.total < joursDuMois(mois) - RELEVES_MANQUANTS_ADMIS) return non(`relevés incomplets (${releves.total} jours)`);
   if (!abonnement || abonnement.statut !== "active") return non("abonnement Stripe inactif");
+  // Résilié en fin de période : il reste « active » jusque-là, mais le
+  // « prochain prélèvement » promis n'aura pas lieu (relecture du 08/11/2026).
+  if (abonnement.resilie) return non("abonnement résilié en fin de période");
   if (!(abonnement.debutMs > 0 && abonnement.debutMs <= bornes.gte * 1000)) return non("abonné après le début du mois");
   return { ok: true };
 }
@@ -116,7 +122,8 @@ async function lireAbonnement(subscriptionId, stripeKey) {
   if (!r.ok) throw new Error(`abonnement ${subscriptionId} illisible (${r.status})`);
   // Le prix d'un mois : la MÊME règle que la récompense d'invitation, partagée
   // (relecture du 06/11/2026 — deux copies auraient pu créditer deux montants).
-  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes: prixMensuelDepuisAbonnement(d) };
+  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes: prixMensuelDepuisAbonnement(d),
+    resilie: d.cancel_at_period_end === true || Number(d.cancel_at) > 0 };
 }
 
 /**
@@ -124,8 +131,9 @@ async function lireAbonnement(subscriptionId, stripeKey) {
  * (PostgREST plafonne à 1 000 lignes). Le filtre vit ici, une seule fois : les
  * deux appelants le passaient à l'identique (relecture du 07/11/2026).
  */
-const lireAbonnes = (supabaseUrl, lecture) => lireTout(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire`
-  + "&plan_abonnement=in.(premium,elite)&stripe_subscription_id=not.is.null&stripe_customer_id=not.is.null&garantie_mois_offert_at=is.null"
+const lireAbonnes = (supabaseUrl, lecture, { payantsSeulement = true } = {}) => lireTout(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire`
+  + (payantsSeulement ? "&plan_abonnement=in.(premium,elite)" : "")
+  + "&stripe_subscription_id=not.is.null&stripe_customer_id=not.is.null&garantie_mois_offert_at=is.null"
   + "&select=id,status,missions_enabled,plan_abonnement,stripe_subscription_id,stripe_customer_id,garantie_mois_offert_at", lecture);
 
 /**
@@ -141,7 +149,12 @@ export async function noterReleves({ supabaseUrl, headers, stripeKey, maintenant
   let abonnes;
   // Ceux qui ont déjà eu leur mois ne peuvent plus y prétendre : inutile de
   // les relever (relecture du 06/11/2026).
-  try { abonnes = await lireAbonnes(supabaseUrl, lecture); }
+  // Toute fiche qui porte encore un abonnement Stripe, QUELLE QUE SOIT SA
+  // FORMULE : en impayé, le webhook la repasse en « free » sans effacer
+  // l'abonnement. Lue sur les seuls payants, elle n'était pas relevée du tout
+  // — et deux jours sans relevé sont tolérés : un impayé réglé en 48 h
+  // laissait la garantie intacte (relecture du 08/11/2026).
+  try { abonnes = await lireAbonnes(supabaseUrl, lecture, { payantsSeulement: false }); }
   catch (e) { console.error("[garantie] abonnés illisibles — relevé du jour non fait :", e.message); return bilan; }
   // Écrit PAR LOTS, au fil de la boucle : écrit en une fois à la fin, un
   // dépassement du temps de la fonction ne laissait AUCUN relevé du jour, pour
@@ -302,16 +315,22 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
         }
       }
       if (!avoirOk) {
-        // La garantie ne se joue qu'une fois : un avoir refusé ne doit pas la
-        // consommer. La réservation est rendue ; le passage suivant réessaie.
-        const rendu = await marque({ garantie_mois_offert_at: null, garantie_mois_offert_mois: null }, "").catch(() => null);
-        const encoreUnPassage = estDebutDeMois(maintenantMs + INTERVALLE_RAPPELS_H * 3600e3);
-        console.error(`[garantie] avoir refusé pour ${profil.id} (${abonnement.centimes} c) : ${detailEchec} — `
-          + (rendu?.ok && encoreUnPassage ? "réservation rendue, nouvel essai au passage suivant."
-            // Une coupure ou une erreur 5xx ne dit pas si Stripe a créé l'avoir :
-            // créer à la main sans regarder aurait pu créditer deux fois (07/11/2026).
-            : "À FAIRE À LA MAIN : regarder d'abord le solde du client dans Stripe (Clients → le client → Solde) ; "
-              + "si un avoir « mois offert » y figure déjà, ne rien créer ; sinon le créer (Ajuster). Puis renseigner garantie_mois_offert_at."));
+        const debut = `[garantie] avoir refusé pour ${profil.id} (${abonnement.centimes} c) : ${detailEchec} — `;
+        // Une coupure ou une erreur 5xx ne dit pas si Stripe a créé l'avoir :
+        // créer à la main sans regarder pourrait créditer deux fois (07/11/2026).
+        const aLaMain = "À FAIRE À LA MAIN : la garantie reste RÉSERVÉE (garantie_mois_offert_at renseigné), aucun second avoir ne peut partir. "
+          + "Regarder le solde du client dans Stripe (Clients → le client → Solde) ; si l'avoir « mois offert » n'y figure pas, le créer (Ajuster le solde).";
+        // Au DERNIER passage du mois, la réservation est gardée : rendue, elle
+        // laissait un avoir créé à la main — sans la marque que cherche
+        // avoirDejaCree — à la merci d'un second le mois suivant (08/11/2026).
+        if (!estDebutDeMois(maintenantMs + INTERVALLE_RAPPELS_H * 3600e3)) { console.error(debut + aLaMain); continue; }
+        // Avant : la garantie ne se joue qu'une fois, un avoir refusé ne doit pas
+        // la consommer — la réservation est rendue, le passage suivant réessaie.
+        let rendu = null;
+        try { rendu = await marque({ garantie_mois_offert_at: null, garantie_mois_offert_mois: null }, ""); }
+        catch (e) { console.error(`[garantie] réservation de ${profil.id} non rendue :`, e.message); }
+        console.error(debut + (rendu?.ok ? "réservation rendue, nouvel essai au passage suivant."
+          : `réservation NON rendue (${rendu?.status || "réseau"}). ` + aLaMain));
         continue;
       }
       bilan.offerts++;
