@@ -272,11 +272,22 @@ export default async function handler(req, res) {
     // INCOMPLET : il ne doit pas être gardé par le réseau de Vercel, qui le
     // servirait à tous pendant deux minutes (relecture du 09/10/2026).
     let degrade = false;
-    const [allRatings, toutesTerminees] = await Promise.all([
+    // Références d'expérience confirmées (09/11/2026) : un nombre, jamais le
+    // détail — la réponse de la référence est confiée à ALANE. Table absente
+    // (migration non passée) : pas de compteur, la vitrine reste servie.
+    const lireReferencesConfirmees = async () => {
+      const lignes = await lireTout(`${SUPABASE_URL}/rest/v1/references_experience?statut=eq.confirmee&select=prestataire_id`, headers);
+      const compte = {};
+      for (const l of lignes) compte[l.prestataire_id] = (compte[l.prestataire_id] || 0) + 1;
+      return compte;
+    };
+    const [allRatings, toutesTerminees, referencesConfirmees] = await Promise.all([
       lireTout(`${SUPABASE_URL}/rest/v1/ratings?select=id,reviewee_provider_id,rating`, headers)
         .catch(e => { degrade = true; console.error("[prestataires] avis illisibles — notes absentes :", e.message); return []; }),
       compterPrestationsTerminees()
         .catch(e => { degrade = true; console.error("[prestataires] prestations terminées illisibles — compteurs absents :", e.message); return {}; }),
+      lireReferencesConfirmees()
+        .catch(e => { degrade = true; console.error("[prestataires] références illisibles — compteur absent :", e.message); return {}; }),
     ]);
     const missionCountByProvider = {};
     for (const [id, n] of Object.entries(toutesTerminees)) {
@@ -391,6 +402,7 @@ export default async function handler(req, res) {
         rating:           avgRating,
         reviews:          provRatings.length,
         missions_count:   missionCountByProvider[p.id] || 0,
+        references_confirmees: referencesConfirmees[p.id] || 0,
         // Seulement SI un CV existe : son contenu est réservé aux clients
         // connectés (`?action=cv`, décision du 14/10/2026). profiles.cv fait foi
         // depuis la migration 2026-09-29_cv_hors_du_jeton.

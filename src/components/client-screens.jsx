@@ -1691,6 +1691,7 @@ function mapperPrestataires(prestataires) {
       metiers:      metiersDuProfil(p),
       photo_url:       p.photo_url || null,
       missions_count:  p.missions_count || 0,
+      references_confirmees: p.references_confirmees || 0,
       zone_km:         p.zone_km || 50,
       trial_exhausted: p.trial_exhausted || false,
     };
@@ -2725,6 +2726,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             rating:          found.rating         || 0,
             reviews:         found.reviews        || 0,
             missions_count:  found.missions_count || 0,
+            references_confirmees: found.references_confirmees || 0,
             available:       found.dispo_immediat !== false && !(found.trial_exhausted && (found.plan_abonnement || "free") === "free"),
             photo_url:   found.photo_url || provider.photo_url || null,
             color:       sectorInfo?.color || provider.color || "#7C6FE0",
@@ -2782,6 +2784,15 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 3px" }}>{p.name}</h2>
             <p style={{ color:"rgba(255,255,255,0.7)", margin:"0 0 8px", fontSize:13 }}>{p.jobTitle}</p>
             <Stars rating={p.rating} size={14} /> <span style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginLeft:5 }}>{p.rating} · {p.reviews} avis · {p.distance}</span>
+            {/* Références d'expérience confirmées par écrit à ALANE (09/11/2026). */}
+            {p.references_confirmees > 0 && (
+              <div style={{ marginTop:7 }}>
+                <span title="Un responsable d'une entreprise où ce prestataire a travaillé l'a confirmé à ALANE"
+                  style={{ background:"rgba(16,217,143,0.18)", border:"1px solid rgba(16,217,143,0.45)", color:"#10D98F", borderRadius:8, padding:"3px 9px", fontSize:11, fontWeight:700 }}>
+                  ✅ {p.references_confirmees} référence{p.references_confirmees > 1 ? "s" : ""} confirmée{p.references_confirmees > 1 ? "s" : ""}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display:"flex", gap:8 }}>

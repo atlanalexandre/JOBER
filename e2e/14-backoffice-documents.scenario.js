@@ -218,6 +218,27 @@ test("la référence d'un titre s'ajoute au justificatif déposé, jamais une ad
   expect(d.verified, "une référence ne vaut pas vérification").toBe(false);
 });
 
+test("références d'expérience : le prestataire lit l'état des siennes, jamais la réponse, et n'écrit rien lui-même", async () => {
+  // Décision d'Alexandre du 09/11/2026 — migration 2026-11-09_references_experience.sql.
+  const p = await prestataireOperationnel();
+  const c = await request.newContext({ proxy });
+  const entetes = { Authorization: `Bearer ${p.jeton}`, apikey: await anon(), "Content-Type": "application/json" };
+  const etat = await c.get(`${SUPABASE}/rest/v1/references_experience?select=id,statut`, { headers: entetes });
+  expect(etat.status(), "l'état de ses références se lit").toBe(200);
+  const reponse = await c.get(`${SUPABASE}/rest/v1/references_experience?select=reponse,alerte`, { headers: entetes });
+  expect(reponse.ok(), "la réponse détaillée et l'alerte ne se lisent pas").toBeFalsy();
+  const ecrit = await c.post(`${SUPABASE}/rest/v1/references_experience`, { headers: entetes,
+    data: { prestataire_id: p.id, siret: "55210055400025", entreprise: "X", metier: "Femme/Valet de chambre", annee_debut: 2020,
+      contact_nom: "Moi", contact_email: "moi@exemple.fr", jeton_hash: "a".repeat(64), statut: "confirmee" } });
+  expect(ecrit.ok(), "une référence « confirmée » écrite par le navigateur est refusée").toBeFalsy();
+  await c.dispose();
+  const siretFaux = await api("/api/references", { action: "ajouter", siret: "123", metier: "Femme/Valet de chambre", annee_debut: 2020,
+    contact_nom: "Claire Martin", contact_email: "claire@exemple.fr", accord: true }, p.jeton);
+  expect(siretFaux.statut, siretFaux.texte.slice(0, 200)).toBe(400);
+  const jetonFaux = await api("/api/references", { action: "lire", jeton: "x".repeat(43) });
+  expect(jetonFaux.statut, "un jeton inconnu n'ouvre rien").toBe(404);
+});
+
 test("ALANE écrit à un prestataire, à tout moment : e-mail ET message dans l'application", async () => {
   // Décision du 28/09/2026 : seule l'équipe ALANE peut écrire à un prestataire une
   // fois la prestation finie. Le « Contacter » du back-office n'envoyait qu'un e-mail.
