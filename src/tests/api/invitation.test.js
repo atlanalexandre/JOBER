@@ -204,3 +204,25 @@ describe("branchements", () => {
     expect(app).toMatch(/PRESTA_SCREENS=\[[^\]]*"invite_clients"/);
   });
 });
+
+// Le prix d'un mois, celui qu'il PAIE (relecture du 08/11/2026) — sert aussi à la garantie.
+describe("prixMensuelDepuisAbonnement : ce qui est réellement payé", async () => {
+  const { prixMensuelDepuisAbonnement: prix } = await import("../../../api/_invitation.js");
+  const ab = (x = {}, ligne = {}) => ({ items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } }, ...ligne }] }, ...x });
+  it("prix plein, annuel ramené au mois, quantité", () => {
+    expect(prix(ab())).toBe(2999);
+    expect(prix({ items: { data: [{ price: { unit_amount: 29990, recurring: { interval: "year" } } }] } })).toBe(2499);
+    expect(prix(ab({}, { quantity: 2 }))).toBe(5998);
+  });
+  it("une remise en pourcentage ou en montant est déduite ; 100 % donne 0", () => {
+    expect(prix(ab({ discount: { coupon: { percent_off: 50 } } }))).toBe(1500);
+    expect(prix(ab({ discount: { coupon: { amount_off: 1000 } } }))).toBe(1999);
+    expect(prix(ab({ discount: { coupon: { percent_off: 100 } } }))).toBe(0);
+  });
+  it("la même remise listée deux fois (discount et discounts) n'est déduite qu'une fois", () => {
+    expect(prix(ab({ discount: { id: "di_1", coupon: { percent_off: 50 } }, discounts: ["di_1"] }))).toBe(1500);
+  });
+  it("une remise illisible lève : mieux vaut reporter que créditer trop", () => {
+    expect(() => prix(ab({ discounts: ["di_1"] }))).toThrow("remise");
+  });
+});
