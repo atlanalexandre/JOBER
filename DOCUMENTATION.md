@@ -130,6 +130,10 @@ l'empreinte sha-256 du jeton envoyé par e-mail (`jeton_hash`), le `statut` (`en
 `confirmee` | `refusee` | `expiree`), l'`alerte` anti-fraude, la `reponse` (jsonb) et les dates.
 RLS : le prestataire **lit** ses lignes, **sans** `reponse`, `alerte` ni `jeton_hash` (droits par
 colonne) ; **aucune écriture** au navigateur. Supprimée avec le compte (cascade).
+La politique de confidentialité (écran Documents légaux, article **9 bis**, version du 9 novembre
+2026) et l'article 14 des CGPS décrivent ce traitement : finalité, intérêt légitime, information
+de la personne citée par le premier e-mail (article 14 du RGPD : ses données ne viennent pas
+d'elle), conservation jusqu'à la suppression du compte du prestataire, droits à `rgpd@alane.fr`.
 
 **Le CV est obligatoire, et vit dans `profiles.cv`** (29/09/2026, décision d'Alexandre). Il
 était facultatif et rangé dans `user_metadata.cv`, donc dans le jeton de connexion (CLAUDE.md
