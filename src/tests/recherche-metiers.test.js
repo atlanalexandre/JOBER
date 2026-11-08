@@ -198,5 +198,11 @@ describe("la saisie en cours, lettre après lettre", () => {
     expect(trouve("tri")).not.toContain("Animateur(trice) événementiel(le)");
     expect(trouve("cav")).not.toContain("Employé de cafétéria");
     expect(trouve("inv")).not.toContain("Formateur bureautique / informatique");
+    // 08/11/2026 : une lettre plus loin, et le radical court des « Hôte(sse) ».
+    expect(trouve("cave")).not.toContain("Employé de cafétéria");
+    expect(trouve("inve")).not.toContain("Formateur bureautique / informatique");
+    expect(trouve("sse")).toHaveLength(0);
+    expect(trouve("hôtesse")).toContain("Hôte(sse) d'accueil");
+    expect(trouve("administrative")).toContain("Assistant(e) administratif(ve)");
   });
 });

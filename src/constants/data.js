@@ -480,7 +480,9 @@ const TERMINAISONS_FEMININES = [
   [/eure$/,  "eur"],    // professeure → professeur
   [/iere$/,  "ier"],    // caissiere   → caissier
   [/ere$/,   "er"],     // lingere     → linger
-  [/ve$/,    "f"],      // administrative → administratif
+  [/ive$/,   "if"],     // administrative → administratif — « -ive » seulement :
+                        // « -ve » repliait « cave » en « caf » (la cafétéria),
+                        // « gouve » en « gouf » (08/11/2026)
 ];
 
 const replierGenre = (mot) => {
@@ -543,7 +545,9 @@ export function motsCherchables(libelle, normaliser = normaliserTexte) {
     const avant = brut.slice(0, brut.indexOf(p)).replace(/\([^)]*\)/g, "");
     const apres = brut.slice(brut.indexOf(p) + p.length).replace(/\([^)]*\)/g, "");
     for (let coupe = 0; coupe <= 4; coupe++) {
-      if (coupe > avant.length) break;
+      // Jamais tout le radical : « Hôte(sse) » aurait donné la forme
+      // « sse de caisse », et « sse » trouvait tous les hôtes (08/11/2026).
+      if (coupe >= avant.trim().length) break;
       formes.add(avant.slice(0, avant.length - coupe) + contenu + apres);
     }
   }
@@ -625,17 +629,27 @@ const MOT_INTERIEUR_MIN = 7;
  * masculin et tel quel. Une recherche vide accepte tout : c'est à l'appelant
  * de ne pas filtrer.
  */
+// Le texte de recherche d'un libellé ne dépend que du libellé : calculé une
+// fois, et non à chaque frappe pour chacun des métiers (08/11/2026).
+const FOINS = new Map();
+function foinDe(libelle) {
+  if (!FOINS.has(libelle)) {
+    const aliasListe = ALIAS_METIERS[libelle] || [];
+    FOINS.set(libelle, ` ${[motsCherchables(libelle), motsCherchables(libelle, normaliserSansGenre),
+      ...aliasListe.map(normaliserTexte), ...aliasListe.map(normaliserSansGenre)].filter(Boolean).join(" ")}`);
+  }
+  return FOINS.get(libelle);
+}
+
 export function correspondRecherche(libelle, recherche) {
   const bruts = normaliserSansGenre(recherche).split(" ").filter(Boolean);
   if (bruts.length === 0) return true;
-  const aliasListe = ALIAS_METIERS[libelle] || [];
-  const foin = ` ${[motsCherchables(libelle), motsCherchables(libelle, normaliserSansGenre),
-    ...aliasListe.map(normaliserTexte), ...aliasListe.map(normaliserSansGenre)].filter(Boolean).join(" ")}`;
+  const foin = foinDe(libelle);
   const trouve = (t) => foin.includes(` ${t}`) || (t.length >= MOT_INTERIEUR_MIN && foin.includes(t));
   // `b + "e"` : le féminin à une lettre de sa fin — « esthéticienn »,
-  // « vendeus » — se replie déjà sur le masculin. Pas pour « -ve » : « cav »
-  // serait devenu « caf » et aurait trouvé la cafétéria.
-  const fini = (b) => { const f = `${b}e`, p = replierGenre(f); return p !== f && !f.endsWith("ve") ? p : null; };
+  // « vendeus » — se replie déjà sur le masculin. Pas pour « -ive » : « liv »
+  // serait devenu « lif » et aurait trouvé le liftier.
+  const fini = (b) => { const f = `${b}e`, p = replierGenre(f); return p !== f && !f.endsWith("ive") ? p : null; };
   return bruts.every(b => trouve(b) || trouve(replierGenre(b)) || (fini(b) !== null && trouve(fini(b))));
 }
 

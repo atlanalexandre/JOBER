@@ -180,7 +180,9 @@ Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers 
   « prof de maths », « cantine », « repassage »…). Le 07/11/2026, la saisie en cours a été réparée :
   chaque mot est aussi comparé tel quel, sans repliement du féminin, si bien que la liste ne se vide
   plus au milieu de « gouvernante », « serveuse » ou « praticienne » ; et les morceaux de parenthèse
-  (« trice » d'« Animateur(trice) ») ne trouvent plus rien par hasard.
+  seuls (« trice » d'« Animateur(trice) », « sse » d'« Hôte(sse) ») ne trouvent plus rien par hasard. Le
+  08/11/2026, le repliement « -ve → -f » est limité à « -ive → -if » (« administrative ») : « cave »
+  trouvait la cafétéria ; et le texte de recherche de chaque libellé est calculé une seule fois.
 
 Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
 qu'une entrée.
