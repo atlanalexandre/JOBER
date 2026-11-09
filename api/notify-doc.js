@@ -63,6 +63,10 @@ async function enregistrerDocument(callerId, docType, SUPABASE_URL, hdrs) {
     body: JSON.stringify({
       prestataire_id: callerId, type: docType, storage_path: chemin,
       verified: false, verified_at: null, expires_at: null, relance_expiration_at: null,
+      // La référence (numéro de carte, clé de diplôme) décrivait l'ANCIEN
+      // fichier : gardée, elle aurait fait vérifier le nouveau sur le titre
+      // d'un autre (relecture du 09/11/2026).
+      reference_verification: null,
       created_at: new Date().toISOString(),
     }),
   });
