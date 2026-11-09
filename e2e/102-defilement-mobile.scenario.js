@@ -9,12 +9,19 @@ import { test, expect } from "@playwright/test";
 import { client } from "./fabrique.js";
 import { ouvrir, connexion, fermerBandeauCookies } from "./parcours.js";
 
-/** Les cadres décalés à tort : un défilement horizontal, ou vertical dans un cadre masqué. */
+/**
+ * Les cadres décalés à tort : défilés alors qu'ils sont masqués (overflow
+ * hidden ou clip), donc que personne ne peut les faire défiler à la main. Une
+ * rangée qui défile d'elle-même — la barre des secteurs — n'en est pas un.
+ */
 const cadresDecales = (page) => page.evaluate(() => {
   const decales = [];
+  const masque = (o) => o === "hidden" || o === "clip";
   for (const el of document.querySelectorAll("body *")) {
     const cs = getComputedStyle(el);
-    if (el.scrollLeft !== 0 || (el.scrollTop !== 0 && cs.overflowY === "hidden")) decales.push(`${el.tagName}.${String(el.className).slice(0, 30)}`);
+    if ((el.scrollLeft !== 0 && masque(cs.overflowX)) || (el.scrollTop !== 0 && masque(cs.overflowY))) {
+      decales.push(`${el.tagName}.${String(el.className).slice(0, 30)} gauche=${el.scrollLeft} haut=${el.scrollTop}`);
+    }
   }
   return { decales, x: window.scrollX, deborde: document.documentElement.scrollWidth > window.innerWidth };
 });
