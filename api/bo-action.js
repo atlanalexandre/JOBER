@@ -1894,6 +1894,20 @@ export default async function handler(req, res) {
       });
     }
 
+    // Les références d'expérience d'un prestataire, réponse et alertes comprises
+    // (09/11/2026, migration 2026-11-09_references_experience.sql).
+    if (action === "list_references") {
+      if (!/^[0-9a-f-]{36}$/i.test(String(profileId || ""))) return res.status(400).json({ error: "profileId requis" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/references_experience?prestataire_id=eq.${profileId}`
+        + "&select=id,siret,entreprise,metier,annee_debut,annee_fin,contact_nom,contact_email,statut,alerte,reponse,envoyee_at,repondu_at,created_at&order=created_at", { headers });
+      const lignes = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(lignes)) {
+        console.error(`[list_references] références de ${profileId} illisibles (${r.status})`);
+        return res.status(502).json({ error: "Références illisibles" });
+      }
+      return res.status(200).json(lignes);
+    }
+
     if (action === "list_docs") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}&select=*&order=created_at.desc`, { headers });
@@ -2231,7 +2245,7 @@ export default async function handler(req, res) {
       const LABELS = {
         kbis:"KBIS / SIRET", rib:"RIB / IBAN", cni:"Pièce d'identité", photo:"Photo de profil",
         urssaf:"Attestation URSSAF", domicile:"Justificatif de domicile", rc_pro:"RC Professionnelle",
-        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
+        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour", casier:"Extrait de casier judiciaire",
       };
       const label = LABELS[doc.type] || doc.type;
       await notifier({

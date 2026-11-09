@@ -20,11 +20,12 @@ const DOC_LABELS = {
   diplomes: "Diplômes",
   autre:    "Autre document",
   titre_sejour: "Titre de séjour",
+  casier:   "Extrait de casier judiciaire",
 };
 
 // Types acceptés — ceux de la contrainte CHECK de `documents.type`. Un type hors
 // de cette liste serait refusé par la base : on le refuse ici, avec un message.
-const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour"];
+const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour", "casier"];
 
 // ── Enregistrer le document en base ─────────────────────────────────────────
 //
@@ -140,8 +141,33 @@ export default async function handler(req, res) {
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
   const esc  = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
-  const { docType, isRenewal } = req.body || {};
+  const { docType, isRenewal, referenceVerification } = req.body || {};
   if (!docType || typeof docType !== "string") return res.status(400).json({ error: "docType requis" });
+
+  // La référence qui permet de vérifier un titre sur le site officiel — numéro
+  // de carte professionnelle, clé diplome.gouv.fr (09/11/2026). Elle accompagne
+  // le justificatif déjà déposé, sans nouveau fichier. Du texte court, jamais
+  // une adresse : un lien fourni par le prestataire est le vecteur classique
+  // de la fausse attestation (voir VERIFICATIONS_OFFICIELLES).
+  if (referenceVerification !== undefined) {
+    const ref = typeof referenceVerification === "string" ? referenceVerification.trim() : "";
+    if (docType !== "diplomes") return res.status(400).json({ error: "Une référence ne s'ajoute qu'au justificatif « Diplômes & certifications »." });
+    if (!/^[A-Za-z0-9][A-Za-z0-9 ._/-]{2,79}$/.test(ref)) {
+      return res.status(400).json({ error: "Référence invalide : de 3 à 80 caractères, lettres, chiffres, espaces, points, tirets ou barres." });
+    }
+    const rr = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${caller.id}&type=eq.diplomes`, {
+      method: "PATCH",
+      headers: { ...hdrs, "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: JSON.stringify({ reference_verification: ref }),
+    });
+    const lignes = await rr.json().catch(() => null);
+    if (!rr.ok) {
+      console.error(`[notify-doc] référence de ${caller.id} non enregistrée (${rr.status}) — migration 2026-11-09_documents_reference_verification.sql passée ?`);
+      return res.status(502).json({ error: "La référence n'a pas pu être enregistrée. Réessayez dans un instant." });
+    }
+    if (!Array.isArray(lignes) || lignes.length === 0) return res.status(409).json({ error: "Déposez d'abord votre justificatif, puis ajoutez sa référence." });
+    return res.status(200).json({ enregistre: true });
+  }
   if (!TYPES_ENREGISTRABLES.includes(docType)) {
     console.error(`[notify-doc] type de document non enregistrable : ${docType} (compte ${caller.id})`);
     return res.status(400).json({ error: "Ce type de document ne peut pas encore être enregistré. Contactez le support." });

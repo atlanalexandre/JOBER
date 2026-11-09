@@ -122,6 +122,19 @@ par jour, clé unique `(prestataire_id, jour)`, écrite par le serveur seul — 
 `2026-11-05_garantie_releve_quotidien.sql`, passée en recette puis en production le 05/11/2026) :
 le relevé du matin qui prouve que l'abonné était disponible tout le mois.
 
+**`references_experience`** (décision d'Alexandre du 09/11/2026 — migration
+`2026-11-09_references_experience.sql`, **à passer en recette puis en production**) : les
+références d'expérience que le prestataire cite (`siret`, `entreprise` — le nom lu dans SIRENE,
+jamais celui qu'il tape —, `metier`, `annee_debut`/`annee_fin`, `contact_nom`, `contact_email`),
+l'empreinte sha-256 du jeton envoyé par e-mail (`jeton_hash`), le `statut` (`en_attente` |
+`confirmee` | `refusee` | `expiree`), l'`alerte` anti-fraude, la `reponse` (jsonb) et les dates.
+RLS : le prestataire **lit** ses lignes, **sans** `reponse`, `alerte` ni `jeton_hash` (droits par
+colonne) ; **aucune écriture** au navigateur. Supprimée avec le compte (cascade).
+La politique de confidentialité (écran Documents légaux, article **9 bis**, version du 9 novembre
+2026) et l'article 14 des CGPS décrivent ce traitement : finalité, intérêt légitime, information
+de la personne citée par le premier e-mail (article 14 du RGPD : ses données ne viennent pas
+d'elle), conservation jusqu'à la suppression du compte du prestataire, droits à `rgpd@alane.fr`.
+
 **Le CV est obligatoire, et vit dans `profiles.cv`** (29/09/2026, décision d'Alexandre). Il
 était facultatif et rangé dans `user_metadata.cv`, donc dans le jeton de connexion (CLAUDE.md
 §1.1) : un CV imposé à tous, avec ses descriptions libres, n'avait rien à y faire. La migration
@@ -180,7 +193,9 @@ Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers 
   « prof de maths », « cantine », « repassage »…). Le 07/11/2026, la saisie en cours a été réparée :
   chaque mot est aussi comparé tel quel, sans repliement du féminin, si bien que la liste ne se vide
   plus au milieu de « gouvernante », « serveuse » ou « praticienne » ; et les morceaux de parenthèse
-  (« trice » d'« Animateur(trice) ») ne trouvent plus rien par hasard.
+  seuls (« trice » d'« Animateur(trice) », « sse » d'« Hôte(sse) ») ne trouvent plus rien par hasard. Le
+  08/11/2026, le repliement « -ve → -f » est limité à « -ive → -if » (« administrative ») : « cave »
+  trouvait la cafétéria ; et le texte de recherche de chaque libellé est calculé une seule fois.
 
 Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
 qu'une entrée.
@@ -515,7 +530,7 @@ sécurité intérieure, art. L617-1) — et que la plateforme, qui organise la m
 aurait eu du mal à expliquer qu'elle n'avait rien demandé.
 
 [`api/_qualifications.js`](api/_qualifications.js) nomme, **métier par métier**, le titre
-attendu et le texte qui l'impose — 40 métiers à ce jour :
+attendu et le texte qui l'impose — 42 métiers à ce jour :
 
 | Famille | Titre attendu |
 |---|---|
@@ -523,7 +538,8 @@ attendu et le texte qui l'impose — 40 métiers à ce jour :
 | Sport et baignade (4) | Carte professionnelle d'éducateur sportif (dont le professeur de Pilates), BNSSA ; pour l'intervenant sportif en milieu scolaire, la même carte (une carte vérifiée pour le coach le couvre) ou, à l'école primaire, l'agrément de l'Éducation nationale |
 | Animation (2) | BAFA ou équivalent |
 | Conduite (5) | Carte VTC, permis C ou D avec FIMO/FCO, permis B (chauffeur livreur, voiturier — depuis le 29/09/2026) |
-| Coiffure et esthétique (4) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être et la prothésie ongulaire |
+| Coiffure et esthétique (5) | CAP, BP, ou 3 ans de pratique — y compris le modelage bien-être, la prothésie ongulaire et le maquillage (09/11/2026) |
+| Petite enfance (1) | Agrément « services à la personne » pour la garde d'enfants de moins de 3 ans (code du travail, art. L7232-1 — 09/11/2026) |
 | Danse (1) | Diplôme d'État de professeur de danse (classique, jazz, contemporaine) |
 | Métiers de bouche (13) | CAP de la spécialité, ou 3 ans de pratique |
 | Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
@@ -596,7 +612,14 @@ d'animaux (06/11/2026) s'exerce **chez le propriétaire** seulement — « Garde
 chiens (chez le propriétaire) », alias « dog sitter », « pet sitter » : aucun titre exigé, mais une note
 qui exclut l'hébergement chez le prestataire (réglementé : déclaration en préfecture, ACACED,
 locaux conformes — code rural, art. L214-6-1), borne le crédit d'impôt aux personnes âgées ou
-dépendantes et conseille une assurance RC professionnelle. Même logique pour le permis des
+dépendantes et conseille une assurance RC professionnelle. Le 09/11/2026 (décision d'Alexandre) : la **garde
+d'enfants** en deux métiers — « de 3 ans et plus / Baby-sitting (chez les parents) », sans titre, et
+« de moins de 3 ans (agrément) », qui exige l'agrément SAP ; garder chez soi (assistante maternelle,
+agrément PMI) reste hors plateforme, et « nounou », jusque-là volontairement sans résultat, mène
+aux deux. Les **petits travaux de bricolage** (note : ni électricité, ni plomberie, ni gaz, ni
+bâtiment ; crédit d'impôt limité aux interventions de 2 h), l'**assistance informatique à
+domicile** (sans titre) et le **maquillage** (même titre que l'esthéticienne) rejoignent le
+catalogue. Même logique pour le permis des
 coursiers (« Coursier / Livreur », « Livreur courses à domicile ») : ils peuvent livrer à vélo
 ou à pied, le permis leur est donc signalé, pas exigé (décision d'Alexandre, 29/09/2026). Ces notes s'affichent au
 moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas
@@ -708,7 +731,7 @@ correspondante :
 | Document | Service | Ce qu'il prouve |
 |---|---|---|
 | Attestation URSSAF | `urssaf.fr` — code de sécurité | Distingue une vraie attestation d'une reconstitution graphique |
-| Diplôme Éducation nationale | CycladesVerif — QR code depuis 2025 | Authenticité du CAP, BTS, bac |
+| Diplôme Éducation nationale | CycladesVerif — QR code depuis 2025 ; `diplome.gouv.fr` — clé de vérification pour un diplôme plus ancien | Authenticité du CAP, BEP, BTS, bac |
 | Carte professionnelle CNAPS | téléservice du ministère | La carte est-elle toujours active |
 
 Aucune plateforme payante de conformité ne fait mieux : la plupart se contentent d'appeler ces
@@ -716,6 +739,17 @@ mêmes services. Le lien affiché **suit le métier** — pour un agent de sécu
 renvoie au CNAPS ; pour un pâtissier, à CycladesVerif. Les liens pointent toujours vers le site
 officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur classique de la
 fausse attestation.
+
+**La référence à saisir, donnée par le prestataire** (décision d'Alexandre du 09/11/2026 —
+migration `2026-11-09_documents_reference_verification.sql`, **à passer en recette puis en
+production**). Le service officiel demande un numéro — de carte, ou la clé d'un diplôme — qu'il
+fallait lire sur le scan ou réclamer au prestataire. Celui-ci peut désormais le donner depuis son
+onglet Documents, une fois le justificatif « Diplômes & certifications » déposé et tant qu'il
+n'est pas vérifié. `/api/notify-doc` l'écrit dans `documents.reference_verification` (3 à 80
+caractères, lettres, chiffres, espaces, points, tirets, barres — **jamais une adresse**), sur la
+pièce déjà déposée ; le back-office l'affiche à côté du lien officiel, avec un bouton « copier ».
+Les vérifications restent faites sur le site officiel, par l'équipe : la référence ne vaut pas
+preuve.
 
 **L'offre de lancement : éligible par l'ancienneté, déclenchée par le travail** (15/09/2026).
 Les 100 premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de
@@ -1028,7 +1062,19 @@ l'accès aux propositions est suspendu 30 jours après (`missions_enabled = fals
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
 terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
-`autre`, `titre_sejour`. **Un seul document par prestataire et par type** (contrainte unique).
+`autre`, `titre_sejour`, `casier`. **Un seul document par prestataire et par type** (contrainte unique).
+
+**`casier` — l'extrait de casier judiciaire** (bulletin n° 3 ; décision d'Alexandre du 09/11/2026,
+migration `2026-11-09_documents_casier_judiciaire.sql` — **à passer en recette puis en
+production**). ALANE l'exige — aucun texte ne l'impose — pour les métiers au contact d'enfants,
+`METIERS_CASIER` d'`api/_qualifications.js` : les deux gardes d'enfants, l'animateur club
+enfants, l'animateur périscolaire et le professeur particulier. Comme un titre professionnel, il
+ouvre le **métier** et non le compte : `peutExercer()` refuse ces métiers tant que l'extrait
+n'est pas vérifié ou qu'il a dépassé son échéance, que le back-office saisit à la vérification
+(un an après l'émission). `justificatifsDe()` d'`api/_habilitations.js` le lit avec le
+justificatif `diplomes`, sous la clé `casier`. `docsRequisPour()` ne le demande qu'à qui
+déclare un de ces métiers, et l'exige alors pour ouvrir l'accès. Les CGPS (art. 3) le disent
+depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`.
 
 **`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
 25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`, appliquée en production le
@@ -1437,6 +1483,7 @@ Les 78 fichiers de `/api` — 21 points d'entrée et 57 modules partagés préfi
 | `bo-action.js` | Toutes les actions du backoffice |
 | `prestataires.js` | Catalogue des prestataires ; `?action=places` (offre de lancement) ; `?action=paliers_cashback` (23/10/2026) : seuils et taux de `platform_settings.cashback_rates`, que les clients ne peuvent pas lire directement — `chargerPaliersCashback()` (`ui.jsx`) les reporte dans `CASHBACK_TIERS` au démarrage (`appliquerPaliersCashback()`, `plans.js`), pour que les écrans affichent le taux réellement crédité et non la grille du code |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
+| `references.js` | **Références d'expérience confirmées par e-mail** (09/11/2026). `ajouter` (prestataire connecté, rôle lu sur `profiles`) : 5 au plus, SIRET contrôlé dans SIRENE (entreprise active), contact différent du prestataire, doublon refusé ; alerte au back-office pour une adresse personnelle ou un contact qui sert déjà à d'autres prestataires ; e-mail construit par le serveur seul (nom officiel de l'entreprise, métier du catalogue) — s'il ne part pas, la ligne est retirée. `lire` / `repondre` (publics, par jeton à usage unique, 30 jours) : la page `public/reference.html` ; la réponse ne s'écrit qu'une fois (`statut=eq.en_attente`). **Une relance, une seule**, 7 jours après l'envoi sans réponse, par le balayage du matin (`relancerReferences()`, `?action=documents`) : le jeton n'étant gardé que par son empreinte, un nouveau lien remplace l'ancien (écriture conditionnée à l'ancienne empreinte) ; si l'e-mail ne part pas, l'ancien est rétabli. « Déjà relancée » se lit sans colonne : la relance repousse `envoyee_at` à plus d'un jour de `created_at`. Règles dans `_references.js`. Le catalogue (`prestataires.js`) en donne le **nombre** confirmé (`references_confirmees`), affiché sur le profil ; le back-office (`list_references`) en montre le détail |
 | `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
@@ -1458,7 +1505,7 @@ Les 78 fichiers de `/api` — 21 points d'entrée et 57 modules partagés préfi
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 | `_vagues.js` | Validation des prestataires **par vagues** (demande d'Alexandre du 20/10/2026) — `etatDossier()` (`incomplet` : une pièce obligatoire absente · `a_verifier` : tout est déposé, une pièce attend le contrôle · `pret`), `aUnSiret()` (`profiles.siret`, puis `siret` des métadonnées — pas `ae_siret`, que personne ne renseigne et que l'empreinte anti-recréation ne lit pas), `destinatairesRelanceSiret()` et `emailRelanceSiret()`. La liste du back-office (`list`) porte `etat_dossier` et `sans_siret` ; l'écran « Validation des comptes » en tire le filtre **📋 Dossier** (Dossiers complets à vérifier · Pièces manquantes · Sans SIRET), le bouton **« Valider les N profils affichés »** (la vague filtrée, chacun par `approve` ; le bouton vert valide toujours tout le monde) et la **relance des inscrits sans SIRET** (action `relance_sans_siret` : aperçu, puis envoi au nombre annoncé, refus 409 sinon ; texte et destinataires établis par le serveur ; un compte relancé ne l'est plus pendant 30 jours, `bo_logs`). Le SIRET reçu se saisit dans « Modifier profil » (`update_profile`, champ `siret`, 14 chiffres et clé de Luhn contrôlés, écrit dans `profiles.siret` et les métadonnées) : un prestataire inscrit ne peut plus le saisir lui-même. Méthode complète : document « Méthode de validation des prestataires à l'ouverture » |
 | `_invitation.js` | « Invitez vos clients » (02/11/2026) — `recompenserInvitations()`, branché sur `cron-reset-monthly` toutes les deux heures ; `prestationQualifiante()`, `fraisAOffrir()`, `decisionMoisOffert()`, `offrirMoisAbonnement()`. Les chiffres (50 €, 6 mois par an) vivent dans `_invitation_regles.js`, lu aussi par l'écran. Action `mes_invitations` de `support.js` : le bilan du prestataire, en nombres seulement |
-| `_garantie.js` | Garantie « mois sans proposition » (04/11/2026, CGPS 6B.3) — `appliquerGarantie()`, `droitGarantie()`, `moisEcoule()`, `estDebutDeMois()`. Les trois premiers jours de chaque mois, avec les rappels de `cron-reset-monthly` : un abonné Premium ou Elite à qui **aucune prestation n'a été proposée** de tout le mois écoulé (`propositions_recues`, heure de Paris) reçoit un **avoir d'un mois** chez Stripe (clé `garantie-{id}-{mois}`, et l'avoir porte la marque `metadata.garantie_prestataire` / `garantie_mois` : avant d'en créer un, l'examen cherche s'il existe déjà — sur tout l'historique du client et quel que soit le mois : un avoir d'un mois précédent consomme la garantie —, car la clé d'idempotence ne protège que 24 h — 06 et 07/11/2026), **une seule fois**. Conditions **pendant tout le mois**, relevées chaque matin par `noterReleves()` (tâche de 7 h, table **`garantie_releves`** — une ligne par abonné et par jour, écrite par le serveur seul ; migration `2026-11-05_garantie_releve_quotidien.sql`, passée en recette puis en production et vérifiée le 05/11/2026) : abonnement Stripe **actif** (`past_due` exclu), profil validé et accès ouvert, des jours de disponibilité, un rayon ≥ 10 km (50 km s'il n'a jamais été renseigné, comme pour la recherche des clients) ; un seul jour « indisponible » exclut le mois, et deux relevés manquants au plus sont tolérés. L'abonnement doit aussi avoir été souscrit avant le 1er. La première version ne vérifiait ces conditions que le jour du contrôle : une suspension levée avant le 1er, ou un rayon d'1 km remis à 20 km le 31, passaient (relecture du 05/11/2026). L'examen lit d'abord la base (propositions, relevés) et n'appelle Stripe qu'une fois ensuite ; un avoir refusé — ou une coupure réseau pendant sa création — rend la réservation, pour que la garantie unique ne soit pas consommée ; au dernier passage du mois (intervalle `INTERVALLE_RAPPELS_H`, vérifié contre `vercel.json`), le journal dit « À FAIRE À LA MAIN » et demande de regarder d'abord le solde du client, l'avoir ayant pu être créé malgré l'erreur. Le relevé du matin écrit par lots de 10 abonnés, chaque lot aussitôt, et ne relève plus ceux qui ont déjà eu leur mois offert (06/11/2026). Une proposition refusée ou sans réponse l'exclut. Premier mois examiné : décembre 2026 (le registre n'existe pas avant). Le prix est lu avant la réservation ; une panne reporte au passage suivant. `_propositions.js` (`noterProposition()`, et `noterPropositions()` en une écriture groupée par lot de 20 prestataires pour la diffusion — 05 et 06/11/2026) écrit le registre depuis `prevenirNouvelleDemande()` (choix du client, cascade, série) et la diffusion (`broadcast`) |
+| `_garantie.js` | Garantie « mois sans proposition » (04/11/2026, CGPS 6B.3) — `appliquerGarantie()`, `droitGarantie()`, `moisEcoule()`, `estDebutDeMois()`. Les trois premiers jours de chaque mois, avec les rappels de `cron-reset-monthly` : un abonné Premium ou Elite à qui **aucune prestation n'a été proposée** de tout le mois écoulé (`propositions_recues`, heure de Paris) reçoit un **avoir d'un mois** chez Stripe (clé `garantie-{id}-{mois}`, et l'avoir porte la marque `metadata.garantie_prestataire` / `garantie_mois` : avant d'en créer un, l'examen cherche s'il existe déjà — sur tout l'historique du client et quel que soit le mois : un avoir d'un mois précédent consomme la garantie —, car la clé d'idempotence ne protège que 24 h — 06 et 07/11/2026), **une seule fois**. Conditions **pendant tout le mois**, relevées chaque matin par `noterReleves()` (tâche de 7 h, table **`garantie_releves`** — une ligne par abonné et par jour, écrite par le serveur seul ; migration `2026-11-05_garantie_releve_quotidien.sql`, passée en recette puis en production et vérifiée le 05/11/2026) : abonnement Stripe **actif** (`past_due` exclu — et relevé quand même : le relevé lit toute fiche qui porte un abonnement Stripe, quelle que soit sa formule, car un impayé la repasse en « free » ; 08/11/2026) et non résilié en fin de période, profil validé et accès ouvert, des jours de disponibilité, un rayon ≥ 10 km (50 km s'il n'a jamais été renseigné, comme pour la recherche des clients) ; un seul jour « indisponible » exclut le mois, et deux relevés manquants au plus sont tolérés. L'abonnement doit aussi avoir été souscrit avant le 1er. La première version ne vérifiait ces conditions que le jour du contrôle : une suspension levée avant le 1er, ou un rayon d'1 km remis à 20 km le 31, passaient (relecture du 05/11/2026). L'examen lit d'abord la base (propositions, relevés) et n'appelle Stripe qu'une fois ensuite ; un avoir refusé — ou une coupure réseau pendant sa création — rend la réservation, pour que la garantie unique ne soit pas consommée, sauf au dernier passage du mois, où elle est gardée (un avoir créé à la main n'a pas la marque que cherche l'examen : rendue, la réservation aurait permis un second avoir — 08/11/2026) ; le montant est ce que l'abonné paie réellement (quantité, remise), lu par `prixMensuelDepuisAbonnement()` ; au dernier passage du mois (intervalle `INTERVALLE_RAPPELS_H`, vérifié contre `vercel.json`), le journal dit « À FAIRE À LA MAIN » et demande de regarder d'abord le solde du client, l'avoir ayant pu être créé malgré l'erreur. Le relevé du matin écrit par lots de 10 abonnés, chaque lot aussitôt, et ne relève plus ceux qui ont déjà eu leur mois offert (06/11/2026). Une proposition refusée ou sans réponse l'exclut. Premier mois examiné : décembre 2026 (le registre n'existe pas avant). Le prix est lu avant la réservation ; une panne reporte au passage suivant. `_propositions.js` (`noterProposition()`, et `noterPropositions()` en une écriture groupée par lot de 20 prestataires pour la diffusion — 05 et 06/11/2026) écrit le registre depuis `prevenirNouvelleDemande()` (choix du client, cascade, série) et la diffusion (`broadcast`) |
 | `_moderation.js` | Services à caractère sexuel (02/11/2026) — `motsSuspects()`, `signalerAuBackOffice()`, `contenusSuspects()`. Repère des mots sans ambiguïté (« escort », « naturiste », « happy ending »…) dans chaque message envoyé (`envoyer_message`) et, chaque jour à 7 h (`cron-reset-monthly?action=documents`), dans la présentation (`user_metadata.bio`) et le CV des prestataires et les demandes des dernières 24 h. Ouvre un ticket « [Modération] » au back-office, un seul par contenu (empreinte dans le sujet) ; **ne bloque ni ne suspend rien** : la décision reste humaine. Le ticket **n'est pas rattaché** au compte concerné (`user_id` vide, compte nommé dans le sujet et le message) : rattaché, « Répondre » lui écrivait et la suppression de son compte l'effaçait. Le balayage quotidien passe **après** la surveillance des documents, pour ne jamais lui prendre son temps — et tourne aussi quand celle-ci échoue (04/11/2026). « escorte » (français, sécurité) et « sensuel » seul ne sont pas repérés : faux positifs (03/11/2026). Un mot ajouté ne doit crier sur aucun libellé, compétence ou titre des métiers — c'est testé (`moderation.test.js`). Interdiction écrite dans les CGPS, **article 4.1 bis « Prestations interdites »** (version du 3 novembre 2026, décision d'Alexandre) : suspension immédiate puis clôture du compte, signalement aux autorités. Bouton « 🚩 Signaler » (`BoutonSignaler`, `ui.jsx`) sur la fiche d'un prestataire et dans la messagerie : un ticket « Signaler un utilisateur » portant l'identifiant du compte |
 | `_pilotage.js` | Pilotage de l'activité (01/11/2026) — `chiffresPilotage()`, `estServie()`. Sur les seules réservations payées des douze derniers mois : **demandes servies** (confirmées, faites, closes ou contestées ÷ tranchées ; une **annulation compte comme non servie** — la base ne dit pas qui a annulé, et l'automatisme annule les réservations restées sans prestataire : le chiffre peut sous-estimer, jamais rassurer à tort ; `needs_replacement` est en attente, le webhook la posant aussi sans qu'aucun prestataire ait accepté), **délai d'acceptation** (médiane de `acceptee_at − created_at`, dès que la colonne existe), **retour des clients** (servis au moins deux fois ÷ servis, hors semaines suivantes d'une série), et la ventilation par secteur (corrigé le 02/11/2026). Action BO `pilotage_activite`, tuile « 📈 Pilotage de l'activité » en tête du tableau de bord |
 | `_journal_comptable.js` | Journal comptable du mois, depuis le relevé du solde Stripe : `bornesMois()` (heure de Paris), `ligneJournal()`, `totauxJournal()` (partagé avec l'écran), `fraisServiceDeduits()`. Utilisé par l'action `export_comptable` de `bo-action.js`. Voir §5 « Back-office » |
@@ -5322,6 +5369,13 @@ prestation démarrée en retard tourne encore quand l'horaire prévu est dépass
 ---
 
 ## 7. Navigation et URLs
+
+**`/reference` — la page de réponse d'une référence** (09/11/2026) : `public/reference.html` et
+`public/reference.js`, **hors de l'application** — la personne citée n'a pas de compte, et
+l'écran n'entre donc ni dans `SCREEN_TO_PATH` ni dans les contrôles de rôle. Le script est un
+fichier à part : la politique de sécurité (`script-src 'self'`) refuse le JavaScript écrit dans la
+page. Tout le texte affiché passe par `textContent`. Le lien porte un jeton à usage unique
+(`?t=…`), valable 30 jours ; voir `api/references.js`.
 
 **La barre du bas reste sur les écrans secondaires du prestataire** (13/10/2026, décision
 d'Alexandre) : Abonnement, Modifier mon profil, Dépôt d'un document, Micro-entreprise, Messagerie,

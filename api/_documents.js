@@ -1,4 +1,4 @@
-import { qualificationsPour } from "./_qualifications.js";
+import { qualificationsPour, casierExige } from "./_qualifications.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Les pièces d'un dossier : combien de temps elles valent, et où les vérifier
@@ -41,6 +41,9 @@ export const DOCS_REQUIS = [
   // étranger doit disposer d'un titre l'autorisant à exercer une activité NON
   // SALARIÉE en France : la nationalité était déclarée à l'inscription, aucun
   // justificatif n'était demandé. Voir `docsRequisPour()`.
+  // Extrait de casier judiciaire (09/11/2026) : demandé seulement à qui déclare
+  // un métier au contact d'enfants (METIERS_CASIER d'api/_qualifications.js).
+  { id:"casier", label:"Extrait de casier judiciaire (bulletin n° 3)", icon:"⚖️", required:false, info:"Daté de moins de 3 mois, demandé gratuitement en ligne sur casier-judiciaire.justice.gouv.fr" },
   { id:"titre_sejour", label:"Titre de séjour",         icon:"🛂", required:false, info:"Autorisant l'exercice d'une activité non salariée en France (hors UE uniquement)" },
 ];
 
@@ -58,11 +61,18 @@ export function docsRequisPour(nationalite, metiers) {
   // attendu. « Fournissez un diplôme » fait envoyer n'importe quoi ;
   // « Fournissez votre carte professionnelle CNAPS » fait envoyer la carte.
   const qualifications = qualificationsPour(metiers);
+  const auContactEnfants = [...new Set((Array.isArray(metiers) ? metiers : [])
+    .map(m => (typeof m === "string" ? m : m?.metier)).filter(casierExige))];
 
   return DOCS_REQUIS
     .filter(d => d.id !== "titre_sejour" || horsUE)
+    .filter(d => d.id !== "casier" || auContactEnfants.length > 0)
     .map(d => {
       if (d.id === "titre_sejour") return { ...d, required: true };
+      if (d.id === "casier") {
+        return { ...d, required: true,
+          info: `${d.info}. Exigé par ALANE pour « ${auContactEnfants.join(" », « ")} », au contact d'enfants. À renouveler chaque année.` };
+      }
       if (d.id === "diplomes" && qualifications.length > 0) {
         return {
           ...d,
@@ -109,6 +119,8 @@ export const VALIDITE_DOCUMENTS = {
                   note: "Saisir la date de fin de la période de garantie écrite sur l'attestation — elle n'a aucun rapport avec la date de dépôt." },
   diplomes:     { mois: 0,
                   note: "Un diplôme ne périme pas, mais une carte professionnelle ou un recyclage, si. Laisser vide pour un diplôme, saisir la date pour une carte." },
+  casier:       { mois: 12,
+                  note: "Vérifier qu'il est au nom de la pièce d'identité, daté de moins de 3 mois, et qu'il porte la mention « Néant ». Échéance déduite : un an après le dépôt." },
   titre_sejour: { mois: 0,
                   note: "Saisir la date de fin de validité portée sur le titre." },
 };
@@ -223,7 +235,8 @@ export const VERIFICATIONS_OFFICIELLES = {
   diplomes: {
     nom: "Vérifier un diplôme (QR code)",
     url: "https://siec.education.fr/candidats/demarches/nouveau/verification-diplome",
-    mode: "Depuis 2025, les diplômes de l'Éducation nationale — CAP, BTS, bac, examens professionnels — portent un QR code. L'application CycladesVerif en confirme l'authenticité en quelques secondes.",
+    mode: "Depuis 2025, les diplômes de l'Éducation nationale — CAP, BTS, bac, examens professionnels — portent un QR code. L'application CycladesVerif en confirme l'authenticité en quelques secondes. Pour un diplôme plus ancien, la clé de vérification que le prestataire a pu donner (« Référence » à côté) s'ouvre sur diplome.gouv.fr.",
+    autre: { nom: "diplome.gouv.fr", url: "https://diplome.gouv.fr/" },
   },
 };
 

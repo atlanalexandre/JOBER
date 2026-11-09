@@ -64,21 +64,21 @@ describe("le droit au mois offert", () => {
 });
 
 function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservation = [{ id: "p1" }], abonnementKo = false, avoirKo = false,
-  avoirsExistants = [], avoirsKo = false, coupure = false, pages = false, metaUtil = meta } = {}) {
+  avoirsExistants = [], avoirsKo = false, coupure = false, pages = false, profilLu = profil(), lectures = [], abonnementLu = {}, metaUtil = meta } = {}) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url), m = o.method || "GET";
     appels.push({ u, m, corps: o.body, cle: o.headers?.["Idempotency-Key"], prefer: o.headers?.Prefer });
     const ok = (x) => new Response(JSON.stringify(x), { status: 200 });
     const compte = (n) => new Response(null, { status: 200, headers: { "content-range": `*/${n}` } });
-    if (u.includes("profiles?role=eq.prestataire&plan_abonnement=in.")) return ok([profil()]);
+    if (u.includes("profiles?role=eq.prestataire")) { lectures.push(u); return ok([profilLu]); }
     if (u.includes("/auth/v1/admin/users/p1")) return ok({ user_metadata: metaUtil });
     if (u.includes("propositions_recues")) return compte(propositions);
     if (u.includes("garantie_releves") && m === "HEAD") return compte(u.includes("disponible=is.false") ? indisponibles : releves);
     if (u.includes("garantie_releves") && m === "POST") return new Response(null, { status: 201 });
     if (u.includes("/v1/subscriptions/sub_p")) {
       if (abonnementKo) return new Response("{}", { status: 503 });
-      return ok({ status: "active", start_date: Math.floor(abo.debutMs / 1000), items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] } });
+      return ok({ status: "active", start_date: Math.floor(abo.debutMs / 1000), items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] }, ...abonnementLu });
     }
     if (u.includes("profiles?id=eq.p1") && m === "PATCH") return ok(u.includes("garantie_mois_offert_at=is.null") ? reservation : [{ id: "p1" }]);
     if (u.includes("/balance_transactions") && m === "GET") {
@@ -158,6 +158,32 @@ describe("l'examen du début de mois", () => {
     const appels = simuler({ avoirsKo: true });
     expect((await lancer()).offerts).toBe(0);
     expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
+  it("dernier passage du mois : la réservation est GARDÉE, aucun second avoir possible (08/11/2026)", async () => {
+    const appels = simuler({ avoirKo: true });
+    expect((await appliquerGarantie({ ...ctx, maintenantMs: Date.parse("2027-01-03T22:30:00Z") })).offerts).toBe(0);
+    const patchs = appels.filter(a => a.u.includes("profiles?id=eq.p1") && a.m === "PATCH");
+    expect(patchs).toHaveLength(1); // la réservation, jamais rendue
+    expect(console.error.mock.calls.flat().join(" ")).toContain("la garantie reste RÉSERVÉE");
+  });
+  it("résilié en fin de période : pas de mois offert, il n'y aura pas de prochain prélèvement (08/11/2026)", async () => {
+    const appels = simuler({ abonnementLu: { cancel_at_period_end: true } });
+    expect((await lancer()).offerts).toBe(0);
+    expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
+  it("une remise de 50 % : l'avoir vaut ce qu'il paie, pas le prix affiché (08/11/2026)", async () => {
+    const appels = simuler({ abonnementLu: { discount: { coupon: { percent_off: 50 } } } });
+    expect((await lancer()).offerts).toBe(1);
+    const avoir = appels.find(a => a.u.includes("/balance_transactions") && a.m === "POST");
+    expect(new URLSearchParams(avoir.corps).get("amount")).toBe("-1500");
+  });
+  it("en impayé, la fiche repasse en « free » : le relevé la voit, et la note indisponible (08/11/2026)", async () => {
+    const lectures = [];
+    const appels = simuler({ profilLu: profil({ plan_abonnement: "free" }), lectures });
+    expect(await noterReleves({ ...ctx, maintenantMs: Date.parse("2026-12-03T06:00:00Z") })).toEqual({ releves: 1 });
+    expect(lectures[0]).not.toContain("plan_abonnement=in.");
+    const ecrit = appels.find(a => a.u.includes("garantie_releves") && a.m === "POST");
+    expect(JSON.parse(ecrit.corps)[0]).toMatchObject({ disponible: false, raison: "pas d'abonnement payant" });
   });
   it("le relevé du matin écrit une ligne par abonné, remplacée si le traitement repasse le même jour", async () => {
     const appels = simuler();

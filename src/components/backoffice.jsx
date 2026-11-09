@@ -25,14 +25,14 @@ const estRecette = typeof window !== "undefined"
 const DOC_LABELS = {
   kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN",
   tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil",
-  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
+  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour", casier:"Casier judiciaire",
 };
 
 // Icônes des types de documents — même raison que DOC_LABELS ci-dessus : trois
 // copies divergentes coexistaient, dont deux sans `tva`.
 const DOC_ICONS = {
   kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
-  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄", titre_sejour:"🛂",
+  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄", titre_sejour:"🛂", casier:"⚖️",
 };
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
@@ -1311,6 +1311,9 @@ function BOComptes() {
                     </div>
                   </div>
 
+                  {/* Références d'expérience (09/11/2026), chargées avec les pièces. */}
+                  {docs[p.id] && <ReferencesBO profileId={p.id} />}
+
                   {/* Checklist docs requis */}
                   {docs[p.id] && (() => {
                     const REQ = p.role === "client" && p.type_compte === "entreprise"
@@ -1412,6 +1415,21 @@ function BOComptes() {
                                style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, borderRadius:6, padding:"4px 8px", textDecoration:"none", whiteSpace:"nowrap" }}>
                               🔎 {doc.verification.nom}
                             </a>
+                          )}
+                          {doc.verification?.autre && (
+                            <a href={doc.verification.autre.url} target="_blank" rel="noopener noreferrer"
+                               style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, borderRadius:6, padding:"4px 8px", textDecoration:"none", whiteSpace:"nowrap" }}>
+                              🔎 {doc.verification.autre.nom}
+                            </a>
+                          )}
+                          {/* La référence donnée par le prestataire (09/11/2026) : du
+                              texte à recopier dans le service officiel, jamais un lien. */}
+                          {doc.reference_verification && (
+                            <button onClick={()=>{ navigator.clipboard?.writeText(doc.reference_verification).then(()=>showToast("Référence copiée", "success"), e=>console.error("[bo] copie de la référence :", e?.message)); }}
+                              title="Copier, puis coller dans le service officiel"
+                              style={{ fontSize:10, color:"rgba(255,255,255,0.85)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:6, padding:"4px 8px", cursor:"pointer", fontFamily:"monospace" }}>
+                              Réf. : {doc.reference_verification} 📋
+                            </button>
                           )}
                           {!doc.isVirtual && doc.regleValidite && doc.regleValidite.mois !== null && (
                             <input type="date" defaultValue={doc.expires_at ? String(doc.expires_at).slice(0,10) : ""}
@@ -2381,12 +2399,53 @@ export function BOVersements() {
 // l'expiration et l'article 19.1 des CGPS — renouvellement annuel de la RC Pro,
 // suspension trente jours après l'échéance — reste une promesse sans effet.
 // Le titre de séjour aussi : son expiration retire l'accès (EXPIRATION_BLOQUANTE).
-const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour"];
+const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour", "casier"];
+
+const STATUTS_REF_BO = { en_attente:"⏳ en attente", confirmee:"✅ confirmée", refusee:"❌ non confirmée", expiree:"⌛ sans réponse" };
+
+/**
+ * Les références d'expérience d'un prestataire (09/11/2026) : la réponse
+ * détaillée et les alertes anti-fraude, que le prestataire ne voit pas. Une
+ * référence confirmée AIDE à juger un dossier ; elle ne prouve pas seule.
+ */
+function ReferencesBO({ profileId }) {
+  const [refs, setRefs] = useState(null);
+  useEffect(() => {
+    boFetch({ action:"list_references", profileId })
+      .then(r => r.json().then(j => (r.ok && Array.isArray(j) ? j : (console.error("[bo] références :", j?.error || r.status), []))))
+      .then(setRefs, e => { console.error("[bo] références :", e?.message); setRefs([]); });
+  }, [profileId]);
+  if (!refs || refs.length === 0) return null;
+  return (
+    <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, padding:"8px 10px", marginBottom:10 }}>
+      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>🤝 Références ({refs.filter(x=>x.statut==="confirmee").length}/{refs.length} confirmées)</div>
+      {refs.map(x => (
+        <div key={x.id} style={{ fontSize:11, color:"rgba(255,255,255,0.8)", padding:"5px 0", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+          <div><strong>{x.entreprise}</strong> (SIRET {x.siret}) · {x.metier} · {x.annee_debut}{x.annee_fin ? `–${x.annee_fin}` : "–…"} · {STATUTS_REF_BO[x.statut] || x.statut}</div>
+          <div style={{ color:"rgba(255,255,255,0.55)" }}>{x.contact_nom} · {x.contact_email}{x.envoyee_at ? "" : " · e-mail non envoyé"}</div>
+          {x.alerte && <div style={{ color:"#F0B429", fontWeight:700 }}>⚠️ {x.alerte}</div>}
+          {x.reponse && (
+            <div style={{ color:"rgba(255,255,255,0.7)", marginTop:2 }}>
+              Réponse{x.reponse.repondant ? ` de ${x.reponse.repondant}` : ""} : {x.reponse.a_travaille ? "a travaillé avec lui" : "ne confirme pas"}
+              {x.reponse.recommande === true ? " · recommande" : x.reponse.recommande === false ? " · ne recommande pas" : ""}
+              {x.reponse.commentaire ? ` — « ${x.reponse.commentaire} »` : ""}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 async function demanderValidite(type) {
   if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };
-  const saisie = await showPrompt(
-    `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
+  // L'extrait de casier n'a pas de date de fin : ALANE le demande chaque année.
+  // Son échéance ferme les métiers au contact d'enfants, pas le compte (09/11/2026).
+  const saisie = await showPrompt(type === "casier"
+    ? `Échéance de l'extrait de casier judiciaire (AAAA-MM-JJ) : un an après sa date d'émission.\n\n`
+      + `Avant de valider : au nom de la pièce d'identité, daté de moins de 3 mois, mention « Néant ».\n\n`
+      + `À l'échéance, les métiers au contact d'enfants se ferment jusqu'au dépôt d'un nouvel extrait.`
+    : `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
     + `Elle déclenche la relance du prestataire avant l'échéance, puis la suspension `
     + `de son accès trente jours après (CGPS art. 19.1).\n\n`
     + `Laissez vide si le document n'en porte pas.`

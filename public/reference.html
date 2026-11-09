@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Confirmer une référence — ALANE</title>
+  <!-- Page de réponse d'une référence d'expérience (09/11/2026). Statique, hors
+       de l'application : la personne citée n'a pas de compte. Le script est un
+       fichier à part (reference.js) — la politique de sécurité refuse le
+       JavaScript écrit dans la page. -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, "Helvetica Neue", system-ui, sans-serif; font-size: 16px; line-height: 1.55;
+           color: #1a1a2e; background: #f4f4f7; padding: 32px 16px 64px; }
+    .carte { max-width: 560px; margin: 0 auto; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+    .tete { background: #050E20; padding: 22px; text-align: center; font-size: 26px; font-weight: 800; letter-spacing: 2px; }
+    .tete .a { color: #7C6FE0; } .tete .l { color: #fff; } .tete .e { color: #F0B429; }
+    .corps { padding: 26px 24px; }
+    h1 { font-size: 20px; margin-bottom: 12px; }
+    p { margin-bottom: 12px; }
+    fieldset { border: none; margin: 18px 0; }
+    legend { font-weight: 700; margin-bottom: 8px; }
+    label.choix { display: block; padding: 11px 14px; border: 1px solid #d6d6e0; border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+    label.choix input { margin-right: 8px; }
+    textarea, input[type=text] { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid #d6d6e0; border-radius: 10px; }
+    textarea { min-height: 90px; resize: vertical; }
+    button { width: 100%; margin-top: 18px; background: #4F46E5; color: #fff; border: none; border-radius: 10px; padding: 14px; font: inherit; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .info { color: #666; font-size: 13px; }
+    .erreur { color: #c0392b; font-weight: 600; }
+    .masque { display: none; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #12121a; color: #e8e8ef; }
+      .carte { background: #1c1c28; }
+      label.choix, textarea, input[type=text] { border-color: #3a3a4a; background: #14141e; color: #e8e8ef; }
+      .info { color: #9a9aa8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="tete"><span class="a">A</span><span class="l">LAN</span><span class="e">E</span></div>
+    <div class="corps">
+      <div id="chargement"><p>Chargement…</p></div>
+      <div id="message" class="masque"><p id="texte-message"></p></div>
+      <form id="formulaire" class="masque">
+        <h1>Confirmer une référence</h1>
+        <p id="resume"></p>
+        <fieldset>
+          <legend>Cette personne a-t-elle travaillé avec vous, à ce poste ?</legend>
+          <label class="choix"><input type="radio" name="a_travaille" value="oui" required>Oui</label>
+          <label class="choix"><input type="radio" name="a_travaille" value="non">Non, ou je ne la connais pas</label>
+        </fieldset>
+        <fieldset id="bloc-recommande">
+          <legend>La recommanderiez-vous ?</legend>
+          <label class="choix"><input type="radio" name="recommande" value="oui">Oui</label>
+          <label class="choix"><input type="radio" name="recommande" value="non">Non</label>
+          <label class="choix"><input type="radio" name="recommande" value="" checked>Je préfère ne pas répondre</label>
+        </fieldset>
+        <fieldset>
+          <legend>Un commentaire ? <span class="info">(facultatif, lu par ALANE seulement)</span></legend>
+          <textarea name="commentaire" maxlength="500"></textarea>
+        </fieldset>
+        <fieldset>
+          <legend>Votre nom et votre fonction <span class="info">(facultatif)</span></legend>
+          <input type="text" name="repondant" maxlength="80">
+        </fieldset>
+        <p id="erreur" class="erreur masque"></p>
+        <button type="submit" id="envoyer">Envoyer ma réponse</button>
+        <p class="info" style="margin-top:14px">Votre réponse sert uniquement à vérifier l'expérience déclarée par cette personne. Elle est supprimée avec son compte. Vos droits (accès, opposition, suppression) : rgpd@alane.fr</p>
+      </form>
+    </div>
+  </div>
+  <script src="/reference.js"></script>
+</body>
+</html>
