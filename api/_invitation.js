@@ -179,10 +179,20 @@ export function prixMensuelDepuisAbonnement(abonnement) {
   // qui payait moitié prix, ou rien (relecture du 08/11/2026). Une remise
   // dont le coupon n'est pas lisible LÈVE : mieux vaut reporter que créditer
   // trop.
-  const remises = Array.isArray(abonnement?.discounts) && abonnement.discounts.some(r => r && typeof r === "object")
-    ? abonnement.discounts.filter(r => r && typeof r === "object")
-    : (abonnement?.discount ? [abonnement.discount] : []);
-  if (!remises.length && Array.isArray(abonnement?.discounts) && abonnement.discounts.length) throw new Error("remise de l'abonnement illisible");
+  // Chaque remise listée doit être lisible : une seule déduite sur deux, c'était
+  // encore créditer trop (relecture du 09/11/2026). Les appelants demandent
+  // `expand[]=discounts` ; l'ancien champ `discount` couvre au plus une remise.
+  const liste = Array.isArray(abonnement?.discounts) ? abonnement.discounts.filter(Boolean) : [];
+  const ancienne = abonnement?.discount && typeof abonnement.discount === "object" ? abonnement.discount : null;
+  let remises;
+  if (liste.length) {
+    const objets = liste.filter(r => typeof r === "object");
+    const lisible = (id) => objets.some(o => o.id === id) || (ancienne && ancienne.id === id);
+    if (liste.some(r => typeof r === "string" && !lisible(r))) throw new Error("remise de l'abonnement illisible");
+    remises = [...objets, ...(ancienne && liste.includes(ancienne.id) && !objets.some(o => o.id === ancienne.id) ? [ancienne] : [])];
+  } else {
+    remises = ancienne ? [ancienne] : [];
+  }
   for (const r of remises) {
     const c = r?.coupon;
     if (!c) throw new Error("remise de l'abonnement illisible");
@@ -199,7 +209,7 @@ export function prixMensuelDepuisAbonnement(abonnement) {
  * du 04/11/2026).
  */
 export async function prixMensuelCentimes(parrain, stripeKey) {
-  const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
+  const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}?expand[]=discounts`,
     { headers: { "Authorization": `Bearer ${stripeKey}` } });
   const sd = await sr.json().catch(() => ({}));
   // Abonnement disparu chez Stripe : rien à déduire, définitivement. Rendre
