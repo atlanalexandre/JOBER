@@ -60,3 +60,17 @@ describe("fenêtres plein écran", () => {
     expect(fixes.map(({ f, n }) => `${f}:${n}`)).toEqual([]);
   });
 });
+
+// Accueil (09/11/2026) : les deux cases mènent à leurs sections, sans scrollIntoView.
+describe("les cases « client » et « indépendant » de l'accueil", () => {
+  it("chaque case a sa section d'arrivée, et le défilement ne décale pas la page", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../components/accueil-sections.jsx", import.meta.url), "utf8");
+    expect(src).toContain("id={ANCRE_CLIENTS}");
+    expect(src).toContain("id={ANCRE_INDEPENDANTS}");
+    expect(src).not.toContain("scrollIntoView");
+    const app = readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
+    expect(app).toContain("<CasesRoles large={large} />");
+    expect(app).not.toMatch(/getElementById\("decouvrir"\)\?\.scrollIntoView/);
+  });
+});

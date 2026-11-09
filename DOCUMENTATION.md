@@ -5459,7 +5459,12 @@ publique ; son retour mène à l'accueil pour un visiteur sans compte). Le didac
 qu'après le choix du rôle. **Chaque phrase doit rester vraie** : les chiffres (métiers réglementés,
 taux de cashback) sont lus dans les constantes, et une promesse qui ne correspond plus au service
 est une pratique trompeuse (art. L121-2 du code de la consommation). Le titre s'adresse aussi aux
-particuliers (« pour votre entreprise ou chez vous »), `index.html` compris. Sur ordinateur (`useEcranLarge`, `src/lib/ecran-large.js` : 900 px et plus, **jamais un téléphone**, même tenu à l'horizontale — même mesure que `useResponsive`), la page prend toute la largeur : titre et bouton côte à côte, cartes en grille (03-04/11/2026).
+particuliers (« pour votre entreprise ou chez vous »), `index.html` compris. Sur ordinateur (`useEcranLarge`, `src/lib/ecran-large.js` : 900 px et plus, **jamais un téléphone**, même tenu à l'horizontale — même mesure que `useResponsive`), la page prend toute la largeur : titre et bouton côte à côte, cartes en grille (03-04/11/2026). Sous « Commencer », deux cases (`CasesRoles`, 09/11/2026, demande d'Alexandre) mènent chacune au
+texte qui la concerne : « Vous cherchez un prestataire ? » à `#pour-les-clients` (comment ça
+marche), « Vous êtes indépendant ? » à `#pour-les-independants`. Le défilement passe par
+`defilerVers()` (`src/lib/defiler.js`), **jamais `scrollIntoView`** : celui-ci fait aussi défiler
+le cadre décoratif de l'accueil (`overflow: hidden`, plus large que l'écran), et la page se
+décalait sur téléphone — texte collé au bord. « Découvrir ALANE ↓ » l'utilise aussi.
 
 **Les mentions légales ont leur propre adresse** (07/09/2026). L'article 6-III de la loi pour
 la confiance dans l'économie numérique exige qu'elles soient accessibles « de manière directe
