@@ -5,7 +5,7 @@ import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale } from "../constants/data.js";
-import { titresNonCouverts, metiersDeclares } from "../../api/_qualifications.js";
+import { titresNonCouverts, metiersDeclares, casierExige, casierValide } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp, joursFactures, tarifSuppFixe } from "../../api/_heures_supp.js";
@@ -2166,21 +2166,27 @@ function ChampReferenceTitre() {
  */
 export function AlerteTitresACompleter({ onNavigate }) {
   const [manquants, setManquants] = useState([]);
+  // Les métiers au contact d'enfants fermés faute d'extrait de casier vérifié et
+  // valable (09/11/2026) : peutExercer() les retire, ce bandeau dit pourquoi.
+  const [casierManquant, setCasierManquant] = useState([]);
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       const u = data?.user;
       if (!u) return;
       const { data: rows, error } = await supabase.from("documents")
-        .select("verified,titres_couverts").eq("prestataire_id", u.id).eq("type", "diplomes");
+        .select("type,verified,titres_couverts,expires_at").eq("prestataire_id", u.id).in("type", ["diplomes", "casier"]);
       if (error) { console.error("[titres] justificatif illisible :", error.message); return; }
       // Le métier principal compte même quand metiers_list est rempli : le
       // back-office le contrôle (#972), le prestataire doit voir ce qu'on lui
       // demande (relecture du 03/10/2026).
       const metiers = metiersDeclares(u.user_metadata);
-      setManquants(titresNonCouverts(metiers, (rows || [])[0] || null));
+      setManquants(titresNonCouverts(metiers, (rows || []).find(r => r.type === "diplomes") || null));
+      const casier = (rows || []).find(r => r.type === "casier");
+      const libelles = [...new Set(metiers.map(m => (typeof m === "string" ? m : m?.metier)).filter(Boolean))];
+      setCasierManquant(casierValide({ casier: casier || null }) ? [] : libelles.filter(casierExige));
     });
   }, []);
-  if (!manquants.length) return null;
+  if (!manquants.length && !casierManquant.length) return null;
   return (
     <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:16, padding:"14px 16px", marginBottom:14 }}>
       <div style={{ fontWeight:800, color:"#F0B429", fontSize:13, marginBottom:4 }}>⚖️ Justificatif à fournir</div>
@@ -2188,6 +2194,9 @@ export function AlerteTitresACompleter({ onNavigate }) {
         {manquants.map(q => (
           <div key={q.titre}>« {q.metiers.join(" », « ")} » : <strong style={{ color:C.text }}>{q.titre}</strong> ({q.texte}).</div>
         ))}
+        {casierManquant.length > 0 && (
+          <div>« {casierManquant.join(" », « ")} » : <strong style={{ color:C.text }}>extrait de casier judiciaire (bulletin n° 3)</strong> de moins de 3 mois, vérifié et renouvelé chaque année.</div>
+        )}
         <div style={{ marginTop:6 }}>Ce métier ne vous est pas proposé tant que ce justificatif n'a pas été vérifié. Vos autres métiers restent ouverts.</div>
       </div>
       <button onClick={() => onNavigate("doc_upload")} style={{ marginTop:10, padding:"9px 14px", borderRadius:10, border:"none", background:"#F0B429", color:"#050E20", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>

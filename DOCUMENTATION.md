@@ -749,7 +749,7 @@ n'est pas vérifié. `/api/notify-doc` l'écrit dans `documents.reference_verifi
 caractères, lettres, chiffres, espaces, points, tirets, barres — **jamais une adresse**), sur la
 pièce déjà déposée ; le back-office l'affiche à côté du lien officiel, avec un bouton « copier ».
 Les vérifications restent faites sur le site officiel, par l'équipe : la référence ne vaut pas
-preuve.
+preuve. Un fichier redéposé efface la référence de l'ancien (`reference_verification: null`, 09/11/2026).
 
 **L'offre de lancement : éligible par l'ancienneté, déclenchée par le travail** (15/09/2026).
 Les 100 premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de
@@ -1074,7 +1074,7 @@ n'est pas vérifié ou qu'il a dépassé son échéance, que le back-office sais
 (un an après l'émission). `justificatifsDe()` d'`api/_habilitations.js` le lit avec le
 justificatif `diplomes`, sous la clé `casier`. `docsRequisPour()` ne le demande qu'à qui
 déclare un de ces métiers, et l'exige alors pour ouvrir l'accès. Les CGPS (art. 3) le disent
-depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`.
+depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`. Validé sans date (« Tout valider », saisie laissée vide), il reçoit une échéance d'un an à compter de la vérification (`verify_doc`) : sans elle, `casierValide()` le tenait pour valable à vie (relecture du 09/11/2026). Le bandeau « Justificatif à fournir » du prestataire nomme les métiers fermés faute d'extrait.
 
 **`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
 25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`, appliquée en production le

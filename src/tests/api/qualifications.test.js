@@ -502,3 +502,19 @@ describe("l'extrait de casier judiciaire, pour les métiers au contact d'enfants
     expect(lire("api/_habilitations.js")).toContain("type=in.(diplomes,casier)");
   });
 });
+
+// Relecture du 09/11/2026 : l'échéance de l'extrait, la référence d'un titre remplacé, le bandeau.
+describe("casier et référence : ce qui ne doit pas durer plus que la pièce", () => {
+  const lire = (f) => readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8");
+  it("un extrait validé sans date reçoit une échéance d'un an", () => {
+    expect(lire("api/bo-action.js")).toMatch(/if \(!expiresAt && docTrouve\.type === "casier"\) \{[\s\S]{0,120}getUTCFullYear\(\) \+ 1\)/);
+  });
+  it("un fichier redéposé perd la référence de l'ancien", () => {
+    expect(lire("api/notify-doc.js")).toMatch(/expires_at: null, relance_expiration_at: null,[\s\S]{0,300}reference_verification: null/);
+  });
+  it("le bandeau du prestataire dit qu'un métier est fermé faute d'extrait", () => {
+    const ecran = lire("src/components/presta-screens.jsx");
+    expect(ecran).toContain('.in("type", ["diplomes", "casier"])');
+    expect(ecran).toContain("extrait de casier judiciaire (bulletin n° 3)");
+  });
+});
