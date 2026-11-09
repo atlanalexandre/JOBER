@@ -67,6 +67,34 @@ const QUESTIONS = [
     "Les deux. Un particulier réserve pour chez lui ; une entreprise pour ses locaux, avec un contrat-cadre et des factures à son nom."],
 ];
 
+// Les deux portes d'entrée, sous le bouton « Commencer » (demande d'Alexandre
+// du 09/11/2026) : chacun va droit au texte qui le concerne, au lieu de
+// parcourir toute la page. Les ancres sont les sections ci-dessous.
+const ANCRE_CLIENTS = "pour-les-clients";
+const ANCRE_INDEPENDANTS = "pour-les-independants";
+const allerA = (id) => document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"start" });
+
+export function CasesRoles({ large = false }) {
+  const cases = [
+    { ancre: ANCRE_CLIENTS, icone: "🔎", titre: "Vous cherchez un prestataire ?", sous: "Particulier ou entreprise", lien: "Comment ça marche" },
+    { ancre: ANCRE_INDEPENDANTS, icone: "🧰", titre: "Vous êtes indépendant ?", sous: "Trouvez des clients", lien: "Vos avantages" },
+  ];
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap: large ? 12 : 10, marginTop:16 }}>
+      {cases.map(c => (
+        <a key={c.ancre} href={`#${c.ancre}`} onClick={(e) => { e.preventDefault(); allerA(c.ancre); }}
+          style={{ display:"block", textDecoration:"none", background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+            borderRadius:r + 2, padding: large ? "16px 16px" : "13px 12px", textAlign:"left" }}>
+          <div style={{ fontSize: large ? 24 : 22, lineHeight:1, marginBottom:8 }}>{c.icone}</div>
+          <div style={{ color:C.text, fontWeight:800, fontSize: large ? 15 : 13.5, lineHeight:1.3 }}>{c.titre}</div>
+          <div style={{ color:C.textSub, fontSize: large ? 12.5 : 11.5, marginTop:3 }}>{c.sous}</div>
+          <div style={{ color:C.violetLight, fontSize: large ? 13 : 12, fontWeight:700, marginTop:8 }}>{c.lien} ↓</div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }) {
   const [ouverte, setOuverte] = useState(null);
   const section = { padding: large ? "72px 0 0" : "40px 0 0" };
@@ -111,8 +139,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }
         </div>
       </section>
 
-      {/* ── Comment ça marche ── */}
-      <section style={section}>
+      {/* ── Comment ça marche ── (arrivée de la case « Vous cherchez un prestataire ? ») */}
+      <section id={ANCRE_CLIENTS} style={{ ...section, scrollMarginTop:16 }}>
         <Titre large={large} sur="Comment ça marche">Un prestataire en trois étapes</Titre>
         <div style={grille(3, large ? 16 : 10)}>
           {[
@@ -157,8 +185,8 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }
         </div>
       </section>
 
-      {/* ── Pour les indépendants ── */}
-      <section style={section}>
+      {/* ── Pour les indépendants ── (arrivée de la case « Vous êtes indépendant ? ») */}
+      <section id={ANCRE_INDEPENDANTS} style={{ ...section, scrollMarginTop:16 }}>
         <Titre large={large} sur="Vous êtes indépendant ?">Trouvez des clients, gardez votre liberté</Titre>
         <div style={{ ...grille(2, large ? 16 : 10), marginBottom: large ? 24 : 16 }}>
           <Carte icone="🎯" titre="Vous fixez votre tarif">ALANE ne prélève rien sur votre tarif horaire : ses frais de service sont payés par le client.</Carte>
