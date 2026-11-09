@@ -5464,7 +5464,7 @@ texte qui la concerne : « Vous cherchez un prestataire ? » à `#pour-les-clien
 marche), « Vous êtes indépendant ? » à `#pour-les-independants`. Le défilement passe par
 `defilerVers()` (`src/lib/defiler.js`), **jamais `scrollIntoView`** : celui-ci fait aussi défiler
 le cadre décoratif de l'accueil (`overflow: hidden`, plus large que l'écran), et la page se
-décalait sur téléphone — texte collé au bord. « Découvrir ALANE ↓ » l'utilise aussi.
+décalait sur téléphone — texte collé au bord. « Découvrir ALANE ↓ » l'utilise aussi. Depuis le 09/11/2026, **l'application n'a plus aucun `scrollIntoView`** (un test le vérifie) : le catalogue (secteur choisi, amené sous la barre collante des secteurs, qui le recouvrait) et la messagerie (dernier message, `defilerEnBas()`) passent aussi par `src/lib/defiler.js`. Recette `e2e/102` : sur l'écran d'un téléphone, aucun cadre masqué ne doit avoir défilé — elle échoue sur l'ancienne version (cadre décalé de 52 px).
 
 **Les mentions légales ont leur propre adresse** (07/09/2026). L'article 6-III de la loi pour
 la confiance dans l'économie numérique exige qu'elles soient accessibles « de manière directe

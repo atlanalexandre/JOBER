@@ -7,6 +7,7 @@ import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
 import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER, prixAnnuel, REMISE_ANNUELLE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
+import { defilerVersElement, defilerEnBas } from "../lib/defiler.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
@@ -1519,9 +1520,12 @@ export function CatalogueScreen({ onNavigate }) {
   const { providers: realProviders } = useProviders();
   const sectorStatus = useSectorStatus();
 
+  // Sous la barre collante des secteurs, et sans décaler la page sur
+  // téléphone : le défilement natif déplaçait aussi les cadres masqués (09/11/2026).
+  const barreSecteursRef = useRef(null);
   const scrollToSector = (id) => {
     setActiveSector(id);
-    sectorRefs.current[id]?.scrollIntoView({ behavior:"smooth", block:"start" });
+    defilerVersElement(sectorRefs.current[id], (barreSecteursRef.current?.offsetHeight || 0) + 8);
   };
 
   return (
@@ -1533,7 +1537,7 @@ export function CatalogueScreen({ onNavigate }) {
       </div>
 
       {/* Sticky sector pills */}
-      <div style={{ position:"sticky", top:0, background:C.bg, zIndex:50, borderBottom:`1px solid ${C.border}`, padding:"10px 0", width:"100%", boxSizing:"border-box" }}>
+      <div ref={barreSecteursRef} style={{ position:"sticky", top:0, background:C.bg, zIndex:50, borderBottom:`1px solid ${C.border}`, padding:"10px 0", width:"100%", boxSizing:"border-box" }}>
         <div style={{ display:"flex", gap:8, overflowX:"auto", padding:"0 18px", scrollbarWidth:"none", WebkitOverflowScrolling:"touch" }}>
           {SECTORS.map(s=>{
             const ss = sectorStatus[s.id];
@@ -4804,7 +4808,8 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
+  // Le dernier message, en bas du fil — sans faire défiler l'écran entier (09/11/2026).
+  useEffect(() => { defilerEnBas(endRef.current); }, [msgs]);
 
   const send = async () => {
     if (!msg.trim() || sending || !userId) return;
