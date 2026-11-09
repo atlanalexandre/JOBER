@@ -2072,7 +2072,9 @@ function MesReferences() {
         Facultatif. Citez un responsable d'une entreprise où vous avez travaillé : ALANE lui écrit, et sa confirmation s'affiche sur votre profil (« Référence confirmée »). Prévenez-le avant.
       </div>
       {(refs || []).map(x => {
-        const st = STATUTS_REFERENCE[x.statut] || STATUTS_REFERENCE.en_attente;
+        // Lien expiré (30 jours) : « sans réponse », même avant le balayage du matin.
+        const statut = x.statut === "en_attente" && Date.now() - new Date(x.created_at).getTime() > 30 * 86400000 ? "expiree" : x.statut;
+        const st = STATUTS_REFERENCE[statut] || STATUTS_REFERENCE.en_attente;
         return (
           <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"8px 0", borderTop:`1px solid ${C.border}` }}>
             <div style={{ minWidth:0 }}>
@@ -2084,7 +2086,8 @@ function MesReferences() {
         );
       })}
       {etat.message && <div style={{ margin:"8px 0", fontSize:11.5, color: etat.ok ? C.success : "#F25E5E" }}>{etat.message}</div>}
-      {refs && refs.length < 5 && !ouvert && (
+      {refs && refs.filter(x => x.statut === "confirmee" || x.statut === "refusee"
+        || (x.statut === "en_attente" && Date.now() - new Date(x.created_at).getTime() <= 30 * 86400000)).length < 5 && !ouvert && (
         <button onClick={()=>{ setOuvert(true); setEtat({ envoi:false, message:null, ok:false }); }}
           style={{ marginTop:8, background:"none", border:`1px solid ${C.violet}66`, color:C.violet, borderRadius:10, padding:"8px 12px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
           + Ajouter une référence

@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  validerReference, validerReponse, alerteDe, courrielReference, empreinte, genererJeton, jetonExpire, MAX_REFERENCES,
+  validerReference, validerReponse, alerteDe, courrielReference, empreinte, genererJeton, jetonExpire, MAX_REFERENCES, quiDe,
 } from "../../../api/_references.js";
 
 const corps = (x = {}) => ({ siret: "552 100 554 00025", metier: "Agent de propreté", annee_debut: 2021, annee_fin: 2023,
@@ -26,6 +26,15 @@ describe("la demande du prestataire", () => {
     expect(validerReference(corps({ contact_nom: "<a href=x>" }), ctx).ok).toBe(false);
   });
   it(`${MAX_REFERENCES} références au plus, plafond annoncé`, () => expect(MAX_REFERENCES).toBe(5));
+  it("un métier réécrit dans user_metadata, hors du catalogue, n'entre pas dans l'e-mail (09/11/2026)", () => {
+    const v = validerReference(corps({ metier: "Réclamez votre remboursement ici" }), { ...ctx, metiersDeclares: ["Réclamez votre remboursement ici"] });
+    expect(v.ok).toBe(false);
+  });
+  it("le nom vient de la fiche, réduit à des lettres : une adresse ne passe pas (09/11/2026)", () => {
+    const q = quiDe({ prenom: "Gagnez 500€ sur arnaque.example", nom: "X" });
+    for (const morceau of ["500", "€", "arnaque.example"]) expect(q).not.toContain(morceau);
+    expect(quiDe(null)).toBe("Un prestataire");
+  });
 });
 
 describe("l'anti-fraude et le message", () => {
@@ -35,10 +44,11 @@ describe("l'anti-fraude et le message", () => {
     expect(alerteDe({ contactEmail: "x@ent.fr", autresPrestataires: 2 })).toContain("2 autre(s) prestataire(s)");
   });
   it("le message échappe tout, et ne porte que ce que le serveur a lu", () => {
-    const m = courrielReference({ prenom: "Léa", initiale: "D", entreprise: "<b>ACME</b>", metier: "Agent de propreté", debut: 2021, fin: 2023, lien: "https://www.alane.fr/reference?t=abc" });
+    const m = courrielReference({ qui: quiDe({ prenom: "Léa", nom: "Durand" }), entreprise: "<b>ACME</b>", metier: "Agent de propreté", debut: 2021, fin: 2023, lien: "https://www.alane.fr/reference?t=abc", expireLe: "09/12/2026" });
     expect(m.subject).toContain("Léa D.");
     expect(m.html).toContain("&lt;b&gt;ACME&lt;/b&gt;");
     expect(m.html).toContain("de 2021 à 2023");
+    expect(m.html).toContain("jusqu'au 09/12/2026");
     expect(m.html).toContain("supprime avec le compte");
   });
   it("le jeton n'est gardé que par son empreinte, et expire en 30 jours", () => {
@@ -88,7 +98,7 @@ describe("/api/references", () => {
       appels.push({ u, m, corps: o.body ? JSON.parse(o.body) : null });
       const ok = (x) => new Response(JSON.stringify(x), { status: 200 });
       if (u.includes("recherche-entreprises")) return ok(base.sirene);
-      if (u.includes("/profiles?id=eq.p1&select=role")) return ok([{ role: base.role }]);
+      if (u.includes("/profiles?id=eq.p1&select=")) return ok([{ role: base.role, prenom: "Léa", nom: "Durand" }]);
       if (u.includes("references_experience?jeton_hash=")) return ok(base.parJeton);
       if (u.includes("references_experience?prestataire_id=eq.p1")) return ok(base.existantes);
       if (u.includes("references_experience?contact_email=")) return ok(base.partages);
@@ -114,9 +124,13 @@ describe("/api/references", () => {
   it("ajouter : refusé à un client, au-delà de 5, pour un doublon, pour une entreprise fermée", async () => {
     base.role = "client";
     expect((await appel({ action: "ajouter", ...corps() })).statusCode).toBe(403);
-    base.role = "prestataire"; base.existantes = Array.from({ length: 5 }, (_, i) => ({ contact_email: `x${i}@a.fr` }));
+    const recente = new Date().toISOString(), ancienne = new Date(Date.now() - 40 * 86400000).toISOString();
+    base.role = "prestataire"; base.existantes = Array.from({ length: 5 }, (_, i) => ({ contact_email: `x${i}@a.fr`, statut: "en_attente", created_at: recente }));
     expect((await appel({ action: "ajouter", ...corps() })).statusCode).toBe(409);
-    base.existantes = [{ contact_email: "c.martin@nettoyage-pro.fr" }];
+    // Cinq demandes expirées ne bloquent plus rien, et la même personne peut être relancée (09/11/2026).
+    base.existantes = Array.from({ length: 5 }, (_, i) => ({ contact_email: i ? `x${i}@a.fr` : "c.martin@nettoyage-pro.fr", statut: i % 2 ? "expiree" : "en_attente", created_at: ancienne }));
+    expect((await appel({ action: "ajouter", ...corps() })).statusCode).toBe(200);
+    base.existantes = [{ contact_email: "c.martin@nettoyage-pro.fr", statut: "en_attente", created_at: recente }];
     expect((await appel({ action: "ajouter", ...corps() })).statusCode).toBe(409);
     base.existantes = []; base.sirene.results[0].etat_administratif = "F";
     expect((await appel({ action: "ajouter", ...corps() })).statusCode).toBe(400);
@@ -139,10 +153,10 @@ describe("/api/references", () => {
     base.parJeton[0].statut = "confirmee";
     expect((await appel({ action: "lire", jeton: "x".repeat(43) })).statusCode).toBe(410);
   });
-  it("lire : le prénom et l'initiale seulement", async () => {
+  it("lire : le prénom et l'initiale, lus sur la fiche", async () => {
     base.parJeton = [{ id: "r1", prestataire_id: "p1", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null, statut: "en_attente", created_at: new Date().toISOString() }];
     const r = await appel({ action: "lire", jeton: "x".repeat(43) });
-    expect(r.corps).toEqual({ prenom: "Léa", initiale: "D", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null });
+    expect(r.corps).toEqual({ qui: "Léa D.", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null });
   });
 });
 
@@ -171,7 +185,8 @@ describe("la relance d'une référence sans réponse", async () => {
       appels.push({ u, m, corps: o.body ? JSON.parse(o.body) : null });
       const ok = (x) => new Response(JSON.stringify(x), { status: 200 });
       if (u.includes("references_experience?statut=eq.en_attente")) return ok([ref()]);
-      if (u.includes("/auth/v1/admin/users/")) return ok({ user_metadata: { prenom: "Léa", nom: "Durand" } });
+      if (u.includes("/profiles?id=eq.p1&select=prenom,nom")) return ok([{ prenom: "Léa", nom: "Durand" }]);
+      if (m === "PATCH" && u.includes("created_at=lt.")) return ok([{ id: "vieille" }]);
       if (m === "PATCH") return ok([{ id: "r1" }]);
       return ok([]);
     }));
@@ -182,19 +197,29 @@ describe("la relance d'une référence sans réponse", async () => {
 
   it("un nouveau lien remplace l'ancien, conditionné à l'ancienne empreinte, et le message dit « Rappel »", async () => {
     const appels = simuler(true);
-    expect(await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant })).toEqual({ relancees: 1 });
-    const p = appels.find(a => a.m === "PATCH");
+    expect(await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant })).toEqual({ relancees: 1, expirees: 1 });
+    const p = appels.find(a => a.m === "PATCH" && a.u.includes("id=eq.r1"));
     expect(p.u).toContain("jeton_hash=eq.ancien");
     expect(p.corps.envoyee_at).toBe(new Date(maintenant).toISOString());
     const envoi = sendEmail.mock.calls.at(-1)[0];
     expect(envoi.subject).toMatch(/^Rappel/);
+    expect(envoi.subject).toContain("Léa D.");
+    // La date limite du rappel est celle de la première demande, pas 30 jours de plus.
+    expect(envoi.html).toContain(`jusqu'au ${new Date(maintenant + 22 * J).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}`);
     expect(emp(envoi.html.match(/reference\?t=([A-Za-z0-9_-]+)/)[1])).toBe(p.corps.jeton_hash);
   });
   it("e-mail non parti : l'ancien lien est rétabli, la référence peut toujours répondre", async () => {
     const appels = simuler(false);
     expect((await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant })).relancees).toBe(0);
-    const retour = appels.filter(a => a.m === "PATCH")[1];
+    const retour = appels.filter(a => a.m === "PATCH" && a.u.includes("id=eq.r1"))[1];
     expect(retour.corps).toEqual({ jeton_hash: "ancien", envoyee_at: ref().envoyee_at });
+  });
+  it("les demandes au lien expiré passent « sans réponse » au balayage", async () => {
+    const appels = simuler(true);
+    await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant });
+    const balayage = appels.find(a => a.m === "PATCH" && a.u.includes("created_at=lt."));
+    expect(balayage.u).toContain("statut=eq.en_attente");
+    expect(balayage.corps).toEqual({ statut: "expiree" });
   });
   it("branchée sur le balayage du matin, après le relevé de la garantie, même s'il échoue", () => {
     const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");

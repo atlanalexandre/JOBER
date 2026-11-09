@@ -23,7 +23,7 @@
   appeler({ action: "lire", jeton: jeton }).then(function (res) {
     if (!res.ok) { montrer(res.j.error || "Ce lien n'est pas valable."); return; }
     var d = res.j;
-    var qui = (d.prenom || "Cette personne") + (d.initiale ? " " + d.initiale + "." : "");
+    var qui = d.qui || "Cette personne";
     $("resume").textContent = qui + " indique avoir travaillé chez " + d.entreprise + " comme « " + d.metier + " », " + periode(d.annee_debut, d.annee_fin) + ".";
     $("chargement").classList.add("masque");
     $("formulaire").classList.remove("masque");

@@ -17,7 +17,7 @@ import { appUrl } from "./_url.js";
 import { metiersDeclares } from "./_qualifications.js";
 import {
   MAX_REFERENCES, validerReference, entrepriseSirene, alerteDe, genererJeton, empreinte,
-  courrielReference, validerReponse, jetonExpire,
+  courrielReference, validerReponse, jetonExpire, quiDe, expirationDe,
 } from "./_references.js";
 
 export default async function handler(req, res) {
@@ -50,13 +50,12 @@ export default async function handler(req, res) {
     }
 
     if (action === "lire") {
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${ref.prestataire_id}`, { headers });
-      const u = await ur.json().catch(() => ({}));
-      if (!ur.ok) console.error(`[references] compte ${ref.prestataire_id} illisible (${ur.status}) — prénom non affiché`);
-      const meta = u?.user_metadata || {};
+      // Le nom vient de la fiche, réduit à des lettres (voir quiDe).
+      const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${ref.prestataire_id}&select=prenom,nom`, { headers });
+      const fiche = await fr.json().catch(() => null);
+      if (!fr.ok || !Array.isArray(fiche)) console.error(`[references] fiche ${ref.prestataire_id} illisible (${fr.status}) — nom non affiché`);
       return res.status(200).json({
-        prenom: String(meta.prenom || "").trim() || null,
-        initiale: String(meta.nom || "").trim().charAt(0).toUpperCase() || null,
+        qui: quiDe(Array.isArray(fiche) ? fiche[0] : null),
         entreprise: ref.entreprise, metier: ref.metier, annee_debut: ref.annee_debut, annee_fin: ref.annee_fin,
       });
     }
@@ -87,7 +86,7 @@ export default async function handler(req, res) {
   if (await refuserCompteBloque(res, caller, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
   // Le rôle se lit sur la fiche, que seul le serveur écrit : user_metadata, le
   // titulaire du compte peut le modifier lui-même.
-  const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`, { headers });
+  const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,prenom,nom`, { headers });
   const fiche = await fr.json().catch(() => null);
   if (!fr.ok || !Array.isArray(fiche)) {
     console.error(`[references] fiche de ${caller.id} illisible (${fr.status})`);
@@ -100,14 +99,19 @@ export default async function handler(req, res) {
   const ref = v.valeur;
 
   // Plafond, doublon, et contact partagé avec d'autres prestataires.
-  const er = await fetch(`${table}?prestataire_id=eq.${caller.id}&select=contact_email`, { headers });
+  const er = await fetch(`${table}?prestataire_id=eq.${caller.id}&select=contact_email,statut,created_at`, { headers });
   const existantes = await er.json().catch(() => null);
   if (!er.ok || !Array.isArray(existantes)) {
     console.error(`[references] références de ${caller.id} illisibles (${er.status}) — migration 2026-11-09_references_experience.sql passée ?`);
     return res.status(503).json({ error: "Les références ne sont pas encore disponibles. Réessayez plus tard." });
   }
-  if (existantes.length >= MAX_REFERENCES) return res.status(409).json({ error: `${MAX_REFERENCES} références au plus.` });
-  if (existantes.some(x => x.contact_email === ref.contact_email)) return res.status(409).json({ error: "Cette personne est déjà l'une de vos références." });
+  // Une demande restée sans réponse au-delà de la durée du lien ne compte plus :
+  // ni dans le plafond, ni comme doublon — le prestataire peut la refaire
+  // (relecture du 09/11/2026 : elle occupait sa place pour toujours).
+  const vivantes = existantes.filter(x => x.statut === "confirmee" || x.statut === "refusee"
+    || (x.statut === "en_attente" && !jetonExpire(x.created_at)));
+  if (vivantes.length >= MAX_REFERENCES) return res.status(409).json({ error: `${MAX_REFERENCES} références au plus.` });
+  if (vivantes.some(x => x.contact_email === ref.contact_email)) return res.status(409).json({ error: "Cette personne est déjà l'une de vos références." });
   const pr = await fetch(`${table}?contact_email=eq.${encodeURIComponent(ref.contact_email)}&prestataire_id=neq.${caller.id}&select=prestataire_id`, { headers });
   const partages = await pr.json().catch(() => null);
   if (!pr.ok || !Array.isArray(partages)) {
@@ -138,11 +142,9 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: "La référence n'a pas pu être enregistrée. Réessayez." });
   }
 
-  const meta = caller.user_metadata || {};
   const courriel = courrielReference({
-    prenom: String(meta.prenom || "").trim(), initiale: String(meta.nom || "").trim().charAt(0).toUpperCase(),
-    entreprise: entreprise.nom, metier: ref.metier, debut: ref.annee_debut, fin: ref.annee_fin,
-    lien: `${appUrl()}/reference?t=${jeton}`,
+    qui: quiDe(fiche[0]), entreprise: entreprise.nom, metier: ref.metier, debut: ref.annee_debut, fin: ref.annee_fin,
+    lien: `${appUrl()}/reference?t=${jeton}`, expireLe: expirationDe(inseree[0].created_at || new Date().toISOString()),
   });
   const envoye = await sendEmail({ to: ref.contact_email, subject: courriel.subject, html: courriel.html });
   if (envoye !== true) {
