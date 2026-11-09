@@ -26,6 +26,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { emailHtml, esc, sendEmail } from "./_email.js";
 import { lireTout } from "./_lignes.js";
 import { appUrl } from "./_url.js";
+import { nomExpediteur } from "./_messagerie.js";
+import { METIERS } from "../src/constants/data.js";
+
+/** Les libellés du catalogue : un métier écrit ailleurs n'entre pas dans un e-mail. */
+const CATALOGUE = new Set(Object.values(METIERS).flat());
 
 export const MAX_REFERENCES = 5;
 export const DUREE_JETON_JOURS = 30;
@@ -63,7 +68,10 @@ export function validerReference(corps, { metiersDeclares = [], emailPrestataire
   if (!/^\d{14}$/.test(siret)) return non("Le SIRET de l'entreprise doit compter 14 chiffres.");
   const metier = String(corps?.metier || "");
   const libelles = metiersDeclares.map(m => (typeof m === "string" ? m : m?.metier)).filter(Boolean);
-  if (!libelles.includes(metier)) return non("Choisissez un de vos métiers.");
+  // Déclaré ET au catalogue : la liste des métiers vit dans user_metadata, que
+  // le titulaire du compte réécrit à sa guise — sans le catalogue, n'importe
+  // quel texte serait parti dans l'e-mail au nom d'ALANE (relecture du 09/11/2026).
+  if (!libelles.includes(metier) || !CATALOGUE.has(metier)) return non("Choisissez un de vos métiers.");
   const debut = Number(corps?.annee_debut), fin = corps?.annee_fin === null || corps?.annee_fin === "" || corps?.annee_fin === undefined ? null : Number(corps.annee_fin);
   if (!Number.isInteger(debut) || debut < 1970 || debut > anneeCourante) return non("Année de début invalide.");
   if (fin !== null && (!Number.isInteger(fin) || fin < debut || fin > anneeCourante)) return non("Année de fin invalide.");
@@ -103,8 +111,21 @@ export function alerteDe({ contactEmail, autresPrestataires = 0 }) {
 export const periodeDe = (debut, fin) => (fin && fin !== debut ? `de ${debut} à ${fin}` : fin === debut ? `en ${debut}` : `depuis ${debut}`);
 
 /** Le message à la référence : tout y vient du serveur, et tout est échappé. */
-export function courrielReference({ prenom, initiale, entreprise, metier, debut, fin, lien, relance = false }) {
-  const qui = `${prenom || "Un prestataire"}${initiale ? ` ${initiale}.` : ""}`;
+/**
+ * Le nom du prestataire tel qu'il paraît dans l'e-mail : « Prénom N. », lu sur
+ * sa fiche et réduit à des lettres par nomExpediteur() — jamais user_metadata,
+ * que le titulaire du compte réécrit à sa guise (relecture du 09/11/2026).
+ */
+export function quiDe(fiche) {
+  const n = nomExpediteur(fiche, "prestataire");
+  return n === "votre prestataire" ? "Un prestataire" : n;
+}
+
+/** La date limite d'un lien, à la française. */
+export const expirationDe = (createdAt) =>
+  new Date(new Date(createdAt).getTime() + DUREE_JETON_JOURS * 86400000).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+
+export function courrielReference({ qui, entreprise, metier, debut, fin, lien, expireLe, relance = false }) {
   return {
     subject: `${relance ? "Rappel — " : ""}${qui} vous cite comme référence — une minute pour confirmer ?`,
     html: emailHtml(`
@@ -116,7 +137,7 @@ export function courrielReference({ prenom, initiale, entreprise, metier, debut,
       <p style="text-align:center;margin:28px 0">
         <a href="${esc(lien)}" style="background:#4F46E5;color:#ffffff;padding:13px 26px;border-radius:10px;text-decoration:none;font-weight:700">Répondre</a>
       </p>
-      <p style="color:#666;font-size:13px">Vous ne connaissez pas cette personne ? Indiquez-le simplement : c'est tout aussi utile. Le lien est valable ${DUREE_JETON_JOURS} jours et ne sert qu'une fois.</p>
+      <p style="color:#666;font-size:13px">Vous ne connaissez pas cette personne ? Indiquez-le simplement : c'est tout aussi utile. Le lien est valable ${expireLe ? `jusqu'au ${esc(expireLe)}` : `${DUREE_JETON_JOURS} jours`} et ne sert qu'une fois.</p>
       <p style="color:#888;font-size:12px">Vos nom et adresse nous ont été donnés par cette personne, avec votre accord déclaré. ALANE ne s'en sert que pour vérifier l'expérience déclarée (intérêt légitime) et les supprime avec le compte du prestataire. Vous pouvez vous y opposer, ou demander l'accès à vos données ou leur suppression, à rgpd@alane.fr — détail dans notre politique de confidentialité (article 9 bis), sur www.alane.fr.</p>
     `),
   };
@@ -161,8 +182,18 @@ export function aRelancer(ref, maintenantMs = Date.now()) {
  * @returns {Promise<{relancees:number}>}
  */
 export async function relancerReferences({ supabaseUrl, headers, maintenantMs = Date.now() }) {
-  const bilan = { relancees: 0 };
+  const bilan = { relancees: 0, expirees: 0 };
   const table = `${supabaseUrl}/rest/v1/references_experience`;
+  // Les demandes dont le lien a expiré passent « sans réponse » : sans ce
+  // balayage, elles ne le devenaient qu'à l'ouverture du lien — jamais, donc —
+  // et occupaient pour toujours une des 5 places (relecture du 09/11/2026).
+  const limite = new Date(maintenantMs - DUREE_JETON_JOURS * 86400000).toISOString();
+  const xr = await fetch(`${table}?statut=eq.en_attente&created_at=lt.${encodeURIComponent(limite)}`, {
+    method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" }, body: JSON.stringify({ statut: "expiree" }),
+  });
+  const expirees = await xr.json().catch(() => null);
+  if (!xr.ok) console.error(`[references] demandes expirées non marquées (${xr.status})`);
+  else bilan.expirees = Array.isArray(expirees) ? expirees.length : 0;
   const avant = new Date(maintenantMs - RELANCE_APRES_JOURS * 86400000).toISOString();
   const candidates = (await lireTout(`${table}?statut=eq.en_attente&envoyee_at=lt.${encodeURIComponent(avant)}`
     + "&select=id,prestataire_id,entreprise,metier,annee_debut,annee_fin,contact_email,jeton_hash,envoyee_at,created_at", headers))
@@ -172,9 +203,9 @@ export async function relancerReferences({ supabaseUrl, headers, maintenantMs = 
   });
   for (const ref of candidates.slice(0, 50)) {
     try {
-      const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ref.prestataire_id}`, { headers });
-      const u = await ur.json().catch(() => ({}));
-      if (!ur.ok) throw new Error(`compte ${ref.prestataire_id} illisible (${ur.status})`);
+      const fr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${ref.prestataire_id}&select=prenom,nom`, { headers });
+      const fiche = await fr.json().catch(() => null);
+      if (!fr.ok || !Array.isArray(fiche)) throw new Error(`fiche ${ref.prestataire_id} illisible (${fr.status})`);
       const { jeton, hash } = genererJeton();
       const maintenantIso = new Date(maintenantMs).toISOString();
       // Conditionnée à l'ancienne empreinte : deux passages simultanés ne
@@ -183,11 +214,11 @@ export async function relancerReferences({ supabaseUrl, headers, maintenantMs = 
       const lignes = await wr.json().catch(() => null);
       if (!wr.ok) throw new Error(`nouveau lien non enregistré (${wr.status})`);
       if (!Array.isArray(lignes) || lignes.length === 0) continue;
-      const meta = u?.user_metadata || {};
+      // La date limite reste celle de la première demande : le rappel le dit,
+      // au lieu de promettre 30 jours qui n'en font plus que 23 (09/11/2026).
       const courriel = courrielReference({
-        prenom: String(meta.prenom || "").trim(), initiale: String(meta.nom || "").trim().charAt(0).toUpperCase(),
-        entreprise: ref.entreprise, metier: ref.metier, debut: ref.annee_debut, fin: ref.annee_fin,
-        lien: `${appUrl()}/reference?t=${jeton}`,
+        qui: quiDe(fiche[0]), entreprise: ref.entreprise, metier: ref.metier, debut: ref.annee_debut, fin: ref.annee_fin,
+        lien: `${appUrl()}/reference?t=${jeton}`, expireLe: expirationDe(ref.created_at),
         relance: true,
       });
       const envoye = await sendEmail({ to: ref.contact_email, subject: courriel.subject, html: courriel.html });
