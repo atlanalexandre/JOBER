@@ -23,6 +23,7 @@ import { useState } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { CASHBACK_TIERS } from "../constants/plans.js";
 import { QUALIFICATIONS_OBLIGATOIRES, METIERS, SECTORS } from "../constants/data.js";
+import { defilerVers } from "../lib/defiler.js";
 
 const pourcent = (x) => `${(x * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`;
 const TAUX_MIN = Math.min(...CASHBACK_TIERS.map(t => t.rate));
@@ -72,7 +73,6 @@ const QUESTIONS = [
 // parcourir toute la page. Les ancres sont les sections ci-dessous.
 const ANCRE_CLIENTS = "pour-les-clients";
 const ANCRE_INDEPENDANTS = "pour-les-independants";
-const allerA = (id) => document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"start" });
 
 export function CasesRoles({ large = false }) {
   const cases = [
@@ -82,7 +82,7 @@ export function CasesRoles({ large = false }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap: large ? 12 : 10, marginTop:16 }}>
       {cases.map(c => (
-        <a key={c.ancre} href={`#${c.ancre}`} onClick={(e) => { e.preventDefault(); allerA(c.ancre); }}
+        <a key={c.ancre} href={`#${c.ancre}`} onClick={(e) => { e.preventDefault(); defilerVers(c.ancre); }}
           style={{ display:"block", textDecoration:"none", background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
             borderRadius:r + 2, padding: large ? "16px 16px" : "13px 12px", textAlign:"left" }}>
           <div style={{ fontSize: large ? 24 : 22, lineHeight:1, marginBottom:8 }}>{c.icone}</div>
@@ -140,7 +140,7 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }
       </section>
 
       {/* ── Comment ça marche ── (arrivée de la case « Vous cherchez un prestataire ? ») */}
-      <section id={ANCRE_CLIENTS} style={{ ...section, scrollMarginTop:16 }}>
+      <section id={ANCRE_CLIENTS} style={section}>
         <Titre large={large} sur="Comment ça marche">Un prestataire en trois étapes</Titre>
         <div style={grille(3, large ? 16 : 10)}>
           {[
@@ -186,7 +186,7 @@ export function SectionsAccueil({ onCommencer, onFaq, onContact, large = false }
       </section>
 
       {/* ── Pour les indépendants ── (arrivée de la case « Vous êtes indépendant ? ») */}
-      <section id={ANCRE_INDEPENDANTS} style={{ ...section, scrollMarginTop:16 }}>
+      <section id={ANCRE_INDEPENDANTS} style={section}>
         <Titre large={large} sur="Vous êtes indépendant ?">Trouvez des clients, gardez votre liberté</Titre>
         <div style={{ ...grille(2, large ? 16 : 10), marginBottom: large ? 24 : 16 }}>
           <Carte icone="🎯" titre="Vous fixez votre tarif">ALANE ne prélève rien sur votre tarif horaire : ses frais de service sont payés par le client.</Carte>

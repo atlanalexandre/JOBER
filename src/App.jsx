@@ -16,6 +16,7 @@ import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
 import { SectionsAccueil, CasesRoles } from "./components/accueil-sections.jsx";
+import { defilerVers } from "./lib/defiler.js";
 import { useEcranLarge } from "./lib/ecran-large.js";
 import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen, InviterClientsScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
@@ -272,7 +273,7 @@ function SplashScreen({ onNext, onMentions, onFaq, onContact }) {
         </p>
         <CasesRoles large={large} />
         <p style={{ textAlign:"center", marginTop:10 }}>
-          <a href="#decouvrir" onClick={(e)=>{ e.preventDefault(); document.getElementById("decouvrir")?.scrollIntoView({ behavior:"smooth" }); }}
+          <a href="#decouvrir" onClick={(e)=>{ e.preventDefault(); defilerVers("decouvrir"); }}
              style={{ color:C.violetLight, fontSize:14, fontWeight:700, textDecoration:"none" }}>
             Découvrir ALANE ↓
           </a>
