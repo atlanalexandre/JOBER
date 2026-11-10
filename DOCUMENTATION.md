@@ -123,7 +123,7 @@ par jour, clé unique `(prestataire_id, jour)`, écrite par le serveur seul — 
 le relevé du matin qui prouve que l'abonné était disponible tout le mois.
 
 **`references_experience`** (décision d'Alexandre du 09/11/2026 — migration
-`2026-11-09_references_experience.sql`, **à passer en recette puis en production**) : les
+`2026-11-09_references_experience.sql`, passée en recette puis en production et vérifiée le 09/11/2026) : les
 références d'expérience que le prestataire cite (`siret`, `entreprise` — le nom lu dans SIRENE,
 jamais celui qu'il tape —, `metier`, `annee_debut`/`annee_fin`, `contact_nom`, `contact_email`),
 l'empreinte sha-256 du jeton envoyé par e-mail (`jeton_hash`), le `statut` (`en_attente` |
@@ -741,8 +741,8 @@ officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur clas
 fausse attestation.
 
 **La référence à saisir, donnée par le prestataire** (décision d'Alexandre du 09/11/2026 —
-migration `2026-11-09_documents_reference_verification.sql`, **à passer en recette puis en
-production**). Le service officiel demande un numéro — de carte, ou la clé d'un diplôme — qu'il
+migration `2026-11-09_documents_reference_verification.sql`, passée en recette puis en
+production et vérifiée le 08/11/2026). Le service officiel demande un numéro — de carte, ou la clé d'un diplôme — qu'il
 fallait lire sur le scan ou réclamer au prestataire. Celui-ci peut désormais le donner depuis son
 onglet Documents, une fois le justificatif « Diplômes & certifications » déposé et tant qu'il
 n'est pas vérifié. `/api/notify-doc` l'écrit dans `documents.reference_verification` (3 à 80
@@ -1065,8 +1065,8 @@ Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes
 `autre`, `titre_sejour`, `casier`. **Un seul document par prestataire et par type** (contrainte unique).
 
 **`casier` — l'extrait de casier judiciaire** (bulletin n° 3 ; décision d'Alexandre du 09/11/2026,
-migration `2026-11-09_documents_casier_judiciaire.sql` — **à passer en recette puis en
-production**). ALANE l'exige — aucun texte ne l'impose — pour les métiers au contact d'enfants,
+migration `2026-11-09_documents_casier_judiciaire.sql` — passée en recette puis en
+production et vérifiée le 08/11/2026). ALANE l'exige — aucun texte ne l'impose — pour les métiers au contact d'enfants,
 `METIERS_CASIER` d'`api/_qualifications.js` : les deux gardes d'enfants, l'animateur club
 enfants, l'animateur périscolaire et le professeur particulier. Comme un titre professionnel, il
 ouvre le **métier** et non le compte : `peutExercer()` refuse ces métiers tant que l'extrait
@@ -1074,7 +1074,7 @@ n'est pas vérifié ou qu'il a dépassé son échéance, que le back-office sais
 (un an après l'émission). `justificatifsDe()` d'`api/_habilitations.js` le lit avec le
 justificatif `diplomes`, sous la clé `casier`. `docsRequisPour()` ne le demande qu'à qui
 déclare un de ces métiers, et l'exige alors pour ouvrir l'accès. Les CGPS (art. 3) le disent
-depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`. Validé sans date (« Tout valider », saisie laissée vide), il reçoit une échéance d'un an à compter de la vérification (`verify_doc`) : sans elle, `casierValide()` le tenait pour valable à vie (relecture du 09/11/2026). Le bandeau « Justificatif à fournir » du prestataire nomme les métiers fermés faute d'extrait.
+depuis la version du 9 novembre 2026. Éprouvé par `e2e/14`. Validé sans date (« Tout valider », saisie laissée vide), il reçoit une échéance d'un an à compter de la vérification (`verify_doc`) : sans elle, `casierValide()` le tenait pour valable à vie (relecture du 09/11/2026). Et `casierValide()` lui-même ne tient plus une échéance absente pour illimitée — extrait vérifié avant ce correctif, ou date effacée depuis le back-office : il vaut un an après `verified_at`, et rien sans elle (10/11/2026). Le bandeau « Justificatif à fournir » du prestataire nomme les métiers fermés faute d'extrait.
 
 **`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
 25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`, appliquée en production le
