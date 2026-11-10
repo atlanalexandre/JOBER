@@ -518,3 +518,19 @@ describe("casier et référence : ce qui ne doit pas durer plus que la pièce", 
     expect(ecran).toContain("extrait de casier judiciaire (bulletin n° 3)");
   });
 });
+
+// 10/11/2026 : un extrait sans échéance ne vaut plus à vie.
+describe("casierValide sans échéance saisie", async () => {
+  const { casierValide } = await import("../../../api/_qualifications.js");
+  const maintenant = new Date("2026-11-10T12:00:00Z");
+  it("vaut un an après sa vérification, puis plus", () => {
+    expect(casierValide({ casier: { verified: true, verified_at: "2026-03-01T10:00:00Z" } }, maintenant)).toBe(true);
+    expect(casierValide({ casier: { verified: true, verified_at: "2025-10-01T10:00:00Z" } }, maintenant)).toBe(false);
+  });
+  it("sans date de vérification non plus : il ne vaut rien, on redemande l'extrait", () => {
+    expect(casierValide({ casier: { verified: true } }, maintenant)).toBe(false);
+  });
+  it("la lecture des justificatifs rapporte la date de vérification", () => {
+    expect(readFileSync(new URL("../../../api/_habilitations.js", import.meta.url), "utf8")).toContain("verified_at: l.verified_at || null");
+  });
+});

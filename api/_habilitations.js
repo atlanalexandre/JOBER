@@ -24,7 +24,7 @@ export async function justificatifsDe(ids, supabaseUrl, headers) {
     for (let i = 0; i < liste.length; i += 100) {
       const lot = liste.slice(i, i + 100);
       const r = await fetch(`${supabaseUrl}/rest/v1/documents?type=in.(diplomes,casier)`
-        + `&prestataire_id=in.(${lot.join(",")})&select=prestataire_id,type,verified,titres_couverts,expires_at`, { headers });
+        + `&prestataire_id=in.(${lot.join(",")})&select=prestataire_id,type,verified,verified_at,titres_couverts,expires_at`, { headers });
       const lignes = await r.json().catch(() => null);
       if (!r.ok || !Array.isArray(lignes)) {
         console.error(`[habilitations] justificatifs illisibles (${r.status}) — métiers réglementés refusés.`);
@@ -32,7 +32,7 @@ export async function justificatifsDe(ids, supabaseUrl, headers) {
       }
       for (const l of lignes) {
         const entree = carte.get(l.prestataire_id) || { prestataire_id: l.prestataire_id, verified: false, titres_couverts: null };
-        if (l.type === "casier") entree.casier = { verified: l.verified === true, expires_at: l.expires_at || null };
+        if (l.type === "casier") entree.casier = { verified: l.verified === true, verified_at: l.verified_at || null, expires_at: l.expires_at || null };
         else Object.assign(entree, { verified: l.verified, titres_couverts: l.titres_couverts });
         carte.set(l.prestataire_id, entree);
       }

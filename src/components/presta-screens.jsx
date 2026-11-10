@@ -2177,7 +2177,7 @@ export function AlerteTitresACompleter({ onNavigate }) {
       const u = data?.user;
       if (!u) return;
       const { data: rows, error } = await supabase.from("documents")
-        .select("type,verified,titres_couverts,expires_at").eq("prestataire_id", u.id).in("type", ["diplomes", "casier"]);
+        .select("type,verified,verified_at,titres_couverts,expires_at").eq("prestataire_id", u.id).in("type", ["diplomes", "casier"]);
       if (error) { console.error("[titres] justificatif illisible :", error.message); return; }
       // Le métier principal compte même quand metiers_list est rempli : le
       // back-office le contrôle (#972), le prestataire doit voir ce qu'on lui
