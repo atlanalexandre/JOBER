@@ -17,7 +17,7 @@ import { appUrl } from "./_url.js";
 import { metiersDeclares } from "./_qualifications.js";
 import {
   MAX_REFERENCES, validerReference, entrepriseSirene, alerteDe, genererJeton, empreinte,
-  courrielReference, validerReponse, jetonExpire, quiDe, expirationDe,
+  courrielReference, validerReponse, jetonExpire, quiDe, expirationDe, referenceVivante,
 } from "./_references.js";
 
 export default async function handler(req, res) {
@@ -42,6 +42,9 @@ export default async function handler(req, res) {
     }
     const ref = lignes[0];
     if (!ref) return res.status(404).json({ error: "Ce lien n'est pas valable." });
+    // Expirée par le balayage du matin : le dire, et non « une réponse a déjà
+    // été donnée », qui était faux (relecture du 10/11/2026).
+    if (ref.statut === "expiree") return res.status(410).json({ error: "Ce lien a expiré." });
     if (ref.statut !== "en_attente") return res.status(410).json({ error: "Merci : une réponse a déjà été donnée pour cette référence." });
     if (jetonExpire(ref.created_at)) {
       const er = await fetch(`${table}?id=eq.${ref.id}&statut=eq.en_attente`, { method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify({ statut: "expiree" }) });
@@ -108,8 +111,7 @@ export default async function handler(req, res) {
   // Une demande restée sans réponse au-delà de la durée du lien ne compte plus :
   // ni dans le plafond, ni comme doublon — le prestataire peut la refaire
   // (relecture du 09/11/2026 : elle occupait sa place pour toujours).
-  const vivantes = existantes.filter(x => x.statut === "confirmee" || x.statut === "refusee"
-    || (x.statut === "en_attente" && !jetonExpire(x.created_at)));
+  const vivantes = existantes.filter(x => referenceVivante(x));
   if (vivantes.length >= MAX_REFERENCES) return res.status(409).json({ error: `${MAX_REFERENCES} références au plus.` });
   if (vivantes.some(x => x.contact_email === ref.contact_email)) return res.status(409).json({ error: "Cette personne est déjà l'une de vos références." });
   const pr = await fetch(`${table}?contact_email=eq.${encodeURIComponent(ref.contact_email)}&prestataire_id=neq.${caller.id}&select=prestataire_id`, { headers });
@@ -127,6 +129,18 @@ export default async function handler(req, res) {
   }
   if (!entreprise) return res.status(400).json({ error: "Ce SIRET est introuvable dans le registre des entreprises." });
   if (!entreprise.actif) return res.status(400).json({ error: "Cette entreprise est fermée d'après le registre : choisissez une référence dans une entreprise en activité." });
+
+  // Le contact sert déjà à d'autres prestataires : l'alerte vaut aussi pour
+  // EUX. Calculée à la seule insertion, elle manquait au premier qui l'avait
+  // cité, et sa confirmation restait affichée aux clients (relecture du
+  // 10/11/2026).
+  if (partages.length) {
+    const ar = await fetch(`${table}?contact_email=eq.${encodeURIComponent(ref.contact_email)}&prestataire_id=neq.${caller.id}&alerte=is.null`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ alerte: "ce contact est aussi la référence d'autre(s) prestataire(s)" }),
+    });
+    if (!ar.ok) console.error(`[references] alerte « contact partagé » non posée sur les références antérieures (${ar.status})`);
+  }
 
   const { jeton, hash } = genererJeton();
   const ir = await fetch(table, {

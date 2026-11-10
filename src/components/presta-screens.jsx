@@ -5,6 +5,7 @@ import { VALIDATION_PRESTA } from "../constants/editeur.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale } from "../constants/data.js";
+import { MAX_REFERENCES, referenceVivante, statutAffiche } from "../../api/_references_regles.js";
 import { titresNonCouverts, metiersDeclares, casierExige, casierValide } from "../../api/_qualifications.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture, BoutonFacturesDuMois, checkIban } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
@@ -2073,7 +2074,7 @@ function MesReferences() {
       </div>
       {(refs || []).map(x => {
         // Lien expiré (30 jours) : « sans réponse », même avant le balayage du matin.
-        const statut = x.statut === "en_attente" && Date.now() - new Date(x.created_at).getTime() > 30 * 86400000 ? "expiree" : x.statut;
+        const statut = statutAffiche(x);
         const st = STATUTS_REFERENCE[statut] || STATUTS_REFERENCE.en_attente;
         return (
           <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"8px 0", borderTop:`1px solid ${C.border}` }}>
@@ -2086,8 +2087,7 @@ function MesReferences() {
         );
       })}
       {etat.message && <div style={{ margin:"8px 0", fontSize:11.5, color: etat.ok ? C.success : "#F25E5E" }}>{etat.message}</div>}
-      {refs && refs.filter(x => x.statut === "confirmee" || x.statut === "refusee"
-        || (x.statut === "en_attente" && Date.now() - new Date(x.created_at).getTime() <= 30 * 86400000)).length < 5 && !ouvert && (
+      {refs && refs.filter(x => referenceVivante(x)).length < MAX_REFERENCES && !ouvert && (
         <button onClick={()=>{ setOuvert(true); setEtat({ envoi:false, message:null, ok:false }); }}
           style={{ marginTop:8, background:"none", border:`1px solid ${C.violet}66`, color:C.violet, borderRadius:10, padding:"8px 12px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
           + Ajouter une référence
