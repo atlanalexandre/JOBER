@@ -276,7 +276,11 @@ export default async function handler(req, res) {
     // détail — la réponse de la référence est confiée à ALANE. Table absente
     // (migration non passée) : pas de compteur, la vitrine reste servie.
     const lireReferencesConfirmees = async () => {
-      const lignes = await lireTout(`${SUPABASE_URL}/rest/v1/references_experience?statut=eq.confirmee&select=prestataire_id`, headers);
+      // Ne comptent que les confirmations sans alerte anti-fraude, et sans
+      // « je ne le recommande pas » : une adresse gmail d'ami ou un contact
+      // partagé ne s'affichaient pas moins aux clients (relecture du 09/11/2026).
+      const lignes = await lireTout(`${SUPABASE_URL}/rest/v1/references_experience?statut=eq.confirmee&alerte=is.null`
+        + "&or=(reponse->>recommande.is.null,reponse->>recommande.eq.true)&select=prestataire_id", headers);
       const compte = {};
       for (const l of lignes) compte[l.prestataire_id] = (compte[l.prestataire_id] || 0) + 1;
       return compte;

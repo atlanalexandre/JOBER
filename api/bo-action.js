@@ -2146,9 +2146,17 @@ export default async function handler(req, res) {
       // une (attestation RC Pro, URSSAF). Sans elle, rien ne suit l'expiration
       // et l'article 19.1 des CGPS — renouvellement annuel, suspension après
       // trente jours — reste une promesse sans effet.
-      const expiresAt = req.body.expiresAt ? String(req.body.expiresAt).slice(0, 10) : null;
+      let expiresAt = req.body.expiresAt ? String(req.body.expiresAt).slice(0, 10) : null;
       if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
         return res.status(400).json({ error: "Date de validité invalide (attendu AAAA-MM-JJ)" });
+      }
+      // L'extrait de casier se renouvelle chaque année (CGPS art. 3) : validé
+      // sans date — « Tout valider », ou une saisie laissée vide —, il valait
+      // pour toujours, puisque casierValide() lit une échéance absente comme
+      // illimitée. Un an à compter de la vérification (relecture du 09/11/2026).
+      if (!expiresAt && docTrouve.type === "casier") {
+        const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() + 1);
+        expiresAt = d.toISOString().slice(0, 10);
       }
 
       // Justificatif de qualification : la vérification constate les titres

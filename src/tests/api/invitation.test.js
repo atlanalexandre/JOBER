@@ -222,6 +222,10 @@ describe("prixMensuelDepuisAbonnement : ce qui est réellement payé", async () 
   it("la même remise listée deux fois (discount et discounts) n'est déduite qu'une fois", () => {
     expect(prix(ab({ discount: { id: "di_1", coupon: { percent_off: 50 } }, discounts: ["di_1"] }))).toBe(1500);
   });
+  it("deux remises déployées sont déduites toutes les deux ; une seule lisible sur deux lève (09/11/2026)", () => {
+    expect(prix(ab({ discounts: [{ id: "di_1", coupon: { percent_off: 50 } }, { id: "di_2", coupon: { amount_off: 500 } }] }))).toBe(1000);
+    expect(() => prix(ab({ discount: { id: "di_1", coupon: { percent_off: 50 } }, discounts: ["di_1", "di_2"] }))).toThrow("remise");
+  });
   it("une remise illisible lève : mieux vaut reporter que créditer trop", () => {
     expect(() => prix(ab({ discounts: ["di_1"] }))).toThrow("remise");
   });

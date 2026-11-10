@@ -1,4 +1,5 @@
 import { PARRAINAGE_FILLEULS } from "./_invitation_regles.js";
+import { prixMensuelDepuisAbonnement } from "./_invitation.js";
 import { notifier } from "./_push.js";
 import { resendBody, euros, sendEmail, esc } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
@@ -731,12 +732,16 @@ export default async function handler(req, res) {
             const moisOfferts = duesTotal - dejaAccordees;
             let avoirCentimes = 0;
             try {
-              const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}`,
+              // Le prix d'un mois par la règle commune — remises et quantité
+              // comprises. Cette copie de la formule les ignorait : un parrain
+              // qui payait moitié prix recevait un mois plein (relecture du
+              // 09/11/2026). Les remises sont déployées (`expand`) : sans cela,
+              // Stripe ne rend que leurs identifiants.
+              const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}?expand[]=discounts`,
                 { headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` } });
               const sd = await sr.json().catch(() => ({}));
-              const prix = sd?.items?.data?.[0]?.price;
-              const mensuel = prix?.recurring?.interval === "year" ? Number(prix.unit_amount) / 12 : Number(prix?.unit_amount);
-              avoirCentimes = Math.round((Number.isFinite(mensuel) ? mensuel : 0) * moisOfferts);
+              if (!sr.ok) throw new Error(`abonnement illisible (${sr.status})`);
+              avoirCentimes = prixMensuelDepuisAbonnement(sd) * moisOfferts;
               if (!(avoirCentimes > 0)) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
               const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(parrain.stripe_customer_id)}/balance_transactions`, {
                 method: "POST",

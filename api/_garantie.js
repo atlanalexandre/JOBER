@@ -115,7 +115,9 @@ export function droitGarantie({ profil, abonnement, propositions, releves, mois 
  * Rend null s'il a disparu (404) ; LÈVE sur une panne passagère.
  */
 async function lireAbonnement(subscriptionId, stripeKey) {
-  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+  // `expand` : sans lui, Stripe ne rend des remises que leurs identifiants, et
+  // prixMensuelDepuisAbonnement() ne peut pas les déduire (relecture du 09/11/2026).
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=discounts`,
     { headers: { "Authorization": `Bearer ${stripeKey}` } });
   if (r.status === 404) return null;
   const d = await r.json().catch(() => ({}));

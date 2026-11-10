@@ -219,3 +219,14 @@ describe("branchements", () => {
     expect(readFileSync(new URL("../../constants/cgps.js", import.meta.url), "utf8")).toContain("relevées chaque jour par ALANE");
   });
 });
+
+describe("le prix lu chez Stripe, remises déployées (09/11/2026)", () => {
+  const lire = (f) => readFileSync(new URL(`../../../api/${f}`, import.meta.url), "utf8");
+  it("chaque lecture de l'abonnement demande ses remises, et le parrainage passe par la règle commune", () => {
+    expect(lire("_garantie.js")).toContain("subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=discounts");
+    expect(lire("_invitation.js")).toContain("?expand[]=discounts");
+    const w = lire("stripe-webhook.js");
+    expect(w).toContain("avoirCentimes = prixMensuelDepuisAbonnement(sd) * moisOfferts");
+    expect(w).not.toMatch(/interval === "year" \? Number\(prix\.unit_amount\) \/ 12/);
+  });
+});
