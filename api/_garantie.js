@@ -29,7 +29,7 @@
 
 import { bornesMois } from "./_journal_comptable.js";
 import { lireTout } from "./_lignes.js";
-import { prixMensuelDepuisAbonnement } from "./_invitation.js";
+import { prixMensuelDepuisAbonnement, lireAbonnementStripe } from "./_invitation.js";
 import { notifier } from "./_push.js";
 import { euros } from "./_email.js";
 import { frenchOffsetMs } from "./_temps.js";
@@ -115,16 +115,17 @@ export function droitGarantie({ profil, abonnement, propositions, releves, mois 
  * Rend null s'il a disparu (404) ; LÈVE sur une panne passagère.
  */
 async function lireAbonnement(subscriptionId, stripeKey) {
-  // `expand` : sans lui, Stripe ne rend des remises que leurs identifiants, et
-  // prixMensuelDepuisAbonnement() ne peut pas les déduire (relecture du 09/11/2026).
-  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=discounts`,
-    { headers: { "Authorization": `Bearer ${stripeKey}` } });
-  if (r.status === 404) return null;
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`abonnement ${subscriptionId} illisible (${r.status})`);
+  const d = await lireAbonnementStripe(subscriptionId, stripeKey);
+  if (d === null) return null;
   // Le prix d'un mois : la MÊME règle que la récompense d'invitation, partagée
-  // (relecture du 06/11/2026 — deux copies auraient pu créditer deux montants).
-  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes: prixMensuelDepuisAbonnement(d),
+  // (relecture du 06/11/2026). Un prix illisible n'empêche PAS le relevé du
+  // matin, qui n'a besoin que du statut : il ne compte qu'à l'examen, qui
+  // reporte alors (relecture du 10/11/2026 — sans cela, un abonné à la remise
+  // illisible n'était jamais relevé, et perdait la garantie pour « relevés
+  // incomplets »).
+  let centimes = null, erreurPrix = null;
+  try { centimes = prixMensuelDepuisAbonnement(d); } catch (e) { erreurPrix = e.message; }
+  return { statut: d.status, debutMs: Number(d.start_date || d.created || 0) * 1000, centimes, erreurPrix,
     resilie: d.cancel_at_period_end === true || Number(d.cancel_at) > 0 };
 }
 
@@ -271,6 +272,7 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
       const abonnement = await lireAbonnement(profil.stripe_subscription_id, stripeKey);
       const droit = droitGarantie({ profil, abonnement: abonnement || { statut: "disparu" }, propositions, releves, mois });
       if (!droit.ok) { console.log(`[garantie] ${profil.id} — ${mois} : pas de mois offert (${droit.raison})`); continue; }
+      if (abonnement.erreurPrix) throw new Error(`prix illisible : ${abonnement.erreurPrix}`);
       if (!(abonnement.centimes > 0)) { console.log(`[garantie] ${profil.id} — ${mois} : rien à déduire (abonnement gratuit)`); continue; }
 
       // L'avoir existe-t-il déjà ? Un essai précédent a pu le créer sans que la
