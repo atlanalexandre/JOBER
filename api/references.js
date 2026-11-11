@@ -17,8 +17,33 @@ import { appUrl } from "./_url.js";
 import { metiersDeclares } from "./_qualifications.js";
 import {
   MAX_REFERENCES, validerReference, entrepriseSirene, alerteDe, genererJeton, empreinte,
-  courrielReference, validerReponse, jetonExpire, quiDe, expirationDe, referenceVivante,
+  courrielReference, validerReponse, jetonExpire, quiDe, expirationDe, referenceVivante, ALERTE_PARTAGE,
 } from "./_references.js";
+
+/**
+ * Un même contact vient de confirmer pour un SECOND prestataire : l'alerte
+ * « contact partagé » est posée sur toutes ses confirmations, celle-ci comprise,
+ * en s'AJOUTANT à une alerte déjà présente (adresse personnelle) au lieu de
+ * l'ignorer (relecture du 11/11/2026). Une confirmation ne dépend que du
+ * contact : personne ne peut ainsi retirer la référence d'un concurrent en
+ * tapant son adresse. Un échec est journalisé, la réponse reste enregistrée.
+ */
+async function signalerContactPartage(ref, table, headers) {
+  if (!ref.contact_email) return;
+  const lr = await fetch(`${table}?contact_email=eq.${encodeURIComponent(ref.contact_email)}&statut=eq.confirmee&select=id,prestataire_id,alerte`, { headers });
+  const lignes = await lr.json().catch(() => null);
+  if (!lr.ok || !Array.isArray(lignes)) {
+    console.error(`[references] contact partagé non vérifié après la confirmation de ${ref.id} (${lr.status})`);
+    return;
+  }
+  if (new Set(lignes.map(l => l.prestataire_id)).size < 2) return;
+  for (const l of lignes) {
+    if (String(l.alerte || "").includes(ALERTE_PARTAGE)) continue;
+    const alerte = [l.alerte, ALERTE_PARTAGE].filter(Boolean).join(" ; ");
+    const pr = await fetch(`${table}?id=eq.${l.id}`, { method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify({ alerte }) });
+    if (!pr.ok) console.error(`[references] alerte « contact partagé » non posée sur ${l.id} (${pr.status})`);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -34,7 +59,7 @@ export default async function handler(req, res) {
     const jeton = String(req.body?.jeton || "");
     if (jeton.length < 20 || jeton.length > 100) return res.status(400).json({ error: "Lien invalide." });
     const hash = empreinte(jeton);
-    const lr = await fetch(`${table}?jeton_hash=eq.${hash}&select=id,prestataire_id,entreprise,metier,annee_debut,annee_fin,statut,created_at`, { headers });
+    const lr = await fetch(`${table}?jeton_hash=eq.${hash}&select=id,prestataire_id,contact_email,entreprise,metier,annee_debut,annee_fin,statut,created_at`, { headers });
     const lignes = await lr.json().catch(() => null);
     if (!lr.ok || !Array.isArray(lignes)) {
       console.error(`[references] lecture par jeton refusée (${lr.status}) — migration 2026-11-09_references_experience.sql passée ?`);
@@ -76,6 +101,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez dans un instant." });
     }
     if (!Array.isArray(ecrit) || ecrit.length === 0) return res.status(410).json({ error: "Merci : une réponse a déjà été donnée pour cette référence." });
+    if (v.valeur.a_travaille) await signalerContactPartage(ref, table, headers);
     return res.status(200).json({ ok: true });
   }
 
@@ -130,17 +156,12 @@ export default async function handler(req, res) {
   if (!entreprise) return res.status(400).json({ error: "Ce SIRET est introuvable dans le registre des entreprises." });
   if (!entreprise.actif) return res.status(400).json({ error: "Cette entreprise est fermée d'après le registre : choisissez une référence dans une entreprise en activité." });
 
-  // Le contact sert déjà à d'autres prestataires : l'alerte vaut aussi pour
-  // EUX. Calculée à la seule insertion, elle manquait au premier qui l'avait
-  // cité, et sa confirmation restait affichée aux clients (relecture du
-  // 10/11/2026).
-  if (partages.length) {
-    const ar = await fetch(`${table}?contact_email=eq.${encodeURIComponent(ref.contact_email)}&prestataire_id=neq.${caller.id}&alerte=is.null`, {
-      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ alerte: "ce contact est aussi la référence d'autre(s) prestataire(s)" }),
-    });
-    if (!ar.ok) console.error(`[references] alerte « contact partagé » non posée sur les références antérieures (${ar.status})`);
-  }
+  // L'alerte « contact partagé » ne touche ici que la NOUVELLE demande. Les
+  // références des autres prestataires ne sont marquées qu'une fois le contact
+  // ayant CONFIRMÉ pour deux d'entre eux (voir « repondre ») : marquées dès la
+  // saisie, elles l'étaient sur la seule parole de quiconque tapait l'adresse
+  // du contact d'un concurrent — et le restaient même si sa demande échouait
+  // (relecture du 11/11/2026).
 
   const { jeton, hash } = genererJeton();
   const ir = await fetch(table, {

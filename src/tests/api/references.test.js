@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  validerReference, validerReponse, alerteDe, courrielReference, empreinte, genererJeton, jetonExpire, MAX_REFERENCES, quiDe,
+  validerReference, validerReponse, alerteDe, courrielReference, empreinte, genererJeton, jetonExpire, MAX_REFERENCES, quiDe, ALERTE_PARTAGE,
 } from "../../../api/_references.js";
 
 const corps = (x = {}) => ({ siret: "552 100 554 00025", metier: "Agent de propreté", annee_debut: 2021, annee_fin: 2023,
@@ -159,12 +159,30 @@ describe("/api/references", () => {
     expect(r.statusCode).toBe(410);
     expect(r.corps.error).toBe("Ce lien a expiré.");
   });
-  it("un contact déjà cité ailleurs : l'alerte remonte aussi sur les références antérieures (10/11/2026)", async () => {
+  it("ajouter : un contact déjà cité ailleurs ne touche PAS les références des autres — seule la nouvelle porte l'alerte (11/11/2026)", async () => {
     base.partages = [{ prestataire_id: "autre" }];
     const r = await appel({ action: "ajouter", ...corps() });
     expect(r.statusCode).toBe(200);
-    const anterieures = appels.find(a => a.m === "PATCH" && a.u.includes("prestataire_id=neq.p1") && a.u.includes("alerte=is.null"));
-    expect(anterieures.corps.alerte).toContain("autre(s) prestataire(s)");
+    expect(appels.some(a => a.m === "PATCH" && a.u.includes("prestataire_id=neq.p1"))).toBe(false);
+    expect(appels.find(a => a.m === "POST" && a.u.includes("references_experience")).corps.alerte).toContain("autre(s) prestataire(s)");
+  });
+  it("répondre : un contact qui confirme pour un second prestataire marque les deux, en ajoutant à l'alerte existante (11/11/2026)", async () => {
+    base.parJeton = [{ id: "r1", prestataire_id: "p1", contact_email: "c.martin@nettoyage-pro.fr", entreprise: "X", metier: "Agent de propreté", annee_debut: 2021, statut: "en_attente", created_at: new Date().toISOString() }];
+    base.partages = [{ id: "r1", prestataire_id: "p1", alerte: null }, { id: "r9", prestataire_id: "autre", alerte: "adresse personnelle, pas celle d'une entreprise" }];
+    expect((await appel({ action: "repondre", jeton: "x".repeat(43), reponse: { a_travaille: true } })).statusCode).toBe(200);
+    expect(appels.find(a => a.m === "GET" && a.u.includes("contact_email=eq.")).u).toContain("statut=eq.confirmee");
+    const p9 = appels.find(a => a.m === "PATCH" && a.u.includes("id=eq.r9"));
+    expect(p9.corps.alerte).toBe("adresse personnelle, pas celle d'une entreprise ; " + ALERTE_PARTAGE);
+    expect(appels.find(a => a.m === "PATCH" && a.u.endsWith("id=eq.r1")).corps.alerte).toBe(ALERTE_PARTAGE);
+  });
+  it("répondre : un seul prestataire confirmé pour ce contact, ou un refus — personne n'est marqué", async () => {
+    base.parJeton = [{ id: "r1", prestataire_id: "p1", contact_email: "c@x.fr", entreprise: "X", metier: "Agent de propreté", annee_debut: 2021, statut: "en_attente", created_at: new Date().toISOString() }];
+    base.partages = [{ id: "r1", prestataire_id: "p1", alerte: null }];
+    await appel({ action: "repondre", jeton: "x".repeat(43), reponse: { a_travaille: true } });
+    expect(appels.filter(a => a.m === "PATCH" && a.corps?.alerte)).toHaveLength(0);
+    appels.length = 0; base.partages = [{ id: "r1", prestataire_id: "p1" }, { id: "r9", prestataire_id: "autre" }];
+    await appel({ action: "repondre", jeton: "x".repeat(43), reponse: { a_travaille: false } });
+    expect(appels.some(a => a.u.includes("contact_email=eq."))).toBe(false);
   });
   it("lire : le prénom et l'initiale, lus sur la fiche", async () => {
     base.parJeton = [{ id: "r1", prestataire_id: "p1", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null, statut: "en_attente", created_at: new Date().toISOString() }];
