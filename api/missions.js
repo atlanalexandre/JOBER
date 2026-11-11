@@ -2960,6 +2960,25 @@ export default async function handler(req, res) {
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (!["open", "pending_acceptance"].includes(mission.status)) {
+        // Fermée (annulée, refusée, clôturée faute de paiement) AVANT que ce
+        // paiement — vérifié réel, de ce client, pour cette prestation —
+        // n'arrive, et sans paiement rattaché : rien ne le rendait. Le webhook
+        // laisse l'affectation à l'application, et celle-ci répondait « déjà
+        // traitée » : le client était débité pour rien (relecture du
+        // 11/11/2026). Il est remboursé, avec la clé du webhook — jamais deux
+        // fois. Une prestation qui porte CE paiement est un nouvel essai : on
+        // n'y touche pas.
+        const fermee = ["cancelled", "refused", "rejected", "closed"].includes(mission.status);
+        const rattache = paiement.mission?.stripe_payment_intent;
+        if (fermee && rattache !== stripe_payment_intent) {
+          const rendu = await rembourserDoublonPaiement(stripe_payment_intent, "assign_after_payment/prestation fermée");
+          return res.status(409).json({
+            code: "prestation_fermee",
+            error: "Cette prestation n'est plus disponible. " + (rendu
+              ? "Votre paiement vous est intégralement remboursé (3 à 5 jours ouvrés selon votre banque)."
+              : "Votre paiement n'a pas pu être remboursé automatiquement : écrivez à direction@alane.fr, nous le reprenons à la main."),
+          });
+        }
         return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
       }
 
