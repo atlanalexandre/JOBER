@@ -724,7 +724,12 @@ export default async function handler(req, res) {
           if (abonnePayant) {
             try { prixMois = await prixMensuelCentimes(parrain, STRIPE_SECRET_KEY); }
             catch (e) {
-              console.error(`[parrainage] prix de l'abonnement de ${parrainId} illisible (${e.message}) — rien réservé, récompense reportée.`);
+              // Rien ne repasse ici d'office : seul l'abonnement d'un AUTRE filleul
+              // de ce parrain recalcule la récompense. Le journal le dit, pour
+              // qu'elle ne se perde pas en silence (relecture du 11/11/2026).
+              console.error(`[parrainage] prix de l'abonnement de ${parrainId} illisible (${e.message}) — rien réservé. `
+                + `À FAIRE À LA MAIN si le problème persiste : ${duesTotal - dejaAccordees} mois offert(s) dû(s) ; créer l'avoir d'un mois dans Stripe `
+                + `(Clients → le client ${parrain.stripe_customer_id} → Solde → Ajuster), puis passer referral_rewards_granted à ${duesTotal}.`);
               return;
             }
             if (!(prixMois > 0)) abonnePayant = false;
