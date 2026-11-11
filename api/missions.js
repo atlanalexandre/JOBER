@@ -692,6 +692,34 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 // rediffusée, et la rembourser ferait travailler un prestataire pour rien
 // (relecture du 06/10/2026). Lecture impossible : on ne rembourse pas, et on
 // le dit.
+/**
+ * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
+ * La prestation restait « refusée », l'argent du client gardé, et rien ne la
+ * reprenait : la tâche planifiée ne relit que les prestations en attente
+ * (relecture du 11/11/2026). Elle est remise en attente, SANS prestataire et
+ * le délai déjà échu — personne ne peut plus l'accepter —, exactement comme la
+ * tâche planifiée le fait pour ses propres échecs : son passage suivant la
+ * rembourse (ou, pour une prestation affectée par la plateforme, cherche le
+ * candidat suivant).
+ */
+async function remettreARembourser(missionId, supabaseUrl, headers, contexte) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=eq.refused`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+      body: JSON.stringify({ status: "pending_acceptance", prestataire_id: null, acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
+    });
+    const l = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(l) && l.length) {
+      console.error(`[${contexte}] remboursement de ${missionId} impossible — remise en attente, la tâche planifiée la reprend à son prochain passage.`);
+      return true;
+    }
+    console.error(`[${contexte}] ⚠️ ${missionId} REFUSÉE SANS REMBOURSEMENT et non remise en attente (${r.status}) : à rembourser à la main.`);
+  } catch (e) {
+    console.error(`[${contexte}] ⚠️ ${missionId} REFUSÉE SANS REMBOURSEMENT et non remise en attente : à rembourser à la main —`, e.message);
+  }
+  return false;
+}
+
 async function toujoursRefusee(missionId, supabaseUrl, headers) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=status&limit=1`, { headers });
@@ -955,11 +983,11 @@ async function handleEmailAction(req, res) {
     } else if (cascade.mode === "echec") {
       cascade = null;
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
-      if (!rembEchec.ok) console.error(`[refus-email] cascade en échec ET remboursement impossible — prestation ${missionId} à rembourser à la main`);
+      if (!rembEchec.ok) await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email");
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
-    if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
+    if (!rembMail.ok) await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email");
   }
 
   // L'offre de lancement se déclenche à la première prestation acceptée, quel
@@ -3211,9 +3239,7 @@ export default async function handler(req, res) {
 
       // Le client a payé et personne n'a accepté : remboursement intégral.
       const rembTimeout = await rembourserPrestation(mission, SUPABASE_URL, headers, "delai-expire");
-      if (!rembTimeout.ok) {
-        console.error(`[acceptance_timeout] remboursement à reprendre manuellement — prestation ${mission_id}`);
-      }
+      if (!rembTimeout.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "acceptance_timeout");
 
       let prestaName = "Le prestataire";
       if (mission.prestataire_id) {
@@ -6197,11 +6223,11 @@ export default async function handler(req, res) {
         } else if (cascade.mode === "echec") {
           cascade = null;
           rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
-          if (!rembRefus.ok) console.error(`[respond_mission] cascade en échec ET remboursement impossible — prestation ${mission_id} à rembourser à la main`);
+          if (!rembRefus.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission");
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
-        if (!rembRefus.ok) console.error(`[respond_mission] remboursement à reprendre manuellement — prestation ${mission_id}`);
+        if (!rembRefus.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission");
       }
 
       if (mission.client_id) {
