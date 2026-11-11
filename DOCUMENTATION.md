@@ -4273,6 +4273,21 @@ service absorbent tout le paiement principal et que seule la modification est re
 montre plus « Remboursement 0,00 € » ni « aucun montant n'est dû » : il annonce le remboursement de
 la modification et son délai (relecture du 09/10/2026).
 
+**Les heures supplémentaires d'une prestation d'une journée aussi** (relecture du 11/11/2026).
+Sur une seule journée, une prolongation s'ajoute à `hours` et à `montant_total`, mais n'entre pas
+dans `heures_ajoutees_detail` (réservé aux prestations de plusieurs jours), et
+`extra_hours_payment_intent` ne garde que le dernier paiement. Aucune annulation ne les rendait :
+`cancel_client` demandait à la réservation plus qu'elle n'avait encaissé (Stripe refusait, la
+prestation passait quand même « annulée »), et `presta_cancel` ne remboursait que la réservation en
+annonçant un remboursement intégral. `paiementsHeuresSupp()` (`api/_remboursement_bo.js`) les lit
+désormais chez Stripe (recherche par `metadata[mission]` et `metadata[type]=heures_supp`, le dernier
+paiement connu relu à part, la recherche pouvant avoir une minute de retard). À l'annulation par le
+client : la part du prestataire (heures × tarif convenu) de chaque prolongation appliquée, tout pour
+une prolongation payée jamais appliquée ; les heures et le montant retirés de la réservation avant
+d'en déduire les frais. Au désistement du prestataire : tout, détail des prestations de plusieurs
+jours compris. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
+plus une prestation payée par carte : rien n'était rendu, et aucun e-mail ne prévenait l'équipe.
+
 **Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
 l'étiquette de son opération (`metadata[alane_operation]` : le jour et l'issue, ou
 « annulation ») ; `rembourserAjoutsNonFaits()` cherche d'abord chez Stripe un remboursement de
