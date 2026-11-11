@@ -1621,12 +1621,37 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
 
+      // Le MÊME verrou que l'accord tacite de la tâche planifiée, pris avant
+      // tout mouvement d'argent. Sans lui, une décision exécutée pendant que
+      // la tâche exécutait l'accord tacite — ou un double clic — dénouait le
+      // litige deux fois : client remboursé ET prestataire payé (relecture du
+      // 11/11/2026). Relâché si l'exécution échoue, pour pouvoir réessayer.
+      const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&resolution_executee_cause=is.null`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ resolution_executee_cause: cause }),
+      });
+      const pris = await verrou.json().catch(() => null);
+      if (!verrou.ok) {
+        console.error(`[executer_decision] verrou de ${mission_id} refusé (${verrou.status}) : ${JSON.stringify(pris).slice(0, 200)}`);
+        return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
+      }
+      if (!Array.isArray(pris) || pris.length === 0) {
+        return res.status(409).json({ error: "Ce litige est déjà en cours de dénouement (accord tacite ou autre décision) — rien n'a été fait. Rechargez la liste." });
+      }
+
       const out = await executerResolution({
         mission: m, resolution, supabaseUrl: SUPABASE_URL, headers,
         stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
         cause,
       });
-      if (!out.ok) return res.status(500).json({ error: out.detail });
+      if (!out.ok) {
+        const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ resolution_executee_cause: null }),
+        }).catch(e => { console.error(`[executer_decision] verrou de ${mission_id} non relâché :`, e.message); return null; });
+        if (rl && !rl.ok) console.error(`[executer_decision] verrou de ${mission_id} non relâché (${rl.status})`);
+        return res.status(500).json({ error: out.detail });
+      }
 
       const quoi = libelleResolution(resolution);
       const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
