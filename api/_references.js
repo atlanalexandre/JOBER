@@ -32,8 +32,8 @@ import { METIERS } from "../src/constants/data.js";
 /** Les libellés du catalogue : un métier écrit ailleurs n'entre pas dans un e-mail. */
 const CATALOGUE = new Set(Object.values(METIERS).flat());
 
-export const MAX_REFERENCES = 5;
-export const DUREE_JETON_JOURS = 30;
+import { MAX_REFERENCES, DUREE_JETON_JOURS, jetonExpire, referenceVivante } from "./_references_regles.js";
+export { MAX_REFERENCES, DUREE_JETON_JOURS, jetonExpire, referenceVivante };
 /** Une relance, une seule, si la référence n'a pas répondu au bout de 7 jours. */
 export const RELANCE_APRES_JOURS = 7;
 
@@ -122,8 +122,11 @@ export function quiDe(fiche) {
 }
 
 /** La date limite d'un lien, à la française. */
+// Le DERNIER JOUR entier où le lien vaut : il cesse à l'heure de sa création,
+// 30 jours plus tard — annoncer ce jour-là laissait cliquer, le jour dit, sur
+// un lien déjà mort (relecture du 10/11/2026).
 export const expirationDe = (createdAt) =>
-  new Date(new Date(createdAt).getTime() + DUREE_JETON_JOURS * 86400000).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+  new Date(new Date(createdAt).getTime() + (DUREE_JETON_JOURS - 1) * 86400000).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
 
 export function courrielReference({ qui, entreprise, metier, debut, fin, lien, expireLe, relance = false }) {
   return {
@@ -155,9 +158,6 @@ export function validerReponse(corps) {
   return { ok: true, valeur: { a_travaille: corps.a_travaille, recommande: corps.a_travaille ? recommande : null, commentaire, repondant } };
 }
 
-/** Le lien a-t-il dépassé sa durée ? */
-export const jetonExpire = (createdAt, maintenant = Date.now()) =>
-  !(new Date(createdAt).getTime() + DUREE_JETON_JOURS * 86400000 > maintenant);
 
 /**
  * Cette référence attend-elle sa relance ? En attente, envoyée une première
@@ -188,7 +188,8 @@ export async function relancerReferences({ supabaseUrl, headers, maintenantMs = 
   // balayage, elles ne le devenaient qu'à l'ouverture du lien — jamais, donc —
   // et occupaient pour toujours une des 5 places (relecture du 09/11/2026).
   const limite = new Date(maintenantMs - DUREE_JETON_JOURS * 86400000).toISOString();
-  const xr = await fetch(`${table}?statut=eq.en_attente&created_at=lt.${encodeURIComponent(limite)}`, {
+  // `select=id` : on compte, on ne rapatrie pas les e-mails et réponses (10/11/2026).
+  const xr = await fetch(`${table}?statut=eq.en_attente&created_at=lt.${encodeURIComponent(limite)}&select=id`, {
     method: "PATCH", headers: { ...headers, "Content-Type": "application/json", "Prefer": "return=representation" }, body: JSON.stringify({ statut: "expiree" }),
   });
   const expirees = await xr.json().catch(() => null);

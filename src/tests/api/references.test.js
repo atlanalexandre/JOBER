@@ -153,6 +153,19 @@ describe("/api/references", () => {
     base.parJeton[0].statut = "confirmee";
     expect((await appel({ action: "lire", jeton: "x".repeat(43) })).statusCode).toBe(410);
   });
+  it("lire un lien expiré par le balayage : « expiré », et non « déjà répondu » (10/11/2026)", async () => {
+    base.parJeton = [{ id: "r1", prestataire_id: "p1", entreprise: "X", metier: "Agent de propreté", annee_debut: 2021, statut: "expiree", created_at: new Date().toISOString() }];
+    const r = await appel({ action: "lire", jeton: "x".repeat(43) });
+    expect(r.statusCode).toBe(410);
+    expect(r.corps.error).toBe("Ce lien a expiré.");
+  });
+  it("un contact déjà cité ailleurs : l'alerte remonte aussi sur les références antérieures (10/11/2026)", async () => {
+    base.partages = [{ prestataire_id: "autre" }];
+    const r = await appel({ action: "ajouter", ...corps() });
+    expect(r.statusCode).toBe(200);
+    const anterieures = appels.find(a => a.m === "PATCH" && a.u.includes("prestataire_id=neq.p1") && a.u.includes("alerte=is.null"));
+    expect(anterieures.corps.alerte).toContain("autre(s) prestataire(s)");
+  });
   it("lire : le prénom et l'initiale, lus sur la fiche", async () => {
     base.parJeton = [{ id: "r1", prestataire_id: "p1", entreprise: "NETTOYAGE PRO", metier: "Agent de propreté", annee_debut: 2021, annee_fin: null, statut: "en_attente", created_at: new Date().toISOString() }];
     const r = await appel({ action: "lire", jeton: "x".repeat(43) });
@@ -205,7 +218,8 @@ describe("la relance d'une référence sans réponse", async () => {
     expect(envoi.subject).toMatch(/^Rappel/);
     expect(envoi.subject).toContain("Léa D.");
     // La date limite du rappel est celle de la première demande, pas 30 jours de plus.
-    expect(envoi.html).toContain(`jusqu'au ${new Date(maintenant + 22 * J).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}`);
+    // Le dernier jour entier où le lien vaut (création + 29 jours), 10/11/2026.
+    expect(envoi.html).toContain(`jusqu'au ${new Date(maintenant + 21 * J).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}`);
     expect(emp(envoi.html.match(/reference\?t=([A-Za-z0-9_-]+)/)[1])).toBe(p.corps.jeton_hash);
   });
   it("e-mail non parti : l'ancien lien est rétabli, la référence peut toujours répondre", async () => {
@@ -219,6 +233,7 @@ describe("la relance d'une référence sans réponse", async () => {
     await relancerReferences({ supabaseUrl: "https://b.test", headers: {}, maintenantMs: maintenant });
     const balayage = appels.find(a => a.m === "PATCH" && a.u.includes("created_at=lt."));
     expect(balayage.u).toContain("statut=eq.en_attente");
+    expect(balayage.u).toContain("select=id");
     expect(balayage.corps).toEqual({ statut: "expiree" });
   });
   it("branchée sur le balayage du matin, après le relevé de la garantie, même s'il échoue", () => {

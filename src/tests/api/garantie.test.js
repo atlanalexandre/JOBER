@@ -171,6 +171,14 @@ describe("l'examen du début de mois", () => {
     expect((await lancer()).offerts).toBe(0);
     expect(appels.some(a => a.m === "PATCH")).toBe(false);
   });
+  it("une remise illisible n'empêche pas le relevé du matin, et reporte l'examen sans rien réserver (10/11/2026)", async () => {
+    const appelsR = simuler({ abonnementLu: { discounts: [{ id: "di_1", source: { coupon: null } }] } });
+    expect(await noterReleves({ ...ctx, maintenantMs: Date.parse("2026-12-03T06:00:00Z") })).toEqual({ releves: 1 });
+    expect(JSON.parse(appelsR.find(a => a.u.includes("garantie_releves") && a.m === "POST").corps)[0].disponible).toBe(true);
+    const appels = simuler({ abonnementLu: { discounts: [{ id: "di_1", source: { coupon: null } }] } });
+    expect((await lancer()).offerts).toBe(0);
+    expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
   it("une remise de 50 % : l'avoir vaut ce qu'il paie, pas le prix affiché (08/11/2026)", async () => {
     const appels = simuler({ abonnementLu: { discount: { coupon: { percent_off: 50 } } } });
     expect((await lancer()).offerts).toBe(1);
@@ -223,10 +231,12 @@ describe("branchements", () => {
 describe("le prix lu chez Stripe, remises déployées (09/11/2026)", () => {
   const lire = (f) => readFileSync(new URL(`../../../api/${f}`, import.meta.url), "utf8");
   it("chaque lecture de l'abonnement demande ses remises, et le parrainage passe par la règle commune", () => {
-    expect(lire("_garantie.js")).toContain("subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=discounts");
+    expect(lire("_garantie.js")).toContain("lireAbonnementStripe(subscriptionId, stripeKey)");
     expect(lire("_invitation.js")).toContain("?expand[]=discounts");
     const w = lire("stripe-webhook.js");
-    expect(w).toContain("avoirCentimes = prixMensuelDepuisAbonnement(sd) * moisOfferts");
+    expect(w).toContain("avoirCentimes = prixMois * moisOfferts");
+    // Le prix est lu AVANT la réservation de la récompense (10/11/2026).
+    expect(w.indexOf("prixMois = await prixMensuelCentimes(parrain")).toBeLessThan(w.indexOf("referral_rewards_granted=eq.${dejaAccordees}`,\n              { method: \"PATCH\""));
     expect(w).not.toMatch(/interval === "year" \? Number\(prix\.unit_amount\) \/ 12/);
   });
 });

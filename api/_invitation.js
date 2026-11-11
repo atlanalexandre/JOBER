@@ -194,12 +194,39 @@ export function prixMensuelDepuisAbonnement(abonnement) {
     remises = ancienne ? [ancienne] : [];
   }
   for (const r of remises) {
-    const c = r?.coupon;
-    if (!c) throw new Error("remise de l'abonnement illisible");
+    // Deux formes selon la version de l'API Stripe : `coupon`, ou, depuis les
+    // versions récentes, `source.coupon` (relecture du 10/11/2026).
+    // lireAbonnementStripe() les rend toutes deux lisibles.
+    const c = r?.coupon ?? r?.source?.coupon;
+    if (!c || typeof c !== "object") throw new Error("remise de l'abonnement illisible");
     if (Number(c.percent_off) > 0) mensuel *= 1 - Number(c.percent_off) / 100;
     else if (Number(c.amount_off) > 0) mensuel -= Number(c.amount_off) / moisParPeriode;
   }
   return Math.max(0, Math.round(Number.isFinite(mensuel) ? mensuel : 0));
+}
+
+/**
+ * L'abonnement Stripe, remises DÉTAILLÉES : `expand[]=discounts` déploie les
+ * remises, mais leur coupon peut rester un simple identifiant — dans
+ * `source.coupon` selon la version de l'API. Il est alors relu. Rend null si
+ * l'abonnement a disparu (404) ; LÈVE sur une panne (10/11/2026).
+ */
+export async function lireAbonnementStripe(subscriptionId, stripeKey) {
+  const entete = { headers: { "Authorization": `Bearer ${stripeKey}` } };
+  const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}?expand[]=discounts`, entete);
+  if (sr.status === 404) return null;
+  const sd = await sr.json().catch(() => ({}));
+  if (!sr.ok) throw new Error(`abonnement ${subscriptionId} illisible (${sr.status})`);
+  for (const r of Array.isArray(sd.discounts) ? sd.discounts : []) {
+    if (!r || typeof r !== "object") continue;
+    const id = typeof r.coupon === "string" ? r.coupon : (typeof r.source?.coupon === "string" ? r.source.coupon : null);
+    if (!id) continue;
+    const cr = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(id)}`, entete);
+    const c = await cr.json().catch(() => ({}));
+    if (!cr.ok) throw new Error(`coupon ${id} illisible (${cr.status})`);
+    r.coupon = c;
+  }
+  return sd;
 }
 
 /**
@@ -209,15 +236,12 @@ export function prixMensuelDepuisAbonnement(abonnement) {
  * du 04/11/2026).
  */
 export async function prixMensuelCentimes(parrain, stripeKey) {
-  const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}?expand[]=discounts`,
-    { headers: { "Authorization": `Bearer ${stripeKey}` } });
-  const sd = await sr.json().catch(() => ({}));
+  const sd = await lireAbonnementStripe(parrain.stripe_subscription_id, stripeKey);
   // Abonnement disparu chez Stripe : rien à déduire, définitivement. Rendre
   // null — et non lever — évite de reporter à l'infini, chaque passage, une
   // récompense qui ne viendra jamais, et avec elle le cashback du client
   // invité (relecture du 05/11/2026).
-  if (sr.status === 404) return null;
-  if (!sr.ok) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
+  if (sd === null) return null;
   const centimes = prixMensuelDepuisAbonnement(sd);
   // Prix nul (remise à 100 %, désormais lue) : il ne paie rien, un avoir n'aurait pas de sens.
   return centimes > 0 ? centimes : null;

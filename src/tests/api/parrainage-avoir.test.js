@@ -33,13 +33,16 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(
 const evenement = { type: "checkout.session.completed", data: { object: {
   metadata: { user_id: "filleul", plan: "premium", billing: "monthly" }, subscription: "sub_filleul", customer: "cus_filleul" } } };
 
-function simuler({ parrain, reservationReussit = true, reservationRefusee = false }) {
+function simuler({ parrain, reservationReussit = true, reservationRefusee = false, abonnementParrain = null, abonnementKo = false }) {
   const appels = [];
   vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
     const u = String(url);
     appels.push({ u, methode: o.method || "GET", corps: o.body, cle: o.headers?.["Idempotency-Key"] });
     if (u.includes("/v1/subscriptions/sub_filleul")) return new Response(JSON.stringify({ current_period_end: 2_000_000_000 }), { status: 200 });
-    if (u.includes("/v1/subscriptions/sub_parrain")) return new Response(JSON.stringify({ items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] } }), { status: 200 });
+    if (u.includes("/v1/subscriptions/sub_parrain")) {
+      if (abonnementKo) return new Response("{}", { status: 503 });
+      return new Response(JSON.stringify(abonnementParrain || { items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] } }), { status: 200 });
+    }
     if (u.includes("/balance_transactions")) return new Response(JSON.stringify({ id: "cbtxn_1" }), { status: 200 });
     if (u.includes("/auth/v1/admin/users/filleul")) return new Response(JSON.stringify({ id: "filleul", user_metadata: {} }), { status: 200 });
     if (u.includes("profiles?id=eq.filleul&select=referred_by")) return new Response(JSON.stringify([{ referred_by: "parrain" }]), { status: 200 });
@@ -81,6 +84,29 @@ describe("parrainage : mois offert", () => {
     await handler(requete(evenement), reponse());
     expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
     expect(console.error.mock.calls.some(c => String(c[0]).includes("[parrainage] réservation de la récompense refusée"))).toBe(true);
+  });
+
+  // Relecture du 10/11/2026 : le prix est lu AVANT la réservation.
+  const abonne = { plan_abonnement: "premium", referral_rewards_granted: 0, stripe_customer_id: "cus_parrain", stripe_subscription_id: "sub_parrain" };
+  it("prix illisible : rien n'est réservé, la récompense reste due", async () => {
+    const appels = simuler({ parrain: abonne, abonnementKo: true });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.u.includes("profiles?id=eq.parrain&referral_rewards_granted=eq."))).toBe(false);
+    expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
+  });
+  it("remise à 100 % : pas d'avoir, le mois est offert par prolongation, comme à un parrain gratuit", async () => {
+    const appels = simuler({ parrain: abonne, abonnementParrain: { items: { data: [{ price: { unit_amount: 2999, recurring: { interval: "month" } } }] },
+      discounts: [{ id: "di_1", coupon: { percent_off: 100 } }] } });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.u.includes("/balance_transactions"))).toBe(false);
+    const maj = appels.find(a => a.methode === "PATCH" && a.u.includes("profiles?id=eq.parrain&referral_rewards_granted=eq.0"));
+    expect(JSON.parse(maj.corps).subscription_end_date).toBeTruthy();
+  });
+  it("remise de 50 % : l'avoir vaut ce qu'il paie", async () => {
+    const appels = simuler({ parrain: abonne, abonnementParrain: { items: { data: [{ price: { unit_amount: 3000, recurring: { interval: "month" } } }] },
+      discounts: [{ id: "di_1", source: { type: "coupon", coupon: { percent_off: 50 } } }] } });
+    await handler(requete(evenement), reponse());
+    expect(appels.find(a => a.u.includes("/balance_transactions")).corps).toContain("amount=-1500");
   });
 
   it("parrain gratuit : un mois de Premium, comme avant, et pas d'avoir", async () => {

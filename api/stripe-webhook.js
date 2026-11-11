@@ -1,5 +1,5 @@
 import { PARRAINAGE_FILLEULS } from "./_invitation_regles.js";
-import { prixMensuelDepuisAbonnement } from "./_invitation.js";
+import { prixMensuelCentimes } from "./_invitation.js";
 import { notifier } from "./_push.js";
 import { resendBody, euros, sendEmail, esc } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
@@ -710,8 +710,25 @@ export default async function handler(req, res) {
           // d'abord RÉSERVÉE (écriture conditionnelle : deux livraisons du
           // webhook n'accordent pas deux mois), puis l'avoir est créé avec une
           // clé d'idempotence propre à cette récompense.
-          const abonnePayant = !!(parrain.stripe_subscription_id && parrain.stripe_customer_id
+          let abonnePayant = !!(parrain.stripe_subscription_id && parrain.stripe_customer_id
             && parrain.plan_abonnement && parrain.plan_abonnement !== "free");
+          // Le prix d'un mois est lu AVANT la réservation, par la règle commune
+          // (remises et quantité comprises). Lu après, une panne ou une remise
+          // illisible consommait la récompense sans rien payer (relecture du
+          // 10/11/2026). Panne : rien n'est réservé, la récompense sera
+          // recalculée à la prochaine livraison pour ce parrain. Prix nul
+          // (remise à 100 %) ou abonnement disparu : pas d'avoir — le mois est
+          // offert comme à un parrain non abonné, plus bas, comme le fait déjà
+          // la récompense d'invitation.
+          let prixMois = null;
+          if (abonnePayant) {
+            try { prixMois = await prixMensuelCentimes(parrain, STRIPE_SECRET_KEY); }
+            catch (e) {
+              console.error(`[parrainage] prix de l'abonnement de ${parrainId} illisible (${e.message}) — rien réservé, récompense reportée.`);
+              return;
+            }
+            if (!(prixMois > 0)) abonnePayant = false;
+          }
           if (abonnePayant) {
             const reserve = await fetch(
               `${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&referral_rewards_granted=eq.${dejaAccordees}`,
@@ -732,17 +749,8 @@ export default async function handler(req, res) {
             const moisOfferts = duesTotal - dejaAccordees;
             let avoirCentimes = 0;
             try {
-              // Le prix d'un mois par la règle commune — remises et quantité
-              // comprises. Cette copie de la formule les ignorait : un parrain
-              // qui payait moitié prix recevait un mois plein (relecture du
-              // 09/11/2026). Les remises sont déployées (`expand`) : sans cela,
-              // Stripe ne rend que leurs identifiants.
-              const sr = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(parrain.stripe_subscription_id)}?expand[]=discounts`,
-                { headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` } });
-              const sd = await sr.json().catch(() => ({}));
-              if (!sr.ok) throw new Error(`abonnement illisible (${sr.status})`);
-              avoirCentimes = prixMensuelDepuisAbonnement(sd) * moisOfferts;
-              if (!(avoirCentimes > 0)) throw new Error(`prix de l'abonnement illisible (${sr.status})`);
+              // Le prix lu avant la réservation, par la règle commune (09-10/11/2026).
+              avoirCentimes = prixMois * moisOfferts;
               const ar = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(parrain.stripe_customer_id)}/balance_transactions`, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded",

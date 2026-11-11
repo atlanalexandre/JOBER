@@ -284,7 +284,15 @@ export const casierExige = (metier) => METIERS_CASIER.has(metier);
 export function casierValide(justificatif, maintenant = new Date()) {
   const c = justificatif?.casier;
   if (c?.verified !== true) return false;
-  if (!c.expires_at) return true;
+  // Sans échéance saisie — extrait vérifié avant le 09/11/2026, ou date
+  // effacée depuis le back-office —, il vaut un an à compter de sa
+  // vérification, jamais à vie. Sans date de vérification non plus, il ne
+  // vaut rien : on redemande l'extrait (relecture du 10/11/2026).
+  if (!c.expires_at) {
+    if (!c.verified_at) return false;
+    const limite = new Date(c.verified_at); limite.setUTCFullYear(limite.getUTCFullYear() + 1);
+    return limite.getTime() >= maintenant.getTime();
+  }
   return new Date(`${String(c.expires_at).slice(0, 10)}T23:59:59Z`).getTime() >= maintenant.getTime();
 }
 

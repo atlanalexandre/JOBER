@@ -226,6 +226,23 @@ describe("prixMensuelDepuisAbonnement : ce qui est réellement payé", async () 
     expect(prix(ab({ discounts: [{ id: "di_1", coupon: { percent_off: 50 } }, { id: "di_2", coupon: { amount_off: 500 } }] }))).toBe(1000);
     expect(() => prix(ab({ discount: { id: "di_1", coupon: { percent_off: 50 } }, discounts: ["di_1", "di_2"] }))).toThrow("remise");
   });
+  it("la remise sous sa forme récente (source.coupon) se lit aussi (10/11/2026)", () => {
+    expect(prix(ab({ discounts: [{ id: "di_1", source: { type: "coupon", coupon: { percent_off: 25 } } }] }))).toBe(2249);
+    expect(() => prix(ab({ discounts: [{ id: "di_1", source: { type: "coupon", coupon: "co_1" } }] }))).toThrow("remise");
+  });
+  it("lireAbonnementStripe relit le coupon resté sous forme d'identifiant (10/11/2026)", async () => {
+    const { lireAbonnementStripe } = await import("../../../api/_invitation.js");
+    const urls = [];
+    vi.stubGlobal("fetch", vi.fn(async (u) => {
+      urls.push(String(u));
+      if (String(u).includes("/v1/coupons/co_1")) return new Response(JSON.stringify({ id: "co_1", percent_off: 50 }), { status: 200 });
+      return new Response(JSON.stringify(ab({ discounts: [{ id: "di_1", source: { type: "coupon", coupon: "co_1" } }] })), { status: 200 });
+    }));
+    const sd = await lireAbonnementStripe("sub_1", "sk");
+    expect(urls[0]).toContain("expand[]=discounts");
+    expect(prix(sd)).toBe(1500);
+    vi.unstubAllGlobals();
+  });
   it("une remise illisible lève : mieux vaut reporter que créditer trop", () => {
     expect(() => prix(ab({ discounts: ["di_1"] }))).toThrow("remise");
   });
