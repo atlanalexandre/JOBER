@@ -91,6 +91,7 @@ function simuler({ propositions = 0, releves = 31, indisponibles = 0, reservatio
       if (coupure) throw new Error("connexion coupée");
       return avoirKo ? new Response("{}", { status: 500 }) : ok({ id: "cbtxn_1" });
     }
+    if (u.includes("/v1/coupons/")) return new Response(JSON.stringify({ error: { message: "No such coupon" } }), { status: 404 });
     if (u.includes("/notifications")) return new Response(null, { status: 201 });
     return ok([]);
   }));
@@ -178,6 +179,26 @@ describe("l'examen du début de mois", () => {
     const appels = simuler({ abonnementLu: { discounts: [{ id: "di_1", source: { coupon: null } }] } });
     expect((await lancer()).offerts).toBe(0);
     expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
+  it("un coupon supprimé depuis (404) n'empêche pas le relevé du matin, et ne fait rien réserver (11/11/2026)", async () => {
+    const lu = { abonnementLu: { discounts: [{ id: "di_1", source: { type: "coupon", coupon: "co_supprime" } }] } };
+    const appelsR = simuler(lu);
+    expect(await noterReleves({ ...ctx, maintenantMs: Date.parse("2026-12-03T06:00:00Z") })).toEqual({ releves: 1 });
+    expect(appelsR.some(a => a.u.includes("/v1/coupons/co_supprime"))).toBe(true);
+    const appels = simuler(lu);
+    expect((await lancer()).offerts).toBe(0);
+    expect(appels.some(a => a.m === "PATCH")).toBe(false);
+  });
+  it("examen impossible au DERNIER passage du mois : le journal dit quoi faire à la main (11/11/2026)", async () => {
+    simuler({ abonnementLu: { discounts: [{ id: "di_1", source: { coupon: null } }] } });
+    await appliquerGarantie({ ...ctx, maintenantMs: Date.parse("2027-01-03T22:30:00Z") });
+    expect(console.error.mock.calls.flat().join(" ")).toContain("À FAIRE À LA MAIN");
+    vi.mocked(console.error).mockClear();
+    simuler({ abonnementLu: { discounts: [{ id: "di_1", source: { coupon: null } }] } });
+    await lancer();
+    const journal = console.error.mock.calls.flat().join(" ");
+    expect(journal).toContain("reporté au passage suivant");
+    expect(journal).not.toContain("À FAIRE À LA MAIN");
   });
   it("une remise de 50 % : l'avoir vaut ce qu'il paie, pas le prix affiché (08/11/2026)", async () => {
     const appels = simuler({ abonnementLu: { discount: { coupon: { percent_off: 50 } } } });
