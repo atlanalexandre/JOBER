@@ -228,7 +228,7 @@ export async function lireAbonnementStripe(subscriptionId, stripeKey) {
     // (prixMensuelDepuisAbonnement lève). Lever ici privait aussi le relevé
     // du matin de la garantie, qui n'a besoin que du statut (relecture du
     // 11/11/2026).
-    let c = null, statut = "réseau";
+    let c = null, statut;
     try {
       const cr = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(id)}`, entete);
       statut = cr.status;
