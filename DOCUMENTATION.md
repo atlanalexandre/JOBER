@@ -2128,6 +2128,15 @@ bancaires. **`payment_intent.succeeded` ne l'est pas** : tout le traitement des 
 réservation ci-dessus est aujourd'hui dormant, l'application affectant elle-même
 (`assign_after_payment`, `affecter_tiers`).
 
+**Un paiement arrivé après la fermeture de sa prestation est remboursé** (relecture du 11/11/2026).
+Un client qui paie au dernier moment peut voir sa demande fermée entre-temps (clôturée faute de
+paiement par la tâche planifiée, annulée). `assign_after_payment` vérifiait le paiement — réel, de
+ce client, pour cette prestation — puis répondait « déjà traitée » sans rien rendre ; et le webhook,
+de toute façon non abonné, laisse l'affectation à l'application. Sur une prestation `cancelled`,
+`refused`, `rejected` ou `closed` qui ne porte pas ce paiement, il est désormais remboursé
+(`rembourserDoublonPaiement()`, même clé d'idempotence que le webhook : jamais deux fois). Une
+prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
+
 Il cachait un défaut, neutralisé le 26/09/2026 avant qu'il ne serve : une réservation ordinaire
 ne porte aucun prestataire dans son paiement (il n'est rattaché qu'après) ; ce chemin la passait
 alors en `assigned` **sans prestataire**, et l'affectation de l'application, arrivant ensuite,
