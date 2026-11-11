@@ -910,6 +910,13 @@ Le versement au prestataire se suit sur `payout_status`
 duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_hold_reason` / `payout_hold_at` / `payout_hold_until` (retenue de l'art. 7.4) et
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
+Ces colonnes sont écrites **dans l'écriture même qui clôt la prestation**, conditionnée à
+`status=eq.assigned` — par la validation du client (`complete`), l'arrêt en cours
+(`cancel_in_progress`, « arrêter toute la prestation »), la validation automatique et la
+validation forcée. Jusqu'au 11/11/2026, `complete` et `cancel_in_progress` les écrivaient à part,
+juste après : un échec laissait une prestation `completed` sans versement, que le traitement des
+versements ne voit jamais, et l'arrêt en cours, sans condition, pouvait écraser une validation du
+même instant.
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux

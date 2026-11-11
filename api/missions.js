@@ -2257,9 +2257,20 @@ export default async function handler(req, res) {
         // la facture du prestataire — qui lit cette colonne — portait les heures
         // prévues quand il était payé des heures faites. Le recalcul reste stable :
         // montantsDeCloture() retrouve le même plafond.
+        // Le versement est programmé DANS la même écriture, comme le font la
+        // validation automatique et la validation forcée. Écrit à part, juste
+        // après, un échec le laissait de côté : prestation `completed` sans
+        // `payout_status`, que le traitement des versements ne voit jamais —
+        // le prestataire, déjà prévenu « paiement programmé », n'était pas payé
+        // (relecture du 11/11/2026).
         body: JSON.stringify({
           status: "completed", montant_total: totalClient, validation_client: true,
           ...(ajustementRetard && !ajustementRetard.unJour ? { actual_hours: ajustementRetard.apres } : {}),
+          ...(mission.prestataire_id ? {
+            payout_status: "pending",
+            payout_due_at: new Date(echeanceVersement).toISOString(),
+            payout_amount: partPrestataire,
+          } : {}),
         }),
       });
       const completedRows = await completePatchRes.json().catch(() => []);
@@ -2430,28 +2441,8 @@ export default async function handler(req, res) {
       // haut quand le client n'a jamais arbitré un décalage d'horaire, et ce
       // plafonnement est inscrit dans `actual_hours` (depuis le 30/09/2026). Un traitement
       // différé qui referait le calcul verserait plus que ce qui a été facturé.
-      if (partPrestataire > 0 && mission.prestataire_id) {
-        const echeance = new Date(echeanceVersement).toISOString();
-        const misEnAttente = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            payout_status: "pending",
-            payout_due_at: echeance,
-            payout_amount: partPrestataire,
-          }),
-        }).catch(e => { console.error("[complete] mise en attente du versement :", e.message); return null; });
-
-        if (!misEnAttente || !misEnAttente.ok) {
-          // Colonne absente : migration 2026-08-12_versement_differe_48h non
-          // appliquée. Sans échéance, aucun virement ne sera jamais émis — c'est
-          // le prestataire qui ne serait pas payé, il faut que cela se voie.
-          console.error(`[complete] échéance de versement NON enregistrée pour ${mission_id} `
-            + `(${misEnAttente?.status}). Appliquer 2026-08-12_versement_differe_48h.sql — `
-            + "sans elle, le prestataire ne sera pas payé.");
-        } else {
-          console.log(`[complete] versement programmé au ${echeance} — prestation ${mission_id}`);
-        }
-      }
+      // Le versement a été programmé avec la validation, plus haut.
+      if (mission.prestataire_id) console.log(`[complete] versement programmé au ${new Date(echeanceVersement).toISOString()} — prestation ${mission_id}`);
 
       // Le quota du mois — partagé avec la validation automatique (cron).
       if (mission.prestataire_id) await compterAuQuota(mission.prestataire_id, missionDayCount, SUPABASE_URL, headers, "complete");
@@ -4804,7 +4795,23 @@ export default async function handler(req, res) {
       //
       // Le remboursement est déjà parti à ce stade. On ne peut pas revenir en
       // arrière, mais on doit le dire — franchement, et dans les journaux.
-      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Le versement d'une prestation ARRÊTÉE est programmé dans cette même
+      // écriture, conditionnée à `status=eq.assigned` : écrit à part et sans
+      // condition, il pouvait croiser une validation (`complete`) du même
+      // instant — la dernière écriture fixait le montant, et le prestataire
+      // pouvait être payé en entier d'heures déjà rendues au client — ou
+      // échouer seul, et le prestataire n'était jamais payé (relecture du
+      // 11/11/2026). La prestation reprise demain n'a rien à programmer.
+      //
+      // La prestation s'arrête AUJOURD'HUI : le délai de 48 h part de la fin de
+      // la journée en cours, pas de celle de la dernière journée prévue — qui
+      // n'aura pas lieu. Sans cette coupe, une série de dix jours arrêtée le
+      // deuxième faisait attendre au prestataire huit jours de plus un argent
+      // dû pour un travail fait (relecture du 02/10/2026).
+      const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
+      const versementInterruption = annulerReste && proratedAmount > 0 && mission.prestataire_id
+        ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount } : {};
+      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         // DEUX ISSUES, selon ce que le client a choisi.
@@ -4834,6 +4841,7 @@ export default async function handler(req, res) {
               ...majAjouts,
               montant_total: totalClient,
               cancellation_reason: `Interrompue en cours — ${billedHours}h dues sur ${totalHours * joursPrestation}h prévues`,
+              ...versementInterruption,
             }
           : {
               heures_perdues: heuresPerduesTotal,
@@ -4889,33 +4897,9 @@ export default async function handler(req, res) {
       // d'enregistrer. Le délai reste celui de l'article 17.1 des CGPS — le
       // client garde ses quarante-huit heures pour signaler un problème, même
       // sur une prestation qu'il a lui-même interrompue.
-      if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
-        // La prestation s'arrête AUJOURD'HUI : le délai de 48 h part de la fin de
-        // la journée en cours, pas de celle de la dernière journée prévue — qui
-        // n'aura pas lieu. Sans cette coupe, une série de dix jours arrêtée le
-        // deuxième faisait attendre au prestataire huit jours de plus un argent
-        // dû pour un travail fait (relecture du 02/10/2026).
-        const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
-        const versementProgramme = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            payout_status: "pending",
-            payout_due_at: echeanceInterruption,
-            payout_amount: proratedAmount,
-          }),
-        }).catch(e => { console.error("[cancel_in_progress] mise en attente du versement :", e.message); return null; });
-
-        if (!versementProgramme || !versementProgramme.ok) {
-          // Sans échéance, aucun virement ne partira : c'est le prestataire qui
-          // ne serait pas payé pour des heures qu'il a faites. Il faut que cela
-          // se voie dans les journaux, et que l'administration le sache.
-          console.error(`[cancel_in_progress] échéance de versement NON enregistrée pour ${mission_id} `
-            + `(${versementProgramme?.status}) — ${proratedAmount.toFixed(2)} € dus au prestataire `
-            + "à virer à la main.");
-        } else {
-          console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
-            + `au ${echeanceInterruption} — prestation ${mission_id}`);
-        }
+      if (versementInterruption.payout_amount) {
+        console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
+          + `au ${echeanceInterruption} — prestation ${mission_id}`);
       }
 
       // Réservation HEBDOMADAIRE : interrompre la séance du jour ne met pas fin
