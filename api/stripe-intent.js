@@ -544,9 +544,14 @@ export default async function handler(req, res) {
     // contrôle ne s'exécutait jamais, et le client recevait l'erreur anglaise de
     // Stripe au lieu de ce message (relecture du 29/09/2026).
     const pmDemande = req.body?.payment_method_id;
+    // Reçu du navigateur et placé dans une adresse appelée avec la clé secrète :
+    // le même contrôle de format que get_pm et detach_pm (relecture du
+    // 30/09/2026), qu'il manquait ici — « ../customers/cus_X » faisait lire à
+    // ALANE une autre ressource Stripe (relecture du 11/11/2026).
+    if (pmDemande && !/^pm_[A-Za-z0-9]+$/.test(String(pmDemande))) return res.status(400).json({ error: "Carte invalide. Saisissez-la à nouveau." });
     if (pmDemande && mission.stripe_payment_intent) {
       try {
-        const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${pmDemande}`, { headers: stripeHeaders });
+        const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${encodeURIComponent(pmDemande)}`, { headers: stripeHeaders });
         const pmD = await pmR.json();
         if (!clientSupp || pmD?.customer !== clientSupp) {
           console.error(`[supplement] carte ${pmDemande} non rattachée à ${clientSupp || "aucun client"} — saisie manuelle requise`);
