@@ -2930,6 +2930,15 @@ personne, sa commande tient. À court de candidats, la prestation bascule en `op
 diffusion : c'est alors le prestataire qui se propose, ce qui rend son autonomie visible et
 horodatée.
 
+**Le client lit que sa commande tient, sur tous les canaux** (relecture du 12/11/2026). La
+notification de l'application le disait ; l'e-mail, le SMS et la notification du téléphone
+annonçaient « refusé — choisissez un autre prestataire », et le client en réservait un second pour
+le même créneau. Les quatre partagent désormais le même texte (`texteCascade`). Si la cascade
+**et** le remboursement échouent, la prestation est remise en attente (`remettreARembourser()`) et
+la tâche planifiée cherche à son tour le candidat suivant : le client lit alors « nous recherchons
+un autre professionnel ; à défaut, votre paiement vous sera intégralement remboursé — inutile de
+réserver à nouveau ».
+
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
 25/09/2026, la cascade l'affectait sans aucune notification.
