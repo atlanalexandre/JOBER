@@ -916,7 +916,11 @@ Ces colonnes sont écrites **dans l'écriture même qui clôt la prestation**, c
 validation forcée. Jusqu'au 11/11/2026, `complete` et `cancel_in_progress` les écrivaient à part,
 juste après : un échec laissait une prestation `completed` sans versement, que le traitement des
 versements ne voit jamais, et l'arrêt en cours, sans condition, pouvait écraser une validation du
-même instant.
+même instant. Exception voulue : l'arrêt de **toute** la prestation rembourse le client **avant**
+d'écrire ; son écriture accepte donc une prestation qu'une validation vient de clore, tant que le
+versement est encore en attente (`status=in.(assigned,completed)` et `payout_status` vide ou
+`pending`), pour fixer le versement au prorata. Limitée à `assigned` le 11/11/2026, elle laissait
+dans ce cas le client remboursé **et** le prestataire payé en entier (relecture du 12/11/2026).
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux

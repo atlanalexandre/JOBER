@@ -4811,7 +4811,17 @@ export default async function handler(req, res) {
       const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
       const versementInterruption = annulerReste && proratedAmount > 0 && mission.prestataire_id
         ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount } : {};
-      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
+      // La condition laisse passer une prestation que la validation (`complete`,
+      // ou la validation automatique) vient de clore À L'INSTANT, versement
+      // encore en attente : le remboursement ci-dessus est déjà parti, et c'est
+      // cette écriture qui doit fixer le versement au prorata. Limitée à
+      // `assigned`, comme le 11/11/2026, elle ne s'appliquait pas — client
+      // remboursé ET prestataire payé en entier (relecture du 12/11/2026).
+      // Jamais un litige, une annulation, ni un versement déjà parti.
+      const filtreAnnul = annulerReste
+        ? "&status=in.(assigned,completed)&or=(payout_status.is.null,payout_status.eq.pending)"
+        : "&status=eq.assigned";
+      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}${filtreAnnul}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         // DEUX ISSUES, selon ce que le client a choisi.
