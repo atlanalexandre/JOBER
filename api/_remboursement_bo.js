@@ -202,3 +202,47 @@ export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contex
   }
   return { ok: true, centimes };
 }
+
+/**
+ * Les paiements d'heures supplémentaires d'une prestation, lus chez Stripe
+ * (11/11/2026). Sur une prestation d'UNE journée, une prolongation est réglée
+ * par un paiement à part et ajoutée à `hours` et à `montant_total`, mais elle
+ * n'entre pas dans `heures_ajoutees_detail` (réservé aux prestations de
+ * plusieurs jours) : rien en base ne liste ces paiements, et `extra_hours_payment_intent`
+ * ne garde que le dernier. Une annulation ne les rendait donc jamais.
+ *
+ * La recherche Stripe peut avoir une minute de retard : le dernier paiement
+ * connu (`dernier`) est relu à part s'il n'y figure pas. LÈVE si Stripe ne
+ * répond pas — l'appelant n'annule pas sans savoir ce qu'il doit rendre.
+ *
+ * `applique` : le paiement a été ajouté à la prestation. Chaque paiement
+ * appliqué a fait avancer le repère `deja_appliquees` ; un paiement dont le
+ * repère vaut encore le compteur actuel n'a jamais été appliqué.
+ *
+ * @returns {Promise<Array<{id:string, recu:number, heures:number, applique:boolean}>>} recu en centimes
+ */
+export async function paiementsHeuresSupp(missionId, cle, { dernier = null, compteur = 0 } = {}) {
+  const h = { "Authorization": `Bearer ${cle}` };
+  const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND metadata['type']:'heures_supp' AND status:'succeeded'`);
+  const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100`, { headers: h });
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !Array.isArray(d?.data)) throw new Error(`paiements d'heures supplémentaires illisibles (${r.status})`);
+  const lus = new Map();
+  const garder = (p) => {
+    if (p?.status === "succeeded" && p?.metadata?.type === "heures_supp" && String(p?.metadata?.mission || "") === String(missionId)) lus.set(p.id, p);
+  };
+  d.data.forEach(garder);
+  if (dernier && !lus.has(dernier)) {
+    const rp = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(dernier)}`, { headers: h });
+    const p = await rp.json().catch(() => null);
+    if (!rp.ok || !p?.id) throw new Error(`paiement ${dernier} illisible (${rp.status})`);
+    garder(p);
+  }
+  const repere = Math.round(Number(compteur || 0) * 100) / 100;
+  return [...lus.values()].map(p => ({
+    id: p.id,
+    recu: Number(p.amount_received) || 0,
+    heures: Number(p.metadata?.heures) || 0,
+    applique: Number(p.metadata?.deja_appliquees) < repere,
+  }));
+}

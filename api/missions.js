@@ -73,7 +73,7 @@ import { noterPropositions } from "./_propositions.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { joursCouverts, conflitDeCreneau, premierJourEnConflit, filtrePeriode } from "./_creneaux.js";
-import { rembourserAjoutsNonFaits } from "./_remboursement_bo.js";
+import { rembourserAjoutsNonFaits, paiementsHeuresSupp } from "./_remboursement_bo.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
 import { justificatifsDe, habilitePour, habiliteDans } from "./_habilitations.js";
 import { photosVerifiees } from "./_photos.js";
@@ -692,6 +692,34 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 // rediffusée, et la rembourser ferait travailler un prestataire pour rien
 // (relecture du 06/10/2026). Lecture impossible : on ne rembourse pas, et on
 // le dit.
+/**
+ * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
+ * La prestation restait « refusée », l'argent du client gardé, et rien ne la
+ * reprenait : la tâche planifiée ne relit que les prestations en attente
+ * (relecture du 11/11/2026). Elle est remise en attente, SANS prestataire et
+ * le délai déjà échu — personne ne peut plus l'accepter —, exactement comme la
+ * tâche planifiée le fait pour ses propres échecs : son passage suivant la
+ * rembourse (ou, pour une prestation affectée par la plateforme, cherche le
+ * candidat suivant).
+ */
+async function remettreARembourser(missionId, supabaseUrl, headers, contexte) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=eq.refused`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+      body: JSON.stringify({ status: "pending_acceptance", prestataire_id: null, acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
+    });
+    const l = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(l) && l.length) {
+      console.error(`[${contexte}] remboursement de ${missionId} impossible — remise en attente, la tâche planifiée la reprend à son prochain passage.`);
+      return true;
+    }
+    console.error(`[${contexte}] ⚠️ ${missionId} REFUSÉE SANS REMBOURSEMENT et non remise en attente (${r.status}) : à rembourser à la main.`);
+  } catch (e) {
+    console.error(`[${contexte}] ⚠️ ${missionId} REFUSÉE SANS REMBOURSEMENT et non remise en attente : à rembourser à la main —`, e.message);
+  }
+  return false;
+}
+
 async function toujoursRefusee(missionId, supabaseUrl, headers) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&select=status&limit=1`, { headers });
@@ -955,11 +983,11 @@ async function handleEmailAction(req, res) {
     } else if (cascade.mode === "echec") {
       cascade = null;
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
-      if (!rembEchec.ok) console.error(`[refus-email] cascade en échec ET remboursement impossible — prestation ${missionId} à rembourser à la main`);
+      if (!rembEchec.ok) await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email");
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
-    if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
+    if (!rembMail.ok) await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email");
   }
 
   // L'offre de lancement se déclenche à la première prestation acceptée, quel
@@ -2229,9 +2257,20 @@ export default async function handler(req, res) {
         // la facture du prestataire — qui lit cette colonne — portait les heures
         // prévues quand il était payé des heures faites. Le recalcul reste stable :
         // montantsDeCloture() retrouve le même plafond.
+        // Le versement est programmé DANS la même écriture, comme le font la
+        // validation automatique et la validation forcée. Écrit à part, juste
+        // après, un échec le laissait de côté : prestation `completed` sans
+        // `payout_status`, que le traitement des versements ne voit jamais —
+        // le prestataire, déjà prévenu « paiement programmé », n'était pas payé
+        // (relecture du 11/11/2026).
         body: JSON.stringify({
           status: "completed", montant_total: totalClient, validation_client: true,
           ...(ajustementRetard && !ajustementRetard.unJour ? { actual_hours: ajustementRetard.apres } : {}),
+          ...(mission.prestataire_id ? {
+            payout_status: "pending",
+            payout_due_at: new Date(echeanceVersement).toISOString(),
+            payout_amount: partPrestataire,
+          } : {}),
         }),
       });
       const completedRows = await completePatchRes.json().catch(() => []);
@@ -2402,28 +2441,8 @@ export default async function handler(req, res) {
       // haut quand le client n'a jamais arbitré un décalage d'horaire, et ce
       // plafonnement est inscrit dans `actual_hours` (depuis le 30/09/2026). Un traitement
       // différé qui referait le calcul verserait plus que ce qui a été facturé.
-      if (partPrestataire > 0 && mission.prestataire_id) {
-        const echeance = new Date(echeanceVersement).toISOString();
-        const misEnAttente = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            payout_status: "pending",
-            payout_due_at: echeance,
-            payout_amount: partPrestataire,
-          }),
-        }).catch(e => { console.error("[complete] mise en attente du versement :", e.message); return null; });
-
-        if (!misEnAttente || !misEnAttente.ok) {
-          // Colonne absente : migration 2026-08-12_versement_differe_48h non
-          // appliquée. Sans échéance, aucun virement ne sera jamais émis — c'est
-          // le prestataire qui ne serait pas payé, il faut que cela se voie.
-          console.error(`[complete] échéance de versement NON enregistrée pour ${mission_id} `
-            + `(${misEnAttente?.status}). Appliquer 2026-08-12_versement_differe_48h.sql — `
-            + "sans elle, le prestataire ne sera pas payé.");
-        } else {
-          console.log(`[complete] versement programmé au ${echeance} — prestation ${mission_id}`);
-        }
-      }
+      // Le versement a été programmé avec la validation, plus haut.
+      if (mission.prestataire_id) console.log(`[complete] versement programmé au ${new Date(echeanceVersement).toISOString()} — prestation ${mission_id}`);
 
       // Le quota du mois — partagé avec la validation automatique (cron).
       if (mission.prestataire_id) await compterAuQuota(mission.prestataire_id, missionDayCount, SUPABASE_URL, headers, "complete");
@@ -2960,6 +2979,25 @@ export default async function handler(req, res) {
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (!["open", "pending_acceptance"].includes(mission.status)) {
+        // Fermée (annulée, refusée, clôturée faute de paiement) AVANT que ce
+        // paiement — vérifié réel, de ce client, pour cette prestation —
+        // n'arrive, et sans paiement rattaché : rien ne le rendait. Le webhook
+        // laisse l'affectation à l'application, et celle-ci répondait « déjà
+        // traitée » : le client était débité pour rien (relecture du
+        // 11/11/2026). Il est remboursé, avec la clé du webhook — jamais deux
+        // fois. Une prestation qui porte CE paiement est un nouvel essai : on
+        // n'y touche pas.
+        const fermee = ["cancelled", "refused", "rejected", "closed"].includes(mission.status);
+        const rattache = paiement.mission?.stripe_payment_intent;
+        if (fermee && rattache !== stripe_payment_intent) {
+          const rendu = await rembourserDoublonPaiement(stripe_payment_intent, "assign_after_payment/prestation fermée");
+          return res.status(409).json({
+            code: "prestation_fermee",
+            error: "Cette prestation n'est plus disponible. " + (rendu
+              ? "Votre paiement vous est intégralement remboursé (3 à 5 jours ouvrés selon votre banque)."
+              : "Votre paiement n'a pas pu être remboursé automatiquement : écrivez à direction@alane.fr, nous le reprenons à la main."),
+          });
+        }
         return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
       }
 
@@ -3211,9 +3249,7 @@ export default async function handler(req, res) {
 
       // Le client a payé et personne n'a accepté : remboursement intégral.
       const rembTimeout = await rembourserPrestation(mission, SUPABASE_URL, headers, "delai-expire");
-      if (!rembTimeout.ok) {
-        console.error(`[acceptance_timeout] remboursement à reprendre manuellement — prestation ${mission_id}`);
-      }
+      if (!rembTimeout.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "acceptance_timeout");
 
       let prestaName = "Le prestataire";
       if (mission.prestataire_id) {
@@ -4010,7 +4046,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire,heures_ajoutees_detail`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at,validation_prestataire,heures_ajoutees_detail,extra_hours_appliquees,extra_hours_tarif,extra_hours_payment_intent,heures_ajoutees_total`,
         { headers }
       );
       const mData = await mRes.json();
@@ -4102,6 +4138,34 @@ export default async function handler(req, res) {
         const totalAjouts = Object.values(paiementsAjouts).reduce((t, v) => t + v, 0);
         if (Number(mission.montant_total)) missionAmount = Math.max(0, Math.round((missionAmount - totalAjouts) * 100) / 100);
       }
+      // Heures supplémentaires d'une prestation d'UNE journée (11/11/2026) :
+      // réglées elles aussi à part, ajoutées à `montant_total` et à `hours`,
+      // mais absentes du détail ci-dessus. Le remboursement de la réservation
+      // demandait donc plus que ce qu'elle avait encaissé — Stripe refusait —,
+      // et ces paiements n'étaient jamais rendus. Ils sont lus chez Stripe, et
+      // traités comme les paiements de modification.
+      const heuresSupJour = [];
+      let heuresSupAppliquees = 0;
+      if (!ajoutsAnnules.length && (Number(mission.extra_hours_appliquees) > 0 || mission.extra_hours_payment_intent)) {
+        if (!STRIPE_SECRET_KEY) return res.status(503).json({ error: "Paiement indisponible — réessayez plus tard." });
+        let lus;
+        try {
+          lus = await paiementsHeuresSupp(mission_id, STRIPE_SECRET_KEY, { dernier: mission.extra_hours_payment_intent,
+            compteur: Number(mission.extra_hours_appliquees || 0) + Number(mission.heures_ajoutees_total || 0) });
+        } catch (e) {
+          console.error(`[cancel_client] heures supplémentaires de ${mission_id} illisibles — annulation refusée :`, e.message);
+          return res.status(503).json({ error: "Le détail de vos paiements n'a pas pu être lu — réessayez dans un instant." });
+        }
+        for (const p of lus) {
+          heuresSupJour.push(p);
+          paiementsAjouts[p.id] = p.recu / 100;
+        }
+        // Seuls les paiements APPLIQUÉS sont dans `montant_total` et dans `hours`.
+        const appliques = lus.filter(p => p.applique);
+        heuresSupAppliquees = Math.min(Number(mission.extra_hours_appliquees) || 0, appliques.reduce((t, p) => t + p.heures, 0));
+        const totalSup = appliques.reduce((t, p) => t + p.recu, 0) / 100;
+        if (Number(mission.montant_total)) missionAmount = Math.max(0, Math.round((missionAmount - totalSup) * 100) / 100);
+      }
       // Ce que la CARTE a réellement payé : le prix, moins la part réglée en
       // cashback (api/_cashback.js). Le remboursement se calculait sur le prix
       // entier : avec 5 € de cashback, la carte récupérait 5 € de trop — le
@@ -4128,7 +4192,9 @@ export default async function handler(req, res) {
       const nbJours = (mission.date_debut && mission.date_fin)
         ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
         : 1;
-      const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0) * nbJours;
+      // `hours` compte les heures supplémentaires appliquées : retirées ici, elles
+      // sont remboursées à part (ci-dessus), avec leur propre paiement.
+      const partHoraire = Number(mission.tarif_horaire || 0) * Math.max(0, Number(mission.hours || 0) - heuresSupAppliquees) * nbJours;
       // Les frais se déduisent du PRIX, pas de ce que la carte a payé. Lu chez
       // Stripe (montant_total vide), `missionAmount` est le montant de la carte,
       // c'est-à-dire le prix MOINS le cashback : les frais retenus étaient
@@ -4215,6 +4281,14 @@ export default async function handler(req, res) {
         if (!l.paiement) continue;
         parPaiementAjouts[l.paiement] = Math.round(((parPaiementAjouts[l.paiement] || 0) + l.heures * l.tarif) * 100) / 100;
       }
+      // Heures supplémentaires d'une journée : la part du prestataire, au tarif
+      // convenu ; un paiement jamais appliqué est rendu en entier.
+      const tarifSup = Number(mission.extra_hours_tarif) || Number(mission.tarif_horaire) || 0;
+      for (const p of heuresSupJour) {
+        const recu = p.recu / 100;
+        parPaiementAjouts[p.id] = p.applique && p.heures > 0 && tarifSup > 0
+          ? Math.min(recu, Math.round(p.heures * tarifSup * 100) / 100) : recu;
+      }
       if (!retenirFrais) for (const pi of Object.keys(paiementsAjouts)) parPaiementAjouts[pi] = paiementsAjouts[pi];
       if (retenirFrais) {
         console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
@@ -4235,6 +4309,14 @@ export default async function handler(req, res) {
       let stripeRefundError = null;
       let walletRefunded = false;
 
+      // Payée par carte, sans clé Stripe : rien ne peut être rendu, et aucun
+      // e-mail ne prévenait l'équipe (il ne part que sur un refus de Stripe).
+      // La prestation passait « annulée » sans remboursement ni trace. On
+      // n'annule pas, comme presta_cancel (relecture du 11/11/2026).
+      if (!STRIPE_SECRET_KEY && mission.stripe_payment_intent && !mission.stripe_payment_intent.startsWith("wallet_") && refundAmount > 0) {
+        console.error(`[cancel_client] STRIPE_SECRET_KEY absente — annulation de ${mission_id} refusée, rien n'est remboursable.`);
+        return res.status(503).json({ error: "Le remboursement est momentanément indisponible — la prestation n'a pas été annulée. Réessayez plus tard." });
+      }
       // Les paiements de modification d'abord : un échec arrête tout, avant
       // le moindre autre mouvement (un nouvel essai ne rembourse pas deux fois).
       let ajoutsRembourses = 0;
@@ -4713,7 +4795,23 @@ export default async function handler(req, res) {
       //
       // Le remboursement est déjà parti à ce stade. On ne peut pas revenir en
       // arrière, mais on doit le dire — franchement, et dans les journaux.
-      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Le versement d'une prestation ARRÊTÉE est programmé dans cette même
+      // écriture, conditionnée à `status=eq.assigned` : écrit à part et sans
+      // condition, il pouvait croiser une validation (`complete`) du même
+      // instant — la dernière écriture fixait le montant, et le prestataire
+      // pouvait être payé en entier d'heures déjà rendues au client — ou
+      // échouer seul, et le prestataire n'était jamais payé (relecture du
+      // 11/11/2026). La prestation reprise demain n'a rien à programmer.
+      //
+      // La prestation s'arrête AUJOURD'HUI : le délai de 48 h part de la fin de
+      // la journée en cours, pas de celle de la dernière journée prévue — qui
+      // n'aura pas lieu. Sans cette coupe, une série de dix jours arrêtée le
+      // deuxième faisait attendre au prestataire huit jours de plus un argent
+      // dû pour un travail fait (relecture du 02/10/2026).
+      const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
+      const versementInterruption = annulerReste && proratedAmount > 0 && mission.prestataire_id
+        ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount } : {};
+      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         // DEUX ISSUES, selon ce que le client a choisi.
@@ -4743,6 +4841,7 @@ export default async function handler(req, res) {
               ...majAjouts,
               montant_total: totalClient,
               cancellation_reason: `Interrompue en cours — ${billedHours}h dues sur ${totalHours * joursPrestation}h prévues`,
+              ...versementInterruption,
             }
           : {
               heures_perdues: heuresPerduesTotal,
@@ -4798,33 +4897,9 @@ export default async function handler(req, res) {
       // d'enregistrer. Le délai reste celui de l'article 17.1 des CGPS — le
       // client garde ses quarante-huit heures pour signaler un problème, même
       // sur une prestation qu'il a lui-même interrompue.
-      if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
-        // La prestation s'arrête AUJOURD'HUI : le délai de 48 h part de la fin de
-        // la journée en cours, pas de celle de la dernière journée prévue — qui
-        // n'aura pas lieu. Sans cette coupe, une série de dix jours arrêtée le
-        // deuxième faisait attendre au prestataire huit jours de plus un argent
-        // dû pour un travail fait (relecture du 02/10/2026).
-        const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
-        const versementProgramme = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            payout_status: "pending",
-            payout_due_at: echeanceInterruption,
-            payout_amount: proratedAmount,
-          }),
-        }).catch(e => { console.error("[cancel_in_progress] mise en attente du versement :", e.message); return null; });
-
-        if (!versementProgramme || !versementProgramme.ok) {
-          // Sans échéance, aucun virement ne partira : c'est le prestataire qui
-          // ne serait pas payé pour des heures qu'il a faites. Il faut que cela
-          // se voie dans les journaux, et que l'administration le sache.
-          console.error(`[cancel_in_progress] échéance de versement NON enregistrée pour ${mission_id} `
-            + `(${versementProgramme?.status}) — ${proratedAmount.toFixed(2)} € dus au prestataire `
-            + "à virer à la main.");
-        } else {
-          console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
-            + `au ${echeanceInterruption} — prestation ${mission_id}`);
-        }
+      if (versementInterruption.payout_amount) {
+        console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
+          + `au ${echeanceInterruption} — prestation ${mission_id}`);
       }
 
       // Réservation HEBDOMADAIRE : interrompre la séance du jour ne met pas fin
@@ -6151,11 +6226,11 @@ export default async function handler(req, res) {
         } else if (cascade.mode === "echec") {
           cascade = null;
           rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
-          if (!rembRefus.ok) console.error(`[respond_mission] cascade en échec ET remboursement impossible — prestation ${mission_id} à rembourser à la main`);
+          if (!rembRefus.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission");
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
-        if (!rembRefus.ok) console.error(`[respond_mission] remboursement à reprendre manuellement — prestation ${mission_id}`);
+        if (!rembRefus.ok) await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission");
       }
 
       if (mission.client_id) {
@@ -6970,7 +7045,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,status,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours,started_at,validation_prestataire,date_debut,date_fin,actual_hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,status,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours,started_at,validation_prestataire,date_debut,date_fin,actual_hours,heures_ajoutees_detail,extra_hours_appliquees,extra_hours_payment_intent,heures_ajoutees_total`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non annulable" });
@@ -7071,6 +7146,38 @@ export default async function handler(req, res) {
           console.error(`[presta_cancel] remplacements NON rouverts après échec — prestation ${mission_id} :`, e.message);
         }
       };
+
+      // Les heures ajoutées, réglées par des paiements À PART, sont rendues en
+      // entier d'abord : le prestataire se désiste, le client ne doit rien.
+      // Seule la réservation était remboursée — le client gardait à sa charge
+      // des heures qui n'auraient jamais lieu, alors qu'on lui annonçait un
+      // remboursement intégral (relecture du 11/11/2026). Un échec arrête tout
+      // ici ; un nouvel essai ne rembourse pas deux fois.
+      const paiementsAjoutsPresta = {};
+      for (const l of detailAjouts(mission)) if (l.paiement) paiementsAjoutsPresta[l.paiement] = 0;
+      if (Object.keys(paiementsAjoutsPresta).length || Number(mission.extra_hours_appliquees) > 0 || mission.extra_hours_payment_intent) {
+        const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+        if (!cleAjouts) {
+          await rouvrirRemplacements();
+          return res.status(500).json({ error: "Stripe non configuré — la prestation n'a pas été annulée. Contactez le support." });
+        }
+        try {
+          const lus = await paiementsHeuresSupp(mission_id, cleAjouts, { dernier: mission.extra_hours_payment_intent });
+          for (const p of lus) paiementsAjoutsPresta[p.id] = p.recu / 100;
+          // Un paiement du détail que la recherche n'a pas encore vu : relu par
+          // rembourserAjoutsNonFaits, qui plafonne à ce qui reste à rendre.
+          for (const pi of Object.keys(paiementsAjoutsPresta)) if (!(paiementsAjoutsPresta[pi] > 0)) paiementsAjoutsPresta[pi] = 1e6;
+        } catch (e) {
+          console.error(`[presta_cancel] heures ajoutées de ${mission_id} illisibles :`, e.message);
+          await rouvrirRemplacements();
+          return res.status(502).json({ error: "Le remboursement des heures ajoutées n'a pas pu être préparé — la prestation n'a pas été annulée. Réessayez." });
+        }
+        const rAj = await rembourserAjoutsNonFaits(paiementsAjoutsPresta, cleAjouts, "desistement", "presta_cancel");
+        if (!rAj.ok) {
+          await rouvrirRemplacements();
+          return res.status(500).json({ error: "Le remboursement des heures ajoutées a échoué — la prestation n'a pas été annulée. Contactez le support." });
+        }
+      }
 
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {

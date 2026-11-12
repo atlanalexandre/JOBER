@@ -101,6 +101,9 @@ export async function entrepriseSirene(siret) {
 }
 
 /** Ce que le back-office doit savoir de cette référence, ou null. */
+/** Posée sur chaque confirmation d'un contact qui a confirmé pour plusieurs prestataires (11/11/2026). */
+export const ALERTE_PARTAGE = "ce contact a confirmé pour plusieurs prestataires";
+
 export function alerteDe({ contactEmail, autresPrestataires = 0 }) {
   const alertes = [];
   if (DOMAINES_PERSONNELS.has(domaineDe(contactEmail))) alertes.push("adresse personnelle, pas celle d'une entreprise");

@@ -209,7 +209,8 @@ export function prixMensuelDepuisAbonnement(abonnement) {
  * L'abonnement Stripe, remises DÉTAILLÉES : `expand[]=discounts` déploie les
  * remises, mais leur coupon peut rester un simple identifiant — dans
  * `source.coupon` selon la version de l'API. Il est alors relu. Rend null si
- * l'abonnement a disparu (404) ; LÈVE sur une panne (10/11/2026).
+ * l'abonnement a disparu (404) ; LÈVE sur une panne de l'abonnement (10/11/2026).
+ * Un coupon illisible laisse la remise non résolue : seul le prix lèvera (11/11/2026).
  */
 export async function lireAbonnementStripe(subscriptionId, stripeKey) {
   const entete = { headers: { "Authorization": `Bearer ${stripeKey}` } };
@@ -221,9 +222,20 @@ export async function lireAbonnementStripe(subscriptionId, stripeKey) {
     if (!r || typeof r !== "object") continue;
     const id = typeof r.coupon === "string" ? r.coupon : (typeof r.source?.coupon === "string" ? r.source.coupon : null);
     if (!id) continue;
-    const cr = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(id)}`, entete);
-    const c = await cr.json().catch(() => ({}));
-    if (!cr.ok) throw new Error(`coupon ${id} illisible (${cr.status})`);
+    // Un coupon illisible — supprimé depuis dans le tableau de bord Stripe (404,
+    // alors que la remise court toujours), ou une panne — ne fait PAS lever :
+    // la remise reste un identifiant, et seul le PRIX devient illisible
+    // (prixMensuelDepuisAbonnement lève). Lever ici privait aussi le relevé
+    // du matin de la garantie, qui n'a besoin que du statut (relecture du
+    // 11/11/2026).
+    let c = null, statut;
+    try {
+      const cr = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(id)}`, entete);
+      statut = cr.status;
+      const lu = await cr.json().catch(() => null);
+      if (cr.ok && lu && typeof lu === "object") c = lu;
+    } catch (e) { statut = `réseau : ${e.message}`; }
+    if (!c) { console.error(`[stripe] coupon ${id} de l'abonnement ${subscriptionId} illisible (${statut}) — prix d'un mois illisible`); continue; }
     r.coupon = c;
   }
   return sd;

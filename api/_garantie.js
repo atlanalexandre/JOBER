@@ -343,7 +343,14 @@ export async function appliquerGarantie({ supabaseUrl, headers, stripeKey, maint
         body: `Aucune prestation ne vous a été proposée le mois dernier : un avoir de ${euros(abonnement.centimes / 100)} sera déduit de votre prochain prélèvement. Cette garantie s'applique une fois.` },
       supabaseUrl, headers).catch(e => console.error("[garantie] prestataire non prévenu :", e?.message));
     } catch (e) {
-      console.error(`[garantie] ${profil.id} — ${mois} : examen reporté au passage suivant :`, e.message);
+      // Au DERNIER passage du mois, « reporté » ne voulait plus rien dire : le
+      // mois suivant, ce mois-ci n'est plus jamais examiné, et une garantie
+      // acquise se perdait sans que personne le sache (relecture du 11/11/2026).
+      const dernier = !estDebutDeMois(maintenantMs + INTERVALLE_RAPPELS_H * 3600e3);
+      console.error(`[garantie] ${profil.id} — ${mois} : ` + (dernier
+        ? `examen IMPOSSIBLE au dernier passage du mois (${e.message}). À FAIRE À LA MAIN : vérifier dans le back-office s'il remplit les conditions `
+          + "(aucune proposition reçue, disponible chaque jour, abonné depuis le début du mois) ; si oui, créer l'avoir d'un mois dans Stripe (Clients → le client → Solde → Ajuster)."
+        : `examen reporté au passage suivant : ${e.message}`));
     }
   }
   console.log(`[garantie] ${mois} : ${bilan.examines} abonné(s) examiné(s), ${bilan.offerts} mois offert(s)`);
