@@ -1644,6 +1644,14 @@ export default async function handler(req, res) {
         stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
         cause,
       });
+      if (!out.ok && out.argentParti) {
+        // L'argent a bougé (ou peut-être) : le verrou reste. Relâché, il
+        // laissait la tâche planifiée exécuter ENSUITE la proposition en
+        // attente — client remboursé puis prestataire payé (relecture du
+        // 12/11/2026).
+        console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé, à reprendre à la main : ${out.detail}`);
+        return res.status(500).json({ error: out.detail });
+      }
       if (!out.ok) {
         const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },

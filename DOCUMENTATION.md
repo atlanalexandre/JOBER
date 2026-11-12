@@ -4866,9 +4866,12 @@ en premier.
 **Un seul dénouement par litige** (relecture du 11/11/2026). `executer_decision` prend, avant
 tout mouvement d'argent, le même verrou que l'accord tacite de la tâche planifiée : écrire
 `resolution_executee_cause` sur un litige encore `disputed` dont la cause est vide. Verrou déjà
-pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécution en échec : il est
-relâché. Sans lui, une décision et un accord tacite pouvaient dénouer le même litige deux fois —
-client remboursé **et** prestataire payé.
+pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécution en échec **sans
+qu'aucun argent ait bougé** : il est relâché. Sans lui, une décision et un accord tacite pouvaient
+dénouer le même litige deux fois — client remboursé **et** prestataire payé. Un échec **après** le
+remboursement (clôture non écrite) ou une coupure pendant celui-ci renvoie `argentParti` : le
+verrou est alors gardé, ici comme dans la tâche planifiée, et le cas est à reprendre à la main.
+Relâché, il laissait la tâche exécuter ensuite la proposition en attente (relecture du 12/11/2026).
 
 Le parcours normal, celui de l'accord :
 
