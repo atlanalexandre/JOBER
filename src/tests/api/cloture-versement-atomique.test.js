@@ -27,8 +27,12 @@ describe("complete", () => {
 
 describe("cancel_in_progress", () => {
   const b = bloc("cancel_in_progress");
-  it("la clôture est conditionnée à une prestation toujours en cours", () => {
-    expect(b).toMatch(/const majAnnul = await fetch\(`\$\{SUPABASE_URL\}\/rest\/v1\/missions\?id=eq\.\$\{mission_id\}&status=eq\.assigned`/);
+  it("arrêt de toute la prestation : l'écriture l'emporte sur une validation du même instant, jamais sur un litige ni un versement parti (12/11/2026)", () => {
+    expect(b).toContain('? "&status=in.(assigned,completed)&or=(payout_status.is.null,payout_status.eq.pending)"');
+    expect(b).toMatch(/const majAnnul = await fetch\(`\$\{SUPABASE_URL\}\/rest\/v1\/missions\?id=eq\.\$\{mission_id\}\$\{filtreAnnul\}`/);
+  });
+  it("arrêt de la journée seulement : la prestation doit être toujours en cours", () => {
+    expect(b).toContain(': "&status=eq.assigned";');
   });
   it("le versement d'une prestation arrêtée part dans cette même écriture, et nulle part ailleurs", () => {
     expect(b).toMatch(/\.\.\.versementInterruption,/);
