@@ -694,6 +694,12 @@ export default async function handler(req, res) {
                 stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
                 cause: "accord_tacite",
               });
+              if (!out.ok && out.argentParti) {
+                // L'argent a bougé (ou peut-être) : le verrou reste, rien ne
+                // repart d'office (relecture du 12/11/2026).
+                console.error(`[resolution] ${m.id} : échec APRÈS un mouvement d'argent — verrou gardé. À FAIRE À LA MAIN : ${out.detail}`);
+                continue;
+              }
               if (!out.ok) {
                 // Relâcher le verrou : la prestation sera reprise au prochain
                 // passage plutôt que de rester coincée.
