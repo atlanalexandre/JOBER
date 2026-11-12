@@ -4306,7 +4306,12 @@ paiement connu relu à part, la recherche pouvant avoir une minute de retard). �
 client : la part du prestataire (heures × tarif convenu) de chaque prolongation appliquée, tout pour
 une prolongation payée jamais appliquée ; les heures et le montant retirés de la réservation avant
 d'en déduire les frais. Au désistement du prestataire : tout, détail des prestations de plusieurs
-jours compris. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
+jours compris — lus avant tout mouvement, mais remboursés **après** la réservation : rendus
+d'abord, un échec de la réservation laissait la prestation au prestataire avec des heures déjà
+rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation, il
+est signalé « À FAIRE À LA MAIN ». Une réservation réglée par le portefeuille est recréditée hors
+heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
+(antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
 plus une prestation payée par carte : rien n'était rendu, et aucun e-mail ne prévenait l'équipe.
 
 **Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
