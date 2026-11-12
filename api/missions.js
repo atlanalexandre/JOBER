@@ -7148,22 +7148,34 @@ export default async function handler(req, res) {
       };
 
       // Les heures ajoutées, réglées par des paiements À PART, sont rendues en
-      // entier d'abord : le prestataire se désiste, le client ne doit rien.
-      // Seule la réservation était remboursée — le client gardait à sa charge
-      // des heures qui n'auraient jamais lieu, alors qu'on lui annonçait un
-      // remboursement intégral (relecture du 11/11/2026). Un échec arrête tout
-      // ici ; un nouvel essai ne rembourse pas deux fois.
+      // entier : le prestataire se désiste, le client ne doit rien. Seule la
+      // réservation était remboursée — le client gardait à sa charge des heures
+      // qui n'auraient jamais lieu, alors qu'on lui annonçait un remboursement
+      // intégral (relecture du 11/11/2026).
+      //
+      // Ils sont LUS ici, avant tout mouvement (illisibles : rien n'est
+      // annulé), mais REMBOURSÉS après la réservation : rendus d'abord, un
+      // échec de la réservation laissait la prestation au prestataire avec des
+      // heures déjà rendues au client, que la clôture lui aurait payées
+      // (relecture du 12/11/2026).
       const paiementsAjoutsPresta = {};
-      for (const l of detailAjouts(mission)) if (l.paiement) paiementsAjoutsPresta[l.paiement] = 0;
-      if (Object.keys(paiementsAjoutsPresta).length || Number(mission.extra_hours_appliquees) > 0 || mission.extra_hours_payment_intent) {
-        const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      let ajoutsAppliquesEuros = 0;
+      const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      const piDuDetail = new Set(detailAjouts(mission).map(l => l.paiement).filter(Boolean));
+      for (const pi of piDuDetail) paiementsAjoutsPresta[pi] = 0;
+      if (piDuDetail.size || Number(mission.extra_hours_appliquees) > 0 || mission.extra_hours_payment_intent) {
         if (!cleAjouts) {
           await rouvrirRemplacements();
           return res.status(500).json({ error: "Stripe non configuré — la prestation n'a pas été annulée. Contactez le support." });
         }
         try {
-          const lus = await paiementsHeuresSupp(mission_id, cleAjouts, { dernier: mission.extra_hours_payment_intent });
-          for (const p of lus) paiementsAjoutsPresta[p.id] = p.recu / 100;
+          const lus = await paiementsHeuresSupp(mission_id, cleAjouts, { dernier: mission.extra_hours_payment_intent,
+            compteur: Number(mission.extra_hours_appliquees || 0) + Number(mission.heures_ajoutees_total || 0) });
+          for (const p of lus) {
+            paiementsAjoutsPresta[p.id] = p.recu / 100;
+            // Ajoutés à `montant_total` : ceux du détail, et les autres une fois appliqués.
+            if (piDuDetail.has(p.id) || p.applique) ajoutsAppliquesEuros += p.recu / 100;
+          }
           // Un paiement du détail que la recherche n'a pas encore vu : relu par
           // rembourserAjoutsNonFaits, qui plafonne à ce qui reste à rendre.
           for (const pi of Object.keys(paiementsAjoutsPresta)) if (!(paiementsAjoutsPresta[pi] > 0)) paiementsAjoutsPresta[pi] = 1e6;
@@ -7172,19 +7184,16 @@ export default async function handler(req, res) {
           await rouvrirRemplacements();
           return res.status(502).json({ error: "Le remboursement des heures ajoutées n'a pas pu être préparé — la prestation n'a pas été annulée. Réessayez." });
         }
-        const rAj = await rembourserAjoutsNonFaits(paiementsAjoutsPresta, cleAjouts, "desistement", "presta_cancel");
-        if (!rAj.ok) {
-          await rouvrirRemplacements();
-          return res.status(500).json({ error: "Le remboursement des heures ajoutées a échoué — la prestation n'a pas été annulée. Contactez le support." });
-        }
       }
 
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
         const isWalletPaidPresta = mission.stripe_payment_intent.startsWith("wallet_");
         if (isWalletPaidPresta) {
-          // Remboursement intégral sur le wallet du client
-          const refundAmountEuros = Number(mission.montant_total) || 0;
+          // Remboursement intégral sur le wallet du client — hors heures
+          // ajoutées, rendues sur leur propre paiement par carte : comptées
+          // dans `montant_total`, elles étaient rendues deux fois (12/11/2026).
+          const refundAmountEuros = Math.max(0, Math.round(((Number(mission.montant_total) || 0) - ajoutsAppliquesEuros) * 100) / 100);
           if (refundAmountEuros > 0 && mission.client_id) {
             try {
               const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers });
@@ -7231,6 +7240,15 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: "Le remboursement Stripe a échoué — la prestation n'a pas été annulée. Contactez le support." });
           }
         }
+      }
+
+      // La réservation est rendue : les heures ajoutées maintenant. Un échec
+      // n'arrête plus rien — la réservation est déjà remboursée, la prestation
+      // doit être annulée —, il est signalé pour être repris à la main ; un
+      // nouvel essai ne rembourse pas deux fois.
+      if (Object.keys(paiementsAjoutsPresta).length) {
+        const rAj = await rembourserAjoutsNonFaits(paiementsAjoutsPresta, cleAjouts, "desistement", "presta_cancel");
+        if (!rAj.ok) console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
       }
 
       // Le remboursement est déjà parti quand on arrive ici. Sans vérification,

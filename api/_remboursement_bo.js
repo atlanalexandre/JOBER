@@ -243,6 +243,11 @@ export async function paiementsHeuresSupp(missionId, cle, { dernier = null, comp
     id: p.id,
     recu: Number(p.amount_received) || 0,
     heures: Number(p.metadata?.heures) || 0,
-    applique: Number(p.metadata?.deja_appliquees) < repere,
+    // Sans repère (paiement antérieur au 01/10/2026), on ne peut pas trancher :
+    // compté appliqué, comme il l'a presque toujours été — compté « jamais
+    // appliqué », il restait dans le montant de la réservation, dont le
+    // remboursement dépassait alors l'encaissé (relecture du 12/11/2026).
+    applique: p.metadata?.deja_appliquees === undefined || p.metadata?.deja_appliquees === ""
+      ? true : Number(p.metadata.deja_appliquees) < repere,
   }));
 }

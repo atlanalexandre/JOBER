@@ -24,19 +24,23 @@ const PI = {
 process.env.VITE_SUPABASE_URL = "https://b.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "cle";
 
-function simuler({ appelant, recherche = [PI.pi_sup] } = {}) {
+function simuler({ appelant, recherche = [PI.pi_sup], mission = MISSION, mainKo = false } = {}) {
   const remb = [];
+  remb.soldes = [];
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url), m = o.method || "GET";
     if (u.endsWith("/auth/v1/user")) return json({ id: appelant });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
     if (u.includes(`/missions?id=eq.${M}`) && m === "GET" && u.includes("select=cashback_applique")) return json([{ cashback_applique: 0 }]);
-    if (u.includes(`/missions?id=eq.${M}`) && m === "GET") return json([MISSION]);
-    if (u.includes("/missions?") && m === "PATCH") return json([{ ...MISSION, status: "cancelled" }]);
+    if (u.includes(`/missions?id=eq.${M}`) && m === "GET") return json([mission]);
+    if (u.includes("/missions?") && m === "PATCH") return json([{ ...mission, status: "cancelled" }]);
+    if (u.includes("/profiles?id=eq.") && u.includes("select=prepaid_balance")) return json([{ prepaid_balance: 0 }]);
+    if (u.includes("/profiles?id=eq.") && m === "PATCH") { remb.soldes.push(JSON.parse(String(o.body)).prepaid_balance); return json([{ id: CLIENT }]); }
     if (u.includes("/payment_intents/search")) return json({ data: recherche });
     if (u.includes("/v1/refunds?payment_intent=")) return json({ data: [] });
     if (u.includes("api.stripe.com/v1/refunds") && m === "POST") {
       const p = new URLSearchParams(String(o.body));
+      if (mainKo && p.get("payment_intent") === "pi_main") return json({ error: { message: "panne" } }, 500);
       remb.push({ pi: p.get("payment_intent"), montant: p.get("amount") ? Number(p.get("amount")) : null });
       return json({ id: `re_${remb.length}`, status: "succeeded" });
     }
@@ -92,5 +96,30 @@ describe("prolongation payée à part, prestation d'une journée", () => {
     simuler({ appelant: CLIENT });
     const r = await appeler({ action: "cancel_client", mission_id: M });
     expect(r.statut).toBe(503);
+  });
+
+  it("désistement : la réservation refusée par Stripe, rien n'est rendu des heures ajoutées — la prestation reste entière (12/11/2026)", async () => {
+    const remb = simuler({ appelant: PRESTA, mainKo: true });
+    const r = await appeler({ action: "presta_cancel", mission_id: M });
+    expect(r.statut).toBe(500);
+    expect(remb.some(x => x.pi === "pi_sup")).toBe(false);
+  });
+
+  it("désistement d'une réservation réglée par le portefeuille : les heures ajoutées ne sont pas rendues deux fois (12/11/2026)", async () => {
+    const remb = simuler({ appelant: PRESTA, mission: { ...MISSION, stripe_payment_intent: "wallet_abc" } });
+    const r = await appeler({ action: "presta_cancel", mission_id: M });
+    expect(r.statut, JSON.stringify(r.corps)).toBe(200);
+    expect(remb.find(x => x.pi === "pi_sup")?.montant).toBe(1540);
+    expect(remb.soldes).toEqual([110.98]);       // 126,38 € − 15,40 € rendus sur la carte
+  });
+});
+
+describe("paiementsHeuresSupp", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("un paiement sans repère (antérieur au 01/10/2026) compte comme appliqué (12/11/2026)", async () => {
+    const { paiementsHeuresSupp } = await import("../../../api/_remboursement_bo.js");
+    vi.stubGlobal("fetch", vi.fn(() => json({ data: [{ ...PI.pi_sup, metadata: { type: "heures_supp", mission: M, heures: "1" } }] })));
+    const [p] = await paiementsHeuresSupp(M, "sk", { compteur: 1 });
+    expect(p.applique).toBe(true);
   });
 });
