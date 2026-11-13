@@ -1615,7 +1615,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant,heures_perdues,resolution_executee_cause`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant,heures_perdues`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1636,25 +1636,45 @@ export default async function handler(req, res) {
       // Seulement le sien (même cause) : repris ici, un accord tacite bloqué
       // aurait été annoncé aux parties comme une décision de justice — la
       // tâche planifiée le reprend elle-même (relecture du 13/11/2026).
-      const filtreVerrou = resolution === "rembourser_client"
-        ? `or=(resolution_executee_cause.is.null,resolution_executee_cause.eq.${cause}_a_reprendre)`
-        : "resolution_executee_cause=is.null";
-      // Ce que le verrou valait AVANT : un échec le lui rend. Repris depuis
+      //
+      // Ce que le verrou valait AVANT, un échec le lui rend : repris depuis
       // « à reprendre », le relâcher à vide effaçait la seule trace que le
-      // client avait déjà été remboursé — et une décision de verser passait
-      // ensuite : payé deux fois (relecture du 13/11/2026).
-      const verrouAvant = m.resolution_executee_cause ?? null;
-      const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtreVerrou}`, {
-        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ resolution_executee_cause: cause }),
-      });
-      const pris = await verrou.json().catch(() => null);
-      if (!verrou.ok) {
-        console.error(`[executer_decision] verrou de ${mission_id} refusé (${verrou.status}) : ${JSON.stringify(pris).slice(0, 200)}`);
-        return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
+      // client avait déjà été remboursé — une décision de verser passait
+      // ensuite, payée deux fois. Cette valeur se lit sur l'ÉCRITURE qui prend
+      // le verrou, pas sur une lecture antérieure : un double clic pouvait
+      // marquer « à reprendre » entre les deux (relecture du 13/11/2026).
+      const prendre = async (filtre) => {
+        const v = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtre}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ resolution_executee_cause: cause }),
+        });
+        const l = await v.json().catch(() => null);
+        if (!v.ok) {
+          console.error(`[executer_decision] verrou de ${mission_id} refusé (${v.status}) : ${JSON.stringify(l).slice(0, 200)}`);
+          return null;
+        }
+        return Array.isArray(l) && l.length > 0;
+      };
+      let verrouAvant = null;
+      let pris = false;
+      if (resolution === "rembourser_client") {
+        pris = await prendre(`resolution_executee_cause=eq.${cause}_a_reprendre`);
+        if (pris) verrouAvant = `${cause}_a_reprendre`;
       }
-      if (!Array.isArray(pris) || pris.length === 0) {
-        return res.status(409).json({ error: "Ce litige est déjà en cours de dénouement (accord tacite ou autre décision) — rien n'a été fait. Rechargez la liste." });
+      if (pris === false) pris = await prendre("resolution_executee_cause=is.null");
+      if (pris === null) return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
+      if (!pris) {
+        // Dire QUOI faire : sans la cause en cours, l'équipe tournait en rond
+        // sur « rechargez la liste » (relecture du 13/11/2026).
+        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=resolution_executee_cause`, { headers }).catch(() => null);
+        const enCours = lr?.ok ? ((await lr.json().catch(() => []))[0] || {}).resolution_executee_cause : null;
+        const message = !enCours ? "Ce litige est déjà en cours de dénouement — rien n'a été fait. Rechargez la liste."
+          : enCours === "accord_tacite_a_reprendre"
+            ? "Le remboursement de l'accord tacite a déjà été fait, sa clôture a échoué : la tâche planifiée la termine à son prochain passage. Rien n'a été fait."
+          : String(enCours).endsWith("_a_reprendre")
+            ? `Le client a déjà été remboursé, la clôture a échoué : relancez « rembourser le client » avec la cause « ${String(enCours).replace(/_a_reprendre$/, "")} » pour la terminer. Rien n'a été fait.`
+            : `Ce litige est déjà en cours de dénouement (${enCours}) — rien n'a été fait. Rechargez la liste.`;
+        return res.status(409).json({ error: message });
       }
 
       const out = await executerResolution({
@@ -1678,7 +1698,7 @@ export default async function handler(req, res) {
         if (ar && !ar.ok) console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » (${ar.status})`);
         await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just, inacheve: out.detail } });
         console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé : ${out.detail}`);
-        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » sur ce litige : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
+        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » avec la même cause (« ${cause} ») : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
       }
       if (!out.ok) {
         const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {

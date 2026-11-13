@@ -653,7 +653,7 @@ export default async function handler(req, res) {
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
             + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
             + `delay_status,arrival_delay_minutes,`
-            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant,heures_perdues,resolution_executee_cause`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant,heures_perdues`
             + `&limit=100`,
             { headers }
           );
@@ -685,16 +685,25 @@ export default async function handler(req, res) {
               // remboursement déjà fait est retrouvé à son étiquette, rien ne
               // part deux fois. Une autre résolution ne se reprend jamais
               // d'office (relecture du 13/11/2026).
-              const filtreVerrou = m.resolution_proposee === "rembourser_client"
-                ? "or=(resolution_executee_cause.is.null,resolution_executee_cause.eq.accord_tacite_a_reprendre)"
-                : "resolution_executee_cause=is.null";
-              const verrou = await fetch(
-                `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&${filtreVerrou}`,
-                { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-                  body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) }
-              );
-              const pris = await verrou.json().catch(() => []);
-              if (!Array.isArray(pris) || pris.length === 0) continue;
+              // L'état repris se lit sur l'écriture qui prend le verrou, jamais
+              // sur la lecture de la liste : deux passages simultanés pouvaient
+              // marquer « à reprendre » entre les deux (13/11/2026).
+              const prendre = async (filtre) => {
+                const v = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&${filtre}`,
+                  { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+                    body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) });
+                const l = await v.json().catch(() => []);
+                if (!v.ok) console.error(`[resolution] verrou de ${m.id} refusé (${v.status})`);
+                return v.ok && Array.isArray(l) && l.length > 0;
+              };
+              let verrouAvant = null;
+              let pris = false;
+              if (m.resolution_proposee === "rembourser_client") {
+                pris = await prendre("resolution_executee_cause=eq.accord_tacite_a_reprendre");
+                if (pris) verrouAvant = "accord_tacite_a_reprendre";
+              }
+              if (!pris) pris = await prendre("resolution_executee_cause=is.null");
+              if (!pris) continue;
 
               const out = await executerResolution({
                 mission: m, resolution: m.resolution_proposee,
@@ -723,7 +732,7 @@ export default async function handler(req, res) {
                 // perdait (relecture du 13/11/2026).
                 const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=eq.accord_tacite`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ resolution_executee_cause: m.resolution_executee_cause ?? null }),
+                  body: JSON.stringify({ resolution_executee_cause: verrouAvant }),
                 }).catch(e => { console.error(`[resolution] verrou non relâché ${m.id} :`, e.message); return null; });
                 if (rl && !rl.ok) console.error(`[resolution] verrou non relâché ${m.id} (${rl.status})`);
                 continue;
