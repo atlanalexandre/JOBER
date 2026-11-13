@@ -4292,8 +4292,9 @@ puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — l
 déduisent de leur différence. Ils sont remboursés **après** la prestation elle-même (13/11/2026) :
 rendus avant, un échec du remboursement principal arrêtait l'interruption et laissait des heures
 déjà rendues que la clôture aurait payées au prestataire. Un échec à ce stade n'arrête plus rien —
-la prestation est écourtée, le prestataire n'est pas payé de ces heures — et il est signalé
-« À FAIRE À LA MAIN ». Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
+la prestation est écourtée, le prestataire n'est pas payé de ces heures — et il ouvre un
+**ticket interne** (« [Interne] Heures ajoutées à rembourser », un seul par prestation tant qu'il est
+ouvert) ; la réponse et l'e-mail à l'équipe ne les annoncent plus comme remboursées. Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
 de ces paiements restent acquis. Éprouvé par `e2e/70`.
 
 Quand l'arrêt de **toute** la prestation ne laisse rien à verser, le versement est écrit

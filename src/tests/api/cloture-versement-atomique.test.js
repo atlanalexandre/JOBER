@@ -50,4 +50,22 @@ describe("cancel_in_progress", () => {
     expect(ajouts).toBeLessThan(b.indexOf("const majAnnul"));
     expect(b.slice(ajouts, ajouts + 600)).toContain("À FAIRE À LA MAIN");
   });
+
+  it("heures ajoutées non rendues : un ticket interne, et le client n'en lit pas le remboursement (13/11/2026, après-midi)", () => {
+    const echec = b.indexOf("ajoutsRendus = false;");
+    expect(echec).toBeGreaterThan(0);
+    const suite = b.slice(echec, echec + 2500);
+    expect(suite).toContain("[Interne] Heures ajoutées à rembourser");
+    expect(suite).toContain("status=eq.open&select=id&limit=1");
+    expect(b).toContain("remboursement: Math.round((refundAmount + (ajoutsRendus ? ajoutsPerdus.valeur : 0) + renduRetard) * 100) / 100,");
+  });
 });
+
+describe("back-office : un versement annulé ne parle de litige que pour ce qu'il est", () => {
+  const bo = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+  it("le libellé couvre aussi la prestation arrêtée avant toute heure due", () => {
+    expect(bo).not.toContain("Versement annulé — le client a été remboursé au titre du litige.");
+    expect(bo).toContain("prestation arrêtée avant toute heure due");
+  });
+});
+

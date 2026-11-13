@@ -4798,11 +4798,35 @@ export default async function handler(req, res) {
       // prestataire n'est pas payé de ces heures), et l'argent dû au client est
       // signalé pour être rendu à la main. Un nouvel essai ne rembourse pas
       // deux fois (étiquette par paiement, jour et issue).
+      // Rendues ou non : ce que le client lit, et ce que l'équipe doit faire,
+      // en dépendent (relecture du 13/11/2026, après-midi).
+      let ajoutsRendus = true;
       if (ajoutsPerdus.valeur > 0) {
         const rAjouts = await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress");
         if (!rAjouts.ok) {
+          ajoutsRendus = false;
+          const paiements = Object.keys(ajoutsPerdus.parPaiement || {}).join(", ");
           console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} €, `
-            + `paiements ${Object.keys(ajoutsPerdus.parPaiement || {}).join(", ")}) — prestation écourtée quand même. À FAIRE À LA MAIN : rembourser le client dans Stripe.`);
+            + `paiements ${paiements}) — prestation écourtée quand même. À FAIRE À LA MAIN : rembourser le client dans Stripe.`);
+          // Le journal seul ne suffisait pas : un ticket interne, un seul par
+          // prestation tant qu'il est ouvert (un nouvel essai n'en refait pas).
+          const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${mission_id.slice(0, 8)}`;
+          try {
+            const dj = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
+            const deja = dj.ok ? await dj.json().catch(() => null) : null;
+            if (!Array.isArray(deja)) console.error(`[cancel_in_progress] tickets illisibles (${dj.status}) — ticket « heures ajoutées » non créé pour ${mission_id}.`);
+            else if (!deja.length) {
+              const t = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ subject: sujet, user_id: mission.client_id || caller.id, status: "open",
+                  message: `Interruption par le client : les heures ajoutées non faites (${euros(ajoutsPerdus.valeur)}) n'ont pas pu être remboursées. `
+                    + `Le prestataire n'en sera pas payé ; elles sont dues au client. À rembourser dans Stripe (paiements ${paiements}).` }),
+              });
+              if (!t.ok) console.error(`[cancel_in_progress] ticket interne NON créé (${t.status}).`);
+            }
+          } catch (e) {
+            console.error("[cancel_in_progress] ticket interne non créé :", e.message);
+          }
         }
       }
 
@@ -5103,7 +5127,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} remboursés sur les paiements de prolongation</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} ${ajoutsRendus ? "remboursés sur les paiements de prolongation" : "NON remboursés (échec Stripe) — ticket interne ouvert, à rembourser à la main"}</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -5131,8 +5155,11 @@ export default async function handler(req, res) {
         billedHours,
         heuresDuJour,
         heuresPerdues: heuresPerduesTotal,
-        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur + renduRetard) * 100) / 100,
-        remboursementHeuresAjoutees: ajoutsPerdus.valeur,
+        // Ce qui est réellement parti : des heures ajoutées non rendues ne
+        // sont pas annoncées au client comme remboursées.
+        remboursement: Math.round((refundAmount + (ajoutsRendus ? ajoutsPerdus.valeur : 0) + renduRetard) * 100) / 100,
+        remboursementHeuresAjoutees: ajoutsRendus ? ajoutsPerdus.valeur : 0,
+        ...(ajoutsRendus ? {} : { heuresAjouteesARembourser: ajoutsPerdus.valeur }),
         proratedAmount,
       });
     }
