@@ -48,6 +48,37 @@ describe("cancel_in_progress", () => {
     expect(principal).toBeGreaterThan(0);
     expect(ajouts).toBeGreaterThan(principal);
     expect(ajouts).toBeLessThan(b.indexOf("const majAnnul"));
-    expect(b.slice(ajouts, ajouts + 600)).toContain("À FAIRE À LA MAIN");
+    expect(b.slice(ajouts, ajouts + 900)).toContain("À FAIRE À LA MAIN");
+  });
+
+  it("heures ajoutées non rendues : un ticket interne, et le client n'en lit pas le remboursement (13/11/2026, après-midi)", () => {
+    const echec = b.indexOf("ajoutsRendus = false;");
+    expect(echec).toBeGreaterThan(0);
+    const suite = b.slice(echec, echec + 1500);
+    // Un ticket propre à CET échec (le jour), ce qui est déjà parti déduit.
+    // La journée écourtée et l'arrêt de toute la prestation, le même jour, ont chacun leur ticket.
+    expect(suite).toContain('evenement: `interruption ${aujourdHui} (${annulerReste ? "arrêt" : "journée"})`');
+    expect(suite).toContain("parPaiement: ajoutsPerdus.parPaiement || {}");
+    expect(suite).toContain("centimesRendus: Number(rAjouts.centimes) || 0");
+    expect(b).toContain("remboursement: Math.round((refundAmount + ajoutsRendusEuros + renduRetard) * 100) / 100,");
+    // Ce que Stripe a réellement rendu, même quand tout réussit (plafonné au reste remboursable).
+    expect(b).toMatch(/const rAjouts = await rembourserAjoutsNonFaits\([^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*ajoutsRendusEuros = \(Number\(rAjouts\.centimes\) \|\| 0\) \/ 100;/);
+  });
+  it("le ticket est partagé, propre à chaque échec, n'annonce que le reste dû et demande de vérifier dans Stripe", () => {
+    const f = src.slice(src.indexOf("async function ticketHeuresAjoutees("), src.indexOf("async function remettreARembourser("));
+    expect(f).toContain("— ${evenement}`");
+    expect(f).toContain("Reste dû au client");
+    expect(f).toContain("Dû à l'origine, par paiement");
+    expect(f).toContain("Vérifier d'abord dans Stripe");
+    expect(src.match(/\[Interne\] Heures ajoutées à rembourser/g)).toHaveLength(1);
   });
 });
+
+describe("back-office : un versement annulé ne parle de litige que pour ce qu'il est", () => {
+  const bo = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+  it("le libellé n'attribue l'annulation à aucune cause : elle en a plusieurs", () => {
+    expect(bo).not.toContain("Versement annulé — le client a été remboursé au titre du litige.");
+    expect(bo).toContain('"Versement annulé — rien n\'est dû au prestataire."');
+  });
+});
+
