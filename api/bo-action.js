@@ -343,7 +343,8 @@ export default async function handler(req, res) {
         const ribBrut = p.rib || meta.rib;
         const iban  = ribBrut ? String(ribBrut).replace(/\s/g, "").toUpperCase() : null;
         // `siret` pour un prestataire, `kbis` pour un client professionnel.
-        const siretMeta = meta.siret || meta.kbis;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+        const siretMeta = p.siret || meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
         // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
         // Seule compte une ligne inscrite avant la création du compte : une ligne
@@ -445,17 +446,21 @@ export default async function handler(req, res) {
         // Sans ce repli, le contrôle anti-recréation cesserait de reconnaître un IBAN
         // déjà blacklisté dès que l'IBAN quitte le jeton.
         let ribAppr = meta2.rib;
+        let siretFiche = null;
         try {
-          const rProf = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib&limit=1`, { headers });
+          const rProf = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib,siret&limit=1`, { headers });
           const dProf = await rProf.json().catch(() => []);
           if (Array.isArray(dProf) && dProf[0]?.rib) ribAppr = dProf[0].rib;
+          if (Array.isArray(dProf) && dProf[0]?.siret) siretFiche = dProf[0].siret;
         } catch (e) {
           console.error("[approve] lecture de profiles.rib impossible :", e.message);
         }
         const iban2  = ribAppr ? String(ribAppr).replace(/\s/g, "").toUpperCase() : null;
         // `siret` pour un prestataire, `kbis` pour un client professionnel (voir
         // le contrôle du SIRET plus haut, et la suppression).
-        const siretBrut2 = meta2.siret || meta2.kbis;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si
+        // — un SIRET en liste noire s'effaçait du compte avant la validation (13/11/2026).
+        const siretBrut2 = siretFiche || meta2.siret || meta2.kbis;
         const siret2 = siretBrut2 ? String(siretBrut2).replace(/\s/g, "") : null;
 
         // Vérification dans les deux sens :
@@ -992,12 +997,13 @@ ${cvIncomplet ? `
       // supprimé se réinscrivait avec le même SIRET sans être reconnu.
       const meta = userData.user_metadata || {};
       const telephone = meta.telephone || null;
-      const siret     = meta.siret || meta.kbis || null;
       const savedProfileRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib&limit=1`,
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib,siret&limit=1`,
         { headers }
       );
       const savedProfileRows = savedProfileRes.ok ? await savedProfileRes.json().catch(() => []) : [];
+      // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+      const siret     = (Array.isArray(savedProfileRows) && savedProfileRows[0]?.siret) || meta.siret || meta.kbis || null;
       const savedProfile = Array.isArray(savedProfileRows) && savedProfileRows.length > 0 ? savedProfileRows[0] : {};
       // L'empreinte anti-recréation doit rester calculable après la sortie de l'IBAN
       // du jeton : `profiles.rib` d'abord, ancien emplacement en repli.

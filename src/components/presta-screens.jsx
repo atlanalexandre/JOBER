@@ -2285,7 +2285,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       // dans le jeton : c'est le serveur qui les accorde.
       const { data: p, error } = await supabase
         .from("profiles")
-        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status,cv,siret")
+        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,missions_enabled_at,status,rib,stripe_account_id,stripe_account_status,cv,siret")
         .eq("id", u.id).single();
       if (error) console.error("[premiers pas] profil illisible :", error.message);
       setProfil(p || {});
@@ -2301,7 +2301,11 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   // liste reste affichée même si elle a été fermée — la relance et l'e-mail de
   // validation y renvoient (13/11/2026).
   const siretComplet = /^\d{14}$/.test(String(profil.siret || ""));
-  if (dismissed && siretComplet) return null;
+  // Accès déjà ouvert une fois : le SIRET passe par le support (le serveur
+  // refuse), la ligne n'a rien à proposer et ne s'affiche pas — sans quoi un
+  // bandeau impossible à fermer restait sur l'accueil (13/11/2026).
+  const siretAttendu = !siretComplet && !profil.missions_enabled_at;
+  if (dismissed && !siretAttendu && !siretEnregistre) return null;
 
   // Le compte dépend du prestataire : titre de séjour hors UE, justificatif de
   // qualification pour les métiers réglementés. Compter `DOCS_REQUIS` brut
@@ -2310,11 +2314,11 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   const items = [
     // Le SIRET se déclarait seulement à l'inscription : sans lui, il fallait
     // l'envoyer par e-mail (13/11/2026). Il se saisit désormais ici, une fois.
-    { id:"siret",   label:"Numéro SIRET renseigné",
+    // Sur la FICHE, en 14 chiffres : c'est là que lisent l'échéance URSSAF et
+    // les factures. Un SIREN de 9 chiffres admis à l'inscription se complète ici.
+    ...(siretAttendu || siretEnregistre ? [{ id:"siret", label:"Numéro SIRET renseigné",
       aide:"Obligatoire pour exercer comme indépendant — saisissez-le ci-dessous",
-      // Sur la FICHE, en 14 chiffres : c'est là que lisent l'échéance URSSAF et
-      // les factures. Un SIREN de 9 chiffres admis à l'inscription se complète ici.
-      done:siretComplet, action:null },
+      done:siretComplet, action:null }] : []),
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
       done:nbDocs >= requis, action:"doc_upload" },

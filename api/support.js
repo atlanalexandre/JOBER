@@ -348,16 +348,11 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
     if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
     if (await refuserCompteBloque(res, caller, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
-    // Chaque essai interroge le registre SIRENE, partagé avec les traitements
-    // planifiés (7 requêtes/s) : 5 essais par 10 minutes et par compte.
-    if (checkContactRateLimit(`siret:${caller.id}`, 5)) {
-      return res.status(429).json({ error: "Trop d'essais. Réessayez dans quelques minutes, ou écrivez à support@alane.fr." });
-    }
     const v = validerSiret(req.body?.siret);
     if (!v.ok) return res.status(400).json({ error: v.erreur });
     const sr = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
-    const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,siret,missions_enabled`, { headers: sr });
+    const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,siret,missions_enabled,missions_enabled_at`, { headers: sr });
     const fiche = await fr.json().catch(() => null);
     if (!fr.ok || !Array.isArray(fiche)) {
       console.error(`[declarer_siret] fiche de ${caller.id} illisible (${fr.status})`);
@@ -368,18 +363,32 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     // l'inscription faute de SIRET. Un premier SIRET la ferait partir de
     // l'immatriculation — d'une entreprise créée la veille, elle reculerait.
     // C'est la faille fermée le 14/10/2026 : ce cas passe par le support.
-    if (fiche[0]?.missions_enabled === true) {
+    // L'accès ouvert UNE fois suffit : suspendu ensuite (attestation manquante),
+    // le compte a `missions_enabled` à false, et un premier SIRET y aurait
+    // reculé l'échéance avant la réouverture (relecture du 13/11/2026).
+    if (fiche[0]?.missions_enabled === true || fiche[0]?.missions_enabled_at) {
       return res.status(409).json({ error: "Votre accès aux prestations est déjà ouvert : pour ajouter votre SIRET, écrivez à support@alane.fr." });
     }
     // Un SIREN (9 chiffres) admis à l'inscription se COMPLÈTE par le SIRET de la
     // même entreprise — même immatriculation, rien ne recule. Tout autre SIRET
     // déjà présent ne se remplace pas.
-    const actuel = String(fiche[0]?.siret || "");
+    // Celui du compte aussi : un compte ancien peut l'avoir dans user_metadata
+    // sans l'avoir sur sa fiche — le remplacer l'effaçait aux yeux de la liste
+    // noire (relecture du 13/11/2026).
+    // L'écriture plus bas se conditionne à la valeur de la FICHE (un SIREN venu
+    // du seul compte se complète sur une fiche vide).
+    const actuel = String(fiche[0]?.siret || caller.user_metadata?.siret || "").replace(/\s/g, "");
     const completion = /^\d{9}$/.test(actuel) && v.siret.startsWith(actuel);
     if (actuel && !completion) {
       return res.status(409).json({ error: "Un SIRET est déjà enregistré sur votre dossier. Pour le modifier, écrivez à support@alane.fr." });
     }
 
+    // Chaque essai qui arrive ici interroge le registre SIRENE, partagé avec les
+    // traitements planifiés (7 requêtes/s) : 5 par 10 minutes et par compte. Les
+    // erreurs de saisie, refusées plus haut sans appel, ne comptent pas.
+    if (checkContactRateLimit(`siret:${caller.id}`, 5)) {
+      return res.status(429).json({ error: "Trop d'essais. Réessayez dans quelques minutes, ou écrivez à support@alane.fr." });
+    }
     let entreprise;
     try { entreprise = await entrepriseSirene(v.siret); }
     catch (e) {
@@ -390,7 +399,7 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     if (!entreprise.actif) return res.status(400).json({ error: "Cette entreprise est fermée d'après le registre des entreprises." });
 
     // Conditionnée à l'état lu : deux envois simultanés n'écrivent pas deux numéros.
-    const wr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&${completion ? `siret=eq.${actuel}` : "siret=is.null"}`, {
+    const wr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&${fiche[0]?.siret ? `siret=eq.${encodeURIComponent(fiche[0].siret)}` : "siret=is.null"}`, {
       method: "PATCH", headers: { ...sr, "Prefer": "return=representation" }, body: JSON.stringify({ siret: v.siret }),
     });
     const ecrit = await wr.json().catch(() => null);
@@ -406,12 +415,12 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     // (validation du profil, suppression du compte) et le contrôle de la
     // validation l'y lisent. Écrit sur la fiche seulement, il leur échappait —
     // et l'anti-recréation avec (relecture du 13/11/2026).
+    // Le service d'authentification FUSIONNE user_metadata : n'envoyer que le
+    // SIRET. Relire puis réécrire le tout écrasait une modification du profil
+    // faite entre-temps (relecture du 13/11/2026).
     try {
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers: sr });
-      const u = await ur.json().catch(() => null);
-      if (!ur.ok || !u?.id) throw new Error(`compte illisible (${ur.status})`);
       const mr = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, {
-        method: "PUT", headers: sr, body: JSON.stringify({ user_metadata: { ...(u.user_metadata || {}), siret: v.siret } }),
+        method: "PUT", headers: sr, body: JSON.stringify({ user_metadata: { siret: v.siret } }),
       });
       if (!mr.ok) throw new Error(`écriture refusée (${mr.status})`);
     } catch (e) {
@@ -632,11 +641,12 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       // évitant de conserver les identifiants pour arriver au même résultat.
       let empreinteBL = null;
       try {
-        const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib&limit=1`, { headers: hdrs });
+        const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib,siret&limit=1`, { headers: hdrs });
         const pdSup = prSup.ok ? await prSup.json().catch(() => []) : [];
         const ribSup = (Array.isArray(pdSup) && pdSup[0]?.rib) || caller.user_metadata?.rib || null;
         const telSup   = caller.user_metadata?.telephone || null;
-        const siretSup = caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+        const siretSup = (Array.isArray(pdSup) && pdSup[0]?.siret) || caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
 
         // Calculée ici, inscrite une fois le compte supprimé (`inscrireListeNoire`).
         if (caller.email || telSup || ribSup || siretSup) {

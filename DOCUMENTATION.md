@@ -2762,18 +2762,21 @@ migration). Un changement de SIRET passe par le back-office.
 
 **SIRET déclaré par le prestataire** (13/11/2026). Qui n'en avait pas à l'inscription le saisit
 dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`), qui reste
-affichée tant qu'il manque, même fermée — au lieu de l'envoyer par e-mail. L'écriture passe par le
+affichée tant qu'il manque, même fermée (sauf accès déjà ouvert une fois : la ligne n'y est pas
+proposée, le serveur refuserait) — au lieu de l'envoyer par e-mail. L'écriture passe par le
 serveur (`support.js`, action `declarer_siret`) : compte non bloqué, 5 essais par 10 minutes (le
 registre SIRENE est partagé avec les traitements planifiés), format et clé de contrôle
 (`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La Poste), puis registre SIRENE
 (entreprise existante et active, `entrepriseSirene()`). Il est écrit sur la fiche **et** dans le
-compte (`user_metadata.siret`), comme le fait le back-office : la liste noire et la validation l'y
-lisent. La liste noire est consultée aussitôt (SIRET d'un compte supprimé : essai épuisé).
+compte (`user_metadata.siret`, seule clé envoyée : le service d'authentification fusionne). La
+liste noire est consultée aussitôt (SIRET d'un compte supprimé : essai épuisé). La validation du
+profil, la liste du back-office et les deux suppressions de compte lisent désormais le SIRET **sur
+la fiche d'abord** : `user_metadata`, que le navigateur peut réécrire, n'est plus qu'un repli.
 
 Garde-fous contre la faille du 14/10 : **jamais de remplacement** (écriture conditionnée à
 `siret=is.null`) — sauf un SIREN de 9 chiffres admis à l'inscription, que complète un SIRET de la
-**même** entreprise (même immatriculation) ; et **jamais une fois l'accès aux prestations ouvert** :
-l'échéance de l'attestation URSSAF y court déjà, depuis l'inscription faute de SIRET, et un premier
+**même** entreprise (même immatriculation) ; et **jamais une fois l'accès aux prestations ouvert** —
+accès ouvert ne serait-ce qu'une fois (`missions_enabled_at`, même suspendu depuis) — l'échéance de l'attestation URSSAF y court déjà, depuis l'inscription faute de SIRET, et un premier
 SIRET la ferait partir de l'immatriculation — d'une entreprise créée la veille, elle reculerait. Ces
 cas passent par le support. Limite connue : rien ne vérifie que l'entreprise est bien celle du
 prestataire — c'est l'extrait KBIS / INSEE, vérifié au back-office, qui le dit ; le nom retrouvé

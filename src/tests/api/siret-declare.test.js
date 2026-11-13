@@ -23,12 +23,12 @@ const json = (v, status = 200) => Promise.resolve(new Response(JSON.stringify(v)
 process.env.VITE_SUPABASE_URL = "https://b.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "cle";
 
-function simuler({ fiche = { role: "prestataire", siret: null, missions_enabled: false }, sirene = { siren: "732829320", nom_complet: "MON ENTREPRISE", etat_administratif: "A", siege: { siret: "73282932000074" } }, ecrites = [{ id: PRESTA }], listeNoire = [] } = {}) {
+function simuler({ fiche = { role: "prestataire", siret: null, missions_enabled: false }, sirene = { siren: "732829320", nom_complet: "MON ENTREPRISE", etat_administratif: "A", siege: { siret: "73282932000074" } }, ecrites = [{ id: PRESTA }], listeNoire = [], metaAppelant = {} } = {}) {
   const patchs = [];
   patchs.meta = [];
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url), m = o.method || "GET";
-    if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
+    if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA, user_metadata: metaAppelant });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "pending" }]);
     if (u.includes(`/profiles?id=eq.${PRESTA}&select=role,siret`)) return json([fiche]);
     if (u.includes("/account_blacklist?")) return json(listeNoire);
@@ -61,14 +61,16 @@ describe("action declarer_siret", () => {
     expect(patchs).toHaveLength(1);
     expect(patchs[0].u).toContain("siret=is.null");
     expect(patchs[0].corps).toEqual({ siret: "73282932000074" });
-    // Aussi dans le compte : la liste noire et la validation l'y lisent (13/11/2026).
-    expect(patchs.meta).toEqual([{ user_metadata: { prenom: "Léa", role: "prestataire", siret: "73282932000074" } }]);
+    // Aussi dans le compte, SEUL — le service fusionne : rien d'autre n'est réécrit (13/11/2026).
+    expect(patchs.meta).toEqual([{ user_metadata: { siret: "73282932000074" } }]);
   });
-  it("accès aux prestations déjà ouvert : refusé — un premier SIRET y reculerait l'échéance URSSAF", async () => {
-    const patchs = simuler({ fiche: { role: "prestataire", siret: null, missions_enabled: true } });
-    const r = await declarer("73282932000074");
-    expect(r.statut).toBe(409);
-    expect(patchs).toHaveLength(0);
+  it("accès aux prestations ouvert, MÊME une seule fois (compte suspendu depuis) : refusé — un premier SIRET y reculerait l'échéance URSSAF", async () => {
+    for (const fiche of [{ role: "prestataire", siret: null, missions_enabled: true },
+                         { role: "prestataire", siret: null, missions_enabled: false, missions_enabled_at: "2026-10-01T00:00:00Z" }]) {
+      const patchs = simuler({ fiche });
+      expect((await declarer("73282932000074")).statut).toBe(409);
+      expect(patchs).toHaveLength(0);
+    }
   });
   it("un SIREN de 9 chiffres admis à l'inscription se complète par un SIRET de la même entreprise, jamais d'une autre", async () => {
     let patchs = simuler({ fiche: { role: "prestataire", siret: "732829320", missions_enabled: false } });
@@ -111,6 +113,19 @@ describe("action declarer_siret", () => {
     for (let i = 0; i < 5; i++) expect((await declarer("73282932000074")).statut).toBe(400);
     expect((await declarer("73282932000074")).statut).toBe(429);
   });
+  it("SIRET présent dans le seul compte (fiche vide) : pas de remplacement ; un SIREN s'y complète sur la fiche vide", async () => {
+    let patchs = simuler({ metaAppelant: { siret: "55210055400013" } });
+    expect((await declarer("73282932000074")).statut).toBe(409);
+    expect(patchs).toHaveLength(0);
+    patchs = simuler({ metaAppelant: { siret: "732829320" } });
+    expect((await declarer("73282932000074")).statut).toBe(200);
+    expect(patchs[0].u).toContain("siret=is.null");
+  });
+  it("les erreurs de saisie ne consomment pas les cinq essais", async () => {
+    simuler();
+    for (let i = 0; i < 8; i++) expect((await declarer("123")).statut).toBe(400);
+    expect((await declarer("73282932000074")).statut).toBe(200);
+  });
   it("écriture concurrente : un autre envoi a écrit entre-temps (0 ligne) — 409", async () => {
     simuler({ ecrites: [] });
     expect((await declarer("73282932000074")).statut).toBe(409);
@@ -120,11 +135,12 @@ describe("action declarer_siret", () => {
 describe("l'écran et les e-mails", () => {
   const ecran = readFileSync(new URL("../../components/presta-screens.jsx", import.meta.url), "utf8");
   it("la liste reste affichée tant que le SIRET manque, même fermée ; cochée seulement par 14 chiffres sur la fiche", () => {
-    expect(ecran).toContain("if (dismissed && siretComplet) return null;");
+    expect(ecran).toContain("const siretAttendu = !siretComplet && !profil.missions_enabled_at;");
+    expect(ecran).toContain("if (dismissed && !siretAttendu && !siretEnregistre) return null;");
     expect(ecran).toContain('const siretComplet = /^\\d{14}$/.test(String(profil.siret || ""));');
   });
   it("la liste « Pour recevoir des prestations » propose la saisie quand il n'y a pas de SIRET", () => {
-    expect(ecran).toContain('{ id:"siret",   label:"Numéro SIRET renseigné"');
+    expect(ecran).toContain('{ id:"siret", label:"Numéro SIRET renseigné"');
     expect(ecran).toContain('item.id === "siret" && <SaisieSiret');
     expect(ecran).toContain('action: "declarer_siret"');
   });
