@@ -7335,13 +7335,28 @@ export default async function handler(req, res) {
           // rien ne repasse, et le client lit « intégralement remboursé ». Un
           // ticket interne, que l'équipe voit au back-office (13/11/2026).
           console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
-          const t = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
-            method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ subject: `[Interne] Heures ajoutées à rembourser — prestation ${mission_id.slice(0, 8)}`,
-              user_id: mission.client_id || caller.id, status: "open",
-              message: `Désistement du prestataire : la réservation a été remboursée et la prestation annulée, mais le remboursement des heures ajoutées a échoué. À rembourser dans Stripe (paiements ${Object.keys(paiementsAjoutsPresta).join(", ")}), en entier : le client les avait payées et rien n'a été fait.` }),
-          }).catch(e => { console.error("[presta_cancel] ticket interne non créé :", e.message); return null; });
-          if (t && !t.ok) console.error(`[presta_cancel] ticket interne NON créé (${t.status}).`);
+          // Un seul ticket par prestation tant qu'il est ouvert : un nouvel essai
+          // du prestataire (écriture finale refusée) en créait un de plus. Et
+          // l'équipe vérifie d'abord dans Stripe — un essai suivant a pu les
+          // rendre entre-temps (relecture du 13/11/2026, après-midi).
+          const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${mission_id.slice(0, 8)}`;
+          try {
+            const dj = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
+            const deja = dj.ok ? await dj.json().catch(() => null) : null;
+            if (!Array.isArray(deja)) console.error(`[presta_cancel] tickets illisibles (${dj.status}) — ticket « heures ajoutées » non créé pour ${mission_id}.`);
+            else if (!deja.length) {
+              const t = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ subject: sujet, user_id: mission.client_id || caller.id, status: "open",
+                  message: `Désistement du prestataire : la réservation a été remboursée, mais le remboursement des heures ajoutées a échoué. `
+                    + `Elles sont dues au client en entier (paiements ${Object.keys(paiementsAjoutsPresta).join(", ")}). `
+                    + "Vérifier d'abord dans Stripe qu'elles n'ont pas été rendues depuis, puis rembourser ; vérifier aussi au back-office que la prestation est bien annulée." }),
+              });
+              if (!t.ok) console.error(`[presta_cancel] ticket interne NON créé (${t.status}).`);
+            }
+          } catch (e) {
+            console.error("[presta_cancel] ticket interne non créé :", e.message);
+          }
         }
       }
 

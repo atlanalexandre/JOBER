@@ -4330,6 +4330,8 @@ d'abord, un échec de la réservation laissait la prestation au prestataire avec
 rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation : il
 ouvre un **ticket interne** (« [Interne] Heures ajoutées à rembourser »), visible au back-office —
 le journal seul ne suffisait pas, plus rien ne repassant sur une prestation annulée (13/11/2026).
+Un seul par prestation tant qu'il est ouvert, et il demande de vérifier dans Stripe avant de
+rembourser : un essai suivant du prestataire a pu les rendre entre-temps.
 Les paiements du détail que la recherche Stripe n'a pas encore indexés sont relus un à un. Une réservation réglée par le portefeuille est recréditée hors
 heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
 (antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule

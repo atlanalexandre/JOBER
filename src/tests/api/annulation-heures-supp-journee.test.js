@@ -37,6 +37,7 @@ function simuler({ appelant, recherche = [PI.pi_sup], mission = MISSION, mainKo 
     if (u.includes("/missions?") && m === "PATCH") return json([{ ...mission, status: "cancelled" }]);
     if (u.includes("/profiles?id=eq.") && u.includes("select=prepaid_balance")) return json([{ prepaid_balance: 0 }]);
     if (u.includes("/support_tickets") && m === "POST") { remb.tickets.push(JSON.parse(String(o.body))); return json([], 201); }
+    if (u.includes("/support_tickets?subject=")) return json(remb.ticketOuvert ? [{ id: "t1" }] : []);
     if (u.includes("/profiles?id=eq.") && m === "PATCH") { remb.soldes.push(JSON.parse(String(o.body)).prepaid_balance); return json([{ id: CLIENT }]); }
     if (u.includes("/payment_intents/search")) return json({ data: recherche });
     if (u.includes("/v1/refunds?payment_intent=")) return json({ data: [] });
@@ -131,6 +132,14 @@ describe("désistement : suivi des heures ajoutées (13/11/2026)", () => {
     expect(remb.tickets).toHaveLength(1);
     expect(remb.tickets[0].subject).toMatch(/^\[Interne\] Heures ajoutées à rembourser/);
     expect(remb.tickets[0].message).toContain("pi_sup");
+    expect(remb.tickets[0].message).toContain("Vérifier d'abord dans Stripe");
+  });
+
+  it("un ticket déjà ouvert pour cette prestation : pas de second (13/11/2026, après-midi)", async () => {
+    const remb = simuler({ appelant: PRESTA, supKo: true });
+    remb.ticketOuvert = true;
+    await appeler({ action: "presta_cancel", mission_id: M });
+    expect(remb.tickets).toHaveLength(0);
   });
 
   it("portefeuille : un paiement du détail que la recherche n'a pas encore vu n'est pas rendu deux fois", async () => {
