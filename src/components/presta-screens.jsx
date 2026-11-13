@@ -2214,9 +2214,9 @@ export function AlerteTitresACompleter({ onNavigate }) {
 // d'être enregistré : le navigateur n'a pas le droit d'écrire ce champ.
 function SaisieSiret({ onEnregistre }) {
   const [valeur, setValeur] = useState("");
-  const [etat, setEtat] = useState({ envoi:false, erreur:"", ok:"" });
+  const [etat, setEtat] = useState({ envoi:false, erreur:"" });
   const envoyer = async () => {
-    setEtat({ envoi:true, erreur:"", ok:"" });
+    setEtat({ envoi:true, erreur:"" });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const r = await fetch("/api/support", {
@@ -2226,11 +2226,11 @@ function SaisieSiret({ onEnregistre }) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`);
-      setEtat({ envoi:false, erreur:"", ok:`Enregistré : ${j.entreprise}` });
-      onEnregistre(valeur.replace(/[\s.-]/g, ""));
+      setEtat({ envoi:false, erreur:"" });
+      onEnregistre(valeur.replace(/[\s.-]/g, ""), j.entreprise || "");
     } catch (e) {
       console.error("[siret] déclaration refusée :", e.message);
-      setEtat({ envoi:false, erreur:e.message, ok:"" });
+      setEtat({ envoi:false, erreur:e.message });
     }
   };
   const chiffres = valeur.replace(/[\s.-]/g, "");
@@ -2246,7 +2246,6 @@ function SaisieSiret({ onEnregistre }) {
         </button>
       </div>
       {etat.erreur && <div style={{ color:C.danger || "#F25E5E", fontSize:11, marginTop:6, lineHeight:1.5 }}>{etat.erreur}</div>}
-      {etat.ok && <div style={{ color:C.success, fontSize:11, marginTop:6 }}>✓ {etat.ok}</div>}
       <div style={{ color:C.textMuted, fontSize:10, marginTop:6, lineHeight:1.5 }}>
         Pas encore immatriculé ? Créez votre micro-entreprise, gratuitement, sur procedures.inpi.fr. Une fois enregistré, votre SIRET ne se modifie que par le support.
       </div>
@@ -2274,6 +2273,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   const [meta, setMeta] = useState(null);
   const [profil, setProfil] = useState(null);
   const [nbDocs, setNbDocs] = useState(null);
+  const [siretEnregistre, setSiretEnregistre] = useState("");
   const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem("alane_presta_checklist_dismissed") === "1"; } catch { return false; } });
 
   useEffect(() => {
@@ -2296,7 +2296,12 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
     });
   }, []);
 
-  if (dismissed || !meta || !profil || nbDocs === null) return null;
+  if (!meta || !profil || nbDocs === null) return null;
+  // Le SIRET se déclare ICI, et nulle part ailleurs : tant qu'il manque, la
+  // liste reste affichée même si elle a été fermée — la relance et l'e-mail de
+  // validation y renvoient (13/11/2026).
+  const siretComplet = /^\d{14}$/.test(String(profil.siret || ""));
+  if (dismissed && siretComplet) return null;
 
   // Le compte dépend du prestataire : titre de séjour hors UE, justificatif de
   // qualification pour les métiers réglementés. Compter `DOCS_REQUIS` brut
@@ -2307,7 +2312,9 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
     // l'envoyer par e-mail (13/11/2026). Il se saisit désormais ici, une fois.
     { id:"siret",   label:"Numéro SIRET renseigné",
       aide:"Obligatoire pour exercer comme indépendant — saisissez-le ci-dessous",
-      done:!!(profil.siret || meta.siret), action:null },
+      // Sur la FICHE, en 14 chiffres : c'est là que lisent l'échéance URSSAF et
+      // les factures. Un SIREN de 9 chiffres admis à l'inscription se complète ici.
+      done:siretComplet, action:null },
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
       done:nbDocs >= requis, action:"doc_upload" },
@@ -2365,7 +2372,10 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
           <div style={{ flex:1 }}>
             <div style={{ fontSize:13, color: item.done ? C.textMuted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
             {!item.done && <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{item.aide}</div>}
-            {!item.done && item.id === "siret" && <SaisieSiret onEnregistre={(siret) => setProfil(p => ({ ...p, siret }))} />}
+            {!item.done && item.id === "siret" && <SaisieSiret onEnregistre={(siret, entreprise) => { setSiretEnregistre(entreprise); setProfil(p => ({ ...p, siret })); }} />}
+            {item.done && item.id === "siret" && siretEnregistre && (
+              <div style={{ fontSize:11, color:C.success, marginTop:2 }}>Entreprise retrouvée : {siretEnregistre}. Si ce n'est pas la vôtre, écrivez à support@alane.fr.</div>
+            )}
           </div>
           {!item.done && item.action && <span style={{ color:C.violet, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>Compléter →</span>}
         </div>

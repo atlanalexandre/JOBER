@@ -2761,14 +2761,24 @@ le seul écran qui le renvoyait, l'inscription client, ne le fait plus (déploy�
 migration). Un changement de SIRET passe par le back-office.
 
 **SIRET déclaré par le prestataire** (13/11/2026). Qui n'en avait pas à l'inscription le saisit
-dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`) — au lieu
-de l'envoyer par e-mail. L'écriture passe par le serveur (`support.js`, action `declarer_siret`) :
-format et clé de contrôle (`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La
-Poste), puis registre SIRENE (entreprise existante et active, `entrepriseSirene()`), et
-**seulement si la fiche n'a pas encore de SIRET** (écriture conditionnée à `siret=is.null`). Un
-premier SIRET ne repousse aucune échéance ; le remplacer, si : un changement reste l'affaire du
-support. La liste noire le contrôle à la validation du profil, comme celui de l'inscription. La
-relance des inscrits sans SIRET et l'e-mail de validation renvoient vers cette saisie. Production lue le 14/10 : aucun SIRET
+dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`), qui reste
+affichée tant qu'il manque, même fermée — au lieu de l'envoyer par e-mail. L'écriture passe par le
+serveur (`support.js`, action `declarer_siret`) : compte non bloqué, 5 essais par 10 minutes (le
+registre SIRENE est partagé avec les traitements planifiés), format et clé de contrôle
+(`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La Poste), puis registre SIRENE
+(entreprise existante et active, `entrepriseSirene()`). Il est écrit sur la fiche **et** dans le
+compte (`user_metadata.siret`), comme le fait le back-office : la liste noire et la validation l'y
+lisent. La liste noire est consultée aussitôt (SIRET d'un compte supprimé : essai épuisé).
+
+Garde-fous contre la faille du 14/10 : **jamais de remplacement** (écriture conditionnée à
+`siret=is.null`) — sauf un SIREN de 9 chiffres admis à l'inscription, que complète un SIRET de la
+**même** entreprise (même immatriculation) ; et **jamais une fois l'accès aux prestations ouvert** :
+l'échéance de l'attestation URSSAF y court déjà, depuis l'inscription faute de SIRET, et un premier
+SIRET la ferait partir de l'immatriculation — d'une entreprise créée la veille, elle reculerait. Ces
+cas passent par le support. Limite connue : rien ne vérifie que l'entreprise est bien celle du
+prestataire — c'est l'extrait KBIS / INSEE, vérifié au back-office, qui le dit ; le nom retrouvé
+dans le registre lui est affiché, avec l'adresse du support s'il se trompe. La relance des inscrits
+sans SIRET et l'e-mail de validation renvoient vers cette saisie. Production lue le 14/10 : aucun SIRET
 différent de celui déclaré à l'inscription. **Appliquée en recette et en production le 14/10/2026** —
 vérifié en lecture seule : `siret` n'est plus modifiable ni par `authenticated` ni par `anon`, et les
 15 colonnes qui restent ouvertes au navigateur sont les mêmes des deux côtés.
