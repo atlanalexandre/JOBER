@@ -48,14 +48,15 @@ describe("refusée, remboursement en échec : reprise par la tâche planifiée",
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
-  it("le prestataire refuse, Stripe refuse le remboursement : remise en attente, délai échu, le prestataire qui a refusé reste exclu", async () => {
+  it("le prestataire refuse, Stripe refuse le remboursement : remise en attente, délai échu, sans prestataire", async () => {
     const patchs = simuler({ appelant: PRESTA, mission: { ...MISSION, acceptance_deadline: new Date(Date.now() + 3600e3).toISOString() }, rembourse: false });
     const r = await appeler({ action: "respond_mission", mission_id: M, response: "refuse" });
     expect(r.statut).toBe(200);
     const p = remise(patchs);
     expect(p?.u).toContain("status=eq.refused");
-    // Il reste inscrit (13/11/2026) : la recherche du suivant l'exclut ainsi.
-    expect(p.corps).not.toHaveProperty("prestataire_id");
+    // Sans prestataire : gardé, son application l'effaçait et annonçait au
+    // client « de nouveau disponible », à tort (13/11/2026, après-midi).
+    expect(p.corps.prestataire_id).toBeNull();
     expect(Date.parse(p.corps.acceptance_deadline)).toBeLessThan(Date.now());
   });
   it("délai écoulé constaté par le client, remboursement en échec : même reprise", async () => {
@@ -69,4 +70,11 @@ describe("refusée, remboursement en échec : reprise par la tâche planifiée",
     await appeler({ action: "respond_mission", mission_id: M, response: "refuse" });
     expect(remise(patchs)).toBeUndefined();
   });
+
+  it("délai écoulé, remboursement en échec : le prestataire n'est plus inscrit — son application ne pourra pas annoncer « de nouveau disponible »", async () => {
+    const patchs = simuler({ appelant: CLIENT, mission: { ...MISSION, acceptance_deadline: new Date(Date.now() - 3600e3).toISOString() }, rembourse: false });
+    await appeler({ action: "acceptance_timeout", mission_id: M });
+    expect(remise(patchs).corps.prestataire_id).toBeNull();
+  });
 });
+

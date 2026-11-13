@@ -82,6 +82,10 @@ describe("refus d'une prestation affectée par la plateforme : ce que lit le cli
     const s = simuler({ basculeOk: false, rembourse: false, mission: { ...MISSION, date: hier } });
     expect((await refuser()).statut).toBe(200);
     expect(s.notifs.join(" ")).not.toContain("Inutile de réserver à nouveau");
+    // Ni « choisissez un autre prestataire » : il n'en avait choisi aucun. Son remboursement est annoncé.
+    const tout = [s.notifs.join(" "), ...s.courriels.map(c => c.subject + c.html), ...s.sms].join(" ");
+    expect(tout).not.toContain("choisir un autre prestataire");
+    expect(s.notifs.join(" ")).toContain("votre paiement vous sera intégralement remboursé");
   });
 });
 
