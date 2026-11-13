@@ -17,7 +17,7 @@ describe("executer_decision : un seul dénouement par litige", () => {
   it("le verrou est pris, sur un litige toujours ouvert, AVANT l'exécution", () => {
     expect(verrou).toBeGreaterThan(0);
     expect(execution).toBeGreaterThan(verrou);
-    expect(bloc.slice(verrou - 200, verrou)).toContain("status=eq.disputed");
+    expect(bloc).toMatch(/missions\?id=eq\.\$\{mission_id\}&status=eq\.disputed&\$\{filtreVerrou\}/);
   });
   it("verrou déjà pris : rien n'est exécuté (409)", () => {
     expect(bloc.slice(verrou, execution)).toMatch(/pris\.length === 0\) \{\s*return res\.status\(409\)/);
@@ -44,8 +44,27 @@ describe("échec APRÈS un mouvement d'argent : le verrou est gardé (12/11/2026
     const cron = lire("api/cron-reset-monthly.js");
     const garde = cron.indexOf("if (!out.ok && out.argentParti)");
     expect(garde).toBeGreaterThan(0);
-    expect(cron.slice(garde, garde + 400)).toContain("continue;");
+    expect(cron.slice(garde, garde + 1200)).toContain("continue;");
     expect(cron.indexOf("resolution_executee_cause: null", garde)).toBeGreaterThan(garde);
+  });
+});
+
+describe("un dénouement « à reprendre » se termine par un remboursement, jamais autrement (13/11/2026)", () => {
+  const bo = lire("api/bo-action.js");
+  const bloc = bo.slice(bo.indexOf('if (action === "executer_decision")'));
+  const cron = lire("api/cron-reset-monthly.js");
+  it("back-office : seul « rembourser le client » reprend un litige marqué à reprendre", () => {
+    expect(bloc).toMatch(/const filtreVerrou = resolution === "rembourser_client"\s*\? "or=\(resolution_executee_cause\.is\.null,resolution_executee_cause\.like\.\*_a_reprendre\)"\s*: "resolution_executee_cause=is\.null";/);
+  });
+  it("back-office : l'échec après mouvement d'argent marque « à reprendre » et journalise la décision", () => {
+    const garde = bloc.indexOf("if (!out.ok && out.argentParti)");
+    const suite = bloc.slice(garde, bloc.indexOf("if (!out.ok) {", garde));
+    expect(suite).toContain("`${cause}_a_reprendre`");
+    expect(suite).toContain('await journaliser("executer_decision"');
+  });
+  it("tâche planifiée : seul un accord tacite de remboursement est repris d'office", () => {
+    expect(cron).toMatch(/const filtreVerrou = m\.resolution_proposee === "rembourser_client"\s*\? "or=\(resolution_executee_cause\.is\.null,resolution_executee_cause\.eq\.accord_tacite_a_reprendre\)"/);
+    expect(cron).toContain('resolution_executee_cause: "accord_tacite_a_reprendre"');
   });
 });
 

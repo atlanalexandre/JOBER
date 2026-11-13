@@ -1626,7 +1626,17 @@ export default async function handler(req, res) {
       // la tâche exécutait l'accord tacite — ou un double clic — dénouait le
       // litige deux fois : client remboursé ET prestataire payé (relecture du
       // 11/11/2026). Relâché si l'exécution échoue, pour pouvoir réessayer.
-      const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&resolution_executee_cause=is.null`, {
+      //
+      // Un dénouement resté « à reprendre » (remboursement fait, clôture non
+      // écrite) se reprend par un REMBOURSEMENT — le seul que
+      // executerResolution sait reprendre sans payer deux fois : il retrouve
+      // le remboursement déjà fait à son étiquette et termine la clôture.
+      // Verrouillé pour toujours, ce litige ne se dénouait plus (relecture du
+      // 13/11/2026).
+      const filtreVerrou = resolution === "rembourser_client"
+        ? "or=(resolution_executee_cause.is.null,resolution_executee_cause.like.*_a_reprendre)"
+        : "resolution_executee_cause=is.null";
+      const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtreVerrou}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ resolution_executee_cause: cause }),
       });
@@ -1649,8 +1659,18 @@ export default async function handler(req, res) {
         // laissait la tâche planifiée exécuter ENSUITE la proposition en
         // attente — client remboursé puis prestataire payé (relecture du
         // 12/11/2026).
-        console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé, à reprendre à la main : ${out.detail}`);
-        return res.status(500).json({ error: out.detail });
+        // Marqué « à reprendre » : seule une nouvelle décision de rembourser
+        // pourra le reprendre (filtre ci-dessus). Et l'argent a bougé : la
+        // décision et sa justification sont journalisées quand même — c'est la
+        // seule trace de ce au titre de quoi les fonds ont bougé.
+        const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ resolution_executee_cause: `${cause}_a_reprendre` }),
+        }).catch(e => { console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » :`, e.message); return null; });
+        if (ar && !ar.ok) console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » (${ar.status})`);
+        await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just, inacheve: out.detail } });
+        console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé : ${out.detail}`);
+        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » sur ce litige : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
       }
       if (!out.ok) {
         const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {

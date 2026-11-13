@@ -4892,8 +4892,14 @@ pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécu
 qu'aucun argent ait bougé** : il est relâché. Sans lui, une décision et un accord tacite pouvaient
 dénouer le même litige deux fois — client remboursé **et** prestataire payé. Un échec **après** le
 remboursement (clôture non écrite) ou une coupure pendant celui-ci renvoie `argentParti` : le
-verrou est alors gardé, ici comme dans la tâche planifiée, et le cas est à reprendre à la main.
-Relâché, il laissait la tâche exécuter ensuite la proposition en attente (relecture du 12/11/2026).
+verrou est alors gardé, ici comme dans la tâche planifiée — relâché, il laissait la tâche exécuter
+ensuite la proposition en attente (relecture du 12/11/2026). Il est marqué
+`<cause>_a_reprendre`, et **seul un remboursement** peut le reprendre : `executerResolution()`
+retrouve le remboursement déjà fait à son étiquette et termine la clôture, sans rien rendre deux
+fois. Côté back-office, relancer « rembourser le client » (le message d'erreur le dit) ; côté tâche
+planifiée, un accord tacite de remboursement est repris au passage suivant, toute autre résolution
+attend une décision. La décision du back-office est journalisée même dans ce cas, avec sa
+justification. Verrouillé sans issue, le litige ne se dénouait plus (relecture du 13/11/2026).
 
 Le parcours normal, celui de l'accord :
 
