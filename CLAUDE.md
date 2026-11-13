@@ -213,6 +213,15 @@ avant de la retirer de `user_metadata`).
 - Quand une action lui revient (réglage dans un dashboard), donne le chemin exact des clics.
 - Signale les décisions qui lui appartiennent (produit, argent, données personnelles).
 
+### 2.7 Jamais le nom du propriétaire dans ce que lit un utilisateur
+
+Décision du 13/11/2026 : son nom n'apparaît **nulle part** côté utilisateurs — site, e-mails,
+SMS, notifications, textes préparés pour lui (messages à envoyer, publications LinkedIn), ni dans
+le code source d'un e-mail (un commentaire HTML s'y lit par « afficher la source »). On signe
+**« L'équipe ALANE »**, jamais d'un prénom. `src/tests/api/nom-proprietaire.test.js` le vérifie
+sur `src/`, `api/` et `public/`. Les commentaires internes du code, qui ne quittent pas le dépôt,
+ne sont pas visés.
+
 ---
 
 ## 3. Conventions de code
