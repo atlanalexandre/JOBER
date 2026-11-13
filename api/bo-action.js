@@ -523,6 +523,23 @@ export default async function handler(req, res) {
             : [];
           const docsAttendusPresta   = tousDocsPresta.filter(d => d.required);
           const docsFacultatifsPresta = tousDocsPresta.filter(d => !d.required);
+          // Le SIRET et le CV, que l'accès aux prestations exige aussi, n'y
+          // étaient pas : 91 inscrits en attente n'avaient pas de SIRET le
+          // 13/11/2026. Lus sur la fiche (`profiles`), à défaut sur l'inscription.
+          // Illisibles, les deux rappels sont donnés : un rappel de trop vaut
+          // mieux qu'un manque.
+          let sansSiret = true, cvIncomplet = true;
+          if (role === "prestataire") {
+            try {
+              const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=siret,cv`, { headers });
+              const fp = await fr.json().catch(() => null);
+              if (!fr.ok || !Array.isArray(fp)) throw new Error(`fiche illisible (${fr.status})`);
+              sansSiret = !aUnSiret(fp[0] || {}, userData.user_metadata || {});
+              cvIncomplet = manquesCv((fp[0] || {}).cv || userData.user_metadata?.cv).length > 0;
+            } catch (e) {
+              console.error(`[approve] SIRET et CV de ${profileId} non lus — les deux rappels sont donnés :`, e.message);
+            }
+          }
           await sendEmail({
             to: userEmail,
             subject: "Bienvenue sur ALANE — Votre compte est activé ! 🎉",
@@ -530,6 +547,11 @@ export default async function handler(req, res) {
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               ${role === "prestataire" ? `
+              ${sansSiret ? `
+              <div style="background:#FFF4E5;border-left:3px solid #F5A623;border-radius:8px;padding:14px 16px;margin:18px 0">
+                <div style="font-weight:700;color:#050E20;font-size:14px;margin-bottom:6px">Votre numéro SIRET est obligatoire</div>
+                <div style="color:#444;font-size:13px;line-height:1.6">Renseignez-le dans votre profil : sur ALANE, vous intervenez en tant qu'indépendant (auto-entrepreneur ou micro-entrepreneur), et sans SIRET aucune prestation ne peut vous être proposée. Pas encore immatriculé ? La création d'une micro-entreprise se fait en ligne, sur le guichet unique des formalités d'entreprises (formalites.entreprises.gouv.fr).</div>
+              </div>` : ""}
               <p style="margin-top:20px;"><strong>Ce compte ne vous donne pas encore accès aux prestations.</strong>
               Il vous reste une étape : déposer les pièces ci-dessous depuis l'onglet <strong>Docs</strong> de votre espace.
               Tant qu'elles ne sont pas toutes déposées et vérifiées par notre équipe, vous ne recevrez aucune proposition.</p>
@@ -540,11 +562,14 @@ export default async function handler(req, res) {
                 </ul>
                 ${docsFacultatifsPresta.length > 0 ? `<div style="color:#888;font-size:12px;margin-top:10px">Facultatif : ${docsFacultatifsPresta.map(d => esc(d.label)).join(", ")}.</div>` : ""}
               </div>
+${cvIncomplet ? `
+              <p style="color:#444;font-size:13px;">Complétez aussi votre <strong>CV</strong> (Modifier mon profil) : les clients le consultent avant de réserver, et l'accès aux prestations l'exige.</p>` : ""}
               <p style="color:#444;font-size:13px;">Pensez aussi à accepter les <strong>mandats de facturation et d'encaissement</strong> depuis l'onglet Revenus : sans eux, aucune facture ne peut être émise à votre nom.</p>
               <p style="color:#444;font-size:13px;">Une fois votre dossier complet et vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${appUrl()}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              ${role === "prestataire" ? `<p style="color:#888;font-size:12px;">Pour suivre l'actualité d'ALANE : <a href="https://www.linkedin.com/company/alane-fr/" style="color:#7C6FE0;">notre page LinkedIn</a>.</p>` : ""}
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
           });
