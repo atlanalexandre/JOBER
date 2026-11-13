@@ -1,5 +1,6 @@
 import { resendBody, sendEmail, emailHtml, esc as escEmail, euros } from "./_email.js";
 import { sendPushToUser, notifier } from "./_push.js";
+import { paiementsAboutisDe, rembourserDoublonPaiement } from "./_paiement.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
@@ -522,8 +523,28 @@ export default async function handler(req, res) {
           //    29/09/2026).
           const aPaye = !!m.stripe_payment_intent;
           const urlCloture = `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`;
-          const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)`,
-            { status: aPaye ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
+          // « Sans paiement » pour la base ne veut pas dire sans paiement : un
+          // client qui a payé puis fermé son navigateur avant l'affectation
+          // laisse un paiement abouti que rien n'a rattaché. Clôturée sans
+          // regarder, la demande gardait son argent (13/11/2026). Stripe est
+          // donc interrogé AVANT de clore ; muet, on attend le passage suivant.
+          let nonRattaches = [];
+          if (!aPaye) {
+            const cleStripe = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+            if (!cleStripe) {
+              console.error(`[cron/cloture] ${m.id} : clé Stripe absente — paiement non vérifiable, clôture reportée.`);
+              differees++;
+              return;
+            }
+            try { nonRattaches = await paiementsAboutisDe(m.id, cleStripe); }
+            catch (e) {
+              console.error(`[cron/cloture] ${m.id} : paiement non vérifiable — clôture reportée :`, e.message);
+              differees++;
+              return;
+            }
+          }
+          const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)${aPaye ? "" : "&stripe_payment_intent=is.null"}`,
+            { status: aPaye || nonRattaches.length ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
           if (!close) {
             // Reprise entre-temps (ou écriture refusée, journalisée par
             // ecrireVerifie) : ni remboursement, ni annonce au client.
@@ -548,6 +569,23 @@ export default async function handler(req, res) {
               return;
             }
             remboursees++;
+          } else if (nonRattaches.length) {
+            // Les paiements que rien n'avait rattachés : même clé que
+            // l'application et le webhook — jamais deux fois.
+            let tous = true;
+            for (const pi of nonRattaches) if (!(await rembourserDoublonPaiement(pi, `cron/cloture ${m.id}`))) tous = false;
+            if (!tous) {
+              differees++;
+              differeesPersistantes.push(m.id);
+              const rouverte = await ecrireVerifie(`${urlCloture}&status=eq.cancelled`,
+                { status: m.status }, headers, `cron/cloture ${m.id} (réouverture)`);
+              console.error(`[cron] paiement non rattaché NON remboursé pour ${m.id} — `
+                + (rouverte ? "clôture différée, reprise au prochain passage." : "⚠️ ANNULÉE SANS REMBOURSEMENT et non rouverte : à rembourser à la main."));
+              return;
+            }
+            rembourse = true;
+            remboursees++;
+            console.error(`[cron/cloture] ${m.id} : paiement(s) non rattaché(s) ${nonRattaches.join(", ")} remboursé(s) à la clôture.`);
           }
           cloturees++;
           // Rejeter toutes candidatures en attente

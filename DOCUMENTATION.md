@@ -1502,7 +1502,7 @@ Les 78 fichiers de `/api` — 21 points d'entrée et 57 modules partagés préfi
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée Tout identifiant de carte reçu du navigateur passe par le contrôle de format `^pm_[A-Za-z0-9]+$` avant d'entrer dans une adresse Stripe appelée avec la clé secrète — le paiement d'heures supplémentaires y échappait jusqu'au 11/11/2026 |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
-| `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
+| `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » ; `paiementsAboutisDe()` (13/11/2026) : les paiements de réservation aboutis d'une prestation, lus chez Stripe — la clôture des demandes dépassées les rembourse au lieu de les ignorer |
 | `_recurrence.js` | Séries hebdomadaires — `programmerOccurrenceSuivante()` crée, débite et propose la semaine suivante ; `dateSuivante()`, `montantOccurrence()`. Appelé par `complete` et la validation automatique. Voir §6 « Réserver chaque semaine » |
 | `_nouvelle_demande.js` | `prevenirNouvelleDemande()` — notification, e-mail avec réponse en un clic, SMS au prestataire désigné. Partagé par `missions.js` et `_recurrence.js` |
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
@@ -2147,6 +2147,18 @@ de toute façon non abonné, laisse l'affectation à l'application. Sur une pres
 `refused`, `rejected` ou `closed` qui ne porte pas ce paiement, il est désormais remboursé
 (`rembourserDoublonPaiement()`, même clé d'idempotence que le webhook : jamais deux fois). Une
 prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
+
+**Et quand le client a fermé son navigateur** (13/11/2026), `assign_after_payment` n'est jamais
+appelé : la demande reste « sans paiement » pour la base. La clôture des demandes dépassées
+(`cron-reset-monthly`) interroge désormais Stripe **avant** de clore une demande sans paiement
+rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par identifiant de prestation,
+séries et heures supplémentaires écartées, paiements déjà remboursés aussi) : un paiement abouti
+trouvé, la demande passe « annulée » et il est remboursé avec la clé de l'application et du
+webhook ; Stripe muet, la clôture attend le passage suivant. `cron-abandon` le faisait déjà pour
+les réservations abandonnées. Abonner le webhook à `payment_intent.succeeded` aurait réveillé tout
+le chemin endormi décrit ci-dessous ; relire les paiements récents du compte, essayé le même jour,
+voyait aussi ceux de la recette (le compte Stripe de test est partagé) et ne rattrapait pas une
+demande fermée plus de 48 h après le paiement. **Aucun réglage n'est à faire chez Stripe.**
 
 Il cachait un défaut, neutralisé le 26/09/2026 avant qu'il ne serve : une réservation ordinaire
 ne porte aucun prestataire dans son paiement (il n'est rattaché qu'après) ; ce chemin la passait
