@@ -15,6 +15,10 @@ describe("l'e-mail de validation du profil", () => {
   it("réclame le SIRET à qui ne l'a pas, lu sur la fiche puis sur l'inscription", () => {
     expect(courriel).toContain("sansSiret = !aUnSiret(fp[0] || {}, userData.user_metadata || {});");
     expect(courriel).toContain("Votre numéro SIRET est obligatoire");
+    // Aucun champ ne permet de l'ajouter dans l'application après l'inscription :
+    // il s'envoie au support, comme dans la relance des inscrits sans SIRET (13/11/2026).
+    expect(courriel).not.toContain("Renseignez-le dans votre profil");
+    expect(courriel).toContain("mailto:support@alane.fr");
   });
   it("rappelle le CV quand il est incomplet, et renvoie vers LinkedIn", () => {
     expect(courriel).toContain("cvIncomplet = manquesCv(");

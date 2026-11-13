@@ -652,7 +652,9 @@ l'obligatoire du facultatif, rappelle les deux mandats, et dit d'emblée que **l
 donne pas encore accès aux prestations**.
 
 Depuis le 13/11/2026, il réclame aussi le **SIRET** à qui ne l'a pas encore renseigné (lu sur
-`profiles.siret`, à défaut sur l'inscription — 91 inscrits en attente n'en avaient pas), rappelle
+`profiles.siret`, à défaut sur l'inscription — 91 inscrits en attente n'en avaient pas) ; il
+s'envoie à support@alane.fr, comme dans la relance des inscrits sans SIRET, car **aucun champ ne
+permet de l'ajouter dans l'application après l'inscription**, rappelle
 le **CV** quand il est incomplet (l'accès aux prestations exige les deux), et renvoie vers la page
 LinkedIn d'ALANE. La photo demandée précise qu'elle n'est **pas celle de la pièce d'identité**. Le
 compte de virement n'y est pas demandé : son lien part à l'ouverture de l'accès (`enable_missions`).
