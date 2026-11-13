@@ -4331,10 +4331,11 @@ rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plu
 ouvre un **ticket interne** (« [Interne] Heures ajoutées à rembourser »), visible au back-office —
 le journal seul ne suffisait pas, plus rien ne repassant sur une prestation annulée (13/11/2026).
 **Le ticket des heures ajoutées** (`ticketHeuresAjoutees()`, interruption et désistement) : un par
-échec — son sujet porte l'événement (« interruption <jour> », « désistement »), un nouvel essai du
-même événement n'en recrée pas, un second échec sur la même prestation a le sien ; il annonce ce
-qui **reste dû**, déduction faite de ce qui est parti avant l'échec (annoncer le total faisait
-rembourser deux fois) ; et il demande de vérifier dans Stripe avant d'agir, un essai suivant ayant
+échec — son sujet porte l'événement (« interruption <jour> (journée|arrêt) », « désistement »), un
+nouvel essai du même événement n'en recrée pas, un second échec sur la même prestation a le sien ;
+il annonce ce qui **reste dû**, déduction faite de ce qui est parti avant l'échec (annoncer le
+total faisait rembourser deux fois), avec le détail **par paiement** (un total sur plusieurs
+paiements faisait rembourser le mauvais) ; et il demande de vérifier dans Stripe avant d'agir, un essai suivant ayant
 pu rendre ces heures entre-temps.
 Les paiements du détail que la recherche Stripe n'a pas encore indexés sont relus un à un. Une réservation réglée par le portefeuille est recréditée hors
 heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`

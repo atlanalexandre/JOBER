@@ -689,7 +689,11 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
  *     essai suivant a pu rendre ces heures entre-temps.
  * Rend true si un ticket existe pour cet échec (créé ou déjà ouvert).
  */
-async function ticketHeuresAjoutees({ missionId, evenement, contexte, duesEuros, centimesRendus = 0, paiements, userId, explication }, supabaseUrl, headers) {
+async function ticketHeuresAjoutees({ missionId, evenement, contexte, parPaiement, centimesRendus = 0, userId, explication }, supabaseUrl, headers) {
+  // Le détail PAR paiement : un total sur plusieurs paiements faisait
+  // rembourser le mauvais (relecture du 13/11/2026, troisième passe).
+  const duesEuros = Object.values(parPaiement).reduce((t, v) => t + (Number(v) || 0), 0);
+  const detail = Object.entries(parPaiement).map(([pi, v]) => `${pi} : ${euros(Number(v) || 0)}`).join(" ; ");
   const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${String(missionId).slice(0, 8)} — ${evenement}`;
   const resteEuros = Math.max(0, Math.round((Number(duesEuros) - Number(centimesRendus || 0) / 100) * 100) / 100);
   try {
@@ -705,7 +709,7 @@ async function ticketHeuresAjoutees({ missionId, evenement, contexte, duesEuros,
       body: JSON.stringify({ subject: sujet, user_id: userId, status: "open",
         message: `${explication} Reste dû au client : ${euros(resteEuros)}`
           + (centimesRendus > 0 ? ` (${euros(centimesRendus / 100)} déjà rendus avant l'échec)` : "")
-          + `, sur les paiements ${paiements.join(", ")}. `
+          + `. Dû à l'origine, par paiement : ${detail}. `
           + "Vérifier d'abord dans Stripe ce qui a déjà été rendu sur ces paiements — un nouvel essai a pu le faire entre-temps —, puis rembourser le reste ; vérifier aussi l'état de la prestation au back-office." }),
     });
     if (!t.ok) { console.error(`[${contexte}] ticket interne NON créé (${t.status}) pour ${missionId}.`); return false; }
@@ -4843,16 +4847,21 @@ export default async function handler(req, res) {
       let ajoutsRendus = true, ajoutsRendusEuros = ajoutsPerdus.valeur, ticketAjouts = false;
       if (ajoutsPerdus.valeur > 0) {
         const rAjouts = await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress");
+        // Ce que Stripe a RÉELLEMENT rendu : plafonné au reste remboursable,
+        // il peut être inférieur au voulu même quand tout réussit.
+        ajoutsRendusEuros = (Number(rAjouts.centimes) || 0) / 100;
         if (!rAjouts.ok) {
           ajoutsRendus = false;
           console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} € dus, `
             + `${((Number(rAjouts.centimes) || 0) / 100).toFixed(2)} € rendus avant l'échec, paiements ${Object.keys(ajoutsPerdus.parPaiement || {}).join(", ")}) — prestation écourtée quand même. À FAIRE À LA MAIN.`);
-          ticketAjouts = await ticketHeuresAjoutees({ missionId: mission_id, evenement: `interruption ${aujourdHui}`, contexte: "cancel_in_progress",
-            duesEuros: ajoutsPerdus.valeur, centimesRendus: Number(rAjouts.centimes) || 0, paiements: Object.keys(ajoutsPerdus.parPaiement || {}),
+          // L'événement distingue la journée écourtée de l'arrêt de toute la
+          // prestation, comme l'étiquette des remboursements : les deux, le même
+          // jour, ont chacun leur ticket.
+          ticketAjouts = await ticketHeuresAjoutees({ missionId: mission_id, evenement: `interruption ${aujourdHui} (${annulerReste ? "arrêt" : "journée"})`, contexte: "cancel_in_progress",
+            parPaiement: ajoutsPerdus.parPaiement || {}, centimesRendus: Number(rAjouts.centimes) || 0,
             userId: mission.client_id || caller.id,
             explication: "Interruption par le client : les heures ajoutées non faites n'ont pas toutes pu être remboursées. Le prestataire n'en sera pas payé." },
           SUPABASE_URL, headers);
-          ajoutsRendusEuros = (Number(rAjouts.centimes) || 0) / 100;
         }
       }
 
@@ -7362,9 +7371,8 @@ export default async function handler(req, res) {
           // ticket interne, que l'équipe voit au back-office (13/11/2026).
           console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
           await ticketHeuresAjoutees({ missionId: mission_id, evenement: "désistement", contexte: "presta_cancel",
-            duesEuros: Object.values(paiementsAjoutsPresta).reduce((t, v) => t + v, 0), centimesRendus: Number(rAj.centimes) || 0,
-            paiements: Object.keys(paiementsAjoutsPresta), userId: mission.client_id || caller.id,
-            explication: "Désistement du prestataire : la réservation a été remboursée, mais les heures ajoutées n'ont pas toutes pu l'être : elles sont dues au client en entier." },
+            parPaiement: paiementsAjoutsPresta, centimesRendus: Number(rAj.centimes) || 0, userId: mission.client_id || caller.id,
+            explication: "Désistement du prestataire : la réservation a été remboursée, mais les heures ajoutées n'ont pas toutes pu l'être." },
           SUPABASE_URL, headers);
         }
       }
