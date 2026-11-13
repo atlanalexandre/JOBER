@@ -550,7 +550,7 @@ export default async function handler(req, res) {
               ${sansSiret ? `
               <div style="background:#FFF4E5;border-left:3px solid #F5A623;border-radius:8px;padding:14px 16px;margin:18px 0">
                 <div style="font-weight:700;color:#050E20;font-size:14px;margin-bottom:6px">Votre numéro SIRET est obligatoire</div>
-                <div style="color:#444;font-size:13px;line-height:1.6">Renseignez-le dans votre profil : sur ALANE, vous intervenez en tant qu'indépendant (auto-entrepreneur ou micro-entrepreneur), et sans SIRET aucune prestation ne peut vous être proposée. Pas encore immatriculé ? La création d'une micro-entreprise se fait en ligne, sur le guichet unique des formalités d'entreprises (formalites.entreprises.gouv.fr).</div>
+                <div style="color:#444;font-size:13px;line-height:1.6">Sur ALANE, vous intervenez en tant qu'indépendant (auto-entrepreneur ou micro-entrepreneur) : sans SIRET, aucune prestation ne peut vous être proposée. Pas encore immatriculé ? Créez votre micro-entreprise, gratuitement, sur le guichet officiel (procedures.inpi.fr). Dès que vous avez votre numéro (14 chiffres), envoyez-le à <a href="mailto:support@alane.fr">support@alane.fr</a> : nous l'ajoutons à votre dossier.</div>
               </div>` : ""}
               <p style="margin-top:20px;"><strong>Ce compte ne vous donne pas encore accès aux prestations.</strong>
               Il vous reste une étape : déposer les pièces ci-dessous depuis l'onglet <strong>Docs</strong> de votre espace.
