@@ -4900,9 +4900,11 @@ ensuite la proposition en attente (relecture du 12/11/2026). Il est marqué
 `<cause>_a_reprendre`, et **seul un remboursement** peut le reprendre : `executerResolution()`
 retrouve le remboursement déjà fait à son étiquette et termine la clôture, sans rien rendre deux
 fois. Côté back-office, relancer « rembourser le client » avec la **même cause** (le message
-d'erreur le dit) ; un accord tacite bloqué que la tâche planifiée n'arrive pas à terminer peut
-l'être aussi, mais il **reste un accord tacite** — verrou, journal et message aux parties
-(« en application de l'accord des parties ») ne parlent jamais d'une décision de justice ; côté tâche planifiée, un accord tacite de remboursement est repris
+d'erreur le dit) — un accord tacite bloqué n'y est pas repris : il aurait été annoncé aux parties
+comme une décision de justice. Limite connue : si la tâche planifiée échoue à chaque passage
+(paiement contesté chez Stripe, par exemple), l'accord tacite reste bloqué — le message du
+back-office le dit, c'est un cas pour la maintenance (essai de reprise par le back-office retiré
+le 13/11/2026 : une vraie décision de justice pouvait y être convertie en silence) ; côté tâche planifiée, un accord tacite de remboursement est repris
 au passage suivant, toute autre résolution attend une décision. Une reprise qui échoue à son tour
 **rend au verrou sa valeur d'avant** (« à reprendre ») : relâché à vide, il effaçait la trace du
 remboursement déjà fait, et une décision de verser pouvait passer ensuite (13/11/2026, après-midi).

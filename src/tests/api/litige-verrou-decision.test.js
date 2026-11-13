@@ -14,7 +14,7 @@ const bloc = bo.slice(debut, bo.indexOf("\n    if (action ===", debut + 30));
 const cron = lire("api/cron-reset-monthly.js");
 
 describe("executer_decision : un seul dénouement par litige", () => {
-  const prise = bloc.indexOf("const prendre = async (filtre, valeur = cause)");
+  const prise = bloc.indexOf("const prendre = async (filtre)");
   const execution = bloc.indexOf("await executerResolution(");
   it("le verrou est pris, sur un litige toujours ouvert, AVANT l'exécution", () => {
     expect(prise).toBeGreaterThan(0);
@@ -26,7 +26,8 @@ describe("executer_decision : un seul dénouement par litige", () => {
     const refus = bloc.slice(bloc.indexOf("if (!pris) {"), execution);
     expect(refus).toContain("return res.status(409)");
     expect(refus).toContain("relancez « rembourser le client » avec la cause");
-    expect(refus).toContain("relancez « rembourser le client » pour la terminer");
+    expect(refus).toContain("la tâche planifiée la termine");
+    expect(refus).toContain("signalez-le à la maintenance");
   });
   it("exécution en échec sans mouvement d'argent : le verrou retrouve sa valeur d'avant", () => {
     expect(bloc.slice(execution)).toMatch(/if \(!out\.ok\) \{[\s\S]{0,300}resolution_executee_cause: verrouAvant/);
@@ -43,7 +44,7 @@ describe("échec APRÈS un mouvement d'argent : le verrou est gardé, marqué «
     expect(garde).toBeGreaterThan(0);
     expect(relache).toBeGreaterThan(garde);
     const suite = bloc.slice(garde, relache);
-    expect(suite).toContain("`${causeEffective}_a_reprendre`");
+    expect(suite).toContain("`${cause}_a_reprendre`");
     expect(suite).toContain('await journaliser("executer_decision"');
     expect(suite).toMatch(/return res\.status\(500\)/);
   });
@@ -68,19 +69,13 @@ describe("reprise d'un dénouement « à reprendre » (13/11/2026)", () => {
   });
 });
 
-describe("un accord tacite bloqué peut être terminé depuis le back-office, en restant un accord tacite (13/11/2026)", () => {
-  it("repris par « rembourser le client », sous la cause accord_tacite", () => {
-    expect(bloc).toContain('pris = await prendre("resolution_executee_cause=eq.accord_tacite_a_reprendre", "accord_tacite");');
-    expect(bloc).toContain('if (pris) { verrouAvant = "accord_tacite_a_reprendre"; causeEffective = "accord_tacite"; }');
-    expect(bloc).toContain("cause: causeEffective,");
+describe("le back-office ne reprend jamais un accord tacite (13/11/2026)", () => {
+  it("il ne serait annoncé que comme une décision de justice : refusé, avec un message qui le dit", () => {
+    expect(bloc).not.toContain('prendre("resolution_executee_cause=eq.accord_tacite_a_reprendre"');
+    expect(bloc).not.toContain("causeEffective");
   });
-  it("les parties lisent « accord des parties », jamais une décision de justice qui n'existe pas", () => {
-    expect(bloc).toMatch(/const origine = causeEffective === "accord_tacite" \? "de l'accord des parties/);
-  });
-  it("marquage, relâchement et journal suivent la cause effective", () => {
-    expect(bloc).toContain("resolution_executee_cause=eq.${causeEffective}`");
-    expect(bloc).toContain("`${causeEffective}_a_reprendre`");
-    expect(bloc).not.toMatch(/resolution_executee_cause=eq\.\$\{cause\}`/);
+  it("la relecture de la cause en cours journalise ses erreurs (CLAUDE.md 1.2)", () => {
+    expect(bloc).toContain("illisible — message générique");
   });
 });
 
