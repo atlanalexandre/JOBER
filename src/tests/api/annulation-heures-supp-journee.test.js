@@ -133,6 +133,8 @@ describe("désistement : suivi des heures ajoutées (13/11/2026)", () => {
     expect(remb.tickets[0].subject).toMatch(/^\[Interne\] Heures ajoutées à rembourser/);
     expect(remb.tickets[0].message).toContain("pi_sup");
     expect(remb.tickets[0].message).toContain("Vérifier d'abord dans Stripe");
+    expect(remb.tickets[0].subject).toMatch(/— désistement$/);
+    expect(remb.tickets[0].message).toMatch(/Reste dû au client : 15,40\s€/);
   });
 
   it("un ticket déjà ouvert pour cette prestation : pas de second (13/11/2026, après-midi)", async () => {

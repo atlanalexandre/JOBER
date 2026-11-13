@@ -54,10 +54,18 @@ describe("cancel_in_progress", () => {
   it("heures ajoutées non rendues : un ticket interne, et le client n'en lit pas le remboursement (13/11/2026, après-midi)", () => {
     const echec = b.indexOf("ajoutsRendus = false;");
     expect(echec).toBeGreaterThan(0);
-    const suite = b.slice(echec, echec + 2500);
-    expect(suite).toContain("[Interne] Heures ajoutées à rembourser");
-    expect(suite).toContain("status=eq.open&select=id&limit=1");
-    expect(b).toContain("remboursement: Math.round((refundAmount + (ajoutsRendus ? ajoutsPerdus.valeur : 0) + renduRetard) * 100) / 100,");
+    const suite = b.slice(echec, echec + 1500);
+    // Un ticket propre à CET échec (le jour), ce qui est déjà parti déduit.
+    expect(suite).toMatch(/ticketHeuresAjoutees\(\{ missionId: mission_id, evenement: `interruption \$\{aujourdHui\}`/);
+    expect(suite).toContain("centimesRendus: Number(rAjouts.centimes) || 0");
+    expect(b).toContain("remboursement: Math.round((refundAmount + ajoutsRendusEuros + renduRetard) * 100) / 100,");
+  });
+  it("le ticket est partagé, propre à chaque échec, n'annonce que le reste dû et demande de vérifier dans Stripe", () => {
+    const f = src.slice(src.indexOf("async function ticketHeuresAjoutees("), src.indexOf("async function remettreARembourser("));
+    expect(f).toContain("— ${evenement}`");
+    expect(f).toContain("Reste dû au client");
+    expect(f).toContain("Vérifier d'abord dans Stripe");
+    expect(src.match(/\[Interne\] Heures ajoutées à rembourser/g)).toHaveLength(1);
   });
 });
 

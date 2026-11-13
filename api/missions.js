@@ -677,6 +677,46 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 }
 
 /**
+ * Un remboursement d'heures ajoutées a échoué : un ticket interne, que l'équipe
+ * voit au back-office (relecture du 13/11/2026). Partagé par l'interruption et
+ * le désistement — deux copies divergeaient déjà.
+ *   - `evenement` distingue chaque échec (interruption d'un jour, désistement) :
+ *     un second échec sur la même prestation n'est plus absorbé par le ticket
+ *     du premier ; un nouvel essai du MÊME événement n'en crée pas un second ;
+ *   - `centimesRendus` : ce qui est parti avant l'échec. Le ticket annonce ce
+ *     qui reste dû, jamais le total — l'équipe aurait remboursé deux fois ;
+ *   - le texte demande toujours de vérifier dans Stripe avant d'agir : un
+ *     essai suivant a pu rendre ces heures entre-temps.
+ * Rend true si un ticket existe pour cet échec (créé ou déjà ouvert).
+ */
+async function ticketHeuresAjoutees({ missionId, evenement, contexte, duesEuros, centimesRendus = 0, paiements, userId, explication }, supabaseUrl, headers) {
+  const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${String(missionId).slice(0, 8)} — ${evenement}`;
+  const resteEuros = Math.max(0, Math.round((Number(duesEuros) - Number(centimesRendus || 0) / 100) * 100) / 100);
+  try {
+    const dj = await fetch(`${supabaseUrl}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
+    const deja = dj.ok ? await dj.json().catch(() => null) : null;
+    if (!Array.isArray(deja)) {
+      console.error(`[${contexte}] tickets illisibles (${dj.status}) — ticket « heures ajoutées » NON créé pour ${missionId}.`);
+      return false;
+    }
+    if (deja.length) return true;
+    const t = await fetch(`${supabaseUrl}/rest/v1/support_tickets`, {
+      method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ subject: sujet, user_id: userId, status: "open",
+        message: `${explication} Reste dû au client : ${euros(resteEuros)}`
+          + (centimesRendus > 0 ? ` (${euros(centimesRendus / 100)} déjà rendus avant l'échec)` : "")
+          + `, sur les paiements ${paiements.join(", ")}. `
+          + "Vérifier d'abord dans Stripe ce qui a déjà été rendu sur ces paiements — un nouvel essai a pu le faire entre-temps —, puis rembourser le reste ; vérifier aussi l'état de la prestation au back-office." }),
+    });
+    if (!t.ok) { console.error(`[${contexte}] ticket interne NON créé (${t.status}) pour ${missionId}.`); return false; }
+    return true;
+  } catch (e) {
+    console.error(`[${contexte}] ticket interne non créé pour ${missionId} :`, e.message);
+    return false;
+  }
+}
+
+/**
  * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
  * La prestation restait « refusée », l'argent du client gardé, et rien ne la
  * reprenait : la tâche planifiée ne relit que les prestations en attente
@@ -4800,33 +4840,19 @@ export default async function handler(req, res) {
       // deux fois (étiquette par paiement, jour et issue).
       // Rendues ou non : ce que le client lit, et ce que l'équipe doit faire,
       // en dépendent (relecture du 13/11/2026, après-midi).
-      let ajoutsRendus = true;
+      let ajoutsRendus = true, ajoutsRendusEuros = ajoutsPerdus.valeur, ticketAjouts = false;
       if (ajoutsPerdus.valeur > 0) {
         const rAjouts = await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress");
         if (!rAjouts.ok) {
           ajoutsRendus = false;
-          const paiements = Object.keys(ajoutsPerdus.parPaiement || {}).join(", ");
-          console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} €, `
-            + `paiements ${paiements}) — prestation écourtée quand même. À FAIRE À LA MAIN : rembourser le client dans Stripe.`);
-          // Le journal seul ne suffisait pas : un ticket interne, un seul par
-          // prestation tant qu'il est ouvert (un nouvel essai n'en refait pas).
-          const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${mission_id.slice(0, 8)}`;
-          try {
-            const dj = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
-            const deja = dj.ok ? await dj.json().catch(() => null) : null;
-            if (!Array.isArray(deja)) console.error(`[cancel_in_progress] tickets illisibles (${dj.status}) — ticket « heures ajoutées » non créé pour ${mission_id}.`);
-            else if (!deja.length) {
-              const t = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
-                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ subject: sujet, user_id: mission.client_id || caller.id, status: "open",
-                  message: `Interruption par le client : les heures ajoutées non faites (${euros(ajoutsPerdus.valeur)}) n'ont pas pu être remboursées. `
-                    + `Le prestataire n'en sera pas payé ; elles sont dues au client. À rembourser dans Stripe (paiements ${paiements}).` }),
-              });
-              if (!t.ok) console.error(`[cancel_in_progress] ticket interne NON créé (${t.status}).`);
-            }
-          } catch (e) {
-            console.error("[cancel_in_progress] ticket interne non créé :", e.message);
-          }
+          console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} € dus, `
+            + `${((Number(rAjouts.centimes) || 0) / 100).toFixed(2)} € rendus avant l'échec, paiements ${Object.keys(ajoutsPerdus.parPaiement || {}).join(", ")}) — prestation écourtée quand même. À FAIRE À LA MAIN.`);
+          ticketAjouts = await ticketHeuresAjoutees({ missionId: mission_id, evenement: `interruption ${aujourdHui}`, contexte: "cancel_in_progress",
+            duesEuros: ajoutsPerdus.valeur, centimesRendus: Number(rAjouts.centimes) || 0, paiements: Object.keys(ajoutsPerdus.parPaiement || {}),
+            userId: mission.client_id || caller.id,
+            explication: "Interruption par le client : les heures ajoutées non faites n'ont pas toutes pu être remboursées. Le prestataire n'en sera pas payé." },
+          SUPABASE_URL, headers);
+          ajoutsRendusEuros = (Number(rAjouts.centimes) || 0) / 100;
         }
       }
 
@@ -5127,7 +5153,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} ${ajoutsRendus ? "remboursés sur les paiements de prolongation" : "NON remboursés (échec Stripe) — ticket interne ouvert, à rembourser à la main"}</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} ${ajoutsRendus ? "remboursés sur les paiements de prolongation" : `NON remboursés en entier (${euros(ajoutsRendusEuros)} rendus avant l'échec Stripe) — ${ticketAjouts ? "ticket interne ouvert" : "ticket interne NON créé, voir les journaux"}, à rembourser à la main`}</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -5157,9 +5183,9 @@ export default async function handler(req, res) {
         heuresPerdues: heuresPerduesTotal,
         // Ce qui est réellement parti : des heures ajoutées non rendues ne
         // sont pas annoncées au client comme remboursées.
-        remboursement: Math.round((refundAmount + (ajoutsRendus ? ajoutsPerdus.valeur : 0) + renduRetard) * 100) / 100,
-        remboursementHeuresAjoutees: ajoutsRendus ? ajoutsPerdus.valeur : 0,
-        ...(ajoutsRendus ? {} : { heuresAjouteesARembourser: ajoutsPerdus.valeur }),
+        remboursement: Math.round((refundAmount + ajoutsRendusEuros + renduRetard) * 100) / 100,
+        remboursementHeuresAjoutees: ajoutsRendusEuros,
+        ...(ajoutsRendus ? {} : { heuresAjouteesARembourser: Math.round((ajoutsPerdus.valeur - ajoutsRendusEuros) * 100) / 100 }),
         proratedAmount,
       });
     }
@@ -7335,28 +7361,11 @@ export default async function handler(req, res) {
           // rien ne repasse, et le client lit « intégralement remboursé ». Un
           // ticket interne, que l'équipe voit au back-office (13/11/2026).
           console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
-          // Un seul ticket par prestation tant qu'il est ouvert : un nouvel essai
-          // du prestataire (écriture finale refusée) en créait un de plus. Et
-          // l'équipe vérifie d'abord dans Stripe — un essai suivant a pu les
-          // rendre entre-temps (relecture du 13/11/2026, après-midi).
-          const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${mission_id.slice(0, 8)}`;
-          try {
-            const dj = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
-            const deja = dj.ok ? await dj.json().catch(() => null) : null;
-            if (!Array.isArray(deja)) console.error(`[presta_cancel] tickets illisibles (${dj.status}) — ticket « heures ajoutées » non créé pour ${mission_id}.`);
-            else if (!deja.length) {
-              const t = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
-                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ subject: sujet, user_id: mission.client_id || caller.id, status: "open",
-                  message: `Désistement du prestataire : la réservation a été remboursée, mais le remboursement des heures ajoutées a échoué. `
-                    + `Elles sont dues au client en entier (paiements ${Object.keys(paiementsAjoutsPresta).join(", ")}). `
-                    + "Vérifier d'abord dans Stripe qu'elles n'ont pas été rendues depuis, puis rembourser ; vérifier aussi au back-office que la prestation est bien annulée." }),
-              });
-              if (!t.ok) console.error(`[presta_cancel] ticket interne NON créé (${t.status}).`);
-            }
-          } catch (e) {
-            console.error("[presta_cancel] ticket interne non créé :", e.message);
-          }
+          await ticketHeuresAjoutees({ missionId: mission_id, evenement: "désistement", contexte: "presta_cancel",
+            duesEuros: Object.values(paiementsAjoutsPresta).reduce((t, v) => t + v, 0), centimesRendus: Number(rAj.centimes) || 0,
+            paiements: Object.keys(paiementsAjoutsPresta), userId: mission.client_id || caller.id,
+            explication: "Désistement du prestataire : la réservation a été remboursée, mais les heures ajoutées n'ont pas toutes pu l'être : elles sont dues au client en entier." },
+          SUPABASE_URL, headers);
         }
       }
 

@@ -4293,8 +4293,8 @@ déduisent de leur différence. Ils sont remboursés **après** la prestation el
 rendus avant, un échec du remboursement principal arrêtait l'interruption et laissait des heures
 déjà rendues que la clôture aurait payées au prestataire. Un échec à ce stade n'arrête plus rien —
 la prestation est écourtée, le prestataire n'est pas payé de ces heures — et il ouvre un
-**ticket interne** (« [Interne] Heures ajoutées à rembourser », un seul par prestation tant qu'il est
-ouvert) ; la réponse et l'e-mail à l'équipe ne les annoncent plus comme remboursées. Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
+**ticket interne** (`ticketHeuresAjoutees()`, partagé avec le désistement) ; la réponse et l'e-mail à
+l'équipe n'annoncent plus que ce qui est réellement parti. Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
 de ces paiements restent acquis. Éprouvé par `e2e/70`.
 
 Quand l'arrêt de **toute** la prestation ne laisse rien à verser, le versement est écrit
@@ -4330,8 +4330,12 @@ d'abord, un échec de la réservation laissait la prestation au prestataire avec
 rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation : il
 ouvre un **ticket interne** (« [Interne] Heures ajoutées à rembourser »), visible au back-office —
 le journal seul ne suffisait pas, plus rien ne repassant sur une prestation annulée (13/11/2026).
-Un seul par prestation tant qu'il est ouvert, et il demande de vérifier dans Stripe avant de
-rembourser : un essai suivant du prestataire a pu les rendre entre-temps.
+**Le ticket des heures ajoutées** (`ticketHeuresAjoutees()`, interruption et désistement) : un par
+échec — son sujet porte l'événement (« interruption <jour> », « désistement »), un nouvel essai du
+même événement n'en recrée pas, un second échec sur la même prestation a le sien ; il annonce ce
+qui **reste dû**, déduction faite de ce qui est parti avant l'échec (annoncer le total faisait
+rembourser deux fois) ; et il demande de vérifier dans Stripe avant d'agir, un essai suivant ayant
+pu rendre ces heures entre-temps.
 Les paiements du détail que la recherche Stripe n'a pas encore indexés sont relus un à un. Une réservation réglée par le portefeuille est recréditée hors
 heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
 (antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
