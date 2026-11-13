@@ -2209,6 +2209,51 @@ export function AlerteTitresACompleter({ onNavigate }) {
   );
 }
 
+// Le prestataire déclare son SIRET, une seule fois (13/11/2026). Vérifié par
+// le serveur — format, clé de contrôle, registre des entreprises — avant
+// d'être enregistré : le navigateur n'a pas le droit d'écrire ce champ.
+function SaisieSiret({ onEnregistre }) {
+  const [valeur, setValeur] = useState("");
+  const [etat, setEtat] = useState({ envoi:false, erreur:"", ok:"" });
+  const envoyer = async () => {
+    setEtat({ envoi:true, erreur:"", ok:"" });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ action: "declarer_siret", siret: valeur }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`);
+      setEtat({ envoi:false, erreur:"", ok:`Enregistré : ${j.entreprise}` });
+      onEnregistre(valeur.replace(/[\s.-]/g, ""));
+    } catch (e) {
+      console.error("[siret] déclaration refusée :", e.message);
+      setEtat({ envoi:false, erreur:e.message, ok:"" });
+    }
+  };
+  const chiffres = valeur.replace(/[\s.-]/g, "");
+  return (
+    <div onClick={e => e.stopPropagation()} style={{ marginTop:8 }}>
+      <div style={{ display:"flex", gap:8 }}>
+        <input type="text" inputMode="numeric" autoComplete="off" placeholder="14 chiffres" value={valeur}
+          onChange={e => setValeur(e.target.value)} aria-label="Numéro SIRET"
+          style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.violet}55`, background:"rgba(255,255,255,0.06)", color:C.text, fontFamily:"inherit" }} />
+        <button disabled={etat.envoi || chiffres.length !== 14} onClick={envoyer}
+          style={{ padding:"8px 12px", borderRadius:8, border:"none", background: chiffres.length === 14 ? C.violet : "rgba(255,255,255,0.12)", color:"#fff", fontWeight:700, fontSize:12, cursor: chiffres.length === 14 && !etat.envoi ? "pointer" : "default", fontFamily:"inherit" }}>
+          {etat.envoi ? "Vérification…" : "Enregistrer"}
+        </button>
+      </div>
+      {etat.erreur && <div style={{ color:C.danger || "#F25E5E", fontSize:11, marginTop:6, lineHeight:1.5 }}>{etat.erreur}</div>}
+      {etat.ok && <div style={{ color:C.success, fontSize:11, marginTop:6 }}>✓ {etat.ok}</div>}
+      <div style={{ color:C.textMuted, fontSize:10, marginTop:6, lineHeight:1.5 }}>
+        Pas encore immatriculé ? Créez votre micro-entreprise, gratuitement, sur procedures.inpi.fr. Une fois enregistré, votre SIRET ne se modifie que par le support.
+      </div>
+    </div>
+  );
+}
+
 export function PrestaOnboardingChecklist({ onNavigate }) {
   // ═══════════════════════════════════════════════════════════════════════
   // CE QUI RESTE À FAIRE, ET RIEN D'AUTRE
@@ -2240,7 +2285,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       // dans le jeton : c'est le serveur qui les accorde.
       const { data: p, error } = await supabase
         .from("profiles")
-        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status,cv")
+        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status,cv,siret")
         .eq("id", u.id).single();
       if (error) console.error("[premiers pas] profil illisible :", error.message);
       setProfil(p || {});
@@ -2258,6 +2303,11 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   // annonçait « 7/7 déposés » à quelqu'un à qui il en manquait un.
   const requis = docsRequisPour(meta.nationalite, metiersDeclares(meta)).filter(d => d.required).length;
   const items = [
+    // Le SIRET se déclarait seulement à l'inscription : sans lui, il fallait
+    // l'envoyer par e-mail (13/11/2026). Il se saisit désormais ici, une fois.
+    { id:"siret",   label:"Numéro SIRET renseigné",
+      aide:"Obligatoire pour exercer comme indépendant — saisissez-le ci-dessous",
+      done:!!(profil.siret || meta.siret), action:null },
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
       done:nbDocs >= requis, action:"doc_upload" },
@@ -2304,7 +2354,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       </div>
       {items.map((item, idx) => (
         <div key={item.id}
-          onClick={() => !item.done && onNavigate(item.action)}
+          onClick={() => !item.done && item.action && onNavigate(item.action)}
           style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"9px 0", borderBottom: idx < items.length-1 ? `1px solid rgba(255,255,255,0.05)` : "none", cursor: item.done ? "default" : "pointer" }}>
           <div style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, marginTop:1,
             background: item.done ? `${C.success}22` : `${C.violet}22`,
@@ -2315,8 +2365,9 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
           <div style={{ flex:1 }}>
             <div style={{ fontSize:13, color: item.done ? C.textMuted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
             {!item.done && <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{item.aide}</div>}
+            {!item.done && item.id === "siret" && <SaisieSiret onEnregistre={(siret) => setProfil(p => ({ ...p, siret }))} />}
           </div>
-          {!item.done && <span style={{ color:C.violet, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>Compléter →</span>}
+          {!item.done && item.action && <span style={{ color:C.violet, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>Compléter →</span>}
         </div>
       ))}
       {enAttente && (

@@ -2,6 +2,8 @@ import { esc, emailHtml, sendEmail, euros } from "./_email.js";
 import { verifyUser } from "./_auth.js";
 import { empreintes, filtreListeNoire, ligneListeNoire, inscrireListeNoire, dansLaConservation } from "./_liste_noire.js";
 import { appUrl } from "./_url.js";
+import { validerSiret } from "./_siret.js";
+import { entrepriseSirene } from "./_references.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
@@ -330,6 +332,59 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       console.error("[mes_invitations] lecture impossible :", e.message);
       return res.status(502).json({ error: "Le bilan de vos invitations est indisponible pour le moment." });
     }
+  }
+
+  // ── declarer_siret : le prestataire déclare SON SIRET, une seule fois ──
+  //
+  // Voir api/_siret.js (13/11/2026). Le navigateur n'a pas le droit d'écrire
+  // `profiles.siret` (migration secu_profils_siret_non_modifiable) : c'est ici,
+  // en service role, après vérification — format et clé, puis registre SIRENE
+  // (entreprise existante et active) —, et SEULEMENT si la fiche n'en a pas
+  // encore : un changement passe par le support.
+  if (req.body?.action === "declarer_siret") {
+    const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
+    const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
+    const v = validerSiret(req.body?.siret);
+    if (!v.ok) return res.status(400).json({ error: v.erreur });
+    const sr = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
+
+    const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,siret`, { headers: sr });
+    const fiche = await fr.json().catch(() => null);
+    if (!fr.ok || !Array.isArray(fiche)) {
+      console.error(`[declarer_siret] fiche de ${caller.id} illisible (${fr.status})`);
+      return res.status(503).json({ error: "Votre dossier est momentanément indisponible. Réessayez dans un instant." });
+    }
+    if (fiche[0]?.role !== "prestataire") return res.status(403).json({ error: "Réservé aux prestataires." });
+    if (fiche[0]?.siret) {
+      return res.status(409).json({ error: "Un SIRET est déjà enregistré sur votre dossier. Pour le modifier, écrivez à support@alane.fr." });
+    }
+
+    let entreprise;
+    try { entreprise = await entrepriseSirene(v.siret); }
+    catch (e) {
+      console.error("[declarer_siret] registre SIRENE :", e.message);
+      return res.status(503).json({ error: "Le registre des entreprises ne répond pas. Réessayez dans un instant." });
+    }
+    if (!entreprise) return res.status(400).json({ error: "Ce SIRET est introuvable dans le registre des entreprises. Vérifiez les 14 chiffres — une entreprise créée il y a quelques jours peut aussi ne pas y figurer encore." });
+    if (!entreprise.actif) return res.status(400).json({ error: "Cette entreprise est fermée d'après le registre des entreprises." });
+
+    // Conditionnée à « encore aucun SIRET » : deux envois simultanés n'écrivent pas deux numéros.
+    const wr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&siret=is.null`, {
+      method: "PATCH", headers: { ...sr, "Prefer": "return=representation" }, body: JSON.stringify({ siret: v.siret }),
+    });
+    const ecrit = await wr.json().catch(() => null);
+    if (!wr.ok) {
+      console.error(`[declarer_siret] SIRET de ${caller.id} non enregistré (${wr.status}) : ${JSON.stringify(ecrit).slice(0, 200)}`);
+      return res.status(502).json({ error: "Votre SIRET n'a pas pu être enregistré. Réessayez." });
+    }
+    if (!Array.isArray(ecrit) || ecrit.length === 0) {
+      return res.status(409).json({ error: "Un SIRET est déjà enregistré sur votre dossier. Pour le modifier, écrivez à support@alane.fr." });
+    }
+    console.log(`[declarer_siret] SIRET déclaré par ${caller.id}`);
+    return res.status(200).json({ ok: true, entreprise: entreprise.nom });
   }
 
   // ── track_referral: link new user to referrer ────────────────────

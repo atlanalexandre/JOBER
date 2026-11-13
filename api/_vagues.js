@@ -85,9 +85,10 @@ export function emailRelanceSiret() {
       + "<p><strong>Ce qu'il vous reste à faire :</strong></p>"
       + "<ol><li>Créez votre micro-entreprise, gratuitement, sur le guichet officiel : "
       + "<a href=\"https://procedures.inpi.fr/\">procedures.inpi.fr</a>.</li>"
-      + "<li>Dès que vous recevez votre numéro SIRET (14 chiffres), envoyez-le à "
-      + "<a href=\"mailto:support@alane.fr\">support@alane.fr</a> : nous l'ajoutons à votre dossier.</li></ol>"
-      + "<p>Si vous avez déjà un SIRET, envoyez-le simplement à la même adresse.</p>"
+      + "<li>Dès que vous avez votre numéro SIRET (14 chiffres), saisissez-le dans votre espace ALANE : "
+      + "page d'accueil, rubrique « Pour recevoir des prestations ». Il est vérifié aussitôt dans le registre des entreprises.</li></ol>"
+      + "<p>Si vous avez déjà un SIRET, saisissez-le simplement au même endroit. Une difficulté ? "
+      + "<a href=\"mailto:support@alane.fr\">support@alane.fr</a>.</p>"
       + "<p style=\"color:#888;font-size:13px;\">L'équipe ALANE</p>",
     ),
   };
