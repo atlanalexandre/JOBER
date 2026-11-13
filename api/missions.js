@@ -689,7 +689,7 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
  *     essai suivant a pu rendre ces heures entre-temps.
  * Rend true si un ticket existe pour cet échec (créé ou déjà ouvert).
  */
-async function ticketHeuresAjoutees({ missionId, evenement, contexte, parPaiement, centimesRendus = 0, userId, explication }, supabaseUrl, headers) {
+async function ticketHeuresAjoutees({ missionId, evenement, contexte, parPaiement = {}, centimesRendus = 0, userId, explication }, supabaseUrl, headers) {
   // Le détail PAR paiement : un total sur plusieurs paiements faisait
   // rembourser le mauvais (relecture du 13/11/2026, troisième passe).
   const duesEuros = Object.values(parPaiement).reduce((t, v) => t + (Number(v) || 0), 0);
@@ -5162,7 +5162,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} ${ajoutsRendus ? "remboursés sur les paiements de prolongation" : `NON remboursés en entier (${euros(ajoutsRendusEuros)} rendus avant l'échec Stripe) — ${ticketAjouts ? "ticket interne ouvert" : "ticket interne NON créé, voir les journaux"}, à rembourser à la main`}</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${ajoutsRendus ? `${euros(ajoutsRendusEuros)} remboursés sur les paiements de prolongation${ajoutsRendusEuros + 0.005 < ajoutsPerdus.valeur ? ` (sur ${euros(ajoutsPerdus.valeur)} dus : le reste avait déjà été rendu)` : ""}` : `${euros(ajoutsPerdus.valeur)} dus — NON remboursés en entier (${euros(ajoutsRendusEuros)} rendus avant l'échec Stripe) — ${ticketAjouts ? "ticket interne ouvert" : "ticket interne NON créé, voir les journaux"}, à rembourser à la main`}</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
