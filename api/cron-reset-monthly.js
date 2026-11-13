@@ -680,8 +680,16 @@ export default async function handler(req, res) {
               // toucher à la contrainte de `missions.status`, et un statut
               // inconnu du reste du code ferait disparaître la prestation de
               // tous les écrans.
+              // Un accord tacite de REMBOURSEMENT resté « à reprendre »
+              // (remboursement fait, clôture non écrite) est repris : le
+              // remboursement déjà fait est retrouvé à son étiquette, rien ne
+              // part deux fois. Une autre résolution ne se reprend jamais
+              // d'office (relecture du 13/11/2026).
+              const filtreVerrou = m.resolution_proposee === "rembourser_client"
+                ? "or=(resolution_executee_cause.is.null,resolution_executee_cause.eq.accord_tacite_a_reprendre)"
+                : "resolution_executee_cause=is.null";
               const verrou = await fetch(
-                `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=is.null`,
+                `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&${filtreVerrou}`,
                 { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
                   body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) }
               );
@@ -697,7 +705,13 @@ export default async function handler(req, res) {
               if (!out.ok && out.argentParti) {
                 // L'argent a bougé (ou peut-être) : le verrou reste, rien ne
                 // repart d'office (relecture du 12/11/2026).
-                console.error(`[resolution] ${m.id} : échec APRÈS un mouvement d'argent — verrou gardé. À FAIRE À LA MAIN : ${out.detail}`);
+                const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=eq.accord_tacite`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ resolution_executee_cause: "accord_tacite_a_reprendre" }),
+                }).catch(e => { console.error(`[resolution] ${m.id} non marqué « à reprendre » :`, e.message); return null; });
+                if (ar && !ar.ok) console.error(`[resolution] ${m.id} non marqué « à reprendre » (${ar.status})`);
+                console.error(`[resolution] ${m.id} : échec APRÈS un mouvement d'argent — verrou gardé, `
+                  + `${m.resolution_proposee === "rembourser_client" ? "repris au prochain passage" : "À FAIRE À LA MAIN"} : ${out.detail}`);
                 continue;
               }
               if (!out.ok) {
