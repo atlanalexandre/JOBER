@@ -4718,17 +4718,11 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
 
-      // Les heures ajoutées non faites d'abord : un échec arrête tout ici, avant
-      // le moindre autre mouvement. Un nouvel essai ne rembourse pas deux fois
-      // (clé par paiement, jour et issue).
-      if (ajoutsPerdus.valeur > 0) {
-        const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-        const rAjouts = cleAjouts
-          ? await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress")
-          : { ok: false };
-        if (!rAjouts.ok) {
-          return res.status(500).json({ error: "Le remboursement des heures ajoutées a échoué — la prestation n'a pas été interrompue. Réessayez, ou contactez le support." });
-        }
+      // Les heures ajoutées non faites : sans clé Stripe, rien ne pourrait être
+      // rendu — on n'interrompt pas.
+      const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      if (ajoutsPerdus.valeur > 0 && !cleAjouts) {
+        return res.status(500).json({ error: "Le remboursement des heures ajoutées est indisponible — la prestation n'a pas été interrompue. Réessayez, ou contactez le support." });
       }
 
       if (refundAmount > 0 && isWalletPaidInProgress) {
@@ -4788,6 +4782,23 @@ export default async function handler(req, res) {
         }
       }
 
+      // Les heures ajoutées non faites APRÈS le remboursement de la prestation
+      // (relecture du 13/11/2026, comme le désistement le 12/11). Rendues
+      // avant, un échec du remboursement arrêtait l'interruption : la
+      // prestation restait entière, avec des heures ajoutées déjà rendues au
+      // client — que la clôture aurait payées au prestataire. Un échec ICI
+      // n'arrête plus rien : la prestation est écourtée comme prévu (le
+      // prestataire n'est pas payé de ces heures), et l'argent dû au client est
+      // signalé pour être rendu à la main. Un nouvel essai ne rembourse pas
+      // deux fois (étiquette par paiement, jour et issue).
+      if (ajoutsPerdus.valeur > 0) {
+        const rAjouts = await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress");
+        if (!rAjouts.ok) {
+          console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} €, `
+            + `paiements ${Object.keys(ajoutsPerdus.parPaiement || {}).join(", ")}) — prestation écourtée quand même. À FAIRE À LA MAIN : rembourser le client dans Stripe.`);
+        }
+      }
+
       // Mettre à jour la mission.
       //
       // Le résultat n'était pas vérifié, et le PATCH échouait : il écrivait
@@ -4813,8 +4824,13 @@ export default async function handler(req, res) {
       // deuxième faisait attendre au prestataire huit jours de plus un argent
       // dû pour un travail fait (relecture du 02/10/2026).
       const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
-      const versementInterruption = annulerReste && proratedAmount > 0 && mission.prestataire_id
-        ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount } : {};
+      // Rien à verser (aucune heure due) : le versement est ANNULÉ explicitement.
+      // Laissé vide, une validation du même instant gardait son versement
+      // complet en attente (relecture du 13/11/2026).
+      const versementInterruption = !(annulerReste && mission.prestataire_id) ? {}
+        : proratedAmount > 0
+          ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount }
+          : { payout_status: "annule", payout_amount: 0 };
       // La condition laisse passer une prestation que la validation (`complete`,
       // ou la validation automatique) vient de clore À L'INSTANT, versement
       // encore en attente : le remboursement ci-dessus est déjà parti, et c'est

@@ -37,6 +37,17 @@ describe("cancel_in_progress", () => {
   it("le versement d'une prestation arrêtée part dans cette même écriture, et nulle part ailleurs", () => {
     expect(b).toMatch(/\.\.\.versementInterruption,/);
     expect(b.match(/payout_status: "pending"/g)).toHaveLength(1);
-    expect(b).toMatch(/const versementInterruption = annulerReste && proratedAmount > 0 && mission\.prestataire_id/);
+    expect(b).toMatch(/const versementInterruption = !\(annulerReste && mission\.prestataire_id\) \? \{\}/);
+  });
+  it("rien à verser : le versement est annulé, pas laissé à celui d'une validation du même instant (13/11/2026)", () => {
+    expect(b).toContain(': { payout_status: "annule", payout_amount: 0 };');
+  });
+  it("les heures ajoutées sont rendues APRÈS le remboursement de la prestation, et leur échec n'arrête plus rien (13/11/2026)", () => {
+    const principal = b.indexOf("refund-cancel-inprogress-");
+    const ajouts = b.indexOf("await rembourserAjoutsNonFaits(");
+    expect(principal).toBeGreaterThan(0);
+    expect(ajouts).toBeGreaterThan(principal);
+    expect(ajouts).toBeLessThan(b.indexOf("const majAnnul"));
+    expect(b.slice(ajouts, ajouts + 600)).toContain("À FAIRE À LA MAIN");
   });
 });

@@ -4288,8 +4288,16 @@ annulées et celles d'aujourd'hui au-delà de ce qui a été travaillé (la jour
 d'abord). Elles sont remboursées **sur le paiement de prolongation qui les avait réglées**
 (`rembourserAjoutsNonFaits()`, `api/_remboursement_bo.js`, plafonné à ce qui reste remboursable),
 puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — les frais se
-déduisent de leur différence. Un échec de ce remboursement arrête l'interruption avant tout autre
-mouvement. Les frais de service de ces paiements restent acquis. Éprouvé par `e2e/70`.
+déduisent de leur différence. Ils sont remboursés **après** la prestation elle-même (13/11/2026) :
+rendus avant, un échec du remboursement principal arrêtait l'interruption et laissait des heures
+déjà rendues que la clôture aurait payées au prestataire. Un échec à ce stade n'arrête plus rien —
+la prestation est écourtée, le prestataire n'est pas payé de ces heures — et il est signalé
+« À FAIRE À LA MAIN ». Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
+de ces paiements restent acquis. Éprouvé par `e2e/70`.
+
+Quand l'arrêt de **toute** la prestation ne laisse rien à verser, le versement est écrit
+**annulé** (`payout_status = 'annule'`) : laissé vide, une validation du même instant gardait son
+versement complet en attente (13/11/2026).
 
 **Annuler avant le début rend aussi les modifications de commande** (relecture du 07/10/2026).
 Une commande peut être modifiée avant la première journée, et chaque modification est un paiement
