@@ -1615,7 +1615,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant,heures_perdues`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant,heures_perdues,resolution_executee_cause`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1633,9 +1633,17 @@ export default async function handler(req, res) {
       // le remboursement déjà fait à son étiquette et termine la clôture.
       // Verrouillé pour toujours, ce litige ne se dénouait plus (relecture du
       // 13/11/2026).
+      // Seulement le sien (même cause) : repris ici, un accord tacite bloqué
+      // aurait été annoncé aux parties comme une décision de justice — la
+      // tâche planifiée le reprend elle-même (relecture du 13/11/2026).
       const filtreVerrou = resolution === "rembourser_client"
-        ? "or=(resolution_executee_cause.is.null,resolution_executee_cause.like.*_a_reprendre)"
+        ? `or=(resolution_executee_cause.is.null,resolution_executee_cause.eq.${cause}_a_reprendre)`
         : "resolution_executee_cause=is.null";
+      // Ce que le verrou valait AVANT : un échec le lui rend. Repris depuis
+      // « à reprendre », le relâcher à vide effaçait la seule trace que le
+      // client avait déjà été remboursé — et une décision de verser passait
+      // ensuite : payé deux fois (relecture du 13/11/2026).
+      const verrouAvant = m.resolution_executee_cause ?? null;
       const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtreVerrou}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ resolution_executee_cause: cause }),
@@ -1675,7 +1683,7 @@ export default async function handler(req, res) {
       if (!out.ok) {
         const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ resolution_executee_cause: null }),
+          body: JSON.stringify({ resolution_executee_cause: verrouAvant }),
         }).catch(e => { console.error(`[executer_decision] verrou de ${mission_id} non relâché :`, e.message); return null; });
         if (rl && !rl.ok) console.error(`[executer_decision] verrou de ${mission_id} non relâché (${rl.status})`);
         return res.status(500).json({ error: out.detail });

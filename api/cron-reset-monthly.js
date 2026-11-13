@@ -653,7 +653,7 @@ export default async function handler(req, res) {
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
             + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
             + `delay_status,arrival_delay_minutes,`
-            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant,heures_perdues`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant,heures_perdues,resolution_executee_cause`
             + `&limit=100`,
             { headers }
           );
@@ -718,10 +718,14 @@ export default async function handler(req, res) {
                 // Relâcher le verrou : la prestation sera reprise au prochain
                 // passage plutôt que de rester coincée.
                 console.error(`[resolution] exécution impossible — prestation ${m.id} : ${out.detail}`);
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                // Rendu à ce qu'il valait : repris depuis « à reprendre », il y
+                // retourne — à vide, la trace du remboursement déjà fait se
+                // perdait (relecture du 13/11/2026).
+                const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=eq.accord_tacite`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ resolution_executee_cause: null }),
-                }).catch(e => console.error(`[resolution] verrou non relâché ${m.id} :`, e.message));
+                  body: JSON.stringify({ resolution_executee_cause: m.resolution_executee_cause ?? null }),
+                }).catch(e => { console.error(`[resolution] verrou non relâché ${m.id} :`, e.message); return null; });
+                if (rl && !rl.ok) console.error(`[resolution] verrou non relâché ${m.id} (${rl.status})`);
                 continue;
               }
 
