@@ -1,7 +1,9 @@
 import { esc, emailHtml, sendEmail, euros } from "./_email.js";
-import { verifyUser } from "./_auth.js";
+import { verifyUser, refuserCompteBloque } from "./_auth.js";
 import { empreintes, filtreListeNoire, ligneListeNoire, inscrireListeNoire, dansLaConservation } from "./_liste_noire.js";
 import { appUrl } from "./_url.js";
+import { validerSiret } from "./_siret.js";
+import { entrepriseSirene } from "./_references.js";
 import { ecrireVerifie } from "./_ecriture.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
 import { STATUTS_EN_COURS, VERSEMENTS_DUS, creancesOuvertes, resilierAbonnement, effacerPieces, anonymiserPrestations, supprimerCompteAuth } from "./_suppression.js";
@@ -332,6 +334,124 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
     }
   }
 
+  // ── declarer_siret : le prestataire déclare SON SIRET, une seule fois ──
+  //
+  // Voir api/_siret.js (13/11/2026). Le navigateur n'a pas le droit d'écrire
+  // `profiles.siret` (migration secu_profils_siret_non_modifiable) : c'est ici,
+  // en service role, après vérification — format et clé, puis registre SIRENE
+  // (entreprise existante et active) —, et SEULEMENT si la fiche n'en a pas
+  // encore : un changement passe par le support.
+  if (req.body?.action === "declarer_siret") {
+    const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
+    const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (!caller) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
+    if (await refuserCompteBloque(res, caller, SUPABASE_URL, SERVICE_ROLE_KEY)) return;
+    const v = validerSiret(req.body?.siret);
+    if (!v.ok) return res.status(400).json({ error: v.erreur });
+    const sr = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
+
+    const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,siret,missions_enabled,missions_enabled_at`, { headers: sr });
+    const fiche = await fr.json().catch(() => null);
+    if (!fr.ok || !Array.isArray(fiche)) {
+      console.error(`[declarer_siret] fiche de ${caller.id} illisible (${fr.status})`);
+      return res.status(503).json({ error: "Votre dossier est momentanément indisponible. Réessayez dans un instant." });
+    }
+    if (fiche[0]?.role !== "prestataire") return res.status(403).json({ error: "Réservé aux prestataires." });
+    // Accès déjà ouvert : l'échéance de l'attestation URSSAF court, depuis
+    // l'inscription faute de SIRET. Un premier SIRET la ferait partir de
+    // l'immatriculation — d'une entreprise créée la veille, elle reculerait.
+    // C'est la faille fermée le 14/10/2026 : ce cas passe par le support.
+    // L'accès ouvert UNE fois suffit : suspendu ensuite (attestation manquante),
+    // le compte a `missions_enabled` à false, et un premier SIRET y aurait
+    // reculé l'échéance avant la réouverture (relecture du 13/11/2026).
+    if (fiche[0]?.missions_enabled === true || fiche[0]?.missions_enabled_at) {
+      return res.status(409).json({ error: "Votre accès aux prestations est déjà ouvert : pour ajouter votre SIRET, écrivez à support@alane.fr." });
+    }
+    // Un SIREN (9 chiffres) admis à l'inscription se COMPLÈTE par le SIRET de la
+    // même entreprise — même immatriculation, rien ne recule. Tout autre SIRET
+    // déjà présent ne se remplace pas.
+    // Celui du compte aussi : un compte ancien peut l'avoir dans user_metadata
+    // sans l'avoir sur sa fiche — le remplacer l'effaçait aux yeux de la liste
+    // noire (relecture du 13/11/2026).
+    // L'écriture plus bas se conditionne à la valeur de la FICHE (un SIREN venu
+    // du seul compte se complète sur une fiche vide).
+    const actuel = String(fiche[0]?.siret || caller.user_metadata?.siret || "").replace(/\s/g, "");
+    const completion = /^\d{9}$/.test(actuel) && v.siret.startsWith(actuel);
+    if (actuel && !completion) {
+      return res.status(409).json({ error: "Un SIRET est déjà enregistré sur votre dossier. Pour le modifier, écrivez à support@alane.fr." });
+    }
+
+    // Chaque essai qui arrive ici interroge le registre SIRENE, partagé avec les
+    // traitements planifiés (7 requêtes/s) : 5 par 10 minutes et par compte. Les
+    // erreurs de saisie, refusées plus haut sans appel, ne comptent pas.
+    if (checkContactRateLimit(`siret:${caller.id}`, 5)) {
+      return res.status(429).json({ error: "Trop d'essais. Réessayez dans quelques minutes, ou écrivez à support@alane.fr." });
+    }
+    let entreprise;
+    try { entreprise = await entrepriseSirene(v.siret); }
+    catch (e) {
+      console.error("[declarer_siret] registre SIRENE :", e.message);
+      return res.status(503).json({ error: "Le registre des entreprises ne répond pas. Réessayez dans un instant." });
+    }
+    if (!entreprise) return res.status(400).json({ error: "Ce SIRET est introuvable dans le registre des entreprises. Vérifiez les 14 chiffres — une entreprise créée il y a quelques jours peut aussi ne pas y figurer encore." });
+    if (!entreprise.actif) return res.status(400).json({ error: "Cette entreprise est fermée d'après le registre des entreprises." });
+
+    // Conditionnée à l'état lu : deux envois simultanés n'écrivent pas deux numéros.
+    const wr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&${fiche[0]?.siret ? `siret=eq.${encodeURIComponent(fiche[0].siret)}` : "siret=is.null"}`, {
+      method: "PATCH", headers: { ...sr, "Prefer": "return=representation" }, body: JSON.stringify({ siret: v.siret }),
+    });
+    const ecrit = await wr.json().catch(() => null);
+    if (!wr.ok) {
+      console.error(`[declarer_siret] SIRET de ${caller.id} non enregistré (${wr.status}) : ${JSON.stringify(ecrit).slice(0, 200)}`);
+      return res.status(502).json({ error: "Votre SIRET n'a pas pu être enregistré. Réessayez." });
+    }
+    if (!Array.isArray(ecrit) || ecrit.length === 0) {
+      return res.status(409).json({ error: "Un SIRET est déjà enregistré sur votre dossier. Pour le modifier, écrivez à support@alane.fr." });
+    }
+
+    // Aussi dans user_metadata, comme le fait le back-office : la liste noire
+    // (validation du profil, suppression du compte) et le contrôle de la
+    // validation l'y lisent. Écrit sur la fiche seulement, il leur échappait —
+    // et l'anti-recréation avec (relecture du 13/11/2026).
+    // Le service d'authentification FUSIONNE user_metadata : n'envoyer que le
+    // SIRET. Relire puis réécrire le tout écrasait une modification du profil
+    // faite entre-temps (relecture du 13/11/2026).
+    try {
+      const mr = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, {
+        method: "PUT", headers: sr, body: JSON.stringify({ user_metadata: { siret: v.siret } }),
+      });
+      if (!mr.ok) throw new Error(`écriture refusée (${mr.status})`);
+    } catch (e) {
+      console.error(`[declarer_siret] SIRET de ${caller.id} enregistré sur la fiche mais PAS dans le compte — liste noire aveugle sur lui :`, e.message);
+    }
+
+    // La liste noire, comme à la validation du profil : un SIRET d'un compte
+    // supprimé retrouve sa consommation (essai épuisé), il ne repart pas à zéro.
+    try {
+      const filtreBl = filtreListeNoire(empreintes({ siret: v.siret }));
+      if (filtreBl) {
+        const blParams = new URLSearchParams({ and: dansLaConservation(filtreBl), select: "id,missions_completed_month", limit: "1" });
+        const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers: sr });
+        const bl = await blRes.json().catch(() => null);
+        if (!blRes.ok || !Array.isArray(bl)) throw new Error(`liste noire illisible (${blRes.status})`);
+        if (bl.length) {
+          const restaure = { trial_exhausted: true };
+          if (Number(bl[0].missions_completed_month) > 0) restaure.missions_completed_month = Number(bl[0].missions_completed_month);
+          const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, { method: "PATCH", headers: { ...sr, "Prefer": "return=minimal" }, body: JSON.stringify(restaure) });
+          if (!pr.ok) console.error(`[declarer_siret] ${caller.id} : SIRET en liste noire, consommation NON restaurée (${pr.status})`);
+          else console.warn(`[declarer_siret] ${caller.id} : SIRET en liste noire — consommation restaurée`);
+        }
+      }
+    } catch (e) {
+      console.error(`[declarer_siret] liste noire non vérifiée pour ${caller.id} — elle le sera à la validation du profil :`, e.message);
+    }
+
+    console.log(`[declarer_siret] SIRET ${completion ? "complété" : "déclaré"} par ${caller.id}`);
+    return res.status(200).json({ ok: true, entreprise: entreprise.nom });
+  }
+
   // ── track_referral: link new user to referrer ────────────────────
   if (req.body?.action === "track_referral") {
     const { newUserId, referrerUUID } = req.body;
@@ -521,11 +641,12 @@ ${enAttente ? `<p style="color:#F0B429;font-size:13px;font-weight:600;margin:0 0
       // évitant de conserver les identifiants pour arriver au même résultat.
       let empreinteBL = null;
       try {
-        const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib&limit=1`, { headers: hdrs });
+        const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib,siret&limit=1`, { headers: hdrs });
         const pdSup = prSup.ok ? await prSup.json().catch(() => []) : [];
         const ribSup = (Array.isArray(pdSup) && pdSup[0]?.rib) || caller.user_metadata?.rib || null;
         const telSup   = caller.user_metadata?.telephone || null;
-        const siretSup = caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+        const siretSup = (Array.isArray(pdSup) && pdSup[0]?.siret) || caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
 
         // Calculée ici, inscrite une fois le compte supprimé (`inscrireListeNoire`).
         if (caller.email || telSup || ribSup || siretSup) {
