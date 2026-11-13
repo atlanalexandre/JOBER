@@ -100,10 +100,10 @@ export async function entrepriseSirene(siret) {
   return { nom: String(e.nom_complet || e.nom_raison_sociale || "").slice(0, 160) || "Entreprise", actif: e.etat_administratif === "A" };
 }
 
-/** Ce que le back-office doit savoir de cette référence, ou null. */
 /** Posée sur chaque confirmation d'un contact qui a confirmé pour plusieurs prestataires (11/11/2026). */
 export const ALERTE_PARTAGE = "ce contact a confirmé pour plusieurs prestataires";
 
+/** Ce que le back-office doit savoir de cette référence, ou null. */
 export function alerteDe({ contactEmail, autresPrestataires = 0 }) {
   const alertes = [];
   if (DOMAINES_PERSONNELS.has(domaineDe(contactEmail))) alertes.push("adresse personnelle, pas celle d'une entreprise");

@@ -916,7 +916,11 @@ Ces colonnes sont écrites **dans l'écriture même qui clôt la prestation**, c
 validation forcée. Jusqu'au 11/11/2026, `complete` et `cancel_in_progress` les écrivaient à part,
 juste après : un échec laissait une prestation `completed` sans versement, que le traitement des
 versements ne voit jamais, et l'arrêt en cours, sans condition, pouvait écraser une validation du
-même instant.
+même instant. Exception voulue : l'arrêt de **toute** la prestation rembourse le client **avant**
+d'écrire ; son écriture accepte donc une prestation qu'une validation vient de clore, tant que le
+versement est encore en attente (`status=in.(assigned,completed)` et `payout_status` vide ou
+`pending`), pour fixer le versement au prorata. Limitée à `assigned` le 11/11/2026, elle laissait
+dans ce cas le client remboursé **et** le prestataire payé en entier (relecture du 12/11/2026).
 Le prestataire est prévenu (notification et push) quand son virement part, et quand Stripe le
 refuse (`avisDeVersement()`, `api/_virement.js`) — il ne l'était pas avant le 14/10/2026.
 Le traitement des versements lit **tous** les versements dus (`lireTout`) et traite d'abord ceux
@@ -2926,6 +2930,15 @@ personne, sa commande tient. À court de candidats, la prestation bascule en `op
 diffusion : c'est alors le prestataire qui se propose, ce qui rend son autonomie visible et
 horodatée.
 
+**Le client lit que sa commande tient, sur tous les canaux** (relecture du 12/11/2026). La
+notification de l'application le disait ; l'e-mail, le SMS et la notification du téléphone
+annonçaient « refusé — choisissez un autre prestataire », et le client en réservait un second pour
+le même créneau. Les quatre partagent désormais le même texte (`texteCascade`). Si la cascade
+**et** le remboursement échouent, la prestation est remise en attente (`remettreARembourser()`) et
+la tâche planifiée cherche à son tour le candidat suivant : le client lit alors « nous recherchons
+un autre professionnel ; à défaut, votre paiement vous sera intégralement remboursé — inutile de
+réserver à nouveau ».
+
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
 25/09/2026, la cascade l'affectait sans aucune notification.
@@ -4302,7 +4315,12 @@ paiement connu relu à part, la recherche pouvant avoir une minute de retard). �
 client : la part du prestataire (heures × tarif convenu) de chaque prolongation appliquée, tout pour
 une prolongation payée jamais appliquée ; les heures et le montant retirés de la réservation avant
 d'en déduire les frais. Au désistement du prestataire : tout, détail des prestations de plusieurs
-jours compris. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
+jours compris — lus avant tout mouvement, mais remboursés **après** la réservation : rendus
+d'abord, un échec de la réservation laissait la prestation au prestataire avec des heures déjà
+rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation, il
+est signalé « À FAIRE À LA MAIN ». Une réservation réglée par le portefeuille est recréditée hors
+heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
+(antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
 plus une prestation payée par carte : rien n'était rendu, et aucun e-mail ne prévenait l'équipe.
 
 **Rejouer un remboursement d'heures ajoutées ne bloque plus rien.** Chaque remboursement porte
@@ -4862,9 +4880,12 @@ en premier.
 **Un seul dénouement par litige** (relecture du 11/11/2026). `executer_decision` prend, avant
 tout mouvement d'argent, le même verrou que l'accord tacite de la tâche planifiée : écrire
 `resolution_executee_cause` sur un litige encore `disputed` dont la cause est vide. Verrou déjà
-pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécution en échec : il est
-relâché. Sans lui, une décision et un accord tacite pouvaient dénouer le même litige deux fois —
-client remboursé **et** prestataire payé.
+pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécution en échec **sans
+qu'aucun argent ait bougé** : il est relâché. Sans lui, une décision et un accord tacite pouvaient
+dénouer le même litige deux fois — client remboursé **et** prestataire payé. Un échec **après** le
+remboursement (clôture non écrite) ou une coupure pendant celui-ci renvoie `argentParti` : le
+verrou est alors gardé, ici comme dans la tâche planifiée, et le cas est à reprendre à la main.
+Relâché, il laissait la tâche exécuter ensuite la proposition en attente (relecture du 12/11/2026).
 
 Le parcours normal, celui de l'accord :
 

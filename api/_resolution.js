@@ -388,7 +388,9 @@ export async function executerResolution({
       await restituerCashback(mission, supabaseUrl, headers, "resolution");
     } catch (e) {
       console.error(`[resolution] remboursement Stripe impossible pour ${mission.id} :`, e.message);
-      return { ok: false, detail: "Erreur lors du remboursement Stripe — prestation non close." };
+      // Une coupure ne dit pas si Stripe a remboursé : prudence, l'argent a
+      // peut-être bougé — le verrou est gardé (relecture du 12/11/2026).
+      return { ok: false, argentParti: true, detail: "Erreur lors du remboursement Stripe — prestation non close. Vérifier dans Stripe si le client a été remboursé avant toute autre action." };
     }
   }
 
@@ -465,7 +467,7 @@ export async function executerResolution({
     console.error(`[resolution] clôture non enregistrée (${r.status}) pour ${mission.id} : ${detail.slice(0, 200)}`);
     // Le remboursement est parti : le signaler franchement plutôt que de
     // laisser croire que rien ne s'est passé.
-    return { ok: false, detail: "Le client a été remboursé mais la prestation n'a pas pu être close — à reprendre à la main." };
+    return { ok: false, argentParti: true, detail: "Le client a été remboursé mais la prestation n'a pas pu être close — à reprendre à la main." };
   }
   // Une part revient au prestataire : la prestation a eu lieu, et compte au
   // quota si aucune validation ne l'a comptée (relecture du 15/10/2026).

@@ -104,6 +104,8 @@ describe("litige repris après une panne de la base", () => {
     const { etat, rendu } = simuler(AVANT_VALIDATION);
     const premier = await executer(AVANT_VALIDATION);
     expect(premier.ok, "la clôture a échoué : le passage doit le dire").toBe(false);
+    // L'argent est parti : l'appelant ne doit pas relâcher le verrou (12/11/2026).
+    expect(premier.argentParti).toBe(true);
     expect(rendu(), "le prix de la prestation est parti").toBe(10400);
 
     const second = await executer(AVANT_VALIDATION);

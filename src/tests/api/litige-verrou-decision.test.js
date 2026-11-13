@@ -29,3 +29,23 @@ describe("executer_decision : un seul dénouement par litige", () => {
     expect(lire("api/cron-reset-monthly.js")).toContain("resolution_executee_cause=is.null");
   });
 });
+
+describe("échec APRÈS un mouvement d'argent : le verrou est gardé (12/11/2026)", () => {
+  it("back-office : retour sans relâcher, avant le relâchement ordinaire", () => {
+    const bo = lire("api/bo-action.js");
+    const bloc = bo.slice(bo.indexOf('if (action === "executer_decision")'));
+    const garde = bloc.indexOf("if (!out.ok && out.argentParti)");
+    const relache = bloc.indexOf("resolution_executee_cause: null");
+    expect(garde).toBeGreaterThan(0);
+    expect(relache).toBeGreaterThan(garde);
+    expect(bloc.slice(garde, relache)).toMatch(/return res\.status\(500\)/);
+  });
+  it("tâche planifiée : même règle pour l'accord tacite", () => {
+    const cron = lire("api/cron-reset-monthly.js");
+    const garde = cron.indexOf("if (!out.ok && out.argentParti)");
+    expect(garde).toBeGreaterThan(0);
+    expect(cron.slice(garde, garde + 400)).toContain("continue;");
+    expect(cron.indexOf("resolution_executee_cause: null", garde)).toBeGreaterThan(garde);
+  });
+});
+
