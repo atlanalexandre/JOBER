@@ -1643,10 +1643,10 @@ export default async function handler(req, res) {
       // ensuite, payée deux fois. Cette valeur se lit sur l'ÉCRITURE qui prend
       // le verrou, pas sur une lecture antérieure : un double clic pouvait
       // marquer « à reprendre » entre les deux (relecture du 13/11/2026).
-      const prendre = async (filtre) => {
+      const prendre = async (filtre, valeur = cause) => {
         const v = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtre}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ resolution_executee_cause: cause }),
+          body: JSON.stringify({ resolution_executee_cause: valeur }),
         });
         const l = await v.json().catch(() => null);
         if (!v.ok) {
@@ -1657,20 +1657,37 @@ export default async function handler(req, res) {
       };
       let verrouAvant = null;
       let pris = false;
+      // La cause sous laquelle le litige se dénoue réellement. Un accord tacite
+      // resté « à reprendre » que la tâche planifiée n'arrive pas à terminer
+      // peut l'être ici — mais il reste un accord tacite : ni le verrou ni le
+      // message aux parties ne parlent alors de justice (relecture du
+      // 13/11/2026, troisième passe ; refusé, le litige restait bloqué).
+      let causeEffective = cause;
       if (resolution === "rembourser_client") {
         pris = await prendre(`resolution_executee_cause=eq.${cause}_a_reprendre`);
         if (pris) verrouAvant = `${cause}_a_reprendre`;
+        if (pris === false) {
+          pris = await prendre("resolution_executee_cause=eq.accord_tacite_a_reprendre", "accord_tacite");
+          if (pris) { verrouAvant = "accord_tacite_a_reprendre"; causeEffective = "accord_tacite"; }
+        }
       }
       if (pris === false) pris = await prendre("resolution_executee_cause=is.null");
       if (pris === null) return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
       if (!pris) {
         // Dire QUOI faire : sans la cause en cours, l'équipe tournait en rond
         // sur « rechargez la liste » (relecture du 13/11/2026).
-        const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=resolution_executee_cause`, { headers }).catch(() => null);
-        const enCours = lr?.ok ? ((await lr.json().catch(() => []))[0] || {}).resolution_executee_cause : null;
+        let enCours = null;
+        try {
+          const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=resolution_executee_cause`, { headers });
+          const l = await lr.json().catch(() => null);
+          if (lr.ok && Array.isArray(l)) enCours = (l[0] || {}).resolution_executee_cause ?? null;
+          else console.error(`[executer_decision] cause en cours de ${mission_id} illisible (${lr.status}) — message générique.`);
+        } catch (e) {
+          console.error(`[executer_decision] cause en cours de ${mission_id} illisible — message générique :`, e.message);
+        }
         const message = !enCours ? "Ce litige est déjà en cours de dénouement — rien n'a été fait. Rechargez la liste."
           : enCours === "accord_tacite_a_reprendre"
-            ? "Le remboursement de l'accord tacite a déjà été fait, sa clôture a échoué : la tâche planifiée la termine à son prochain passage. Rien n'a été fait."
+            ? "Le remboursement de l'accord tacite a déjà été fait, sa clôture a échoué : relancez « rembourser le client » pour la terminer (la tâche planifiée le fait aussi à son passage). Rien n'a été fait."
           : String(enCours).endsWith("_a_reprendre")
             ? `Le client a déjà été remboursé, la clôture a échoué : relancez « rembourser le client » avec la cause « ${String(enCours).replace(/_a_reprendre$/, "")} » pour la terminer. Rien n'a été fait.`
             : `Ce litige est déjà en cours de dénouement (${enCours}) — rien n'a été fait. Rechargez la liste.`;
@@ -1680,7 +1697,7 @@ export default async function handler(req, res) {
       const out = await executerResolution({
         mission: m, resolution, supabaseUrl: SUPABASE_URL, headers,
         stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
-        cause,
+        cause: causeEffective,
       });
       if (!out.ok && out.argentParti) {
         // L'argent a bougé (ou peut-être) : le verrou reste. Relâché, il
@@ -1691,17 +1708,17 @@ export default async function handler(req, res) {
         // pourra le reprendre (filtre ci-dessus). Et l'argent a bougé : la
         // décision et sa justification sont journalisées quand même — c'est la
         // seule trace de ce au titre de quoi les fonds ont bougé.
-        const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
+        const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${causeEffective}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ resolution_executee_cause: `${cause}_a_reprendre` }),
+          body: JSON.stringify({ resolution_executee_cause: `${causeEffective}_a_reprendre` }),
         }).catch(e => { console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » :`, e.message); return null; });
         if (ar && !ar.ok) console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » (${ar.status})`);
-        await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just, inacheve: out.detail } });
+        await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, causeEffective, justification: just, inacheve: out.detail } });
         console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé : ${out.detail}`);
-        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » avec la même cause (« ${cause} ») : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
+        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » avec la même cause (« ${causeEffective === "accord_tacite" ? "n'importe laquelle — c'est un accord tacite" : cause} ») : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
       }
       if (!out.ok) {
-        const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
+        const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${causeEffective}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({ resolution_executee_cause: verrouAvant }),
         }).catch(e => { console.error(`[executer_decision] verrou de ${mission_id} non relâché :`, e.message); return null; });
@@ -1710,7 +1727,8 @@ export default async function handler(req, res) {
       }
 
       const quoi = libelleResolution(resolution);
-      const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
+      const origine = causeEffective === "accord_tacite" ? "de l'accord des parties (aucune opposition à la proposition)"
+        : cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
       // Cf. cron : l'écart entre le montant payé et le montant remboursé doit
       // être annoncé, pas découvert sur le relevé bancaire.
       const reliquat = Number(out.versementPrestataire || 0);
@@ -1724,7 +1742,7 @@ export default async function handler(req, res) {
         await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 
-      await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
+      await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, causeEffective, justification: just } });
       return res.status(200).json({ success: true, statut: out.statut });
     }
 
