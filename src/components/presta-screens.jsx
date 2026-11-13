@@ -2227,7 +2227,7 @@ function SaisieSiret({ onEnregistre }) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`);
       setEtat({ envoi:false, erreur:"" });
-      onEnregistre(valeur.replace(/[\s.-]/g, ""), j.entreprise || "");
+      onEnregistre(valeur.replace(/[\s.-]/g, ""), j.entreprise || "votre entreprise");
     } catch (e) {
       console.error("[siret] déclaration refusée :", e.message);
       setEtat({ envoi:false, erreur:e.message });
