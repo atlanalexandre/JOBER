@@ -680,8 +680,8 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
  * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
  * La prestation restait « refusée », l'argent du client gardé, et rien ne la
  * reprenait : la tâche planifiée ne relit que les prestations en attente
- * (relecture du 11/11/2026). Elle est remise en attente, SANS prestataire et
- * le délai déjà échu — personne ne peut plus l'accepter —, exactement comme la
+ * (relecture du 11/11/2026). Elle est remise en attente, le délai déjà échu —
+ * personne ne peut plus l'accepter —, exactement comme la
  * tâche planifiée le fait pour ses propres échecs : son passage suivant la
  * rembourse (ou, pour une prestation affectée par la plateforme, cherche le
  * candidat suivant).
@@ -690,7 +690,13 @@ async function remettreARembourser(missionId, supabaseUrl, headers, contexte) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=eq.refused`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-      body: JSON.stringify({ status: "pending_acceptance", prestataire_id: null, acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
+      // Le prestataire qui a refusé RESTE inscrit : son délai échu, ni
+      // l'application ni le lien de l'e-mail ne le laissent accepter, et la
+      // recherche du candidat suivant l'exclut ainsi. Effacé, il pouvait se
+      // voir reproposer la demande qu'il venait de refuser (relecture du
+      // 13/11/2026). Une prestation ordinaire, la tâche planifiée l'efface
+      // elle-même avant de rembourser.
+      body: JSON.stringify({ status: "pending_acceptance", acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
     });
     const l = await r.json().catch(() => null);
     if (r.ok && Array.isArray(l) && l.length) {
@@ -981,11 +987,12 @@ async function handleEmailAction(req, res) {
     if (cascade.mode === "echec" && !(await toujoursRefusee(missionId, SUPABASE_URL, hdrs))) {
       console.error(`[refus-email] cascade en échec mais prestation ${missionId} plus « refusée » — pas de remboursement, à vérifier.`);
     } else if (cascade.mode === "echec") {
+      const rechercheEncore = cascade.raison !== "heure_passee";
       cascade = null;
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
       // Même règle que respond_mission : remise en attente, la prestation peut
       // repartir au candidat suivant — le client l'apprend ainsi (12/11/2026).
-      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: "reprise" };
+      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email") && rechercheEncore) cascade = { mode: "reprise" };
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
@@ -6254,13 +6261,16 @@ export default async function handler(req, res) {
         if (cascade.mode === "echec" && !(await toujoursRefusee(mission_id, SUPABASE_URL, headers))) {
           console.error(`[respond_mission] cascade en échec mais prestation ${mission_id} plus « refusée » — pas de remboursement, à vérifier.`);
         } else if (cascade.mode === "echec") {
+          // L'heure de début passée, personne d'autre ne sera cherché : la
+          // reprise ne doit pas être annoncée (relecture du 13/11/2026).
+          const rechercheEncore = cascade.raison !== "heure_passee";
           cascade = null;
           rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
           // Remise en attente, une prestation affectée par la plateforme repart
           // au candidat suivant au passage de la tâche planifiée : le client ne
           // doit pas lire « choisissez un autre prestataire » — il en
           // réserverait un second (relecture du 12/11/2026).
-          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: "reprise" };
+          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission") && rechercheEncore) cascade = { mode: "reprise" };
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
