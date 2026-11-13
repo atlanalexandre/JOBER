@@ -680,8 +680,8 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
  * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
  * La prestation restait « refusée », l'argent du client gardé, et rien ne la
  * reprenait : la tâche planifiée ne relit que les prestations en attente
- * (relecture du 11/11/2026). Elle est remise en attente, le délai déjà échu —
- * personne ne peut plus l'accepter —, exactement comme la
+ * (relecture du 11/11/2026). Elle est remise en attente, SANS prestataire et
+ * le délai déjà échu — personne ne peut plus l'accepter —, exactement comme la
  * tâche planifiée le fait pour ses propres échecs : son passage suivant la
  * rembourse (ou, pour une prestation affectée par la plateforme, cherche le
  * candidat suivant).
@@ -690,13 +690,12 @@ async function remettreARembourser(missionId, supabaseUrl, headers, contexte) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=eq.refused`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-      // Le prestataire qui a refusé RESTE inscrit : son délai échu, ni
-      // l'application ni le lien de l'e-mail ne le laissent accepter, et la
-      // recherche du candidat suivant l'exclut ainsi. Effacé, il pouvait se
-      // voir reproposer la demande qu'il venait de refuser (relecture du
-      // 13/11/2026). Une prestation ordinaire, la tâche planifiée l'efface
-      // elle-même avant de rembourser.
-      body: JSON.stringify({ status: "pending_acceptance", acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
+      // SANS prestataire. Le garder (essai du 13/11/2026) ne servait à rien
+      // après un refus — le refus l'a déjà effacé — et nuisait après un délai
+      // écoulé : son application, qui relit ses demandes toutes les 30 s,
+      // l'effaçait elle-même et annonçait au client « de nouveau disponible »,
+      // à tort (relecture du 13/11/2026, après-midi).
+      body: JSON.stringify({ status: "pending_acceptance", prestataire_id: null, acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
     });
     const l = await r.json().catch(() => null);
     if (r.ok && Array.isArray(l) && l.length) {
@@ -992,7 +991,7 @@ async function handleEmailAction(req, res) {
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
       // Même règle que respond_mission : remise en attente, la prestation peut
       // repartir au candidat suivant — le client l'apprend ainsi (12/11/2026).
-      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email") && rechercheEncore) cascade = { mode: "reprise" };
+      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
@@ -1012,14 +1011,17 @@ async function handleEmailAction(req, res) {
     const isAccepted = action === "accept";
     // Sur une prestation affectée par la plateforme, le client n'a désigné
     // personne : on lui dit ce qui se passe réellement, comme dans l'application.
-    const titreRefus = cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
-    const corpsRefus = cascade?.mode === "reprise"
+    const titreRefus = cascade?.mode === "remboursement" ? "Prestataire non disponible"
+      : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
+    const corpsRefus = cascade?.mode === "remboursement"
+      ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
+      : cascade?.mode === "reprise"
       ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
       : cascade
       ? "Le prestataire pressenti n'est pas disponible. Nous sollicitons un autre professionnel — votre réservation et votre paiement sont conservés."
       : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`;
     await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : titreRefus, body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : corpsRefus, ref_id: missionId }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
-    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : titreRefus, body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : (cascade ? "Votre réservation est conservée." : `Le prestataire a décliné "${missionLabel}".`), url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
+    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : titreRefus, body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : (cascade?.mode === "remboursement" ? "Votre paiement vous sera intégralement remboursé." : cascade ? "Votre réservation est conservée." : `Le prestataire a décliné "${missionLabel}".`), url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
   }
 
   return res.status(200).send(emailActionHtml(
@@ -6270,7 +6272,10 @@ export default async function handler(req, res) {
           // au candidat suivant au passage de la tâche planifiée : le client ne
           // doit pas lire « choisissez un autre prestataire » — il en
           // réserverait un second (relecture du 12/11/2026).
-          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission") && rechercheEncore) cascade = { mode: "reprise" };
+          // L'heure passée, personne ne sera cherché : le client apprend que son
+          // paiement lui sera rendu, pas « choisissez un autre prestataire » —
+          // il n'en avait choisi aucun (relecture du 13/11/2026).
+          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
@@ -6290,7 +6295,12 @@ export default async function handler(req, res) {
             ? "Le prestataire pressenti n'est pas disponible. Un autre professionnel correspondant à votre mission vient d'être sollicité — votre réservation et votre paiement sont conservés."
             : cascade.mode === "reprise"
               ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
+            : cascade.mode === "remboursement"
+              ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
               : "Le prestataire pressenti n'est pas disponible. Votre mission a été proposée à l'ensemble des professionnels du secteur — votre réservation et votre paiement sont conservés.";
+
+        const enRemboursement = cascade?.mode === "remboursement";
+        const titreCascade = enRemboursement ? "Prestataire non disponible" : "Recherche d'un autre prestataire 🔄";
 
         // Notification au client — dans l'application ET sur son téléphone.
         await notifier({
@@ -6300,7 +6310,7 @@ export default async function handler(req, res) {
             // personne : lui annoncer un « refus » et l'inviter à choisir quelqu'un
             // d'autre n'aurait aucun sens. On lui dit ce qui se passe réellement.
             title: isAccepted ? "Prestation acceptée ! 🎉"
-              : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée",
+              : cascade ? titreCascade : "Prestation refusée",
             body: isAccepted
               ? `${resolvedPrestaName} a accepté votre demande de mission.`
               : texteCascade || `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
@@ -6324,9 +6334,9 @@ export default async function handler(req, res) {
               from: RESEND_FROM,
               to: [clientEmail],
               subject: isAccepted ? `✅ ${resolvedPrestaName} a accepté la prestation !`
-                : texteCascade ? "🔄 Nous recherchons un autre prestataire" : `❌ ${resolvedPrestaName} a refusé la prestation`,
+                : texteCascade ? (enRemboursement ? "Votre paiement vous sera remboursé" : "🔄 Nous recherchons un autre prestataire") : `❌ ${resolvedPrestaName} a refusé la prestation`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
-                <h2 style="color:${isAccepted?"#10D98F":texteCascade?"#A29BFE":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":texteCascade?"Recherche d'un autre prestataire 🔄":"Prestation refusée ❌"}</h2>
+                <h2 style="color:${isAccepted?"#10D98F":texteCascade?"#A29BFE":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":texteCascade?titreCascade:"Prestation refusée ❌"}</h2>
                 <p>Bonjour ${esc(clientName)},</p>
                 ${isAccepted
                   ? `<p><strong>${esc(resolvedPrestaName)}</strong> a accepté votre demande de prestation <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
@@ -6354,7 +6364,9 @@ export default async function handler(req, res) {
                 content: smsClean(isAccepted
                   ? `ALANE - ${resolvedPrestaName} a accepté votre prestation ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
                   : texteCascade
-                    ? `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible : nous en recherchons un autre, inutile de réserver à nouveau. — alane.fr`
+                    ? (enRemboursement
+                      ? `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible et l'heure est passée : votre paiement vous sera intégralement remboursé. — alane.fr`
+                      : `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible : nous en recherchons un autre, inutile de réserver à nouveau. — alane.fr`)
                     : `ALANE - ${resolvedPrestaName} a refusé votre prestation ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
             }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
@@ -6362,10 +6374,10 @@ export default async function handler(req, res) {
         }
 
         // Web push client
-        const pushTitle = isAccepted ? "Prestation acceptée ✅" : texteCascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
+        const pushTitle = isAccepted ? "Prestation acceptée ✅" : texteCascade ? titreCascade : "Prestation refusée";
         const pushBody  = isAccepted
           ? `${resolvedPrestaName} a accepté votre demande de mission.`
-          : texteCascade ? "Votre réservation est conservée — inutile de réserver à nouveau."
+          : texteCascade ? (enRemboursement ? "Votre paiement vous sera intégralement remboursé." : "Votre réservation est conservée — inutile de réserver à nouveau.")
             : `${resolvedPrestaName} a refusé. Connectez-vous pour choisir un autre prestataire.`;
         sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
       }
