@@ -4317,8 +4317,10 @@ une prolongation payée jamais appliquée ; les heures et le montant retirés de
 d'en déduire les frais. Au désistement du prestataire : tout, détail des prestations de plusieurs
 jours compris — lus avant tout mouvement, mais remboursés **après** la réservation : rendus
 d'abord, un échec de la réservation laissait la prestation au prestataire avec des heures déjà
-rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation, il
-est signalé « À FAIRE À LA MAIN ». Une réservation réglée par le portefeuille est recréditée hors
+rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation : il
+ouvre un **ticket interne** (« [Interne] Heures ajoutées à rembourser »), visible au back-office —
+le journal seul ne suffisait pas, plus rien ne repassant sur une prestation annulée (13/11/2026).
+Les paiements du détail que la recherche Stripe n'a pas encore indexés sont relus un à un. Une réservation réglée par le portefeuille est recréditée hors
 heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
 (antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
 plus une prestation payée par carte : rien n'était rendu, et aucun e-mail ne prévenait l'équipe.

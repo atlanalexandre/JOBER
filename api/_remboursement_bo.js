@@ -221,7 +221,7 @@ export async function rembourserAjoutsNonFaits(parPaiement, cle, suffixe, contex
  *
  * @returns {Promise<Array<{id:string, recu:number, heures:number, applique:boolean}>>} recu en centimes
  */
-export async function paiementsHeuresSupp(missionId, cle, { dernier = null, compteur = 0 } = {}) {
+export async function paiementsHeuresSupp(missionId, cle, { dernier = null, compteur = 0, connus = [] } = {}) {
   const h = { "Authorization": `Bearer ${cle}` };
   const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND metadata['type']:'heures_supp' AND status:'succeeded'`);
   const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100`, { headers: h });
@@ -232,10 +232,14 @@ export async function paiementsHeuresSupp(missionId, cle, { dernier = null, comp
     if (p?.status === "succeeded" && p?.metadata?.type === "heures_supp" && String(p?.metadata?.mission || "") === String(missionId)) lus.set(p.id, p);
   };
   d.data.forEach(garder);
-  if (dernier && !lus.has(dernier)) {
-    const rp = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(dernier)}`, { headers: h });
+  // Les paiements que la base connaît (le dernier, ceux du détail) et que la
+  // recherche n'a pas encore vus sont relus un à un : comptés à l'aveugle, ils
+  // n'entraient pas dans ce qui revient au portefeuille (relecture du 13/11/2026).
+  for (const id of new Set([dernier, ...connus].filter(Boolean))) {
+    if (lus.has(id)) continue;
+    const rp = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(id)}`, { headers: h });
     const p = await rp.json().catch(() => null);
-    if (!rp.ok || !p?.id) throw new Error(`paiement ${dernier} illisible (${rp.status})`);
+    if (!rp.ok || !p?.id) throw new Error(`paiement ${id} illisible (${rp.status})`);
     garder(p);
   }
   const repere = Math.round(Number(compteur || 0) * 100) / 100;
