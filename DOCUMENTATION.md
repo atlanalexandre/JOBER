@@ -651,6 +651,13 @@ est nommé précisément (« Carte professionnelle CNAPS » plutôt que « Dipl�
 l'obligatoire du facultatif, rappelle les deux mandats, et dit d'emblée que **le compte ne
 donne pas encore accès aux prestations**.
 
+Depuis le 13/11/2026, il réclame aussi le **SIRET** à qui ne l'a pas encore renseigné (lu sur
+`profiles.siret`, à défaut sur l'inscription — 91 inscrits en attente n'en avaient pas), rappelle
+le **CV** quand il est incomplet (l'accès aux prestations exige les deux), et renvoie vers la page
+LinkedIn d'ALANE. La photo demandée précise qu'elle n'est **pas celle de la pièce d'identité**. Le
+compte de virement n'y est pas demandé : son lien part à l'ouverture de l'accès (`enable_missions`).
+Le bouton « Valider le profil des N prestataires en attente » du back-office l'envoie à chacun.
+
 **`DOCS_REQUIS` et `docsRequisPour()` ont rejoint [`api/_documents.js`](api/_documents.js)** à
 cette occasion, `src/constants/data.js` les ré-exportant : le serveur en a besoin pour rédiger
 ce courriel, et les libellés s'y trouvaient déjà en double depuis la surveillance de
