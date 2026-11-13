@@ -18,10 +18,10 @@ describe("paiementsAboutisDe", () => {
 
   it("cherche par identifiant de prestation : un paiement de l'autre environnement ne s'y glisse pas", async () => {
     const urls = simuler([pi()]);
-    expect(await paiementsAboutisDe(M, "sk")).toEqual(["pi_1"]);
-    expect(decodeURIComponent(urls[0])).toContain(`metadata['mission']:'${M}' AND status:'succeeded'`);
+    expect((await paiementsAboutisDe(M, "sk")).aRendre).toEqual(["pi_1"]);
+    expect(decodeURIComponent(urls[0])).toContain(`metadata['mission']:'${M}' AND (status:'succeeded'`);
   });
-  it("écarte les séries, les heures supplémentaires, et tout paiement déjà remboursé même en partie", async () => {
+  it("écarte les séries, les heures supplémentaires et les paiements entièrement remboursés ; un remboursement partiel laisse le reste à rendre", async () => {
     simuler([
       pi({ id: "pi_serie", metadata: { mission: M, type: "serie" } }),
       pi({ id: "pi_hs", metadata: { mission: M, type: "heures_supp" } }),
@@ -30,7 +30,11 @@ describe("paiementsAboutisDe", () => {
       pi({ id: "pi_autre", metadata: { mission: "autre" } }),
       pi({ id: "pi_bon" }),
     ]);
-    expect(await paiementsAboutisDe(M, "sk")).toEqual(["pi_bon"]);
+    expect((await paiementsAboutisDe(M, "sk")).aRendre).toEqual(["pi_partiel", "pi_bon"]);
+  });
+  it("un paiement en cours de traitement est signalé : la clôture attendra", async () => {
+    simuler([pi({ id: "pi_traitement", status: "processing", latest_charge: null })]);
+    expect(await paiementsAboutisDe(M, "sk")).toEqual({ aRendre: [], enCours: ["pi_traitement"] });
   });
   it("Stripe muet : lève — on ne clôt pas sans savoir", async () => {
     simuler([], 500);
@@ -41,17 +45,23 @@ describe("paiementsAboutisDe", () => {
 describe("la clôture des demandes dépassées l'utilise", () => {
   const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
   const debut = cron.indexOf("const aPaye = !!m.stripe_payment_intent;");
-  const bloc = cron.slice(debut, debut + 5000);
+  const bloc = cron.slice(debut, debut + 9000);
   it("interroge Stripe AVANT de clore une demande sans paiement, et reporte s'il ne répond pas", () => {
     const recherche = bloc.indexOf("await paiementsAboutisDe(m.id, cleStripe)");
     expect(recherche).toBeGreaterThan(0);
     expect(recherche).toBeLessThan(bloc.indexOf("const close = await ecrireVerifie("));
     expect(bloc).toContain("paiement non vérifiable — clôture reportée");
+    expect(bloc).toMatch(/paiement non vérifiable — clôture reportée[\s\S]{0,200}differeesPersistantes\.push\(m\.id\)/);
+    expect(bloc).toContain("paiement en cours de traitement");
+    expect(bloc).toContain("nonRattaches = lus.aRendre;");
   });
   it("une demande avec un paiement trouvé passe « annulée », pas « clôturée », et ce paiement est rendu avec la clé de l'application", () => {
     expect(bloc).toContain('{ status: aPaye || nonRattaches.length ? "cancelled" : "closed" }');
     expect(bloc).toContain("rembourserDoublonPaiement(pi, `cron/cloture ${m.id}`)");
     // Un paiement rattaché entre-temps : la clôture ne passe pas.
     expect(bloc).toContain('${aPaye ? "" : "&stripe_payment_intent=is.null"}');
+  });
+  it("le client lit la vraie raison : sa réservation n'a pas pu être finalisée", () => {
+    expect(bloc).toContain("la réservation n'a pas pu être finalisée avant l'heure prévue");
   });
 });

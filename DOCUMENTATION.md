@@ -2152,9 +2152,14 @@ prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
 appelé : la demande reste « sans paiement » pour la base. La clôture des demandes dépassées
 (`cron-reset-monthly`) interroge désormais Stripe **avant** de clore une demande sans paiement
 rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par identifiant de prestation,
-séries et heures supplémentaires écartées, paiements déjà remboursés aussi) : un paiement abouti
-trouvé, la demande passe « annulée » et il est remboursé avec la clé de l'application et du
-webhook ; Stripe muet, la clôture attend le passage suivant. `cron-abandon` le faisait déjà pour
+séries et heures supplémentaires écartées, paiements entièrement remboursés aussi) : un paiement
+abouti trouvé, la demande passe « annulée », il est remboursé (le reste, s'il l'a déjà été en
+partie) avec la clé de l'application et du webhook, et le client lit que sa réservation n'a pas pu
+être finalisée ; un paiement **en cours de traitement**, la clôture attend ; Stripe muet, aussi —
+et la demande est listée dans l'alerte de fin de passage. Sans clé Stripe, elle est close sans
+vérification, comme dans `cron-abandon`. Limites connues : un paiement fait dans la minute qui
+précède la clôture peut échapper à la recherche de Stripe (indexée avec un léger retard), et un
+second paiement non rattaché sur une demande déjà payée n'est pas cherché. `cron-abandon` le faisait déjà pour
 les réservations abandonnées. Abonner le webhook à `payment_intent.succeeded` aurait réveillé tout
 le chemin endormi décrit ci-dessous ; relire les paiements récents du compte, essayé le même jour,
 voyait aussi ceux de la recette (le compte Stripe de test est partagé) et ne rattrapait pas une

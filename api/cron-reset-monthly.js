@@ -532,15 +532,26 @@ export default async function handler(req, res) {
           if (!aPaye) {
             const cleStripe = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
             if (!cleStripe) {
-              console.error(`[cron/cloture] ${m.id} : clé Stripe absente — paiement non vérifiable, clôture reportée.`);
-              differees++;
-              return;
-            }
-            try { nonRattaches = await paiementsAboutisDe(m.id, cleStripe); }
-            catch (e) {
-              console.error(`[cron/cloture] ${m.id} : paiement non vérifiable — clôture reportée :`, e.message);
-              differees++;
-              return;
+              // Comme cron-abandon : sans clé, rien ne serait jamais vérifiable —
+              // la demande est close, et c'est dit.
+              console.error(`[cron/cloture] ${m.id} : clé Stripe absente — close SANS vérifier de paiement non rattaché.`);
+            } else {
+              try {
+                const lus = await paiementsAboutisDe(m.id, cleStripe);
+                if (lus.enCours.length) {
+                  console.error(`[cron/cloture] ${m.id} : paiement en cours de traitement (${lus.enCours.join(", ")}) — clôture reportée.`);
+                  differees++;
+                  return;
+                }
+                nonRattaches = lus.aRendre;
+              } catch (e) {
+                // Reportée, et listée dans l'alerte de fin de passage : elle ne
+                // doit pas pouvoir rester ouverte sans que personne le sache.
+                console.error(`[cron/cloture] ${m.id} : paiement non vérifiable — clôture reportée :`, e.message);
+                differees++;
+                differeesPersistantes.push(m.id);
+                return;
+              }
             }
           }
           const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)${aPaye ? "" : "&stripe_payment_intent=is.null"}`,
@@ -601,6 +612,8 @@ export default async function handler(req, res) {
                 title: rembourse ? "Prestation annulée — vous êtes remboursé 💶" : "Prestation clôturée automatiquement",
                 body: (() => {
                   const nom = m.titre || m.metier || "prestation";
+                  // Payée puis jamais finalisée (navigateur fermé) : la vraie raison.
+                  if (nonRattaches.length) return `Votre paiement pour "${nom}" vous est intégralement remboursé : la réservation n'a pas pu être finalisée avant l'heure prévue. Comptez 5 à 10 jours ouvrés selon votre banque.`;
                   const cause = m.status === "needs_replacement"
                     ? `Le prestataire de votre prestation "${nom}" s'est désisté et aucun remplaçant n'a été trouvé avant l'heure prévue.`
                     : `Votre prestation "${nom}" n'a trouvé aucun prestataire avant l'heure prévue.`;
@@ -620,7 +633,7 @@ export default async function handler(req, res) {
       if (differeesPersistantes.length) {
         // Une prestation qu'on n'arrive pas à rembourser reste visible exprès —
         // mais si elle le reste des semaines, personne ne le sait. On le dit.
-        console.error(`[cron] remboursement toujours impossible sur : ${differeesPersistantes.join(", ")}`);
+        console.error(`[cron] remboursement — ou vérification du paiement — toujours impossible sur : ${differeesPersistantes.join(", ")}`);
       }
     } catch (e) { console.error("[cron] auto-close past missions error:", e); }
   }

@@ -312,20 +312,27 @@ export function messageDoublon(rembourse) {
  * recette) ne peut pas s'y glisser.
  *
  * Écartés : les séries et les heures supplémentaires (`metadata[type]`), qui
- * ont leurs propres chemins, et tout paiement déjà remboursé, même en partie.
+ * ont leurs propres chemins, et tout paiement déjà ENTIÈREMENT remboursé.
  * LÈVE si Stripe ne répond pas : on ne clôt pas sans savoir.
- * @returns {Promise<string[]>} identifiants des paiements à rendre
+ * @returns {Promise<{aRendre:string[], enCours:string[]}>}
  */
 export async function paiementsAboutisDe(missionId, cle) {
-  const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND status:'succeeded'`);
+  // `processing` et `requires_capture` sont lus aussi : un paiement en cours
+  // de traitement à la clôture aurait abouti ensuite, sur une demande close
+  // que plus rien ne relit (relecture du 13/11/2026). L'appelant reporte.
+  const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND (status:'succeeded' OR status:'processing' OR status:'requires_capture')`);
   const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=20&expand[]=data.latest_charge`,
     { headers: { "Authorization": `Bearer ${cle}` } });
   const d = await r.json().catch(() => null);
   if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche des paiements refusée (${r.status})`);
-  return d.data.filter(p => p?.status === "succeeded" && String(p?.metadata?.mission || "") === String(missionId) && !p?.metadata?.type)
-    .filter(p => {
+  const siens = d.data.filter(p => String(p?.metadata?.mission || "") === String(missionId) && !p?.metadata?.type);
+  return {
+    // Rendu en entier ou seulement en partie : le reste est dû (un remboursement
+    // sans montant rend ce qui reste).
+    aRendre: siens.filter(p => p.status === "succeeded").filter(p => {
       const ch = p.latest_charge && typeof p.latest_charge === "object" ? p.latest_charge : null;
-      return ch && !ch.refunded && !(Number(ch.amount_refunded) > 0);
-    })
-    .map(p => p.id);
+      return ch && !ch.refunded;
+    }).map(p => p.id),
+    enCours: siens.filter(p => p.status === "processing" || p.status === "requires_capture").map(p => p.id),
+  };
 }
