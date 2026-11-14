@@ -2338,7 +2338,10 @@ export function BOVersements() {
                   {m.payout_status === "pending" && data.versable[m.prestataire_id] === false
                     ? "⛔ Aucun compte Stripe Connect actif pour ce prestataire — le virement ne peut pas partir. Il se déclenchera seul à l'activation du compte."
                     : m.payout_status === "annule"
-                    ? "Versement annulé — le client a été remboursé au titre du litige."
+                    // `annule` a plusieurs auteurs (litige, annulation ou suspension
+                    // au back-office, arrêt avant toute heure due) : le libellé
+                    // n'en suppose aucun (13/11/2026).
+                    ? "Versement annulé — rien n'est dû au prestataire."
                     : m.payout_status === "held"
                       ? [
                           LIBELLE_MOTIF[m.payout_hold_reason] || m.payout_hold_reason

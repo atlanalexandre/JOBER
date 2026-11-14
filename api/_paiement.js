@@ -301,3 +301,38 @@ export function messageDoublon(rembourse) {
     ? "Cette réservation était déjà payée : ce second paiement vous a été intégralement remboursé (sous 5 à 10 jours ouvrés selon votre banque). Retrouvez la réservation dans « Mes prestations »."
     : "Cette réservation était déjà payée : ce second paiement n'a pas pu être remboursé automatiquement — écrivez à direction@alane.fr, il vous sera restitué.";
 }
+
+/**
+ * Les paiements de réservation ABOUTIS d'une prestation, lus chez Stripe par la
+ * recherche — qu'ils lui soient rattachés ou non (13/11/2026). Un client qui
+ * paie puis ferme son navigateur avant l'affectation laisse un paiement que la
+ * base ignore : la prestation, « sans paiement » à ses yeux, était clôturée
+ * sans que rien ne le rende. Recherche par identifiant de prestation : un
+ * paiement d'un autre environnement (le compte Stripe est partagé avec la
+ * recette) ne peut pas s'y glisser.
+ *
+ * Écartés : les séries et les heures supplémentaires (`metadata[type]`), qui
+ * ont leurs propres chemins, et tout paiement déjà ENTIÈREMENT remboursé.
+ * LÈVE si Stripe ne répond pas : on ne clôt pas sans savoir.
+ * @returns {Promise<{aRendre:string[], enCours:string[]}>}
+ */
+export async function paiementsAboutisDe(missionId, cle) {
+  // `processing` et `requires_capture` sont lus aussi : un paiement en cours
+  // de traitement à la clôture aurait abouti ensuite, sur une demande close
+  // que plus rien ne relit (relecture du 13/11/2026). L'appelant reporte.
+  const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND (status:'succeeded' OR status:'processing' OR status:'requires_capture')`);
+  const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=20&expand[]=data.latest_charge`,
+    { headers: { "Authorization": `Bearer ${cle}` } });
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche des paiements refusée (${r.status})`);
+  const siens = d.data.filter(p => String(p?.metadata?.mission || "") === String(missionId) && !p?.metadata?.type);
+  return {
+    // Rendu en entier ou seulement en partie : le reste est dû (un remboursement
+    // sans montant rend ce qui reste).
+    aRendre: siens.filter(p => p.status === "succeeded").filter(p => {
+      const ch = p.latest_charge && typeof p.latest_charge === "object" ? p.latest_charge : null;
+      return ch && !ch.refunded;
+    }).map(p => p.id),
+    enCours: siens.filter(p => p.status === "processing" || p.status === "requires_capture").map(p => p.id),
+  };
+}

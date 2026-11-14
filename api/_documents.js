@@ -29,7 +29,7 @@ export const DOCS_REQUIS = [
   // sert : un prestataire qui croit remplir une formalité envoie une vignette
   // de profil, celui qui sait que son client la regardera sur son palier
   // envoie une photo exploitable.
-  { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Visage de face, bien éclairé, fond neutre, sans lunettes de soleil ni couvre-chef. Au moins 400×400 pixels. C'est cette photo que vos clients verront pour vous reconnaître à leur porte — elle est comparée à votre pièce d'identité." },
+  { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Une photo récente de vous — pas celle de votre pièce d'identité. Visage de face, bien éclairé, fond neutre, sans lunettes de soleil ni couvre-chef. Au moins 400×400 pixels. C'est cette photo que vos clients verront pour vous reconnaître à leur porte — elle est comparée à votre pièce d'identité." },
   { id:"kbis",     label:"Extrait KBIS / INSEE",       icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
   { id:"urssaf",   label:"Attestation URSSAF",         icon:"📋", required:true,  info:"Prouve que vous êtes à jour de vos cotisations" },
   { id:"cni",      label:"Pièce d'identité",           icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },

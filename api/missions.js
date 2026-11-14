@@ -677,6 +677,50 @@ async function quotaMensuelAtteint(prestataireId, SUPABASE_URL, headers) {
 }
 
 /**
+ * Un remboursement d'heures ajoutées a échoué : un ticket interne, que l'équipe
+ * voit au back-office (relecture du 13/11/2026). Partagé par l'interruption et
+ * le désistement — deux copies divergeaient déjà.
+ *   - `evenement` distingue chaque échec (interruption d'un jour, désistement) :
+ *     un second échec sur la même prestation n'est plus absorbé par le ticket
+ *     du premier ; un nouvel essai du MÊME événement n'en crée pas un second ;
+ *   - `centimesRendus` : ce qui est parti avant l'échec. Le ticket annonce ce
+ *     qui reste dû, jamais le total — l'équipe aurait remboursé deux fois ;
+ *   - le texte demande toujours de vérifier dans Stripe avant d'agir : un
+ *     essai suivant a pu rendre ces heures entre-temps.
+ * Rend true si un ticket existe pour cet échec (créé ou déjà ouvert).
+ */
+async function ticketHeuresAjoutees({ missionId, evenement, contexte, parPaiement = {}, centimesRendus = 0, userId, explication }, supabaseUrl, headers) {
+  // Le détail PAR paiement : un total sur plusieurs paiements faisait
+  // rembourser le mauvais (relecture du 13/11/2026, troisième passe).
+  const duesEuros = Object.values(parPaiement).reduce((t, v) => t + (Number(v) || 0), 0);
+  const detail = Object.entries(parPaiement).map(([pi, v]) => `${pi} : ${euros(Number(v) || 0)}`).join(" ; ");
+  const sujet = `[Interne] Heures ajoutées à rembourser — prestation ${String(missionId).slice(0, 8)} — ${evenement}`;
+  const resteEuros = Math.max(0, Math.round((Number(duesEuros) - Number(centimesRendus || 0) / 100) * 100) / 100);
+  try {
+    const dj = await fetch(`${supabaseUrl}/rest/v1/support_tickets?subject=eq.${encodeURIComponent(sujet)}&status=eq.open&select=id&limit=1`, { headers });
+    const deja = dj.ok ? await dj.json().catch(() => null) : null;
+    if (!Array.isArray(deja)) {
+      console.error(`[${contexte}] tickets illisibles (${dj.status}) — ticket « heures ajoutées » NON créé pour ${missionId}.`);
+      return false;
+    }
+    if (deja.length) return true;
+    const t = await fetch(`${supabaseUrl}/rest/v1/support_tickets`, {
+      method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ subject: sujet, user_id: userId, status: "open",
+        message: `${explication} Reste dû au client : ${euros(resteEuros)}`
+          + (centimesRendus > 0 ? ` (${euros(centimesRendus / 100)} déjà rendus avant l'échec)` : "")
+          + `. Dû à l'origine, par paiement : ${detail}. `
+          + "Vérifier d'abord dans Stripe ce qui a déjà été rendu sur ces paiements — un nouvel essai a pu le faire entre-temps —, puis rembourser le reste ; vérifier aussi l'état de la prestation au back-office." }),
+    });
+    if (!t.ok) { console.error(`[${contexte}] ticket interne NON créé (${t.status}) pour ${missionId}.`); return false; }
+    return true;
+  } catch (e) {
+    console.error(`[${contexte}] ticket interne non créé pour ${missionId} :`, e.message);
+    return false;
+  }
+}
+
+/**
  * Refusée (refus du prestataire, délai écoulé), mais le remboursement a échoué.
  * La prestation restait « refusée », l'argent du client gardé, et rien ne la
  * reprenait : la tâche planifiée ne relit que les prestations en attente
@@ -690,6 +734,11 @@ async function remettreARembourser(missionId, supabaseUrl, headers, contexte) {
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=eq.refused`, {
       method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+      // SANS prestataire. Le garder (essai du 13/11/2026) ne servait à rien
+      // après un refus — le refus l'a déjà effacé — et nuisait après un délai
+      // écoulé : son application, qui relit ses demandes toutes les 30 s,
+      // l'effaçait elle-même et annonçait au client « de nouveau disponible »,
+      // à tort (relecture du 13/11/2026, après-midi).
       body: JSON.stringify({ status: "pending_acceptance", prestataire_id: null, acceptance_deadline: new Date(Date.now() - 60e3).toISOString() }),
     });
     const l = await r.json().catch(() => null);
@@ -981,11 +1030,12 @@ async function handleEmailAction(req, res) {
     if (cascade.mode === "echec" && !(await toujoursRefusee(missionId, SUPABASE_URL, hdrs))) {
       console.error(`[refus-email] cascade en échec mais prestation ${missionId} plus « refusée » — pas de remboursement, à vérifier.`);
     } else if (cascade.mode === "echec") {
+      const rechercheEncore = cascade.raison !== "heure_passee";
       cascade = null;
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
       // Même règle que respond_mission : remise en attente, la prestation peut
       // repartir au candidat suivant — le client l'apprend ainsi (12/11/2026).
-      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: "reprise" };
+      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
@@ -1005,14 +1055,17 @@ async function handleEmailAction(req, res) {
     const isAccepted = action === "accept";
     // Sur une prestation affectée par la plateforme, le client n'a désigné
     // personne : on lui dit ce qui se passe réellement, comme dans l'application.
-    const titreRefus = cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
-    const corpsRefus = cascade?.mode === "reprise"
+    const titreRefus = cascade?.mode === "remboursement" ? "Prestataire non disponible"
+      : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
+    const corpsRefus = cascade?.mode === "remboursement"
+      ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
+      : cascade?.mode === "reprise"
       ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
       : cascade
       ? "Le prestataire pressenti n'est pas disponible. Nous sollicitons un autre professionnel — votre réservation et votre paiement sont conservés."
       : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`;
     await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : titreRefus, body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : corpsRefus, ref_id: missionId }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
-    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : titreRefus, body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : (cascade ? "Votre réservation est conservée." : `Le prestataire a décliné "${missionLabel}".`), url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
+    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : titreRefus, body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : (cascade?.mode === "remboursement" ? "Votre paiement vous sera intégralement remboursé." : cascade ? "Votre réservation est conservée." : `Le prestataire a décliné "${missionLabel}".`), url: "/" }, SUPABASE_URL, hdrs).catch(e => console.error("[missions/accept] échec ignoré :", e?.message));
   }
 
   return res.status(200).send(emailActionHtml(
@@ -4718,17 +4771,11 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
 
-      // Les heures ajoutées non faites d'abord : un échec arrête tout ici, avant
-      // le moindre autre mouvement. Un nouvel essai ne rembourse pas deux fois
-      // (clé par paiement, jour et issue).
-      if (ajoutsPerdus.valeur > 0) {
-        const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-        const rAjouts = cleAjouts
-          ? await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress")
-          : { ok: false };
-        if (!rAjouts.ok) {
-          return res.status(500).json({ error: "Le remboursement des heures ajoutées a échoué — la prestation n'a pas été interrompue. Réessayez, ou contactez le support." });
-        }
+      // Les heures ajoutées non faites : sans clé Stripe, rien ne pourrait être
+      // rendu — on n'interrompt pas.
+      const cleAjouts = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      if (ajoutsPerdus.valeur > 0 && !cleAjouts) {
+        return res.status(500).json({ error: "Le remboursement des heures ajoutées est indisponible — la prestation n'a pas été interrompue. Réessayez, ou contactez le support." });
       }
 
       if (refundAmount > 0 && isWalletPaidInProgress) {
@@ -4788,6 +4835,38 @@ export default async function handler(req, res) {
         }
       }
 
+      // Les heures ajoutées non faites APRÈS le remboursement de la prestation
+      // (relecture du 13/11/2026, comme le désistement le 12/11). Rendues
+      // avant, un échec du remboursement arrêtait l'interruption : la
+      // prestation restait entière, avec des heures ajoutées déjà rendues au
+      // client — que la clôture aurait payées au prestataire. Un échec ICI
+      // n'arrête plus rien : la prestation est écourtée comme prévu (le
+      // prestataire n'est pas payé de ces heures), et l'argent dû au client est
+      // signalé pour être rendu à la main. Un nouvel essai ne rembourse pas
+      // deux fois (étiquette par paiement, jour et issue).
+      // Rendues ou non : ce que le client lit, et ce que l'équipe doit faire,
+      // en dépendent (relecture du 13/11/2026, après-midi).
+      let ajoutsRendus = true, ajoutsRendusEuros = ajoutsPerdus.valeur, ticketAjouts = false;
+      if (ajoutsPerdus.valeur > 0) {
+        const rAjouts = await rembourserAjoutsNonFaits(ajoutsPerdus.parPaiement, cleAjouts, `${aujourdHui}-${annulerReste ? "fin" : "jour"}`, "cancel_in_progress");
+        // Ce que Stripe a RÉELLEMENT rendu : plafonné au reste remboursable,
+        // il peut être inférieur au voulu même quand tout réussit.
+        ajoutsRendusEuros = (Number(rAjouts.centimes) || 0) / 100;
+        if (!rAjouts.ok) {
+          ajoutsRendus = false;
+          console.error(`[cancel_in_progress] ⚠️ heures ajoutées NON remboursées sur ${mission_id} (${ajoutsPerdus.valeur.toFixed(2)} € dus, `
+            + `${((Number(rAjouts.centimes) || 0) / 100).toFixed(2)} € rendus avant l'échec, paiements ${Object.keys(ajoutsPerdus.parPaiement || {}).join(", ")}) — prestation écourtée quand même. À FAIRE À LA MAIN.`);
+          // L'événement distingue la journée écourtée de l'arrêt de toute la
+          // prestation, comme l'étiquette des remboursements : les deux, le même
+          // jour, ont chacun leur ticket.
+          ticketAjouts = await ticketHeuresAjoutees({ missionId: mission_id, evenement: `interruption ${aujourdHui} (${annulerReste ? "arrêt" : "journée"})`, contexte: "cancel_in_progress",
+            parPaiement: ajoutsPerdus.parPaiement || {}, centimesRendus: Number(rAjouts.centimes) || 0,
+            userId: mission.client_id || caller.id,
+            explication: "Interruption par le client : les heures ajoutées non faites n'ont pas toutes pu être remboursées. Le prestataire n'en sera pas payé." },
+          SUPABASE_URL, headers);
+        }
+      }
+
       // Mettre à jour la mission.
       //
       // Le résultat n'était pas vérifié, et le PATCH échouait : il écrivait
@@ -4813,8 +4892,13 @@ export default async function handler(req, res) {
       // deuxième faisait attendre au prestataire huit jours de plus un argent
       // dû pour un travail fait (relecture du 02/10/2026).
       const echeanceInterruption = new Date(echeanceVersementMs({ ...mission, date_fin: aujourdHui })).toISOString();
-      const versementInterruption = annulerReste && proratedAmount > 0 && mission.prestataire_id
-        ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount } : {};
+      // Rien à verser (aucune heure due) : le versement est ANNULÉ explicitement.
+      // Laissé vide, une validation du même instant gardait son versement
+      // complet en attente (relecture du 13/11/2026).
+      const versementInterruption = !(annulerReste && mission.prestataire_id) ? {}
+        : proratedAmount > 0
+          ? { payout_status: "pending", payout_due_at: echeanceInterruption, payout_amount: proratedAmount }
+          : { payout_status: "annule", payout_amount: 0 };
       // La condition laisse passer une prestation que la validation (`complete`,
       // ou la validation automatique) vient de clore À L'INSTANT, versement
       // encore en attente : le remboursement ci-dessus est déjà parti, et c'est
@@ -5080,7 +5164,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
-                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${euros(ajoutsPerdus.valeur)} remboursés sur les paiements de prolongation</td></tr>` : ""}
+                  ${ajoutsPerdus.valeur > 0 ? `<tr><td style="padding:6px 0;color:#666">Heures ajoutées non faites</td><td style="font-weight:700">${nbh(ajoutsPerdus.heures)}h — ${ajoutsRendus ? `${euros(ajoutsRendusEuros)} remboursés sur les paiements de prolongation${ajoutsRendusEuros + 0.005 < ajoutsPerdus.valeur ? ` (sur ${euros(ajoutsPerdus.valeur)} dus : le reste avait déjà été rendu)` : ""}` : `${euros(ajoutsPerdus.valeur)} dus — NON remboursés en entier (${euros(ajoutsRendusEuros)} rendus avant l'échec Stripe) — ${ticketAjouts ? "ticket interne ouvert" : "ticket interne NON créé, voir les journaux"}, à rembourser à la main`}</td></tr>` : ""}
                   ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
                   <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
@@ -5108,8 +5192,11 @@ export default async function handler(req, res) {
         billedHours,
         heuresDuJour,
         heuresPerdues: heuresPerduesTotal,
-        remboursement: Math.round((refundAmount + ajoutsPerdus.valeur + renduRetard) * 100) / 100,
-        remboursementHeuresAjoutees: ajoutsPerdus.valeur,
+        // Ce qui est réellement parti : des heures ajoutées non rendues ne
+        // sont pas annoncées au client comme remboursées.
+        remboursement: Math.round((refundAmount + ajoutsRendusEuros + renduRetard) * 100) / 100,
+        remboursementHeuresAjoutees: ajoutsRendusEuros,
+        ...(ajoutsRendus ? {} : { heuresAjouteesARembourser: Math.round((ajoutsPerdus.valeur - ajoutsRendusEuros) * 100) / 100 }),
         proratedAmount,
       });
     }
@@ -6238,13 +6325,19 @@ export default async function handler(req, res) {
         if (cascade.mode === "echec" && !(await toujoursRefusee(mission_id, SUPABASE_URL, headers))) {
           console.error(`[respond_mission] cascade en échec mais prestation ${mission_id} plus « refusée » — pas de remboursement, à vérifier.`);
         } else if (cascade.mode === "echec") {
+          // L'heure de début passée, personne d'autre ne sera cherché : la
+          // reprise ne doit pas être annoncée (relecture du 13/11/2026).
+          const rechercheEncore = cascade.raison !== "heure_passee";
           cascade = null;
           rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
           // Remise en attente, une prestation affectée par la plateforme repart
           // au candidat suivant au passage de la tâche planifiée : le client ne
           // doit pas lire « choisissez un autre prestataire » — il en
           // réserverait un second (relecture du 12/11/2026).
-          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: "reprise" };
+          // L'heure passée, personne ne sera cherché : le client apprend que son
+          // paiement lui sera rendu, pas « choisissez un autre prestataire » —
+          // il n'en avait choisi aucun (relecture du 13/11/2026).
+          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
@@ -6264,7 +6357,12 @@ export default async function handler(req, res) {
             ? "Le prestataire pressenti n'est pas disponible. Un autre professionnel correspondant à votre mission vient d'être sollicité — votre réservation et votre paiement sont conservés."
             : cascade.mode === "reprise"
               ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
+            : cascade.mode === "remboursement"
+              ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
               : "Le prestataire pressenti n'est pas disponible. Votre mission a été proposée à l'ensemble des professionnels du secteur — votre réservation et votre paiement sont conservés.";
+
+        const enRemboursement = cascade?.mode === "remboursement";
+        const titreCascade = enRemboursement ? "Prestataire non disponible" : "Recherche d'un autre prestataire 🔄";
 
         // Notification au client — dans l'application ET sur son téléphone.
         await notifier({
@@ -6274,7 +6372,7 @@ export default async function handler(req, res) {
             // personne : lui annoncer un « refus » et l'inviter à choisir quelqu'un
             // d'autre n'aurait aucun sens. On lui dit ce qui se passe réellement.
             title: isAccepted ? "Prestation acceptée ! 🎉"
-              : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée",
+              : cascade ? titreCascade : "Prestation refusée",
             body: isAccepted
               ? `${resolvedPrestaName} a accepté votre demande de mission.`
               : texteCascade || `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
@@ -6298,9 +6396,9 @@ export default async function handler(req, res) {
               from: RESEND_FROM,
               to: [clientEmail],
               subject: isAccepted ? `✅ ${resolvedPrestaName} a accepté la prestation !`
-                : texteCascade ? "🔄 Nous recherchons un autre prestataire" : `❌ ${resolvedPrestaName} a refusé la prestation`,
+                : texteCascade ? (enRemboursement ? "Votre paiement vous sera remboursé" : "🔄 Nous recherchons un autre prestataire") : `❌ ${resolvedPrestaName} a refusé la prestation`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
-                <h2 style="color:${isAccepted?"#10D98F":texteCascade?"#A29BFE":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":texteCascade?"Recherche d'un autre prestataire 🔄":"Prestation refusée ❌"}</h2>
+                <h2 style="color:${isAccepted?"#10D98F":texteCascade?"#A29BFE":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":texteCascade?titreCascade:"Prestation refusée ❌"}</h2>
                 <p>Bonjour ${esc(clientName)},</p>
                 ${isAccepted
                   ? `<p><strong>${esc(resolvedPrestaName)}</strong> a accepté votre demande de prestation <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
@@ -6328,7 +6426,9 @@ export default async function handler(req, res) {
                 content: smsClean(isAccepted
                   ? `ALANE - ${resolvedPrestaName} a accepté votre prestation ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
                   : texteCascade
-                    ? `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible : nous en recherchons un autre, inutile de réserver à nouveau. — alane.fr`
+                    ? (enRemboursement
+                      ? `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible et l'heure est passée : votre paiement vous sera intégralement remboursé. — alane.fr`
+                      : `ALANE - Le prestataire pressenti pour ${missionLabel} n'est pas disponible : nous en recherchons un autre, inutile de réserver à nouveau. — alane.fr`)
                     : `ALANE - ${resolvedPrestaName} a refusé votre prestation ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
             }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
@@ -6336,10 +6436,10 @@ export default async function handler(req, res) {
         }
 
         // Web push client
-        const pushTitle = isAccepted ? "Prestation acceptée ✅" : texteCascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
+        const pushTitle = isAccepted ? "Prestation acceptée ✅" : texteCascade ? titreCascade : "Prestation refusée";
         const pushBody  = isAccepted
           ? `${resolvedPrestaName} a accepté votre demande de mission.`
-          : texteCascade ? "Votre réservation est conservée — inutile de réserver à nouveau."
+          : texteCascade ? (enRemboursement ? "Votre paiement vous sera intégralement remboursé." : "Votre réservation est conservée — inutile de réserver à nouveau.")
             : `${resolvedPrestaName} a refusé. Connectez-vous pour choisir un autre prestataire.`;
         sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
       }
@@ -7201,15 +7301,13 @@ export default async function handler(req, res) {
         }
         try {
           const lus = await paiementsHeuresSupp(mission_id, cleAjouts, { dernier: mission.extra_hours_payment_intent,
-            compteur: Number(mission.extra_hours_appliquees || 0) + Number(mission.heures_ajoutees_total || 0) });
+            compteur: Number(mission.extra_hours_appliquees || 0) + Number(mission.heures_ajoutees_total || 0),
+            connus: [...piDuDetail] });
           for (const p of lus) {
             paiementsAjoutsPresta[p.id] = p.recu / 100;
             // Ajoutés à `montant_total` : ceux du détail, et les autres une fois appliqués.
             if (piDuDetail.has(p.id) || p.applique) ajoutsAppliquesEuros += p.recu / 100;
           }
-          // Un paiement du détail que la recherche n'a pas encore vu : relu par
-          // rembourserAjoutsNonFaits, qui plafonne à ce qui reste à rendre.
-          for (const pi of Object.keys(paiementsAjoutsPresta)) if (!(paiementsAjoutsPresta[pi] > 0)) paiementsAjoutsPresta[pi] = 1e6;
         } catch (e) {
           console.error(`[presta_cancel] heures ajoutées de ${mission_id} illisibles :`, e.message);
           await rouvrirRemplacements();
@@ -7279,7 +7377,16 @@ export default async function handler(req, res) {
       // nouvel essai ne rembourse pas deux fois.
       if (Object.keys(paiementsAjoutsPresta).length) {
         const rAj = await rembourserAjoutsNonFaits(paiementsAjoutsPresta, cleAjouts, "desistement", "presta_cancel");
-        if (!rAj.ok) console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
+        if (!rAj.ok) {
+          // Le journal seul ne suffisait pas : la prestation est annulée, plus
+          // rien ne repasse, et le client lit « intégralement remboursé ». Un
+          // ticket interne, que l'équipe voit au back-office (13/11/2026).
+          console.error(`[presta_cancel] ⚠️ heures ajoutées de ${mission_id} NON remboursées (réservation remboursée, prestation annulée) — À FAIRE À LA MAIN dans Stripe : ${Object.keys(paiementsAjoutsPresta).join(", ")}`);
+          await ticketHeuresAjoutees({ missionId: mission_id, evenement: "désistement", contexte: "presta_cancel",
+            parPaiement: paiementsAjoutsPresta, centimesRendus: Number(rAj.centimes) || 0, userId: mission.client_id || caller.id,
+            explication: "Désistement du prestataire : la réservation a été remboursée, mais les heures ajoutées n'ont pas toutes pu l'être." },
+          SUPABASE_URL, headers);
+        }
       }
 
       // Le remboursement est déjà parti quand on arrive ici. Sans vérification,

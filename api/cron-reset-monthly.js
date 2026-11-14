@@ -1,5 +1,6 @@
 import { resendBody, sendEmail, emailHtml, esc as escEmail, euros } from "./_email.js";
 import { sendPushToUser, notifier } from "./_push.js";
+import { paiementsAboutisDe, rembourserDoublonPaiement } from "./_paiement.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { envoyerAccuseInscription } from "./_accuse_inscription.js";
@@ -522,8 +523,39 @@ export default async function handler(req, res) {
           //    29/09/2026).
           const aPaye = !!m.stripe_payment_intent;
           const urlCloture = `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`;
-          const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)`,
-            { status: aPaye ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
+          // « Sans paiement » pour la base ne veut pas dire sans paiement : un
+          // client qui a payé puis fermé son navigateur avant l'affectation
+          // laisse un paiement abouti que rien n'a rattaché. Clôturée sans
+          // regarder, la demande gardait son argent (13/11/2026). Stripe est
+          // donc interrogé AVANT de clore ; muet, on attend le passage suivant.
+          let nonRattaches = [];
+          if (!aPaye) {
+            const cleStripe = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+            if (!cleStripe) {
+              // Comme cron-abandon : sans clé, rien ne serait jamais vérifiable —
+              // la demande est close, et c'est dit.
+              console.error(`[cron/cloture] ${m.id} : clé Stripe absente — close SANS vérifier de paiement non rattaché.`);
+            } else {
+              try {
+                const lus = await paiementsAboutisDe(m.id, cleStripe);
+                if (lus.enCours.length) {
+                  console.error(`[cron/cloture] ${m.id} : paiement en cours de traitement (${lus.enCours.join(", ")}) — clôture reportée.`);
+                  differees++;
+                  return;
+                }
+                nonRattaches = lus.aRendre;
+              } catch (e) {
+                // Reportée, et listée dans l'alerte de fin de passage : elle ne
+                // doit pas pouvoir rester ouverte sans que personne le sache.
+                console.error(`[cron/cloture] ${m.id} : paiement non vérifiable — clôture reportée :`, e.message);
+                differees++;
+                differeesPersistantes.push(m.id);
+                return;
+              }
+            }
+          }
+          const close = await ecrireVerifie(`${urlCloture}&status=in.(open,needs_replacement)${aPaye ? "" : "&stripe_payment_intent=is.null"}`,
+            { status: aPaye || nonRattaches.length ? "cancelled" : "closed" }, headers, `cron/cloture ${m.id}`);
           if (!close) {
             // Reprise entre-temps (ou écriture refusée, journalisée par
             // ecrireVerifie) : ni remboursement, ni annonce au client.
@@ -548,6 +580,23 @@ export default async function handler(req, res) {
               return;
             }
             remboursees++;
+          } else if (nonRattaches.length) {
+            // Les paiements que rien n'avait rattachés : même clé que
+            // l'application et le webhook — jamais deux fois.
+            let tous = true;
+            for (const pi of nonRattaches) if (!(await rembourserDoublonPaiement(pi, `cron/cloture ${m.id}`))) tous = false;
+            if (!tous) {
+              differees++;
+              differeesPersistantes.push(m.id);
+              const rouverte = await ecrireVerifie(`${urlCloture}&status=eq.cancelled`,
+                { status: m.status }, headers, `cron/cloture ${m.id} (réouverture)`);
+              console.error(`[cron] paiement non rattaché NON remboursé pour ${m.id} — `
+                + (rouverte ? "clôture différée, reprise au prochain passage." : "⚠️ ANNULÉE SANS REMBOURSEMENT et non rouverte : à rembourser à la main."));
+              return;
+            }
+            rembourse = true;
+            remboursees++;
+            console.error(`[cron/cloture] ${m.id} : paiement(s) non rattaché(s) ${nonRattaches.join(", ")} remboursé(s) à la clôture.`);
           }
           cloturees++;
           // Rejeter toutes candidatures en attente
@@ -563,6 +612,8 @@ export default async function handler(req, res) {
                 title: rembourse ? "Prestation annulée — vous êtes remboursé 💶" : "Prestation clôturée automatiquement",
                 body: (() => {
                   const nom = m.titre || m.metier || "prestation";
+                  // Payée puis jamais finalisée (navigateur fermé) : la vraie raison.
+                  if (nonRattaches.length) return `Votre paiement pour "${nom}" vous est intégralement remboursé : la réservation n'a pas pu être finalisée avant l'heure prévue. Comptez 5 à 10 jours ouvrés selon votre banque.`;
                   const cause = m.status === "needs_replacement"
                     ? `Le prestataire de votre prestation "${nom}" s'est désisté et aucun remplaçant n'a été trouvé avant l'heure prévue.`
                     : `Votre prestation "${nom}" n'a trouvé aucun prestataire avant l'heure prévue.`;
@@ -582,7 +633,7 @@ export default async function handler(req, res) {
       if (differeesPersistantes.length) {
         // Une prestation qu'on n'arrive pas à rembourser reste visible exprès —
         // mais si elle le reste des semaines, personne ne le sait. On le dit.
-        console.error(`[cron] remboursement toujours impossible sur : ${differeesPersistantes.join(", ")}`);
+        console.error(`[cron] remboursement — ou vérification du paiement — toujours impossible sur : ${differeesPersistantes.join(", ")}`);
       }
     } catch (e) { console.error("[cron] auto-close past missions error:", e); }
   }
@@ -680,13 +731,30 @@ export default async function handler(req, res) {
               // toucher à la contrainte de `missions.status`, et un statut
               // inconnu du reste du code ferait disparaître la prestation de
               // tous les écrans.
-              const verrou = await fetch(
-                `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=is.null`,
-                { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-                  body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) }
-              );
-              const pris = await verrou.json().catch(() => []);
-              if (!Array.isArray(pris) || pris.length === 0) continue;
+              // Un accord tacite de REMBOURSEMENT resté « à reprendre »
+              // (remboursement fait, clôture non écrite) est repris : le
+              // remboursement déjà fait est retrouvé à son étiquette, rien ne
+              // part deux fois. Une autre résolution ne se reprend jamais
+              // d'office (relecture du 13/11/2026).
+              // L'état repris se lit sur l'écriture qui prend le verrou, jamais
+              // sur la lecture de la liste : deux passages simultanés pouvaient
+              // marquer « à reprendre » entre les deux (13/11/2026).
+              const prendre = async (filtre) => {
+                const v = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&${filtre}`,
+                  { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+                    body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) });
+                const l = await v.json().catch(() => []);
+                if (!v.ok) console.error(`[resolution] verrou de ${m.id} refusé (${v.status})`);
+                return v.ok && Array.isArray(l) && l.length > 0;
+              };
+              let verrouAvant = null;
+              let pris = false;
+              if (m.resolution_proposee === "rembourser_client") {
+                pris = await prendre("resolution_executee_cause=eq.accord_tacite_a_reprendre");
+                if (pris) verrouAvant = "accord_tacite_a_reprendre";
+              }
+              if (!pris) pris = await prendre("resolution_executee_cause=is.null");
+              if (!pris) continue;
 
               const out = await executerResolution({
                 mission: m, resolution: m.resolution_proposee,
@@ -697,17 +765,27 @@ export default async function handler(req, res) {
               if (!out.ok && out.argentParti) {
                 // L'argent a bougé (ou peut-être) : le verrou reste, rien ne
                 // repart d'office (relecture du 12/11/2026).
-                console.error(`[resolution] ${m.id} : échec APRÈS un mouvement d'argent — verrou gardé. À FAIRE À LA MAIN : ${out.detail}`);
+                const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=eq.accord_tacite`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ resolution_executee_cause: "accord_tacite_a_reprendre" }),
+                }).catch(e => { console.error(`[resolution] ${m.id} non marqué « à reprendre » :`, e.message); return null; });
+                if (ar && !ar.ok) console.error(`[resolution] ${m.id} non marqué « à reprendre » (${ar.status})`);
+                console.error(`[resolution] ${m.id} : échec APRÈS un mouvement d'argent — verrou gardé, `
+                  + `${m.resolution_proposee === "rembourser_client" ? "repris au prochain passage" : "À FAIRE À LA MAIN"} : ${out.detail}`);
                 continue;
               }
               if (!out.ok) {
                 // Relâcher le verrou : la prestation sera reprise au prochain
                 // passage plutôt que de rester coincée.
                 console.error(`[resolution] exécution impossible — prestation ${m.id} : ${out.detail}`);
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                // Rendu à ce qu'il valait : repris depuis « à reprendre », il y
+                // retourne — à vide, la trace du remboursement déjà fait se
+                // perdait (relecture du 13/11/2026).
+                const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=eq.accord_tacite`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ resolution_executee_cause: null }),
-                }).catch(e => console.error(`[resolution] verrou non relâché ${m.id} :`, e.message));
+                  body: JSON.stringify({ resolution_executee_cause: verrouAvant }),
+                }).catch(e => { console.error(`[resolution] verrou non relâché ${m.id} :`, e.message); return null; });
+                if (rl && !rl.ok) console.error(`[resolution] verrou non relâché ${m.id} (${rl.status})`);
                 continue;
               }
 

@@ -651,6 +651,15 @@ est nommé précisément (« Carte professionnelle CNAPS » plutôt que « Dipl�
 l'obligatoire du facultatif, rappelle les deux mandats, et dit d'emblée que **le compte ne
 donne pas encore accès aux prestations**.
 
+Depuis le 13/11/2026, il réclame aussi le **SIRET** à qui ne l'a pas encore renseigné (lu sur
+`profiles.siret`, à défaut sur l'inscription — 91 inscrits en attente n'en avaient pas) et renvoie
+vers sa saisie dans l'espace du prestataire (voir « SIRET déclaré par le prestataire », plus bas),
+rappelle
+le **CV** quand il est incomplet (l'accès aux prestations exige les deux), et renvoie vers la page
+LinkedIn d'ALANE. La photo demandée précise qu'elle n'est **pas celle de la pièce d'identité**. Le
+compte de virement n'y est pas demandé : son lien part à l'ouverture de l'accès (`enable_missions`).
+Le bouton « Valider le profil des N prestataires en attente » du back-office l'envoie à chacun.
+
 **`DOCS_REQUIS` et `docsRequisPour()` ont rejoint [`api/_documents.js`](api/_documents.js)** à
 cette occasion, `src/constants/data.js` les ré-exportant : le serveur en a besoin pour rédiger
 ce courriel, et les libellés s'y trouvaient déjà en double depuis la surveillance de
@@ -1496,13 +1505,13 @@ Les 78 fichiers de `/api` — 21 points d'entrée et 57 modules partagés préfi
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
 | `references.js` | **Références d'expérience confirmées par e-mail** (09/11/2026). `ajouter` (prestataire connecté, rôle lu sur `profiles`) : 5 au plus, SIRET contrôlé dans SIRENE (entreprise active), contact différent du prestataire, doublon refusé ; alerte au back-office pour une adresse personnelle ou un contact qui sert déjà à d'autres prestataires ; e-mail construit par le serveur seul (nom officiel de l'entreprise, métier du catalogue) — s'il ne part pas, la ligne est retirée. `lire` / `repondre` (publics, par jeton à usage unique, 30 jours) : la page `public/reference.html` ; la réponse ne s'écrit qu'une fois (`statut=eq.en_attente`). **Une relance, une seule**, 7 jours après l'envoi sans réponse, par le balayage du matin (`relancerReferences()`, `?action=documents`) : le jeton n'étant gardé que par son empreinte, un nouveau lien remplace l'ancien (écriture conditionnée à l'ancienne empreinte) ; si l'e-mail ne part pas, l'ancien est rétabli. « Déjà relancée » se lit sans colonne : la relance repousse `envoyee_at` à plus d'un jour de `created_at`. Relecture du 09/11/2026 : le nom du prestataire vient de sa **fiche** (`profiles`, réduit à des lettres par `nomExpediteur()`) et le métier doit être **au catalogue** — `user_metadata`, que le titulaire réécrit à sa guise, faisait partir n'importe quel texte au nom d'ALANE ; le balayage du matin passe « sans réponse » les demandes dont le lien a expiré, qui ne comptent plus dans le plafond de 5 ; le rappel donne la vraie date limite (celle de la première demande) ; et le compteur public ne compte que les confirmations **sans alerte** et sans « je ne le recommande pas ». Le 10/11/2026 : l'alerte « contact partagé » remontait sur les références antérieures dès la **saisie** — remplacé le 11/11/2026 : n'importe qui pouvait ainsi retirer du compteur public la référence d'un concurrent en tapant l'adresse de son contact, et l'alerte restait même si sa demande échouait. Désormais la saisie ne marque que la **nouvelle** demande ; les autres ne sont marquées (« ce contact a confirmé pour plusieurs prestataires », **ajouté** à une alerte déjà présente) que lorsque le contact a lui-même **confirmé** pour deux prestataires au moins (`repondre`) ; un lien expiré par le balayage dit « expiré », plus « déjà répondu » ; l'e-mail annonce le dernier jour entier où le lien vaut ; et les règles que l'écran partage avec le serveur (30 jours, plafond, demande vivante) vivent dans `api/_references_regles.js`, sans dépendance. Règles dans `_references.js`. Le catalogue (`prestataires.js`) en donne le **nombre** confirmé (`references_confirmees`), affiché sur le profil ; le back-office (`list_references`) en montre le détail |
 | `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail — **plus de courriel par pièce pendant l'inscription** (décision d'Alexandre du 29/09/2026 : sept ou huit par prestataire), sauf pour un prestataire **déjà activé** qui remplace une pièce (elle repasse en attente et doit être revérifiée) ; et, **au dépôt de la dernière pièce obligatoire** d'un prestataire validé mais pas encore activé, un courriel unique « ✅ Dossier complet — à vérifier et activer » qui dit aussi ce qui bloquerait encore l'activation (CV, mandats) (29/09/2026 ; détection par `piecesManquantes()` avant le dépôt et **relue après** l'enregistrement — deux dépôts simultanés des deux dernières pièces ne s'aveuglent plus l'un l'autre, 30/09/2026 ; sans colonne). Une photo déposée depuis l'écran de profil passe par ce même chemin (pièce `photo`) depuis le 30/09/2026, et déclenche donc l'alerte si elle complète le dossier. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
-| `support.js` | Tickets, emails, suppression de compte |
+| `support.js` | Tickets, emails, suppression de compte ; `declarer_siret` (13/11/2026) : le prestataire déclare son SIRET, une seule fois, vérifié dans SIRENE |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage. `sendEmail()` rend `true` (accepté), `false` (refus durable de Resend, sans second essai), `null` (clé absente, rien n'est tenté) ou rien (`undefined` : deux pannes — une limite de débit 429 compte pour une panne). Les trois dernières issues sont fausses pour qui teste `if (envoye)` (29/10/2026) |
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée Tout identifiant de carte reçu du navigateur passe par le contrôle de format `^pm_[A-Za-z0-9]+$` avant d'entrer dans une adresse Stripe appelée avec la clé secrète — le paiement d'heures supplémentaires y échappait jusqu'au 11/11/2026 |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
-| `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
+| `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » ; `paiementsAboutisDe()` (13/11/2026) : les paiements de réservation aboutis d'une prestation, lus chez Stripe — la clôture des demandes dépassées les rembourse au lieu de les ignorer |
 | `_recurrence.js` | Séries hebdomadaires — `programmerOccurrenceSuivante()` crée, débite et propose la semaine suivante ; `dateSuivante()`, `montantOccurrence()`. Appelé par `complete` et la validation automatique. Voir §6 « Réserver chaque semaine » |
 | `_nouvelle_demande.js` | `prevenirNouvelleDemande()` — notification, e-mail avec réponse en un clic, SMS au prestataire désigné. Partagé par `missions.js` et `_recurrence.js` |
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
@@ -2148,6 +2157,23 @@ de toute façon non abonné, laisse l'affectation à l'application. Sur une pres
 (`rembourserDoublonPaiement()`, même clé d'idempotence que le webhook : jamais deux fois). Une
 prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
 
+**Et quand le client a fermé son navigateur** (13/11/2026), `assign_after_payment` n'est jamais
+appelé : la demande reste « sans paiement » pour la base. La clôture des demandes dépassées
+(`cron-reset-monthly`) interroge désormais Stripe **avant** de clore une demande sans paiement
+rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par identifiant de prestation,
+séries et heures supplémentaires écartées, paiements entièrement remboursés aussi) : un paiement
+abouti trouvé, la demande passe « annulée », il est remboursé (le reste, s'il l'a déjà été en
+partie) avec la clé de l'application et du webhook, et le client lit que sa réservation n'a pas pu
+être finalisée ; un paiement **en cours de traitement**, la clôture attend ; Stripe muet, aussi —
+et la demande est listée dans l'alerte de fin de passage. Sans clé Stripe, elle est close sans
+vérification, comme dans `cron-abandon`. Limites connues : un paiement fait dans la minute qui
+précède la clôture peut échapper à la recherche de Stripe (indexée avec un léger retard), et un
+second paiement non rattaché sur une demande déjà payée n'est pas cherché. `cron-abandon` le faisait déjà pour
+les réservations abandonnées. Abonner le webhook à `payment_intent.succeeded` aurait réveillé tout
+le chemin endormi décrit ci-dessous ; relire les paiements récents du compte, essayé le même jour,
+voyait aussi ceux de la recette (le compte Stripe de test est partagé) et ne rattrapait pas une
+demande fermée plus de 48 h après le paiement. **Aucun réglage n'est à faire chez Stripe.**
+
 Il cachait un défaut, neutralisé le 26/09/2026 avant qu'il ne serve : une réservation ordinaire
 ne porte aucun prestataire dans son paiement (il n'est rattaché qu'après) ; ce chemin la passait
 alors en `assigned` **sans prestataire**, et l'affectation de l'application, arrivant ensuite,
@@ -2732,7 +2758,30 @@ l'échéance de l'attestation URSSAF (immatriculation lue dans SIRENE + 60 jours
 d'une entreprise créée la veille, il la repoussait autant de fois que voulu ; et il figure sur les
 factures émises au nom du prestataire. La base le pose à la création du compte (`handle_new_user`) ;
 le seul écran qui le renvoyait, l'inscription client, ne le fait plus (déployé avant la
-migration). Un changement de SIRET passe par le back-office. Production lue le 14/10 : aucun SIRET
+migration). Un changement de SIRET passe par le back-office.
+
+**SIRET déclaré par le prestataire** (13/11/2026). Qui n'en avait pas à l'inscription le saisit
+dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`), qui reste
+affichée tant qu'il manque, même fermée (sauf accès déjà ouvert une fois : la ligne n'y est pas
+proposée, le serveur refuserait) — au lieu de l'envoyer par e-mail. L'écriture passe par le
+serveur (`support.js`, action `declarer_siret`) : compte non bloqué, 5 essais par 10 minutes (le
+registre SIRENE est partagé avec les traitements planifiés), format et clé de contrôle
+(`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La Poste), puis registre SIRENE
+(entreprise existante et active, `entrepriseSirene()`). Il est écrit sur la fiche **et** dans le
+compte (`user_metadata.siret`, seule clé envoyée : le service d'authentification fusionne). La
+liste noire est consultée aussitôt (SIRET d'un compte supprimé : essai épuisé). La validation du
+profil, la liste du back-office et les deux suppressions de compte lisent désormais le SIRET **sur
+la fiche d'abord** : `user_metadata`, que le navigateur peut réécrire, n'est plus qu'un repli.
+
+Garde-fous contre la faille du 14/10 : **jamais de remplacement** (écriture conditionnée à
+`siret=is.null`) — sauf un SIREN de 9 chiffres admis à l'inscription, que complète un SIRET de la
+**même** entreprise (même immatriculation) ; et **jamais une fois l'accès aux prestations ouvert** —
+accès ouvert ne serait-ce qu'une fois (`missions_enabled_at`, même suspendu depuis) — l'échéance de l'attestation URSSAF y court déjà, depuis l'inscription faute de SIRET, et un premier
+SIRET la ferait partir de l'immatriculation — d'une entreprise créée la veille, elle reculerait. Ces
+cas passent par le support. Limite connue : rien ne vérifie que l'entreprise est bien celle du
+prestataire — c'est l'extrait KBIS / INSEE, vérifié au back-office, qui le dit ; le nom retrouvé
+dans le registre lui est affiché, avec l'adresse du support s'il se trompe. La relance des inscrits
+sans SIRET et l'e-mail de validation renvoient vers cette saisie. Production lue le 14/10 : aucun SIRET
 différent de celui déclaré à l'inscription. **Appliquée en recette et en production le 14/10/2026** —
 vérifié en lecture seule : `siret` n'est plus modifiable ni par `authenticated` ni par `anon`, et les
 15 colonnes qui restent ouvertes au navigateur sont les mêmes des deux côtés.
@@ -2933,11 +2982,13 @@ horodatée.
 **Le client lit que sa commande tient, sur tous les canaux** (relecture du 12/11/2026). La
 notification de l'application le disait ; l'e-mail, le SMS et la notification du téléphone
 annonçaient « refusé — choisissez un autre prestataire », et le client en réservait un second pour
-le même créneau. Les quatre partagent désormais le même texte (`texteCascade`). Si la cascade
+le même créneau. Ces quatre canaux partagent désormais le même texte (`texteCascade`) ; le refus par le lien de l'e-mail du prestataire a le sien, au même sens. Si la cascade
 **et** le remboursement échouent, la prestation est remise en attente (`remettreARembourser()`) et
 la tâche planifiée cherche à son tour le candidat suivant : le client lit alors « nous recherchons
 un autre professionnel ; à défaut, votre paiement vous sera intégralement remboursé — inutile de
-réserver à nouveau ».
+réserver à nouveau ». Sauf si l'heure de début est passée : personne ne sera plus cherché, et le
+client lit que son paiement lui sera intégralement remboursé — ni « nous recherchons », ni
+« choisissez un autre prestataire », qu'il n'avait pas choisi (13/11/2026).
 
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
@@ -4111,7 +4162,7 @@ vérifié juste à côté, fait autorité.
 | Verrou du versement | `status=eq.completed` en plus de `payout_status=eq.pending` | Litige ouvert pendant le traitement : virement émis quand même |
 | Webhook `payment_intent.payment_failed` | `stripe_payment_intent=eq.<paiement refusé>` | Un refus arrivé après un second paiement réussi effaçait ce paiement et le prestataire |
 | Expiration du délai de réponse (tâche planifiée) | prise conditionnelle (`status=eq.pending_acceptance`), remboursement, **puis** annonce ; remise en attente si le remboursement échoue | La prestation passait « refusée » même quand le remboursement échouait, n'était plus reprise, et le client lisait « Notre équipe procède au remboursement » sans que personne ne le fasse. Les remboursements partaient tous en parallèle : quand beaucoup expiraient ensemble, Stripe en refusait une partie — 19 sur 40 en recette le 29/09/2026. Désormais un par un, 20 par passage (idem pour la clôture faute de prestataire), **tirés au hasard** parmi les 200 plus anciens (`tirerAuHasard()`, `api/_lots.js`, 30/09/2026) : pris toujours en tête, un remboursement en échec permanent bloquait tous les suivants. Et « déjà remboursée » (`charge_already_refunded`, clé d'idempotence expirée après un premier remboursement réussi) compte comme un succès, au cron comme dans `missions.js`. **Un second bloc d'expiration, exécuté le 1er du mois, défaisait tout cela** (relecture du 04/10/2026, `e2e/62`) : il ne lisait pas le paiement, ne remboursait donc rien, passait la prestation « refusée » et écrivait « Votre paiement a été intégralement remboursé » — y compris pour celles que ce bloc-ci venait de remettre en attente. Il est retiré : l'expiration n'est plus traitée qu'ici. **Une prestation affectée par la plateforme** (chez un tiers, CGPS art. 5.2) passe au candidat suivant au lieu d'être remboursée, comme dans l'application (`acceptance_timeout`) : la tâche planifiée appelle la même `affecterCandidatSuivant()`, exportée de `missions.js`, après avoir pris la prestation (toujours en attente, toujours expirée) ; le remboursement ne joue qu'en cas d'échec (relecture du 04/10/2026, `e2e/66`). **Bornée** le 05/10/2026 : une fois l'heure de début passée, plus de candidat suivant — remboursement ; et la bascule en diffusion de `affecterCandidatSuivant()` est vérifiée (ignorée, un échec laissait la prestation en attente sans échéance, invisible de toutes les requêtes). Sur un **refus** du prestataire (application ou e-mail), une cascade en échec rembourse désormais le client comme un refus ordinaire : la prestation, déjà « refusée », restait payée sans personne (05/10/2026). `acceptance_timeout` n'écrit rien avant la cascade : en cas d'échec, la prestation reste expirée et la tâche planifiée la reprend. Depuis le 06/10/2026, la borne de l'heure de début est **dans** `affecterCandidatSuivant()` (elle rend `echec`, raison `heure_passee`, sans rien écrire) et vaut donc pour tous les appelants ; et un remboursement après `echec` exige que la prestation soit **toujours « refusée »** (`toujoursRefusee()`) : `echec` revient aussi quand la bascule en diffusion a abouti mais que sa réponse s'est perdue |
-| Refus du prestataire (application ou lien de l'e-mail), délai écoulé constaté par le client (`acceptance_timeout`) | remise en attente si le remboursement échoue — délai déjà échu et sans prestataire, la tâche planifiée la rembourse à son passage suivant (`remettreARembourser()`, 11/11/2026) | Même défaut, sur ces quatre chemins, jusqu'au 11/11/2026 : « refusée », l'argent gardé, et seule une ligne de journal |
+| Refus du prestataire (application ou lien de l'e-mail), délai écoulé constaté par le client (`acceptance_timeout`) | remise en attente si le remboursement échoue — délai déjà échu et sans prestataire — personne ne peut plus l'accepter —, la tâche planifiée la rembourse à son passage suivant (`remettreARembourser()`, 11/11/2026). Limite connue : pour une prestation affectée par la plateforme, le refus efface le prestataire avant cette remise, et la recherche du suivant ne l'exclut donc pas — il peut, dans ce cas rare (cascade ET remboursement en échec), recevoir de nouveau la demande. Le garder inscrit (essai du 13/11/2026, retiré le jour même) faisait annoncer au client « de nouveau disponible », à tort | Même défaut, sur ces quatre chemins, jusqu'au 11/11/2026 : « refusée », l'argent gardé, et seule une ligne de journal |
 
 **Et une validation automatique a été retirée** : l'action `list_client` de `api/missions.js`
 validait d'office, à l'affichage de la liste du client, les prestations finies depuis plus de
@@ -4288,8 +4339,17 @@ annulées et celles d'aujourd'hui au-delà de ce qui a été travaillé (la jour
 d'abord). Elles sont remboursées **sur le paiement de prolongation qui les avait réglées**
 (`rembourserAjoutsNonFaits()`, `api/_remboursement_bo.js`, plafonné à ce qui reste remboursable),
 puis retirées de `montant_heures_ajoutees` et de `montant_total` ensemble — les frais se
-déduisent de leur différence. Un échec de ce remboursement arrête l'interruption avant tout autre
-mouvement. Les frais de service de ces paiements restent acquis. Éprouvé par `e2e/70`.
+déduisent de leur différence. Ils sont remboursés **après** la prestation elle-même (13/11/2026) :
+rendus avant, un échec du remboursement principal arrêtait l'interruption et laissait des heures
+déjà rendues que la clôture aurait payées au prestataire. Un échec à ce stade n'arrête plus rien —
+la prestation est écourtée, le prestataire n'est pas payé de ces heures — et il ouvre un
+**ticket interne** (`ticketHeuresAjoutees()`, partagé avec le désistement) ; la réponse et l'e-mail à
+l'équipe n'annoncent plus que ce qui est réellement parti. Sans clé Stripe, l'interruption est refusée d'emblée. Les frais de service
+de ces paiements restent acquis. Éprouvé par `e2e/70`.
+
+Quand l'arrêt de **toute** la prestation ne laisse rien à verser, le versement est écrit
+**annulé** (`payout_status = 'annule'`) : laissé vide, une validation du même instant gardait son
+versement complet en attente (13/11/2026).
 
 **Annuler avant le début rend aussi les modifications de commande** (relecture du 07/10/2026).
 Une commande peut être modifiée avant la première journée, et chaque modification est un paiement
@@ -4317,8 +4377,17 @@ une prolongation payée jamais appliquée ; les heures et le montant retirés de
 d'en déduire les frais. Au désistement du prestataire : tout, détail des prestations de plusieurs
 jours compris — lus avant tout mouvement, mais remboursés **après** la réservation : rendus
 d'abord, un échec de la réservation laissait la prestation au prestataire avec des heures déjà
-rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation, il
-est signalé « À FAIRE À LA MAIN ». Une réservation réglée par le portefeuille est recréditée hors
+rendues au client (relecture du 12/11/2026). Un échec à ce stade n'arrête plus l'annulation : il
+ouvre un **ticket interne** (« [Interne] Heures ajoutées à rembourser »), visible au back-office —
+le journal seul ne suffisait pas, plus rien ne repassant sur une prestation annulée (13/11/2026).
+**Le ticket des heures ajoutées** (`ticketHeuresAjoutees()`, interruption et désistement) : un par
+échec — son sujet porte l'événement (« interruption <jour> (journée|arrêt) », « désistement »), un
+nouvel essai du même événement n'en recrée pas, un second échec sur la même prestation a le sien ;
+il annonce ce qui **reste dû**, déduction faite de ce qui est parti avant l'échec (annoncer le
+total faisait rembourser deux fois), avec le détail **par paiement** (un total sur plusieurs
+paiements faisait rembourser le mauvais) ; et il demande de vérifier dans Stripe avant d'agir, un essai suivant ayant
+pu rendre ces heures entre-temps.
+Les paiements du détail que la recherche Stripe n'a pas encore indexés sont relus un à un. Une réservation réglée par le portefeuille est recréditée hors
 heures ajoutées, déjà rendues sur leur carte. Un paiement sans repère `deja_appliquees`
 (antérieur au 01/10/2026) compte comme appliqué. Stripe illisible : rien n'est annulé. Et sans clé Stripe, `cancel_client` n'annule
 plus une prestation payée par carte : rien n'était rendu, et aucun e-mail ne prévenait l'équipe.
@@ -4884,8 +4953,24 @@ pris (accord tacite en cours, double clic) : rien n'est exécuté (409) ; exécu
 qu'aucun argent ait bougé** : il est relâché. Sans lui, une décision et un accord tacite pouvaient
 dénouer le même litige deux fois — client remboursé **et** prestataire payé. Un échec **après** le
 remboursement (clôture non écrite) ou une coupure pendant celui-ci renvoie `argentParti` : le
-verrou est alors gardé, ici comme dans la tâche planifiée, et le cas est à reprendre à la main.
-Relâché, il laissait la tâche exécuter ensuite la proposition en attente (relecture du 12/11/2026).
+verrou est alors gardé, ici comme dans la tâche planifiée — relâché, il laissait la tâche exécuter
+ensuite la proposition en attente (relecture du 12/11/2026). Il est marqué
+`<cause>_a_reprendre`, et **seul un remboursement** peut le reprendre : `executerResolution()`
+retrouve le remboursement déjà fait à son étiquette et termine la clôture, sans rien rendre deux
+fois. Côté back-office, relancer « rembourser le client » avec la **même cause** (le message
+d'erreur le dit) — un accord tacite bloqué n'y est pas repris : il aurait été annoncé aux parties
+comme une décision de justice. Limite connue : si la tâche planifiée échoue à chaque passage
+(paiement contesté chez Stripe, par exemple), l'accord tacite reste bloqué — le message du
+back-office le dit, c'est un cas pour la maintenance (essai de reprise par le back-office retiré
+le 13/11/2026 : une vraie décision de justice pouvait y être convertie en silence) ; côté tâche planifiée, un accord tacite de remboursement est repris
+au passage suivant, toute autre résolution attend une décision. Une reprise qui échoue à son tour
+**rend au verrou sa valeur d'avant** (« à reprendre ») : relâché à vide, il effaçait la trace du
+remboursement déjà fait, et une décision de verser pouvait passer ensuite (13/11/2026, après-midi).
+Cette valeur se lit sur l'**écriture** qui prend le verrou — d'abord « à reprendre », puis vide —,
+jamais sur une lecture antérieure : un double clic pouvait marquer « à reprendre » entre les deux.
+Un verrou déjà pris répond en disant quoi faire : la cause à choisir pour terminer un remboursement
+déjà fait, ou que la tâche planifiée terminera un accord tacite. La décision du back-office est journalisée même dans ce cas, avec sa
+justification. Verrouillé sans issue, le litige ne se dénouait plus (relecture du 13/11/2026).
 
 Le parcours normal, celui de l'accord :
 

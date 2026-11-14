@@ -24,9 +24,10 @@ const PI = {
 process.env.VITE_SUPABASE_URL = "https://b.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "cle";
 
-function simuler({ appelant, recherche = [PI.pi_sup], mission = MISSION, mainKo = false } = {}) {
+function simuler({ appelant, recherche = [PI.pi_sup], mission = MISSION, mainKo = false, supKo = false } = {}) {
   const remb = [];
   remb.soldes = [];
+  remb.tickets = [];
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url), m = o.method || "GET";
     if (u.endsWith("/auth/v1/user")) return json({ id: appelant });
@@ -35,12 +36,15 @@ function simuler({ appelant, recherche = [PI.pi_sup], mission = MISSION, mainKo 
     if (u.includes(`/missions?id=eq.${M}`) && m === "GET") return json([mission]);
     if (u.includes("/missions?") && m === "PATCH") return json([{ ...mission, status: "cancelled" }]);
     if (u.includes("/profiles?id=eq.") && u.includes("select=prepaid_balance")) return json([{ prepaid_balance: 0 }]);
+    if (u.includes("/support_tickets") && m === "POST") { remb.tickets.push(JSON.parse(String(o.body))); return json([], 201); }
+    if (u.includes("/support_tickets?subject=")) return json(remb.ticketOuvert ? [{ id: "t1" }] : []);
     if (u.includes("/profiles?id=eq.") && m === "PATCH") { remb.soldes.push(JSON.parse(String(o.body)).prepaid_balance); return json([{ id: CLIENT }]); }
     if (u.includes("/payment_intents/search")) return json({ data: recherche });
     if (u.includes("/v1/refunds?payment_intent=")) return json({ data: [] });
     if (u.includes("api.stripe.com/v1/refunds") && m === "POST") {
       const p = new URLSearchParams(String(o.body));
       if (mainKo && p.get("payment_intent") === "pi_main") return json({ error: { message: "panne" } }, 500);
+      if (supKo && p.get("payment_intent") === "pi_sup") return json({ error: { message: "panne" } }, 500);
       remb.push({ pi: p.get("payment_intent"), montant: p.get("amount") ? Number(p.get("amount")) : null });
       return json({ id: `re_${remb.length}`, status: "succeeded" });
     }
@@ -111,6 +115,44 @@ describe("prolongation payée à part, prestation d'une journée", () => {
     expect(r.statut, JSON.stringify(r.corps)).toBe(200);
     expect(remb.find(x => x.pi === "pi_sup")?.montant).toBe(1540);
     expect(remb.soldes).toEqual([110.98]);       // 126,38 € − 15,40 € rendus sur la carte
+  });
+});
+
+describe("désistement : suivi des heures ajoutées (13/11/2026)", () => {
+  beforeEach(() => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_x");
+    for (const f of ["error", "log", "warn"]) vi.spyOn(console, f).mockImplementation(() => {});
+  });
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+  it("leur remboursement échoue : la prestation est annulée, et un ticket interne le signale à l'équipe", async () => {
+    const remb = simuler({ appelant: PRESTA, supKo: true });
+    const r = await appeler({ action: "presta_cancel", mission_id: M });
+    expect(r.statut).toBe(200);
+    expect(remb.tickets).toHaveLength(1);
+    expect(remb.tickets[0].subject).toMatch(/^\[Interne\] Heures ajoutées à rembourser/);
+    expect(remb.tickets[0].message).toMatch(/pi_sup : 15,40\s€/);
+    expect(remb.tickets[0].message).not.toContain("en entier");
+    expect(remb.tickets[0].message).toContain("Vérifier d'abord dans Stripe");
+    expect(remb.tickets[0].subject).toMatch(/— désistement$/);
+    expect(remb.tickets[0].message).toMatch(/Reste dû au client : 15,40\s€/);
+  });
+
+  it("un ticket déjà ouvert pour cette prestation : pas de second (13/11/2026, après-midi)", async () => {
+    const remb = simuler({ appelant: PRESTA, supKo: true });
+    remb.ticketOuvert = true;
+    await appeler({ action: "presta_cancel", mission_id: M });
+    expect(remb.tickets).toHaveLength(0);
+  });
+
+  it("portefeuille : un paiement du détail que la recherche n'a pas encore vu n'est pas rendu deux fois", async () => {
+    const mission = { ...MISSION, stripe_payment_intent: "wallet_abc", extra_hours_appliquees: 0, extra_hours_payment_intent: null,
+      heures_ajoutees_detail: [{ jour: MISSION.date, heures: 1, tarif: 13, paiement: "pi_sup" }], heures_ajoutees_total: 1 };
+    const remb = simuler({ appelant: PRESTA, mission, recherche: [] });
+    const r = await appeler({ action: "presta_cancel", mission_id: M });
+    expect(r.statut, JSON.stringify(r.corps)).toBe(200);
+    expect(remb.find(x => x.pi === "pi_sup")?.montant).toBe(1540);
+    expect(remb.soldes).toEqual([110.98]);
   });
 });
 

@@ -121,7 +121,7 @@ export async function prevenirNouvelleDemande(missionId, supabaseUrl, headers) {
             </div>
             <p style="margin:20px 0 8px">Répondez directement depuis cet email :</p>
             <!-- Le clic sur « Accepter » vaut signature du contrat (décision
-                 d'Alexandre du 01/10/2026) : la mention doit précéder le bouton,
+                 du 01/10/2026) : la mention doit précéder le bouton,
                  comme le contrat précède la signature dans l'application. -->
             <p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.75)">En cliquant sur « Accepter », vous signez électroniquement le contrat de prestation : vous vous engagez à réaliser la prestation dans les conditions ci-dessus, à respecter les délais et à vous conformer aux Conditions générales d'ALANE.</p>
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>

@@ -343,7 +343,8 @@ export default async function handler(req, res) {
         const ribBrut = p.rib || meta.rib;
         const iban  = ribBrut ? String(ribBrut).replace(/\s/g, "").toUpperCase() : null;
         // `siret` pour un prestataire, `kbis` pour un client professionnel.
-        const siretMeta = meta.siret || meta.kbis;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+        const siretMeta = p.siret || meta.siret || meta.kbis;
         const siret = siretMeta ? String(siretMeta).replace(/\s/g, "") : null;
         // Empreintes normalisées : « 06 12… » et « +33 6 12… » sont un même numéro (D4).
         // Seule compte une ligne inscrite avant la création du compte : une ligne
@@ -445,17 +446,21 @@ export default async function handler(req, res) {
         // Sans ce repli, le contrôle anti-recréation cesserait de reconnaître un IBAN
         // déjà blacklisté dès que l'IBAN quitte le jeton.
         let ribAppr = meta2.rib;
+        let siretFiche = null;
         try {
-          const rProf = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib&limit=1`, { headers });
+          const rProf = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib,siret&limit=1`, { headers });
           const dProf = await rProf.json().catch(() => []);
           if (Array.isArray(dProf) && dProf[0]?.rib) ribAppr = dProf[0].rib;
+          if (Array.isArray(dProf) && dProf[0]?.siret) siretFiche = dProf[0].siret;
         } catch (e) {
           console.error("[approve] lecture de profiles.rib impossible :", e.message);
         }
         const iban2  = ribAppr ? String(ribAppr).replace(/\s/g, "").toUpperCase() : null;
         // `siret` pour un prestataire, `kbis` pour un client professionnel (voir
         // le contrôle du SIRET plus haut, et la suppression).
-        const siretBrut2 = meta2.siret || meta2.kbis;
+        // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si
+        // — un SIRET en liste noire s'effaçait du compte avant la validation (13/11/2026).
+        const siretBrut2 = siretFiche || meta2.siret || meta2.kbis;
         const siret2 = siretBrut2 ? String(siretBrut2).replace(/\s/g, "") : null;
 
         // Vérification dans les deux sens :
@@ -523,6 +528,23 @@ export default async function handler(req, res) {
             : [];
           const docsAttendusPresta   = tousDocsPresta.filter(d => d.required);
           const docsFacultatifsPresta = tousDocsPresta.filter(d => !d.required);
+          // Le SIRET et le CV, que l'accès aux prestations exige aussi, n'y
+          // étaient pas : 91 inscrits en attente n'avaient pas de SIRET le
+          // 13/11/2026. Lus sur la fiche (`profiles`), à défaut sur l'inscription.
+          // Illisibles, les deux rappels sont donnés : un rappel de trop vaut
+          // mieux qu'un manque.
+          let sansSiret = true, cvIncomplet = true;
+          if (role === "prestataire") {
+            try {
+              const fr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=siret,cv`, { headers });
+              const fp = await fr.json().catch(() => null);
+              if (!fr.ok || !Array.isArray(fp)) throw new Error(`fiche illisible (${fr.status})`);
+              sansSiret = !aUnSiret(fp[0] || {}, userData.user_metadata || {});
+              cvIncomplet = manquesCv((fp[0] || {}).cv || userData.user_metadata?.cv).length > 0;
+            } catch (e) {
+              console.error(`[approve] SIRET et CV de ${profileId} non lus — les deux rappels sont donnés :`, e.message);
+            }
+          }
           await sendEmail({
             to: userEmail,
             subject: "Bienvenue sur ALANE — Votre compte est activé ! 🎉",
@@ -530,6 +552,11 @@ export default async function handler(req, res) {
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               ${role === "prestataire" ? `
+              ${sansSiret ? `
+              <div style="background:#FFF4E5;border-left:3px solid #F5A623;border-radius:8px;padding:14px 16px;margin:18px 0">
+                <div style="font-weight:700;color:#050E20;font-size:14px;margin-bottom:6px">Votre numéro SIRET est obligatoire</div>
+                <div style="color:#444;font-size:13px;line-height:1.6">Sur ALANE, vous intervenez en tant qu'indépendant (auto-entrepreneur ou micro-entrepreneur) : sans SIRET, aucune prestation ne peut vous être proposée. Pas encore immatriculé ? Créez votre micro-entreprise, gratuitement, sur le guichet officiel (procedures.inpi.fr). Dès que vous avez votre numéro (14 chiffres), saisissez-le dans votre espace : page d'accueil, rubrique « Pour recevoir des prestations ». Une difficulté ? <a href="mailto:support@alane.fr">support@alane.fr</a>.</div>
+              </div>` : ""}
               <p style="margin-top:20px;"><strong>Ce compte ne vous donne pas encore accès aux prestations.</strong>
               Il vous reste une étape : déposer les pièces ci-dessous depuis l'onglet <strong>Docs</strong> de votre espace.
               Tant qu'elles ne sont pas toutes déposées et vérifiées par notre équipe, vous ne recevrez aucune proposition.</p>
@@ -540,11 +567,14 @@ export default async function handler(req, res) {
                 </ul>
                 ${docsFacultatifsPresta.length > 0 ? `<div style="color:#888;font-size:12px;margin-top:10px">Facultatif : ${docsFacultatifsPresta.map(d => esc(d.label)).join(", ")}.</div>` : ""}
               </div>
+${cvIncomplet ? `
+              <p style="color:#444;font-size:13px;">Complétez aussi votre <strong>CV</strong> (Modifier mon profil) : les clients le consultent avant de réserver, et l'accès aux prestations l'exige.</p>` : ""}
               <p style="color:#444;font-size:13px;">Pensez aussi à accepter les <strong>mandats de facturation et d'encaissement</strong> depuis l'onglet Revenus : sans eux, aucune facture ne peut être émise à votre nom.</p>
               <p style="color:#444;font-size:13px;">Une fois votre dossier complet et vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${appUrl()}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              ${role === "prestataire" ? `<p style="color:#888;font-size:12px;">Pour suivre l'actualité d'ALANE : <a href="https://www.linkedin.com/company/alane-fr/" style="color:#7C6FE0;">notre page LinkedIn</a>.</p>` : ""}
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
           });
@@ -967,12 +997,13 @@ export default async function handler(req, res) {
       // supprimé se réinscrivait avec le même SIRET sans être reconnu.
       const meta = userData.user_metadata || {};
       const telephone = meta.telephone || null;
-      const siret     = meta.siret || meta.kbis || null;
       const savedProfileRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib&limit=1`,
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib,siret&limit=1`,
         { headers }
       );
       const savedProfileRows = savedProfileRes.ok ? await savedProfileRes.json().catch(() => []) : [];
+      // La fiche d'abord : le navigateur ne peut pas l'écrire, user_metadata si (13/11/2026).
+      const siret     = (Array.isArray(savedProfileRows) && savedProfileRows[0]?.siret) || meta.siret || meta.kbis || null;
       const savedProfile = Array.isArray(savedProfileRows) && savedProfileRows.length > 0 ? savedProfileRows[0] : {};
       // L'empreinte anti-recréation doit rester calculable après la sortie de l'IBAN
       // du jeton : `profiles.rib` d'abord, ancien emplacement en repli.
@@ -1626,17 +1657,65 @@ export default async function handler(req, res) {
       // la tâche exécutait l'accord tacite — ou un double clic — dénouait le
       // litige deux fois : client remboursé ET prestataire payé (relecture du
       // 11/11/2026). Relâché si l'exécution échoue, pour pouvoir réessayer.
-      const verrou = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&resolution_executee_cause=is.null`, {
-        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ resolution_executee_cause: cause }),
-      });
-      const pris = await verrou.json().catch(() => null);
-      if (!verrou.ok) {
-        console.error(`[executer_decision] verrou de ${mission_id} refusé (${verrou.status}) : ${JSON.stringify(pris).slice(0, 200)}`);
-        return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
+      //
+      // Un dénouement resté « à reprendre » (remboursement fait, clôture non
+      // écrite) se reprend par un REMBOURSEMENT — le seul que
+      // executerResolution sait reprendre sans payer deux fois : il retrouve
+      // le remboursement déjà fait à son étiquette et termine la clôture.
+      // Verrouillé pour toujours, ce litige ne se dénouait plus (relecture du
+      // 13/11/2026).
+      // Seulement le sien (même cause) : repris ici, un accord tacite bloqué
+      // aurait été annoncé aux parties comme une décision de justice — la
+      // tâche planifiée le reprend elle-même (relecture du 13/11/2026).
+      //
+      // Ce que le verrou valait AVANT, un échec le lui rend : repris depuis
+      // « à reprendre », le relâcher à vide effaçait la seule trace que le
+      // client avait déjà été remboursé — une décision de verser passait
+      // ensuite, payée deux fois. Cette valeur se lit sur l'ÉCRITURE qui prend
+      // le verrou, pas sur une lecture antérieure : un double clic pouvait
+      // marquer « à reprendre » entre les deux (relecture du 13/11/2026).
+      const prendre = async (filtre) => {
+        const v = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.disputed&${filtre}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ resolution_executee_cause: cause }),
+        });
+        const l = await v.json().catch(() => null);
+        if (!v.ok) {
+          console.error(`[executer_decision] verrou de ${mission_id} refusé (${v.status}) : ${JSON.stringify(l).slice(0, 200)}`);
+          return null;
+        }
+        return Array.isArray(l) && l.length > 0;
+      };
+      let verrouAvant = null;
+      let pris = false;
+      if (resolution === "rembourser_client") {
+        pris = await prendre(`resolution_executee_cause=eq.${cause}_a_reprendre`);
+        if (pris) verrouAvant = `${cause}_a_reprendre`;
       }
-      if (!Array.isArray(pris) || pris.length === 0) {
-        return res.status(409).json({ error: "Ce litige est déjà en cours de dénouement (accord tacite ou autre décision) — rien n'a été fait. Rechargez la liste." });
+      if (pris === false) pris = await prendre("resolution_executee_cause=is.null");
+      if (pris === null) return res.status(500).json({ error: "La décision n'a pas pu être enregistrée — rien n'a bougé. Réessayez." });
+      if (!pris) {
+        // Dire QUOI faire : sans la cause en cours, l'équipe tournait en rond
+        // sur « rechargez la liste » (relecture du 13/11/2026).
+        let enCours = null;
+        try {
+          const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=resolution_executee_cause`, { headers });
+          const l = await lr.json().catch(() => null);
+          if (lr.ok && Array.isArray(l)) enCours = (l[0] || {}).resolution_executee_cause ?? null;
+          else console.error(`[executer_decision] cause en cours de ${mission_id} illisible (${lr.status}) — message générique.`);
+        } catch (e) {
+          console.error(`[executer_decision] cause en cours de ${mission_id} illisible — message générique :`, e.message);
+        }
+        const message = !enCours ? "Ce litige est déjà en cours de dénouement — rien n'a été fait. Rechargez la liste."
+          : enCours === "accord_tacite_a_reprendre"
+            // Pas repris ici : il serait annoncé aux parties, et journalisé, comme
+            // une décision de justice. Si la tâche planifiée échoue à chaque
+            // passage, c'est un cas pour la maintenance (13/11/2026).
+            ? "Le remboursement de l'accord tacite a déjà été fait, sa clôture a échoué : la tâche planifiée la termine à son prochain passage. Si ce litige reste bloqué, signalez-le à la maintenance (cause en base : accord_tacite_a_reprendre). Rien n'a été fait."
+          : String(enCours).endsWith("_a_reprendre")
+            ? `Le client a déjà été remboursé, la clôture a échoué : relancez « rembourser le client » avec la cause « ${String(enCours).replace(/_a_reprendre$/, "")} » pour la terminer. Rien n'a été fait.`
+            : `Ce litige est déjà en cours de dénouement (${enCours}) — rien n'a été fait. Rechargez la liste.`;
+        return res.status(409).json({ error: message });
       }
 
       const out = await executerResolution({
@@ -1649,13 +1728,23 @@ export default async function handler(req, res) {
         // laissait la tâche planifiée exécuter ENSUITE la proposition en
         // attente — client remboursé puis prestataire payé (relecture du
         // 12/11/2026).
-        console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé, à reprendre à la main : ${out.detail}`);
-        return res.status(500).json({ error: out.detail });
+        // Marqué « à reprendre » : seule une nouvelle décision de rembourser
+        // pourra le reprendre (filtre ci-dessus). Et l'argent a bougé : la
+        // décision et sa justification sont journalisées quand même — c'est la
+        // seule trace de ce au titre de quoi les fonds ont bougé.
+        const ar = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ resolution_executee_cause: `${cause}_a_reprendre` }),
+        }).catch(e => { console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » :`, e.message); return null; });
+        if (ar && !ar.ok) console.error(`[executer_decision] ${mission_id} non marqué « à reprendre » (${ar.status})`);
+        await journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just, inacheve: out.detail } });
+        console.error(`[executer_decision] ${mission_id} : échec APRÈS un mouvement d'argent — verrou gardé : ${out.detail}`);
+        return res.status(500).json({ error: `${out.detail} Pour terminer, relancez la décision « rembourser le client » avec la même cause (« ${cause} ») : le remboursement déjà fait est retrouvé, il ne part pas deux fois.` });
       }
       if (!out.ok) {
         const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_executee_cause=eq.${cause}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ resolution_executee_cause: null }),
+          body: JSON.stringify({ resolution_executee_cause: verrouAvant }),
         }).catch(e => { console.error(`[executer_decision] verrou de ${mission_id} non relâché :`, e.message); return null; });
         if (rl && !rl.ok) console.error(`[executer_decision] verrou de ${mission_id} non relâché (${rl.status})`);
         return res.status(500).json({ error: out.detail });

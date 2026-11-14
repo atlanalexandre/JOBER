@@ -19,13 +19,13 @@ const MISSION = {
 process.env.VITE_SUPABASE_URL = "https://b.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "cle";
 
-function simuler({ basculeOk, rembourse = true }) {
+function simuler({ basculeOk, rembourse = true, mission = MISSION }) {
   const sortie = { courriels: [], sms: [], notifs: [], patchs: [] };
   vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
     const u = String(url), m = o.method || "GET", corps = o.body ? String(o.body) : "";
     if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
-    if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([MISSION]);
+    if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([mission]);
     if (u.includes(`/missions?id=eq.${M}&select=status`) && m === "GET") return json([{ status: "refused" }]);
     if (u.includes("/missions?") && m === "PATCH") {
       sortie.patchs.push(JSON.parse(corps));
@@ -76,4 +76,16 @@ describe("refus d'une prestation affectée par la plateforme : ce que lit le cli
     expect(courriel?.html).toContain("Inutile de réserver à nouveau");
     expect(s.notifs.join(" ")).toContain("Inutile de réserver à nouveau");
   });
+
+  it("heure de début passée : personne ne sera cherché, la reprise n'est pas annoncée (13/11/2026)", async () => {
+    const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const s = simuler({ basculeOk: false, rembourse: false, mission: { ...MISSION, date: hier } });
+    expect((await refuser()).statut).toBe(200);
+    expect(s.notifs.join(" ")).not.toContain("Inutile de réserver à nouveau");
+    // Ni « choisissez un autre prestataire » : il n'en avait choisi aucun. Son remboursement est annoncé.
+    const tout = [s.notifs.join(" "), ...s.courriels.map(c => c.subject + c.html), ...s.sms].join(" ");
+    expect(tout).not.toContain("choisir un autre prestataire");
+    expect(s.notifs.join(" ")).toContain("votre paiement vous sera intégralement remboursé");
+  });
 });
+
