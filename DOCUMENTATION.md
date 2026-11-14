@@ -2988,7 +2988,9 @@ la tâche planifiée cherche à son tour le candidat suivant : le client lit alo
 un autre professionnel ; à défaut, votre paiement vous sera intégralement remboursé — inutile de
 réserver à nouveau ». Sauf si l'heure de début est passée : personne ne sera plus cherché, et le
 client lit que son paiement lui sera intégralement remboursé — ni « nous recherchons », ni
-« choisissez un autre prestataire », qu'il n'avait pas choisi (13/11/2026).
+« choisissez un autre prestataire », qu'il n'avait pas choisi (13/11/2026). Il le lit aussi quand la
+cascade échoue et que le **remboursement réussit** : ce cas tombait sur le message du refus ordinaire,
+« choisissez un autre prestataire », sans un mot du remboursement (relecture du 14/11/2026).
 
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
