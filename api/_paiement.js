@@ -320,8 +320,11 @@ export async function paiementsAboutisDe(missionId, cle) {
   // `processing` et `requires_capture` sont lus aussi : un paiement en cours
   // de traitement à la clôture aurait abouti ensuite, sur une demande close
   // que plus rien ne relit (relecture du 13/11/2026). L'appelant reporte.
-  const q = encodeURIComponent(`metadata['mission']:'${missionId}' AND (status:'succeeded' OR status:'processing' OR status:'requires_capture')`);
-  const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=20&expand[]=data.latest_charge`,
+  // Par la seule prestation, l'état filtré ICI : Stripe refuse une requête qui
+  // mêle AND et OR (« Queries cannot have a mix of AND and OR », 400) — la
+  // clôture de toute demande sans paiement était reportée sans fin (14/11/2026).
+  const q = encodeURIComponent(`metadata['mission']:'${missionId}'`);
+  const r = await fetch(`https://api.stripe.com/v1/payment_intents/search?query=${q}&limit=100&expand[]=data.latest_charge`,
     { headers: { "Authorization": `Bearer ${cle}` } });
   const d = await r.json().catch(() => null);
   if (!r.ok || !Array.isArray(d?.data)) throw new Error(`recherche des paiements refusée (${r.status})`);

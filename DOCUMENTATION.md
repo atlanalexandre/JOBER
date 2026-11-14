@@ -2160,7 +2160,10 @@ prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
 **Et quand le client a fermé son navigateur** (13/11/2026), `assign_after_payment` n'est jamais
 appelé : la demande reste « sans paiement » pour la base. La clôture des demandes dépassées
 (`cron-reset-monthly`) interroge désormais Stripe **avant** de clore une demande sans paiement
-rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par identifiant de prestation,
+rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par le seul identifiant de
+prestation, l'état du paiement filtré par le code : Stripe refuse une requête qui mêle `AND` et
+`OR`, et la première version, ainsi rejetée, aurait reporté sans fin la clôture de toute demande
+sans paiement — corrigé le 14/11/2026, avant qu'une seule ne soit touchée en production ;
 séries et heures supplémentaires écartées, paiements entièrement remboursés aussi) : un paiement
 abouti trouvé, la demande passe « annulée », il est remboursé (le reste, s'il l'a déjà été en
 partie) avec la clé de l'application et du webhook, et le client lit que sa réservation n'a pas pu
