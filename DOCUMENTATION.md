@@ -2762,8 +2762,9 @@ migration). Un changement de SIRET passe par le back-office.
 
 **SIRET déclaré par le prestataire** (13/11/2026). Qui n'en avait pas à l'inscription le saisit
 dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`), qui reste
-affichée tant qu'il manque, même fermée (sauf accès déjà ouvert une fois : la ligne n'y est pas
-proposée, le serveur refuserait) — au lieu de l'envoyer par e-mail. L'écriture passe par le
+affichée tant qu'il manque, même fermée (sauf quand le serveur refuserait : accès déjà ouvert une
+fois, ou SIRET déjà présent dans le seul compte — 4 prestataires le 14/11/2026 — : la ligne n'y est
+pas proposée, ces cas passent par le support) — au lieu de l'envoyer par e-mail. L'écriture passe par le
 serveur (`support.js`, action `declarer_siret`) : compte non bloqué, 5 essais par 10 minutes (le
 registre SIRENE est partagé avec les traitements planifiés), format et clé de contrôle
 (`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La Poste), puis registre SIRENE
