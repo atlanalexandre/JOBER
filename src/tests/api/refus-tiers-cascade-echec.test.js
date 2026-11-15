@@ -26,6 +26,7 @@ function simuler({ basculeOk, statutApres = "refused", mission = MISSION }) {
     const m = o.method || "GET";
     const corps = o.body ? String(o.body) : "";
     if (u.includes("/rest/v1/notifications") && m === "POST") { (appels.notifs ||= []).push(corps); return json([]); }
+    if (u.includes("/missions?") && m === "PATCH") (appels.ecritures ||= []).push(u);
     if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
     if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([mission]);
@@ -100,5 +101,14 @@ describe("refus d'une réservation chez un tiers", () => {
       expect(auClient).toContain("votre paiement vous sera intégralement remboursé");
       expect(auClient).not.toContain("choisir un autre prestataire");
     }
+  });
+
+  // Relecture du 15/11/2026 : la réponse s'écrivait sur la seule prestation, et
+  // s'appliquait au candidat suivant si la prestation lui était passée entre-temps.
+  it("la réponse ne s'écrit que sur une prestation TOUJOURS proposée à ce prestataire", async () => {
+    const a = simuler({ basculeOk: true });
+    await refuser();
+    const reponse = a.ecritures.find(u => u.includes("status=eq.pending_acceptance") && !u.includes("acceptance_deadline"));
+    expect(reponse).toContain(`prestataire_id=eq.${PRESTA}`);
   });
 });

@@ -3375,7 +3375,11 @@ plateforme était annulée et remboursée au lieu de passer au candidat suivant 
 Désormais, comme `respond_mission` : écriture conditionnée à « toujours en attente, toujours
 adressée à ce prestataire », remboursement seulement après, cascade pour les prestations
 affectées, et quota du plan vérifié à l'acceptation. Ce parcours ne peut pas être rejoué en
-recette : les liens sont signés avec `BO_SESSION_SECRET`.
+recette : les liens sont signés avec `BO_SESSION_SECRET`. `respond_mission` lui-même ne conditionnait
+son écriture qu'à « toujours en attente » — pas au prestataire, contrairement à ce que cette
+phrase affirmait : une réponse arrivée pendant que la tâche planifiée confiait la prestation au
+candidat suivant s'appliquait à ce dernier (« acceptée » sans qu'il ait rien accepté ni signé).
+Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé.
 
 **Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
 (`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
