@@ -19,7 +19,10 @@ describe("paiementsAboutisDe", () => {
   it("cherche par identifiant de prestation : un paiement de l'autre environnement ne s'y glisse pas", async () => {
     const urls = simuler([pi()]);
     expect((await paiementsAboutisDe(M, "sk")).aRendre).toEqual(["pi_1"]);
-    expect(decodeURIComponent(urls[0])).toContain(`metadata['mission']:'${M}' AND (status:'succeeded'`);
+    // Une seule clause : Stripe refuse AND et OR mêlés (400, constaté le 14/11/2026).
+    const requete = new URL(urls[0]).searchParams.get("query");
+    expect(requete).toBe(`metadata['mission']:'${M}'`);
+    expect(requete).not.toMatch(/ OR /);
   });
   it("écarte les séries, les heures supplémentaires et les paiements entièrement remboursés ; un remboursement partiel laisse le reste à rendre", async () => {
     simuler([
@@ -35,6 +38,10 @@ describe("paiementsAboutisDe", () => {
   it("un paiement en cours de traitement est signalé : la clôture attendra", async () => {
     simuler([pi({ id: "pi_traitement", status: "processing", latest_charge: null })]);
     expect(await paiementsAboutisDe(M, "sk")).toEqual({ aRendre: [], enCours: ["pi_traitement"] });
+  });
+  it("l'état est filtré ici : abandonné, annulé ou sans moyen de paiement — rien à rendre, rien n'attend", async () => {
+    simuler(["canceled", "requires_payment_method", "requires_confirmation", "requires_action"].map((status, i) => pi({ id: `pi_${i}`, status, latest_charge: null })));
+    expect(await paiementsAboutisDe(M, "sk")).toEqual({ aRendre: [], enCours: [] });
   });
   it("Stripe muet : lève — on ne clôt pas sans savoir", async () => {
     simuler([], 500);

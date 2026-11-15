@@ -1035,7 +1035,10 @@ async function handleEmailAction(req, res) {
       const rembEchec = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
       // Même règle que respond_mission : remise en attente, la prestation peut
       // repartir au candidat suivant — le client l'apprend ainsi (12/11/2026).
-      if (!rembEchec.ok && await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
+      // Remboursé : le client l'apprend — pas « choisissez un autre prestataire »,
+      // il n'en avait choisi aucun (relecture du 14/11/2026).
+      if (rembEchec.ok) cascade = { mode: "remboursement" };
+      else if (await remettreARembourser(missionId, SUPABASE_URL, hdrs, "refus-email")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
     }
   } else if (action !== "accept") {
     const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
@@ -1058,7 +1061,7 @@ async function handleEmailAction(req, res) {
     const titreRefus = cascade?.mode === "remboursement" ? "Prestataire non disponible"
       : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée";
     const corpsRefus = cascade?.mode === "remboursement"
-      ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
+      ? "Le prestataire pressenti n'est pas disponible, et aucun autre professionnel n'a pu être sollicité à temps : votre paiement vous sera intégralement remboursé."
       : cascade?.mode === "reprise"
       ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
       : cascade
@@ -6337,7 +6340,10 @@ export default async function handler(req, res) {
           // L'heure passée, personne ne sera cherché : le client apprend que son
           // paiement lui sera rendu, pas « choisissez un autre prestataire » —
           // il n'en avait choisi aucun (relecture du 13/11/2026).
-          if (!rembRefus.ok && await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
+          // Remboursé : le client l'apprend — pas « choisissez un autre
+          // prestataire », il n'en avait choisi aucun (relecture du 14/11/2026).
+          if (rembRefus.ok) cascade = { mode: "remboursement" };
+          else if (await remettreARembourser(mission_id, SUPABASE_URL, headers, "respond_mission")) cascade = { mode: rechercheEncore ? "reprise" : "remboursement" };
         }
       } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
@@ -6358,7 +6364,7 @@ export default async function handler(req, res) {
             : cascade.mode === "reprise"
               ? "Le prestataire pressenti n'est pas disponible. Nous recherchons un autre professionnel pour votre mission ; à défaut, votre paiement vous sera intégralement remboursé. Inutile de réserver à nouveau."
             : cascade.mode === "remboursement"
-              ? "Le prestataire pressenti n'est pas disponible, et l'heure de début est passée : votre paiement vous sera intégralement remboursé."
+              ? "Le prestataire pressenti n'est pas disponible, et aucun autre professionnel n'a pu être sollicité à temps : votre paiement vous sera intégralement remboursé."
               : "Le prestataire pressenti n'est pas disponible. Votre mission a été proposée à l'ensemble des professionnels du secteur — votre réservation et votre paiement sont conservés.";
 
         const enRemboursement = cascade?.mode === "remboursement";

@@ -135,7 +135,11 @@ describe("action declarer_siret", () => {
 describe("l'écran et les e-mails", () => {
   const ecran = readFileSync(new URL("../../components/presta-screens.jsx", import.meta.url), "utf8");
   it("la liste reste affichée tant que le SIRET manque, même fermée ; cochée seulement par 14 chiffres sur la fiche", () => {
-    expect(ecran).toContain("const siretAttendu = !siretComplet && !profil.missions_enabled_at;");
+    // Mêmes règles que le serveur : un SIRET déjà dans le compte (hors SIREN) ou
+    // un accès ouvert, et la saisie n'est pas proposée (relecture du 14/11/2026).
+    expect(ecran).toContain('const siretActuel = String(profil.siret || meta.siret || "").replace(/\\s/g, "");');
+    expect(ecran).toContain("const siretAttendu = !siretComplet && !profil.missions_enabled && !profil.missions_enabled_at");
+    expect(ecran).toContain("&& (!siretActuel || /^\\d{9}$/.test(siretActuel));");
     expect(ecran).toContain("if (dismissed && !siretAttendu && !siretEnregistre) return null;");
     expect(ecran).toContain('const siretComplet = /^\\d{14}$/.test(String(profil.siret || ""));');
   });

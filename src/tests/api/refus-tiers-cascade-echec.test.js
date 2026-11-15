@@ -25,6 +25,7 @@ function simuler({ basculeOk, statutApres = "refused", mission = MISSION }) {
     const u = String(url);
     const m = o.method || "GET";
     const corps = o.body ? String(o.body) : "";
+    if (u.includes("/rest/v1/notifications") && m === "POST") { (appels.notifs ||= []).push(corps); return json([]); }
     if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
     if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
     if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([mission]);
@@ -86,5 +87,18 @@ describe("refus d'une réservation chez un tiers", () => {
     expect(a.bascules || 0).toBe(0);
     expect(a.affectations || 0).toBe(0);
     expect(a.remboursements).toBe(1);
+  });
+
+  // Relecture du 14/11/2026 : remboursé, le client lisait « choisissez un autre
+  // prestataire » — sur une prestation où il n'en avait choisi aucun.
+  it("remboursé : le client l'apprend, sans être invité à choisir un prestataire", async () => {
+    for (const mission of [MISSION, { ...MISSION, date: new Date(Date.now() - 864e5).toISOString().slice(0, 10) }]) {
+      const a = simuler({ basculeOk: false, mission });
+      expect((await refuser()).statut).toBe(200);
+      expect(a.remboursements).toBe(1);
+      const auClient = (a.notifs || []).filter(c => c.includes(CLIENT)).join(" ");
+      expect(auClient).toContain("votre paiement vous sera intégralement remboursé");
+      expect(auClient).not.toContain("choisir un autre prestataire");
+    }
   });
 });

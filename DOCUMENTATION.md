@@ -2160,7 +2160,10 @@ prestation qui porte déjà ce paiement est un nouvel essai : rien n'est rendu.
 **Et quand le client a fermé son navigateur** (13/11/2026), `assign_after_payment` n'est jamais
 appelé : la demande reste « sans paiement » pour la base. La clôture des demandes dépassées
 (`cron-reset-monthly`) interroge désormais Stripe **avant** de clore une demande sans paiement
-rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par identifiant de prestation,
+rattaché (`paiementsAboutisDe()`, `api/_paiement.js` — recherche par le seul identifiant de
+prestation, l'état du paiement filtré par le code : Stripe refuse une requête qui mêle `AND` et
+`OR`, et la première version, ainsi rejetée, aurait reporté sans fin la clôture de toute demande
+sans paiement — corrigé le 14/11/2026, avant qu'une seule ne soit touchée en production ;
 séries et heures supplémentaires écartées, paiements entièrement remboursés aussi) : un paiement
 abouti trouvé, la demande passe « annulée », il est remboursé (le reste, s'il l'a déjà été en
 partie) avec la clé de l'application et du webhook, et le client lit que sa réservation n'a pas pu
@@ -2762,8 +2765,9 @@ migration). Un changement de SIRET passe par le back-office.
 
 **SIRET déclaré par le prestataire** (13/11/2026). Qui n'en avait pas à l'inscription le saisit
 dans son espace — page d'accueil, liste « Pour recevoir des prestations » (`SaisieSiret`), qui reste
-affichée tant qu'il manque, même fermée (sauf accès déjà ouvert une fois : la ligne n'y est pas
-proposée, le serveur refuserait) — au lieu de l'envoyer par e-mail. L'écriture passe par le
+affichée tant qu'il manque, même fermée (sauf quand le serveur refuserait : accès déjà ouvert une
+fois, ou SIRET déjà présent dans le seul compte — 4 prestataires le 14/11/2026 — : la ligne n'y est
+pas proposée, ces cas passent par le support) — au lieu de l'envoyer par e-mail. L'écriture passe par le
 serveur (`support.js`, action `declarer_siret`) : compte non bloqué, 5 essais par 10 minutes (le
 registre SIRENE est partagé avec les traitements planifiés), format et clé de contrôle
 (`validerSiret()`, `api/_siret.js` — Luhn, ou la règle propre à La Poste), puis registre SIRENE
@@ -2988,7 +2992,9 @@ la tâche planifiée cherche à son tour le candidat suivant : le client lit alo
 un autre professionnel ; à défaut, votre paiement vous sera intégralement remboursé — inutile de
 réserver à nouveau ». Sauf si l'heure de début est passée : personne ne sera plus cherché, et le
 client lit que son paiement lui sera intégralement remboursé — ni « nous recherchons », ni
-« choisissez un autre prestataire », qu'il n'avait pas choisi (13/11/2026).
+« choisissez un autre prestataire », qu'il n'avait pas choisi (13/11/2026). Il le lit aussi quand la
+cascade échoue et que le **remboursement réussit** : ce cas tombait sur le message du refus ordinaire,
+« choisissez un autre prestataire », sans un mot du remboursement (relecture du 14/11/2026).
 
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au

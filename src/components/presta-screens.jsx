@@ -2304,7 +2304,13 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   // Accès déjà ouvert une fois : le SIRET passe par le support (le serveur
   // refuse), la ligne n'a rien à proposer et ne s'affiche pas — sans quoi un
   // bandeau impossible à fermer restait sur l'accueil (13/11/2026).
-  const siretAttendu = !siretComplet && !profil.missions_enabled_at;
+  // Mêmes règles que le serveur (`declarer_siret`), sinon la saisie est
+  // proposée puis refusée à chaque envoi, sous un bandeau impossible à fermer
+  // (relecture du 14/11/2026) : rien d'enregistré — fiche ni compte — ou un
+  // SIREN de 9 chiffres à compléter ; et jamais un accès déjà ouvert.
+  const siretActuel = String(profil.siret || meta.siret || "").replace(/\s/g, "");
+  const siretAttendu = !siretComplet && !profil.missions_enabled && !profil.missions_enabled_at
+    && (!siretActuel || /^\d{9}$/.test(siretActuel));
   if (dismissed && !siretAttendu && !siretEnregistre) return null;
 
   // Le compte dépend du prestataire : titre de séjour hors UE, justificatif de
