@@ -6258,7 +6258,10 @@ export default async function handler(req, res) {
         // Délai dépassé : le client sera remboursé par le cron d'expiration, qui
         // clôt la prestation. On ne la renvoie donc pas en « open » ici, ce qui
         // l'aurait rendue acceptable alors que le paiement va être rendu.
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        // Seulement si elle lui est TOUJOURS proposée : entre la lecture et
+        // ici, la tâche planifiée a pu la confier au candidat suivant — c'est
+        // lui qui était effacé (relecture du 15/11/2026).
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({ prestataire_id: null }),
@@ -6300,7 +6303,11 @@ export default async function handler(req, res) {
       } else if (response === "accept") {
         console.error(`[respond_mission] signature du contrat NON transmise pour ${mission_id}`);
       }
-      const respondPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.pending_acceptance`, {
+      // Conditionnée au prestataire aussi : la prestation a pu passer au
+      // candidat suivant pendant les vérifications ci-dessus. Sa réponse
+      // s'appliquait alors à la place du nouveau — « acceptée » pour quelqu'un
+      // qui n'avait rien accepté ni signé (relecture du 15/11/2026).
+      const respondPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify(patchBody),
