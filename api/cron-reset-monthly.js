@@ -372,7 +372,11 @@ export default async function handler(req, res) {
           if (!rembZ) {
             differesZ++;
             const remise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.refused`,
-              { status: "pending_acceptance" }, headers, `cron/expiration ${z.id} (remise en attente)`);
+              // Avec une échéance PASSÉE : la prise « candidat suivant » plus haut
+              // l'a effacée, et sans échéance la prestation n'était plus jamais
+              // relue — payée, sans personne, jamais remboursée (relecture du
+              // 15/11/2026). Même règle que `remettreARembourser()` de missions.js.
+              { status: "pending_acceptance", acceptance_deadline: nowIso }, headers, `cron/expiration ${z.id} (remise en attente)`);
             console.error(`[cron/expiration] remboursement impossible — prestation ${z.id} : `
               + (remise ? "reprise au prochain passage." : "⚠️ REFUSÉE SANS REMBOURSEMENT et non remise en attente : à rembourser à la main."));
             continue;
@@ -383,7 +387,12 @@ export default async function handler(req, res) {
                 user_id: z.client_id,
                 type: "mission",
                 title: "Prestataire non disponible",
-                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}". Votre paiement a été intégralement remboursé. Vous pouvez choisir un autre prestataire.`,
+                // Affectée par la plateforme : le client n'a choisi personne, on
+                // ne l'invite pas à « choisir un autre prestataire » (relecture du
+                // 15/11/2026, même texte que missions.js).
+                body: affecteeParLaPlateforme(z)
+                  ? `Le prestataire pressenti n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}", et aucun autre professionnel n'a pu être sollicité à temps. Votre paiement a été intégralement remboursé.`
+                  : `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}". Votre paiement a été intégralement remboursé. Vous pouvez choisir un autre prestataire.`,
               }, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly] échec ignoré :", e?.message));
           }
         }
