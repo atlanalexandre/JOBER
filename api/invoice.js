@@ -16,6 +16,37 @@ function escHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+/** « 12 rue X, 75003 Paris » — vide si rien n'est connu. */
+export function adressePostale(p) {
+  const rue = String(p?.adresse || "").trim();
+  const cpVille = [p?.code_postal, p?.ville].map(v => String(v || "").trim()).filter(Boolean).join(" ");
+  return [rue, cpVille].filter(Boolean).join(", ");
+}
+
+/**
+ * La série de factures d'UN prestataire (16/11/2026). Chaque prestataire est
+ * l'émetteur de ses factures : sa numérotation doit être continue, sans trou
+ * (art. 242 nonies A, annexe II au CGI). Une série unique pour toute la
+ * plateforme y laissait des trous — les numéros des autres. Préfixe stable tiré
+ * de son identifiant : `FAC-3F2A9C1B-000001`.
+ */
+export function prefixeSerie(prestataireId) {
+  const code = String(prestataireId || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+  return /^[0-9A-F]{8}$/.test(code) ? `FAC-${code}-` : null;
+}
+
+/** Le numéro qui suit le plus grand déjà émis dans la série, ou le premier. */
+export function numeroSuivant(prefixe, emis) {
+  let max = 0;
+  for (const n of emis || []) {
+    const s = String(n || "");
+    if (!s.startsWith(prefixe)) continue;
+    const v = Number(s.slice(prefixe.length));
+    if (Number.isInteger(v) && v > max) max = v;
+  }
+  return `${prefixe}${String(max + 1).padStart(6, "0")}`;
+}
+
 function verifyInvoiceToken(token, missionId, secret) {
   if (!token || !secret) return null;
   const parts = token.split(".");
@@ -225,10 +256,14 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   let clientEmail = "";
   let clientCompany = "";
   let clientSiret = "";
+  // Nom ET adresse des deux parties : mention obligatoire (art. 242 nonies A,
+  // annexe II au CGI). La facture ne portait que l'e-mail du client et aucune
+  // adresse (relecture du 16/11/2026).
+  let clientAdresse = "";
 
   if (mission.client_id) {
     const [profileRes, authRes] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.client_id)}&select=prenom,nom,societe_nom,siret`, {
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.client_id)}&select=prenom,nom,societe_nom,siret,adresse,code_postal,ville`, {
         headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" },
       }),
       fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(mission.client_id)}`, {
@@ -242,6 +277,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
         clientName = [p.prenom, p.nom].filter(Boolean).join(" ");
         clientCompany = p.societe_nom || "";
         clientSiret = p.siret || "";
+        clientAdresse = adressePostale(p);
       }
     }
     if (authRes.ok) {
@@ -265,10 +301,11 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   // numéro séquentiel — tirer un numéro sans mandat entamerait une numérotation
   // qu'on ne pourrait plus justifier.
   let mandatAccepte = false;
+  let prestaAdresse = "";
 
   if (mission.prestataire_id) {
     const [prestaProfileRes, prestaAuthRes] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret,mandat_facturation_at`, {
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret,mandat_facturation_at,adresse,code_postal,ville`, {
         headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" },
       }),
       fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(mission.prestataire_id)}`, {
@@ -283,6 +320,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
         prestaCompany = p.societe_nom || "";
         prestaSiret = p.siret || "";
         mandatAccepte = Boolean(p.mandat_facturation_at);
+        prestaAdresse = adressePostale(p);
       }
     }
     if (prestaAuthRes.ok) {
@@ -312,53 +350,38 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   }
 
   if (!invoiceNum && mandatAccepte) {
-    let numeroTire = null;
+    // Série du prestataire, et un numéro n'est CONSOMMÉ qu'une fois écrit sur la
+    // prestation : l'index unique de `missions.invoice_number` refuse un doublon
+    // (409), on relit alors la série et on retente. Le compteur global
+    // (`platform_settings.invoice_sequence`) était incrémenté AVANT l'écriture :
+    // un affichage perdant laissait un numéro jamais attribué — un trou.
+    const prefixe = prefixeSerie(mission.prestataire_id);
     try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const seqRes = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&select=value`, { headers: hdrsDB });
-        const seqData = await seqRes.json();
-        const currentVal = Array.isArray(seqData) && seqData[0] ? Number(seqData[0].value) : 0;
-        const nextVal = currentVal + 1;
-        const patchRes = await fetch(
-          `${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&value=eq.${currentVal}`,
-          { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ value: nextVal, updated_at: new Date().toISOString() }) }
-        );
-        const patched = await patchRes.json().catch(() => []);
-        if (Array.isArray(patched) && patched.length > 0) {
-          numeroTire = `FAC-${new Date().getFullYear()}-${String(nextVal).padStart(6, "0")}`;
-          break;
-        }
-        await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
-      }
-    } catch (seqErr) {
-      console.error("[invoice] compteur illisible :", seqErr.message);
-    }
-
-    if (numeroTire) {
-      // Le filtre sur invoice_number garantit qu'un seul affichage simultané fixe le
-      // numéro. Le perdant relit celui du gagnant plutôt que d'afficher le sien.
-      try {
+      for (let essai = 0; prefixe && !invoiceNum && essai < 5; essai++) {
+        // Les prestations ET l'archive : une prestation effacée garde sa facture
+        // archivée, et son numéro ne doit pas resservir.
+        const like = encodeURIComponent(`${prefixe}*`);
+        const [rm, ra] = await Promise.all([
+          fetch(`${supabaseUrl}/rest/v1/missions?invoice_number=like.${like}&select=invoice_number&order=invoice_number.desc&limit=1`, { headers: hdrsDB }),
+          fetch(`${supabaseUrl}/rest/v1/factures_archives?numero=like.${like}&select=numero&order=numero.desc&limit=1`, { headers: hdrsDB }),
+        ]);
+        if (!rm.ok || !ra.ok) throw new Error(`série illisible (${rm.status}/${ra.status})`);
+        const emis = [...(await rm.json()).map(x => x.invoice_number), ...(await ra.json()).map(x => x.numero)];
+        const candidat = numeroSuivant(prefixe, emis);
         const fixRes = await fetch(
           `${supabaseUrl}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}&invoice_number=is.null`,
-          { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ invoice_number: numeroTire }) }
+          { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ invoice_number: candidat }) }
         );
+        if (fixRes.status === 409) { await new Promise(r => setTimeout(r, 50 * (essai + 1))); continue; }
+        if (!fixRes.ok) throw new Error(`numéro non écrit (${fixRes.status}) : ${(await fixRes.text().catch(() => "")).slice(0, 200)}`);
         const fixes = await fixRes.json().catch(() => []);
-        if (Array.isArray(fixes) && fixes.length > 0) {
-          invoiceNum = numeroTire;
-        } else if (fixRes.ok) {
-          const relu = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}&select=invoice_number`, { headers: hdrsDB });
-          invoiceNum = ((await relu.json().catch(() => []))[0] || {}).invoice_number || numeroTire;
-        } else {
-          // Colonne absente : migration 2026-07-30_facture_numero_stable non appliquée.
-          const txt = await fixRes.text().catch(() => "");
-          console.error("[invoice] numéro NON conservé — la facture changera de numéro à chaque affichage. "
-            + `Appliquer la migration 2026-07-30_facture_numero_stable.sql. Détail : ${fixRes.status} ${txt}`);
-          invoiceNum = numeroTire;
-        }
-      } catch (e) {
-        console.error("[invoice] conservation du numéro impossible :", e.message);
-        invoiceNum = numeroTire;
+        if (Array.isArray(fixes) && fixes.length > 0) { invoiceNum = candidat; break; }
+        // Un autre affichage l'a numérotée entre-temps : on relit le sien.
+        const relu = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}&select=invoice_number`, { headers: hdrsDB });
+        invoiceNum = ((await relu.json().catch(() => []))[0] || {}).invoice_number || null;
       }
+    } catch (e) {
+      console.error(`[invoice] numérotation de ${mission_id} impossible :`, e.message);
     }
   }
 
@@ -384,7 +407,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   // il n'y a qu'un mandat non signé. Réessayer n'y changeait rien.
   if (!invoiceNum && mandatAccepte) {
     console.error(`[invoice] numéro indisponible pour ${mission_id} — édition refusée. `
-      + "Vérifier le réglage platform_settings.invoice_sequence.");
+      + "Vérifier la série du prestataire (missions.invoice_number, factures_archives).");
     return rendu(503, 
       `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
       + `<meta name="viewport" content="width=device-width, initial-scale=1"></head>`
@@ -460,7 +483,16 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
   const libTotal     = isAutoEntrepreneur ? "Total à payer" : "Total TTC";
   const legalTvaNote = isAutoEntrepreneur
     ? "TVA non applicable — article 293 B du CGI (auto-entrepreneur)."
-    : `TVA de 20 % applicable. SIRET : ${escHtml(prestaSiret || "—")}. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.`;
+    : `TVA de 20 % applicable. SIRET : ${prestaSiret || "—"}.`;
+  // Client professionnel : les conditions de règlement, les pénalités de retard
+  // et l'indemnité forfaitaire de 40 € sont des mentions obligatoires, même sur
+  // une facture déjà réglée (art. L.441-9 du Code de commerce). Elles n'y
+  // figuraient que pour un prestataire assujetti à la TVA — aucun ne l'est
+  // (relecture du 16/11/2026).
+  // Le client est lu dans l'archive plus bas : le test se fait au rendu.
+  const MENTIONS_PRO = "Réglée à la réservation, par paiement en ligne via la plateforme — aucun escompte pour paiement anticipé. "
+      + "En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal, et indemnité forfaitaire "
+      + "pour frais de recouvrement de 40 € (art. L.441-10 et D.441-5 du Code de commerce).";
 
   // Frais de service ALANE, déduits de ce que le client a réellement payé. Ils
   // n'entrent PAS dans le total facturé par le prestataire : celui-ci ne les
@@ -519,6 +551,10 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
     prestaName     = archive.prestataire?.nom     ?? prestaName;
     prestaCompany  = archive.prestataire?.societe ?? prestaCompany;
     prestaSiret    = archive.prestataire?.siret   ?? prestaSiret;
+    // Les archives d'avant le 16/11/2026 n'ont pas d'adresse : on n'y en ajoute
+    // pas une d'aujourd'hui — une facture émise ne change plus.
+    clientAdresse  = archive.client?.adresse      ?? "";
+    prestaAdresse  = archive.prestataire?.adresse ?? "";
   }
 
   const totalPayeClient = Number(mission.montant_total || 0);
@@ -577,10 +613,10 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
           montant_tva: tvaAmount,
           montant_ttc: ttc,
           contenu: {
-            version: 1,
+            version: 2,
             emise_le: today.toISOString(),
-            client: { nom: clientName, email: clientEmail, societe: clientCompany, siret: clientSiret },
-            prestataire: { nom: prestaName, societe: prestaCompany, siret: prestaSiret, statut_pro: prestaStatutPro },
+            client: { nom: clientName, email: clientEmail, societe: clientCompany, siret: clientSiret, adresse: clientAdresse },
+            prestataire: { nom: prestaName, societe: prestaCompany, siret: prestaSiret, statut_pro: prestaStatutPro, adresse: prestaAdresse },
             prestation: {
               metier, secteur: mission.sector || null,
               date: missionDate, heure_debut: heureDebut,
@@ -902,14 +938,16 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
         <div>
           <div class="party-label">Client</div>
           <div class="party-name">${escHtml(clientName || "—")}</div>
-          ${clientEmail ? `<div class="party-detail">${escHtml(clientEmail)}</div>` : ""}
           ${clientCompany ? `<div class="party-detail">${escHtml(clientCompany)}</div>` : ""}
+          ${clientAdresse ? `<div class="party-detail">${escHtml(clientAdresse)}</div>` : ""}
+          ${clientEmail ? `<div class="party-detail">${escHtml(clientEmail)}</div>` : ""}
           ${clientSiret ? `<div class="party-detail">SIRET : ${escHtml(clientSiret)}</div>` : ""}
         </div>
         <div>
           <div class="party-label">Prestataire</div>
           <div class="party-name">${escHtml(prestaName || "—")}</div>
           ${prestaCompany ? `<div class="party-detail">${escHtml(prestaCompany)}</div>` : ""}
+          ${prestaAdresse ? `<div class="party-detail">${escHtml(prestaAdresse)}</div>` : ""}
           ${prestaSiret ? `<div class="party-detail">SIRET : ${escHtml(prestaSiret)}</div>` : ""}
         </div>
       </div>
@@ -983,6 +1021,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       </div>
       <div class="legal">
         ${escHtml(legalTvaNote)}
+        ${(clientSiret || clientCompany) ? `<br/>${escHtml(MENTIONS_PRO)}` : ""}
         ${invoiceNum
           ? "<br/>Facture établie par le mandataire de facturation du prestataire, en son nom et pour son compte, en vertu du mandat qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
           : "<br/>Ce document est une attestation de prestation. Il ne constitue pas une facture : le prestataire n'a pas accepté le mandat de facturation, et lui seul peut établir la facture correspondante."}
