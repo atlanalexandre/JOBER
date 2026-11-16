@@ -3379,7 +3379,14 @@ recette : les liens sont signés avec `BO_SESSION_SECRET`. `respond_mission` lui
 son écriture qu'à « toujours en attente » — pas au prestataire, contrairement à ce que cette
 phrase affirmait : une réponse arrivée pendant que la tâche planifiée confiait la prestation au
 candidat suivant s'appliquait à ce dernier (« acceptée » sans qu'il ait rien accepté ni signé).
-Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé.
+Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé — dans
+`respond_mission` seulement : le même effacement par le lien de l'e-mail l'a été le 16/11/2026.
+Le même jour, **les écritures de la cascade** (`affecterCandidatSuivant()`, candidat suivant et
+bascule en diffusion) sont conditionnées à une prestation encore en cascade (`pending_acceptance`
+ou `refused`) : elles écrasaient une annulation survenue pendant leurs lectures — prestation déjà
+remboursée, réaffectée — ou l'acceptation de dernière minute du prestataire muet. Et un refus de la
+base sur la réponse du prestataire est journalisé et annoncé comme tel (500), non plus comme
+« plus en attente ».
 
 **Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
 (`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
