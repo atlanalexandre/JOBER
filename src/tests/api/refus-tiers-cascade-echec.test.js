@@ -3,6 +3,7 @@
 // « refusée », restait payée sans personne ni remboursement (relecture du
 // 05/10/2026). Elle est désormais remboursée, comme un refus ordinaire.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 const M = "11111111-1111-4111-8111-111111111111";
 const CLIENT = "33333333-3333-4333-8333-333333333333";
@@ -110,5 +111,36 @@ describe("refus d'une réservation chez un tiers", () => {
     await refuser();
     const reponse = a.ecritures.find(u => u.includes("status=eq.pending_acceptance") && !u.includes("acceptance_deadline"));
     expect(reponse).toContain(`prestataire_id=eq.${PRESTA}`);
+  });
+
+  // Relecture du 16/11/2026 : la cascade écrivait sans condition. Une prestation
+  // annulée (et remboursée) pendant ses lectures était réaffectée.
+  it("la cascade n'écrit que sur une prestation encore en cascade — jamais annulée ni acceptée entre-temps", async () => {
+    let a = simuler({ basculeOk: true });
+    await refuser();
+    const ecritCascade = a.ecritures.filter(u => u.includes("status=in.(pending_acceptance,refused)"));
+    expect(ecritCascade.length).toBeGreaterThan(0);
+    a = simuler({ basculeOk: false });
+    await refuser();
+    expect(a.ecritures.some(u => u.includes("status=in.(pending_acceptance,refused)"))).toBe(true);
+  });
+  it("la base refuse la réponse : 500 et une trace — pas « plus en attente »", async () => {
+    vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
+      const u = String(url), m = o.method || "GET";
+      if (u.endsWith("/auth/v1/user")) return json({ id: PRESTA });
+      if (u.includes("/profiles?") && u.includes("select=status")) return json([{ status: "approved" }]);
+      if (u.includes(`/missions?id=eq.${M}&prestataire_id=eq.`) && m === "GET") return json([MISSION]);
+      if (u.includes("/missions?") && m === "PATCH") return json({ message: "violates check constraint" }, 400);
+      return json([]);
+    }));
+    const r = await refuser();
+    expect(r.statut).toBe(500);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("NON enregistrée"));
+  });
+  it("lien de l'e-mail, délai dépassé : n'efface le prestataire que si la prestation lui est toujours adressée", () => {
+    const src = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+    const bloc = src.slice(src.indexOf("async function handleEmailAction("));
+    const delai = bloc.slice(bloc.indexOf("// Vérification serveur du délai d'acceptation"), bloc.indexOf("Délai dépassé"));
+    expect(delai).toContain("missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`");
   });
 });
