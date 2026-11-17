@@ -28,11 +28,13 @@ export function adressePostale(p) {
  * l'émetteur de ses factures : sa numérotation doit être continue, sans trou
  * (art. 242 nonies A, annexe II au CGI). Une série unique pour toute la
  * plateforme y laissait des trous — les numéros des autres. Préfixe stable tiré
- * de son identifiant : `FAC-3F2A9C1B-000001`.
+ * de son identifiant : `FAC-3F2A9C1B04E2-000001`. Douze caractères, non huit :
+ * deux prestataires au même début d'identifiant partageraient une série — et
+ * ses trous (relecture du 17/11/2026, aucune facture émise avec huit).
  */
 export function prefixeSerie(prestataireId) {
-  const code = String(prestataireId || "").replace(/-/g, "").slice(0, 8).toUpperCase();
-  return /^[0-9A-F]{8}$/.test(code) ? `FAC-${code}-` : null;
+  const code = String(prestataireId || "").replace(/-/g, "").slice(0, 12).toUpperCase();
+  return /^[0-9A-F]{12}$/.test(code) ? `FAC-${code}-` : null;
 }
 
 /** Le numéro qui suit le plus grand déjà émis dans la série, ou le premier. */
@@ -360,6 +362,9 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       for (let essai = 0; prefixe && !invoiceNum && essai < 5; essai++) {
         // Les prestations ET l'archive : une prestation effacée garde sa facture
         // archivée, et son numéro ne doit pas resservir.
+        // Par LIKE, et non par intervalle : la base trie en en_US.UTF-8, qui
+        // ignore la ponctuation au premier niveau — une borne « FAC-X. » n'est
+        // pas sûre. La lecture est petite ; l'exactitude prime (17/11/2026).
         const like = encodeURIComponent(`${prefixe}*`);
         const [rm, ra] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/missions?invoice_number=like.${like}&select=invoice_number&order=invoice_number.desc&limit=1`, { headers: hdrsDB }),
@@ -1021,7 +1026,7 @@ async function produireFacture(mission, userId, { supabaseUrl, serviceRoleKey })
       </div>
       <div class="legal">
         ${escHtml(legalTvaNote)}
-        ${(clientSiret || clientCompany) ? `<br/>${escHtml(MENTIONS_PRO)}` : ""}
+        ${(invoiceNum && (clientSiret || clientCompany)) ? `<br/>${escHtml(MENTIONS_PRO)}` : ""}
         ${invoiceNum
           ? "<br/>Facture établie par le mandataire de facturation du prestataire, en son nom et pour son compte, en vertu du mandat qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
           : "<br/>Ce document est une attestation de prestation. Il ne constitue pas une facture : le prestataire n'a pas accepté le mandat de facturation, et lui seul peut établir la facture correspondante."}
