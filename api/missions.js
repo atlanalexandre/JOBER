@@ -842,6 +842,10 @@ export async function compterAuQuota(prestataireId, jours, supabaseUrl, headers,
   }
 }
 
+/** Les états d'une prestation en cours de cascade : prise par la tâche planifiée
+ *  (en attente, échéance vidée) ou refusée par le prestataire. */
+const ETATS_CASCADE = "status=in.(pending_acceptance,refused)";
+
 export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
   // L'heure de début est passée : solliciter quelqu'un d'autre n'a plus de
   // sens. La borne n'existait que dans la tâche planifiée ; un refus dans
@@ -883,7 +887,10 @@ export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
     // l'échéance avant d'appeler cette fonction — laissait alors la prestation
     // en attente, sans échéance, au prestataire muet : plus aucune requête ne la
     // revoyait (relecture du 05/10/2026). Un échec rend la main à l'appelant.
-    const bascule = await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`,
+    // Conditionnée à l'état d'une prestation EN COURS DE CASCADE (voir l'affectation
+    // plus bas) : une annulation ou une acceptation survenue pendant les lectures
+    // ci-dessus ne doit pas être écrasée (relecture du 16/11/2026).
+    const bascule = await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${ETATS_CASCADE}`,
       { status: "open", prestataire_id: null, acceptance_deadline: null }, headers, "cascade/bascule en diffusion");
     if (!bascule) return { mode: "echec", prestataire_id: null };
     return { mode: "diffusion", prestataire_id: null };
@@ -908,7 +915,13 @@ export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
   }
   const frais = await lireFraisService(supabaseUrl, headers);
   const echeance = new Date(Date.now() + delaiReponseMinutes(pourDelai, frais) * 60000).toISOString();
-  const pr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
+  // Conditionnée : entre la prise par l'appelant et ici, plusieurs lectures. Le
+  // client a pu annuler (prestation remboursée, « cancelled ») ou le prestataire
+  // muet accepter au dernier moment (« assigned ») : l'écriture sans condition
+  // réaffectait alors une prestation dont l'argent était déjà rendu, ou retirait
+  // la sienne à celui qui venait d'accepter (relecture du 16/11/2026). Échec :
+  // l'appelant ne rembourse pas — sa propre écriture conditionnelle échoue aussi.
+  const pr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${ETATS_CASCADE}`, {
     method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
     body: JSON.stringify({ status: "pending_acceptance", prestataire_id: suivants[0], acceptance_deadline: echeance }),
   });
@@ -963,7 +976,10 @@ async function handleEmailAction(req, res) {
 
   // Vérification serveur du délai d'acceptation
   if (mission.acceptance_deadline && mission.acceptance_deadline < new Date().toISOString()) {
-    await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+    // Seulement si elle lui est TOUJOURS adressée : un lien valable 24 h peut
+    // être cliqué après que la prestation est passée au candidat suivant — c'est
+    // lui qui était effacé (relecture du 16/11/2026, comme respond_mission).
+    await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`, {
       method: "PATCH",
       headers: { ...hdrs, "Prefer": "return=minimal" },
       // Idem : l'expiration et son remboursement relèvent du cron.
@@ -6313,6 +6329,12 @@ export default async function handler(req, res) {
         body: JSON.stringify(patchBody),
       });
       const respondedRows = await respondPatch.json().catch(() => []);
+      // Un refus de la base n'est pas « plus en attente » : il était annoncé
+      // comme tel, sans trace (CLAUDE.md 1.2, relecture du 16/11/2026).
+      if (!respondPatch.ok) {
+        console.error(`[respond_mission] réponse de ${caller.id} NON enregistrée pour ${mission_id} (${respondPatch.status}) : ${JSON.stringify(respondedRows).slice(0, 200)}`);
+        return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez dans un instant." });
+      }
       if (!Array.isArray(respondedRows) || respondedRows.length === 0) {
         return res.status(409).json({ error: "La prestation n'est plus en attente — délai dépassé ou déjà assignée." });
       }

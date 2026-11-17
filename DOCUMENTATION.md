@@ -1265,7 +1265,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
 | `seuils_dependance` | `api/bo-action.js` — action `signaux_dependance`. Absent = valeurs par défaut de `_dependance.js` (60 % du CA, 8 prestations minimum, 24 jours sur 8 semaines, fenêtre 180 j) |
 | `disabled_sectors` | `api/missions.js` — `get_sector_status` (affichage) et `assign_after_payment` (refus de réservation) |
-| `invoice_sequence` | `api/invoice.js` — compteur incrémenté **une fois par facture**, à sa première consultation, jamais aux suivantes |
+| `invoice_sequence` | **Plus lu depuis le 16/11/2026** (voir §« Facturation », numérotation par prestataire). Conservé : il dit jusqu'où est allée l'ancienne série commune (3 factures en production) |
 | `commission_rate` | **personne** — vestige : la plateforme se rémunère sur les frais de service, `prixClient()` applique 0 % de commission. Ne pas s'y fier. |
 
 **Ouverture des secteurs** — la règle vit dans `api/_secteurs.js`, seul endroit, et repose
@@ -1774,10 +1774,28 @@ comptable, elle, subsiste.
 Les factures numérotées **avant** cette migration sont archivées au premier affichage suivant,
 avec une trace en journal : leur contenu a pu dériver entre-temps, mais il cesse de dériver.
 
-**Numérotation** — `platform_settings.invoice_sequence`, incrémenté par compare-and-swap avec
-trois tentatives, puis figé dans `missions.invoice_number`. Format `FAC-{année}-{6 chiffres}`.
-La séquence est continue et **ne se réinitialise pas** au changement d'année : c'est la
-continuité qui compte, pas l'alignement sur l'exercice.
+**Numérotation — une série par prestataire** (16/11/2026). Chaque prestataire est l'émetteur de
+ses factures : sa numérotation doit être continue et sans trou (art. 242 nonies A, annexe II au
+CGI). La série commune à toute la plateforme (`platform_settings.invoice_sequence`,
+`FAC-{année}-{6 chiffres}`) y laissait des trous — les numéros des autres — et en créait aussi
+elle-même : le compteur était incrémenté **avant** l'écriture sur la prestation, et un affichage
+perdant laissait un numéro jamais attribué. Désormais `FAC-{8 premiers caractères de l'identifiant
+du prestataire}-{6 chiffres}` (`prefixeSerie()`, `numeroSuivant()`) : le suivant du plus grand
+numéro de la série, lu dans `missions.invoice_number` **et** `factures_archives` (une prestation
+effacée garde sa facture), écrit sur la prestation sous la garde de l'index unique
+`idx_missions_invoice_number` — un doublon est refusé (409), la série est relue et l'écriture
+retentée. Un numéro n'est donc consommé qu'une fois attribué. Les 3 factures déjà émises en
+production gardent leur numéro de l'ancienne série. La série ne se réinitialise pas au changement
+d'année.
+
+**Mentions** (16/11/2026) — nom **et adresse** des deux parties (`adressePostale()`, figées dans
+l'archive, version 2 : une facture plus ancienne n'en reçoit pas après coup) ; pour un client
+professionnel (raison sociale ou SIRET), les conditions de règlement (réglée à la réservation,
+sans escompte), les pénalités de retard et l'indemnité forfaitaire de 40 € (art. L.441-10 et
+D.441-5 du Code de commerce) — elles ne figuraient que pour un prestataire assujetti à la TVA, et
+aucun ne l'est. **Reste à trancher** : un auto-entrepreneur qui dépasse le seuil de la franchise
+doit facturer la TVA. Le prix payé par le client ne la prévoit pas : ajouter 20 % sur la facture la
+rendrait supérieure au paiement. C'est une décision de prix, qui appartient à Alexandre.
 
 Si aucun numéro ne peut être tiré, **l'édition est refusée** (503). Le repli précédent
 fabriquait `FAC-{8 caractères de l'identifiant}` — hors séquence, non chronologique, et non
@@ -3379,7 +3397,14 @@ recette : les liens sont signés avec `BO_SESSION_SECRET`. `respond_mission` lui
 son écriture qu'à « toujours en attente » — pas au prestataire, contrairement à ce que cette
 phrase affirmait : une réponse arrivée pendant que la tâche planifiée confiait la prestation au
 candidat suivant s'appliquait à ce dernier (« acceptée » sans qu'il ait rien accepté ni signé).
-Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé.
+Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé — dans
+`respond_mission` seulement : le même effacement par le lien de l'e-mail l'a été le 16/11/2026.
+Le même jour, **les écritures de la cascade** (`affecterCandidatSuivant()`, candidat suivant et
+bascule en diffusion) sont conditionnées à une prestation encore en cascade (`pending_acceptance`
+ou `refused`) : elles écrasaient une annulation survenue pendant leurs lectures — prestation déjà
+remboursée, réaffectée — ou l'acceptation de dernière minute du prestataire muet. Et un refus de la
+base sur la réponse du prestataire est journalisé et annoncé comme tel (500), non plus comme
+« plus en attente ».
 
 **Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
 (`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
