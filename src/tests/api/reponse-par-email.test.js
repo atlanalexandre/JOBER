@@ -76,7 +76,7 @@ describe("réponse par le lien de l'e-mail", () => {
     await handler({ method: "GET", query: lien("refuse"), headers: {} }, res);
     expect(res.code).toBe(200);
     expect(stripe()).toHaveLength(0);
-    const relance = appels.filter(a => a.methode === "PATCH" && a.url.includes(`/rest/v1/missions?id=eq.${MISSION}`) && !a.url.includes("status=eq."));
+    const relance = appels.filter(a => a.methode === "PATCH" && a.url.includes(`/rest/v1/missions?id=eq.${MISSION}`) && a.url.includes("status=eq.refused&prestataire_id=is.null"));
     expect(relance.some(a => /"status":"(open|pending_acceptance)"/.test(a.corps))).toBe(true);
   });
 
