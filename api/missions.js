@@ -71,7 +71,7 @@ import { appUrl } from "./_url.js";
 import { prevenirNouvelleDemande } from "./_nouvelle_demande.js";
 import { noterPropositions } from "./_propositions.js";
 import { programmerOccurrenceSuivante } from "./_recurrence.js";
-import { ecrireVerifie } from "./_ecriture.js";
+import { ecrireVerifie, resumeErreur } from "./_ecriture.js";
 import { joursCouverts, conflitDeCreneau, premierJourEnConflit, filtrePeriode } from "./_creneaux.js";
 import { rembourserAjoutsNonFaits, paiementsHeuresSupp } from "./_remboursement_bo.js";
 import { lirePosition, constatArrivee, libelleConstat } from "./_localisation.js";
@@ -842,11 +842,26 @@ export async function compterAuQuota(prestataireId, jours, supabaseUrl, headers,
   }
 }
 
-/** Les états d'une prestation en cours de cascade : prise par la tâche planifiée
- *  (en attente, échéance vidée) ou refusée par le prestataire. */
-const ETATS_CASCADE = "status=in.(pending_acceptance,refused)";
+/**
+ * L'état EXACT dans lequel l'appelant a laissé la prestation avant la cascade.
+ * Les écritures de la cascade y sont conditionnées : une liste de statuts ne
+ * suffisait pas — « refusée » est aussi l'état final d'une prestation déjà
+ * remboursée, qu'une cascade partie en parallèle réaffectait (relecture du
+ * 17/11/2026).
+ *   - "prise"   : tâche planifiée — en attente, échéance vidée par sa prise ;
+ *   - "refusee" : refus (application ou e-mail) — refusée, sans prestataire ;
+ *   - "expiree" : délai constaté par l'écran du client — en attente, échue.
+ */
+export function gardeCascade(mission, origine) {
+  const presta = mission?.prestataire_id ? `eq.${mission.prestataire_id}` : "is.null";
+  if (origine === "prise") return `status=eq.pending_acceptance&prestataire_id=${presta}&acceptance_deadline=is.null`;
+  if (origine === "refusee") return "status=eq.refused&prestataire_id=is.null";
+  if (origine === "expiree") return `status=eq.pending_acceptance&prestataire_id=${presta}&acceptance_deadline=lt.${new Date().toISOString()}`;
+  throw new Error(`cascade : origine inconnue (${origine})`);
+}
 
-export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
+export async function affecterCandidatSuivant(mission, supabaseUrl, headers, origine) {
+  const garde = gardeCascade(mission, origine);
   // L'heure de début est passée : solliciter quelqu'un d'autre n'a plus de
   // sens. La borne n'existait que dans la tâche planifiée ; un refus dans
   // l'application ou par e-mail relançait la cascade avec une échéance neuve,
@@ -890,7 +905,7 @@ export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
     // Conditionnée à l'état d'une prestation EN COURS DE CASCADE (voir l'affectation
     // plus bas) : une annulation ou une acceptation survenue pendant les lectures
     // ci-dessus ne doit pas être écrasée (relecture du 16/11/2026).
-    const bascule = await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${ETATS_CASCADE}`,
+    const bascule = await ecrireVerifie(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${garde}`,
       { status: "open", prestataire_id: null, acceptance_deadline: null }, headers, "cascade/bascule en diffusion");
     if (!bascule) return { mode: "echec", prestataire_id: null };
     return { mode: "diffusion", prestataire_id: null };
@@ -921,7 +936,7 @@ export async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
   // réaffectait alors une prestation dont l'argent était déjà rendu, ou retirait
   // la sienne à celui qui venait d'accepter (relecture du 16/11/2026). Échec :
   // l'appelant ne rembourse pas — sa propre écriture conditionnelle échoue aussi.
-  const pr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${ETATS_CASCADE}`, {
+  const pr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&${garde}`, {
     method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
     body: JSON.stringify({ status: "pending_acceptance", prestataire_id: suivants[0], acceptance_deadline: echeance }),
   });
@@ -979,12 +994,18 @@ async function handleEmailAction(req, res) {
     // Seulement si elle lui est TOUJOURS adressée : un lien valable 24 h peut
     // être cliqué après que la prestation est passée au candidat suivant — c'est
     // lui qui était effacé (relecture du 16/11/2026, comme respond_mission).
-    await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`, {
-      method: "PATCH",
-      headers: { ...hdrs, "Prefer": "return=minimal" },
-      // Idem : l'expiration et son remboursement relèvent du cron.
-      body: JSON.stringify({ prestataire_id: null }),
-    }).catch(e => console.error("[missions] échec ignoré :", e?.message));
+    // Résultat vérifié : un refus de PostgREST résout normalement (CLAUDE.md 1.2).
+    try {
+      const ef = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`, {
+        method: "PATCH",
+        headers: { ...hdrs, "Prefer": "return=minimal" },
+        // Idem : l'expiration et son remboursement relèvent du cron.
+        body: JSON.stringify({ prestataire_id: null }),
+      });
+      if (!ef.ok) console.error(`[email-action] délai dépassé : prestataire NON retiré de ${missionId} (${ef.status}) ${resumeErreur(await ef.json().catch(() => null))}`);
+    } catch (e) {
+      console.error(`[email-action] délai dépassé : prestataire NON retiré de ${missionId} :`, e.message);
+    }
     return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé : la demande ne vous est plus adressée.", "#F5A623", "⏱"));
   }
 
@@ -1037,7 +1058,7 @@ async function handleEmailAction(req, res) {
   }
   let cascade = null;
   if (action !== "accept" && affecteeParLaPlateforme(mission)) {
-    cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, hdrs);
+    cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, hdrs, "refusee");
     console.log(`[email-action] refus sur prestation affectée ${missionId} → ${cascade.mode}`);
     // Ni candidat suivant ni diffusion n'ont pu être écrits : la prestation est
     // déjà « refusée » (écriture ci-dessus). Elle restait ainsi, payée, sans
@@ -3307,7 +3328,7 @@ export default async function handler(req, res) {
       // indisponibilité qui ne le concerne pas.
       let cascadeTimeout = null;
       if (affecteeParLaPlateforme(mission)) {
-        cascadeTimeout = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
+        cascadeTimeout = await affecterCandidatSuivant(mission, SUPABASE_URL, headers, "expiree");
         console.log(`[acceptance_timeout] délai dépassé sur prestation affectée ${mission_id} → ${cascadeTimeout.mode}`);
         return res.status(200).json({ success: true, cascade: cascadeTimeout.mode });
       }
@@ -6332,7 +6353,7 @@ export default async function handler(req, res) {
       // Un refus de la base n'est pas « plus en attente » : il était annoncé
       // comme tel, sans trace (CLAUDE.md 1.2, relecture du 16/11/2026).
       if (!respondPatch.ok) {
-        console.error(`[respond_mission] réponse de ${caller.id} NON enregistrée pour ${mission_id} (${respondPatch.status}) : ${JSON.stringify(respondedRows).slice(0, 200)}`);
+        console.error(`[respond_mission] réponse de ${caller.id} NON enregistrée pour ${mission_id} (${respondPatch.status}) : ${resumeErreur(respondedRows)}`);
         return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez dans un instant." });
       }
       if (!Array.isArray(respondedRows) || respondedRows.length === 0) {
@@ -6349,7 +6370,7 @@ export default async function handler(req, res) {
       let rembRefus = { ok: true, mode: "sans_objet" };
       let cascade = null;
       if (response !== "accept" && affecteeParLaPlateforme(mission)) {
-        cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
+        cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, headers, "refusee");
         console.log(`[respond_mission] refus sur prestation affectée ${mission_id} → ${cascade.mode}`);
         // Cascade en échec : la prestation, déjà « refusée », restait payée sans
         // personne ni remboursement (relecture du 05/10/2026). On rembourse,

@@ -62,4 +62,32 @@ describe("expiration d'une prestation affectée par la plateforme", () => {
     expect(auClient).toContain("intégralement remboursé");
     expect(auClient).not.toContain("choisir un autre prestataire");
   });
+
+  // Relecture du 17/11/2026 : pendant la cascade de la tâche planifiée, le
+  // prestataire refuse dans l'application — prestation « refusée », client
+  // remboursé. La cascade la réaffectait ensuite (garde « refusée » admise).
+  it("refusée et remboursée pendant la cascade : la cascade ne la réaffecte pas, la tâche ne rembourse pas une 2e fois", async () => {
+    const ecrits = [];
+    let remboursements = 0;
+    vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
+      const u = String(url), m = o.method || "GET", corps = o.body ? String(o.body) : "";
+      if (u.includes("/missions?status=eq.pending_acceptance&acceptance_deadline=lt.") && m === "GET") return json([Z]);
+      if (u.includes("/candidatures?")) return json([]);
+      if (u.includes("/profiles?") && m === "GET") return json([{ id: "55555555-5555-4555-8555-555555555555", role: "prestataire", status: "approved", missions_enabled: true }]);
+      if (u.includes(`/missions?id=eq.${M}`) && m === "PATCH") {
+        ecrits.push(u);
+        // La prise réussit ; ensuite la ligne est « refusée, sans prestataire » :
+        // seule une écriture qui l'admet passerait.
+        if (corps.includes('"acceptance_deadline":null') && !corps.includes("status")) return json([{ ...Z }]);
+        return u.includes("status=eq.refused") ? json([{ ...Z, status: "refused" }]) : json([]);
+      }
+      if (u.includes("api.stripe.com/v1/refunds")) { remboursements++; return json({ id: "re_1" }); }
+      return json([]);
+    }));
+    await passage();
+    const cascade = ecrits.filter(u => u.includes("acceptance_deadline=is.null"));
+    expect(ecrits.some(u => u.includes("status=in.("))).toBe(false);
+    for (const u of cascade) expect(u).toContain("status=eq.pending_acceptance");
+    expect(remboursements).toBe(0);
+  });
 });

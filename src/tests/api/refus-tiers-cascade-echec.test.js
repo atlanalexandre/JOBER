@@ -115,14 +115,14 @@ describe("refus d'une réservation chez un tiers", () => {
 
   // Relecture du 16/11/2026 : la cascade écrivait sans condition. Une prestation
   // annulée (et remboursée) pendant ses lectures était réaffectée.
-  it("la cascade n'écrit que sur une prestation encore en cascade — jamais annulée ni acceptée entre-temps", async () => {
+  it("la cascade n'écrit que sur la prestation dans l'état exact où le refus l'a laissée", async () => {
     let a = simuler({ basculeOk: true });
     await refuser();
-    const ecritCascade = a.ecritures.filter(u => u.includes("status=in.(pending_acceptance,refused)"));
+    const ecritCascade = a.ecritures.filter(u => u.includes("status=eq.refused&prestataire_id=is.null"));
     expect(ecritCascade.length).toBeGreaterThan(0);
     a = simuler({ basculeOk: false });
     await refuser();
-    expect(a.ecritures.some(u => u.includes("status=in.(pending_acceptance,refused)"))).toBe(true);
+    expect(a.ecritures.some(u => u.includes("status=eq.refused&prestataire_id=is.null"))).toBe(true);
   });
   it("la base refuse la réponse : 500 et une trace — pas « plus en attente »", async () => {
     vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
@@ -142,5 +142,16 @@ describe("refus d'une réservation chez un tiers", () => {
     const bloc = src.slice(src.indexOf("async function handleEmailAction("));
     const delai = bloc.slice(bloc.indexOf("// Vérification serveur du délai d'acceptation"), bloc.indexOf("Délai dépassé"));
     expect(delai).toContain("missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance`");
+  });
+
+  // Relecture du 17/11/2026 : « refusée » est aussi l'état final d'une prestation
+  // déjà remboursée — une liste de statuts laissait une cascade parallèle la
+  // réaffecter. Chaque appelant donne l'état exact qu'il a laissé.
+  it("garde de la cascade : l'état exact de chaque appelant", async () => {
+    const { gardeCascade } = await import("../../../api/missions.js");
+    expect(gardeCascade({ prestataire_id: PRESTA }, "prise")).toBe(`status=eq.pending_acceptance&prestataire_id=eq.${PRESTA}&acceptance_deadline=is.null`);
+    expect(gardeCascade({ prestataire_id: PRESTA }, "refusee")).toBe("status=eq.refused&prestataire_id=is.null");
+    expect(gardeCascade({ prestataire_id: null }, "expiree")).toMatch(/^status=eq\.pending_acceptance&prestataire_id=is\.null&acceptance_deadline=lt\./);
+    expect(() => gardeCascade({}, "autre")).toThrow();
   });
 });
