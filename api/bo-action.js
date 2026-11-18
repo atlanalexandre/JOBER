@@ -3057,7 +3057,12 @@ ${cvIncomplet ? `
       const { partPrestataire, totalClient, jours, ajustementRetard } = montantsDeCloture(m);
       // PATCH atomique — garde le guard status=eq.assigned pour éviter double-crédit
       const patchStatus = m.status === "pending_acceptance" ? "pending_acceptance" : "assigned";
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.${patchStatus}`, {
+      // Conditionnée au prestataire LU aussi : une cascade a pu confier la
+      // prestation à un autre entre la lecture et ici — elle était close à son
+      // nom, quand le versement, la notification et le quota allaient au
+      // premier (relecture du 18/11/2026).
+      const filtrePresta = m.prestataire_id ? `eq.${m.prestataire_id}` : "is.null";
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.${patchStatus}&prestataire_id=${filtrePresta}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3112,20 +3117,23 @@ ${cvIncomplet ? `
       const rate = tauxDuPalier(CASHBACK_TIERS, mCount);
       const cashback = Math.round(partPrestataire*rate*100)/100;
       const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:jours }) }).catch(()=>null);
-      if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
+      // Non crédité : le client ne doit pas lire « Cashback +X € » (relecture du
+      // 18/11/2026) — la notification et la réponse le taisent, le journal le dit.
+      const cashbackCredite = Boolean(cashbackRes?.ok);
+      if (!cashbackCredite && cashback > 0) console.error(`[force_complete] cashback de ${cashback} € NON crédité au client ${m.client_id} (prestation ${mission_id}, ${cashbackRes?.status ?? "réseau"}) — à créditer à la main.`);
       // Notification prestataire
       if (m.prestataire_id) {
         await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       }
       // Notification client
-      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
+      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0 && cashbackCredite?` Cashback +${euros(cashback)}`:""}`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
       // Le quota mensuel du prestataire, par la même fonction que la validation
       // par le client et la validation automatique. Ce chemin en tenait sa propre
       // version : une seule journée quelle que soit la durée, et le quota gratuit
       // jamais marqué épuisé à la limite (relecture du 15/10/2026, `e2e/96`).
       if (m.prestataire_id) await compterAuQuota(m.prestataire_id, jours, SUPABASE_URL, headers, "bo/force_complete");
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
+      return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback: cashbackCredite ? cashback : 0, cashbackNonCredite: !cashbackCredite && cashback > 0 });
     }
 
     if (action === "manual_refund") {

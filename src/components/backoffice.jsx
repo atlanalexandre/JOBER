@@ -4421,7 +4421,7 @@ export function BOMissions() {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${formatMontant(data.montantTotal)}${data.cashback > 0 ? ` · cashback +${formatMontant(data.cashback)}` : ""}` }));
+        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${formatMontant(data.montantTotal)}${data.cashback > 0 ? ` · cashback +${formatMontant(data.cashback)}` : ""}${data.cashbackNonCredite ? " · ⚠️ cashback NON crédité — à créditer à la main" : ""}` }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
