@@ -338,11 +338,13 @@ export default async function handler(req, res) {
           // candidats (relecture du 05/10/2026). On rembourse.
           const debutZ = debutPrestationMs(String(z.date || z.date_debut || "").slice(0, 10), z.heure_debut);
           const encoreTemps = !Number.isFinite(debutZ) || debutZ > Date.now();
+          let cascadeTentee = false;
           if (affecteeParLaPlateforme(z) && encoreTemps) {
             const prise = await ecrireVerifie(
               `${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}`,
               { acceptance_deadline: null }, headers, `cron/expiration ${z.id} (candidat suivant)`);
             if (!prise) continue;
+            cascadeTentee = true;
             const cascade = await affecterCandidatSuivant(z, SUPABASE_URL, headers, "prise")
               .catch(e => { console.error(`[cron/expiration] candidat suivant de ${z.id} :`, e.message); return { mode: "echec" }; });
             console.log(`[cron/expiration] prestation affectée ${z.id} → ${cascade.mode}`);
@@ -360,7 +362,13 @@ export default async function handler(req, res) {
           }
           // 1. On PREND la prestation (écriture conditionnelle) avant de
           //    rembourser, comme la clôture ci-dessous.
-          const prise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance`,
+          // Après une cascade en échec, la prestation doit être TOUJOURS dans
+          // l'état où la prise l'a laissée (échéance vide) : une cascade
+          // concurrente (refus dans l'application) a pu la confier à un autre
+          // prestataire — on la lui retirait et on remboursait (relecture du
+          // 18/11/2026). Sinon, toujours en attente et toujours échue.
+          const etatAttendu = cascadeTentee ? "&acceptance_deadline=is.null" : `&acceptance_deadline=lt.${nowIso}`;
+          const prise = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance${etatAttendu}`,
             { status: "refused", prestataire_id: null, broadcast_sent_at: null }, headers, `cron/expiration ${z.id}`);
           if (!prise) continue;
           // 2. Le remboursement. Il échouait sans conséquence : la prestation
