@@ -63,6 +63,29 @@ describe("contestation bancaire", () => {
     expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
   });
 
+  // Relecture du 18/11/2026 : un versement déjà retenu pour un autre motif
+  // n'était pas marqué — la levée de cette retenue, ou son terme, payait le
+  // prestataire pendant la contestation.
+  it("versement déjà retenu pour un autre motif : la retenue passe à l'opposition bancaire, au terme le plus tardif", async () => {
+    const tard = new Date(Date.now() + 120 * 86400000).toISOString();
+    for (const [avant, attendu] of [[new Date(Date.now() + 10 * 86400000).toISOString(), 90], [tard, 120]]) {
+      const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "reclamation_client", payout_hold_until: avant, payout_amount: 104 });
+      await handler(requete(evenement), reponse());
+      const conv = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+      expect(conv.u).toContain("payout_status=eq.held");
+      const corps = JSON.parse(conv.corps);
+      expect(corps.payout_hold_reason).toBe("opposition_bancaire");
+      expect(Math.round((new Date(corps.payout_hold_until) - Date.now()) / 86400000)).toBe(attendu);
+      const ticket = appels.find(a => a.u.includes("/rest/v1/support_tickets"));
+      expect(ticket.corps).toContain("reclamation_client");
+    }
+  });
+  it("déjà retenu pour opposition bancaire (seconde contestation) : rien n'est réécrit", async () => {
+    const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "opposition_bancaire", payout_amount: 104 });
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
+  });
+
   // Décision d'Alexandre du 01/10/2026 : une contestation reçue AVANT la clôture
   // n'avait aucun versement à retenir, et le virement partait à la clôture.
   it("pas encore clôturée : la retenue est inscrite, sans créer de versement", async () => {

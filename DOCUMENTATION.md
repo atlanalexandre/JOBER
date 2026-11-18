@@ -5240,7 +5240,10 @@ encore à venir (`pending` ou `failed`) en `held`, motif `opposition_bancaire`, 
 jours au plus, et prévient le prestataire — les deux conditions de l'article. Sans cela, une
 contestation arrivée pendant les 48 h laissait partir le virement alors que la banque reprenait
 l'argent au client. Un versement déjà parti n'est pas touché. Si la contestation est gagnée, la
-retenue se lève depuis l'écran Versements.
+retenue se lève depuis l'écran Versements. **Un versement déjà retenu pour un autre motif** (réclamation…)
+n'était pas marqué : la levée de cette retenue, ou son terme, payait le prestataire pendant la
+contestation. Depuis le 18/11/2026, le motif devient `opposition_bancaire`, au terme le plus
+tardif des deux, et le ticket de support rappelle le motif précédent, à suivre à part.
 
 **Contestation reçue avant la clôture** (décision d'Alexandre du 01/10/2026) : il n'existe pas
 encore de versement à retenir. Le webhook **inscrit** la retenue (`payout_hold_reason`,
