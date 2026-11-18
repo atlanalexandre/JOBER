@@ -851,12 +851,16 @@ export async function compterAuQuota(prestataireId, jours, supabaseUrl, headers,
  *   - "prise"   : tâche planifiée — en attente, échéance vidée par sa prise ;
  *   - "refusee" : refus (application ou e-mail) — refusée, sans prestataire ;
  *   - "expiree" : délai constaté par l'écran du client — en attente, échue.
+ * Sans le prestataire lu : une réponse tardive l'efface (`prestataire_id`
+ * vidé, prestation toujours en attente), et la garde échouait alors — la tâche
+ * planifiée retombait sur le remboursement d'une commande qui avait encore des
+ * candidats (relecture du 18/11/2026). L'échéance vide suffit à dire « prise par
+ * la tâche » ; l'échéance passée, « encore à personne d'autre ».
  */
 export function gardeCascade(mission, origine) {
-  const presta = mission?.prestataire_id ? `eq.${mission.prestataire_id}` : "is.null";
-  if (origine === "prise") return `status=eq.pending_acceptance&prestataire_id=${presta}&acceptance_deadline=is.null`;
+  if (origine === "prise") return "status=eq.pending_acceptance&acceptance_deadline=is.null";
   if (origine === "refusee") return "status=eq.refused&prestataire_id=is.null";
-  if (origine === "expiree") return `status=eq.pending_acceptance&prestataire_id=${presta}&acceptance_deadline=lt.${new Date().toISOString()}`;
+  if (origine === "expiree") return `status=eq.pending_acceptance&acceptance_deadline=lt.${new Date().toISOString()}`;
   throw new Error(`cascade : origine inconnue (${origine})`);
 }
 
@@ -1050,7 +1054,7 @@ async function handleEmailAction(req, res) {
   });
   const ecrites = await ecr.json().catch(() => null);
   if (!ecr.ok) {
-    console.error(`[email-action] ${action} non enregistré pour ${missionId} (${ecr.status}) ${JSON.stringify(ecrites || {}).slice(0, 200)}`);
+    console.error(`[email-action] ${action} non enregistré pour ${missionId} (${ecr.status}) ${resumeErreur(ecrites)}`);
     return res.status(500).send(emailActionHtml("Erreur", "Votre réponse n'a pas pu être enregistrée. Répondez depuis l'application.", "#F25E5E", "⚠️"));
   }
   if (!Array.isArray(ecrites) || ecrites.length === 0) {
@@ -6298,11 +6302,17 @@ export default async function handler(req, res) {
         // Seulement si elle lui est TOUJOURS proposée : entre la lecture et
         // ici, la tâche planifiée a pu la confier au candidat suivant — c'est
         // lui qui était effacé (relecture du 15/11/2026).
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ prestataire_id: null }),
-        }).catch(e => console.error("[missions/respond_mission] échec ignoré :", e?.message));
+        // Résultat vérifié : un refus de PostgREST résout normalement (CLAUDE.md 1.2).
+        try {
+          const ef = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ prestataire_id: null }),
+          });
+          if (!ef.ok) console.error(`[respond_mission] délai dépassé : prestataire NON retiré de ${mission_id} (${ef.status}) ${resumeErreur(await ef.json().catch(() => null))}`);
+        } catch (e) {
+          console.error(`[respond_mission] délai dépassé : prestataire NON retiré de ${mission_id} :`, e.message);
+        }
         return res.status(410).json({ error: "Le délai d'acceptation est dépassé. Le client va être remboursé et pourra vous solliciter à nouveau." });
       }
 

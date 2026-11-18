@@ -3408,8 +3408,14 @@ prestataire muet. La condition était une liste de statuts (`pending_acceptance`
 insuffisante, « refusée » étant aussi l'état final d'une prestation déjà remboursée — un refus
 dans l'application pendant la cascade de la tâche planifiée laissait celle-ci réaffecter la
 prestation remboursée. Depuis le 17/11/2026, chaque appelant donne **l'état exact** qu'il a laissé
-(`gardeCascade()` : `prise` par la tâche planifiée — en attente, ce prestataire, échéance vidée ;
-`refusee` — refusée, sans prestataire ; `expiree` — en attente, ce prestataire, échue). Et un refus de la
+(`gardeCascade()` : `prise` par la tâche planifiée — en attente, échéance vidée ; `refusee` —
+refusée, sans prestataire ; `expiree` — en attente, échue). Le 18/11/2026, le prestataire lu a été
+retiré des gardes `prise` et `expiree` : une réponse tardive l'efface, la garde échouait, et la
+tâche remboursait une commande qui avait encore des candidats. Et après une cascade en échec, la
+tâche ne reprend pour la rembourser qu'une prestation **encore dans l'état de sa prise** (échéance
+vide) : sur « toujours en attente » seulement, elle retirait la prestation au prestataire qu'une
+cascade concurrente venait de solliciter. Ces gardes devinent l'état à partir des colonnes ; un
+jeton de cascade écrit par celui qui prend la prestation serait plus sûr (demande une migration). Et un refus de la
 base sur la réponse du prestataire est journalisé et annoncé comme tel (500), non plus comme
 « plus en attente ».
 
