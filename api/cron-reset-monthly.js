@@ -343,7 +343,7 @@ export default async function handler(req, res) {
               `${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}&status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}`,
               { acceptance_deadline: null }, headers, `cron/expiration ${z.id} (candidat suivant)`);
             if (!prise) continue;
-            const cascade = await affecterCandidatSuivant(z, SUPABASE_URL, headers)
+            const cascade = await affecterCandidatSuivant(z, SUPABASE_URL, headers, "prise")
               .catch(e => { console.error(`[cron/expiration] candidat suivant de ${z.id} :`, e.message); return { mode: "echec" }; });
             console.log(`[cron/expiration] prestation affectée ${z.id} → ${cascade.mode}`);
             if (cascade.mode !== "echec") {

@@ -1779,8 +1779,9 @@ ses factures : sa numérotation doit être continue et sans trou (art. 242 nonie
 CGI). La série commune à toute la plateforme (`platform_settings.invoice_sequence`,
 `FAC-{année}-{6 chiffres}`) y laissait des trous — les numéros des autres — et en créait aussi
 elle-même : le compteur était incrémenté **avant** l'écriture sur la prestation, et un affichage
-perdant laissait un numéro jamais attribué. Désormais `FAC-{8 premiers caractères de l'identifiant
-du prestataire}-{6 chiffres}` (`prefixeSerie()`, `numeroSuivant()`) : le suivant du plus grand
+perdant laissait un numéro jamais attribué. Désormais `FAC-{12 premiers caractères de l'identifiant
+du prestataire}-{6 chiffres}` (douze et non huit depuis le 17/11/2026 : deux prestataires au même
+début d'identifiant auraient partagé une série ; aucune facture n'avait été émise avec huit) (`prefixeSerie()`, `numeroSuivant()`) : le suivant du plus grand
 numéro de la série, lu dans `missions.invoice_number` **et** `factures_archives` (une prestation
 effacée garde sa facture), écrit sur la prestation sous la garde de l'index unique
 `idx_missions_invoice_number` — un doublon est refusé (409), la série est relue et l'écriture
@@ -1792,7 +1793,8 @@ d'année.
 l'archive, version 2 : une facture plus ancienne n'en reçoit pas après coup) ; pour un client
 professionnel (raison sociale ou SIRET), les conditions de règlement (réglée à la réservation,
 sans escompte), les pénalités de retard et l'indemnité forfaitaire de 40 € (art. L.441-10 et
-D.441-5 du Code de commerce) — elles ne figuraient que pour un prestataire assujetti à la TVA, et
+D.441-5 du Code de commerce) — sur une facture seulement : une attestation (pas de mandat, pas
+de numéro) ne les porte pas, elle se dit « pas une facture » — elles ne figuraient que pour un prestataire assujetti à la TVA, et
 aucun ne l'est. **Reste à trancher** : un auto-entrepreneur qui dépasse le seuil de la franchise
 doit facturer la TVA. Le prix payé par le client ne la prévoit pas : ajouter 20 % sur la facture la
 rendrait supérieure au paiement. C'est une décision de prix, qui appartient à Alexandre.
@@ -3400,9 +3402,14 @@ candidat suivant s'appliquait à ce dernier (« acceptée » sans qu'il ait rien
 Corrigé le 15/11/2026, ainsi que l'effacement du prestataire sur un délai dépassé — dans
 `respond_mission` seulement : le même effacement par le lien de l'e-mail l'a été le 16/11/2026.
 Le même jour, **les écritures de la cascade** (`affecterCandidatSuivant()`, candidat suivant et
-bascule en diffusion) sont conditionnées à une prestation encore en cascade (`pending_acceptance`
-ou `refused`) : elles écrasaient une annulation survenue pendant leurs lectures — prestation déjà
-remboursée, réaffectée — ou l'acceptation de dernière minute du prestataire muet. Et un refus de la
+bascule en diffusion) ont été conditionnées : elles écrasaient une annulation survenue pendant
+leurs lectures — prestation déjà remboursée, réaffectée — ou l'acceptation de dernière minute du
+prestataire muet. La condition était une liste de statuts (`pending_acceptance` ou `refused`) :
+insuffisante, « refusée » étant aussi l'état final d'une prestation déjà remboursée — un refus
+dans l'application pendant la cascade de la tâche planifiée laissait celle-ci réaffecter la
+prestation remboursée. Depuis le 17/11/2026, chaque appelant donne **l'état exact** qu'il a laissé
+(`gardeCascade()` : `prise` par la tâche planifiée — en attente, ce prestataire, échéance vidée ;
+`refusee` — refusée, sans prestataire ; `expiree` — en attente, ce prestataire, échue). Et un refus de la
 base sur la réponse du prestataire est journalisé et annoncé comme tel (500), non plus comme
 « plus en attente ».
 

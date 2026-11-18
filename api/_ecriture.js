@@ -20,7 +20,7 @@ const resumeCorps = (corps) => Array.isArray(corps)
 // Et de l'erreur de PostgREST, son code et son message seulement : `details`
 // recopie la ligne refusée (« Failing row contains (…) »), données personnelles
 // comprises (relecture du 24/10/2026).
-const resumeErreur = (r) => (r && !Array.isArray(r) && (r.code || r.message))
+export const resumeErreur = (r) => (r && !Array.isArray(r) && (r.code || r.message))
   ? `${r.code || ""} ${String(r.message || "").slice(0, 200)}`.trim()
   : JSON.stringify(r || {}).slice(0, 200);
 
