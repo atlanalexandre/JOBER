@@ -5243,7 +5243,11 @@ l'argent au client. Un versement déjà parti n'est pas touché. Si la contestat
 retenue se lève depuis l'écran Versements. **Un versement déjà retenu pour un autre motif** (réclamation…)
 n'était pas marqué : la levée de cette retenue, ou son terme, payait le prestataire pendant la
 contestation. Depuis le 18/11/2026, le motif devient `opposition_bancaire`, au terme le plus
-tardif des deux, et le ticket de support rappelle le motif précédent, à suivre à part.
+tardif des deux. Depuis le 19/11/2026, l'ancienne retenue est d'abord **tracée** (`bo_logs`,
+action `retenue_convertie_opposition`, motif et terme précédents dans `details`) — sans trace,
+rien n'est converti et le ticket le signale —, la conversion porte sur la retenue lue, le
+prestataire est prévenu du nouveau motif et du nouveau terme, et une **opposition gagnée rétablit
+l'ancien motif et son terme** au lieu de libérer le versement : elle ne tranche pas ce motif-là.
 
 **Contestation reçue avant la clôture** (décision d'Alexandre du 01/10/2026) : il n'existe pas
 encore de versement à retenir. Le webhook **inscrit** la retenue (`payout_hold_reason`,

@@ -1150,17 +1150,47 @@ export default async function handler(req, res) {
           const quatreVingtDix = new Date(maintenant.getTime() + 90 * 86400000);
           const avant = Date.parse(missionLitige.payout_hold_until || "");
           const jusqua = Number.isFinite(avant) && avant > quatreVingtDix.getTime() ? new Date(avant) : quatreVingtDix;
-          const rh = await fetch(
-            `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&payout_status=eq.held`,
-            { method: "PATCH", headers: { ...hdrsD, "Prefer": "return=representation" },
-              body: JSON.stringify({ payout_hold_reason: "opposition_bancaire", payout_hold_until: jusqua.toISOString() }) }
-          );
-          const repris = rh.ok ? await rh.json().catch(() => []) : [];
-          if (Array.isArray(repris) && repris.length) {
-            missionLitige.retenu = true;
-            missionLitige.retenuePrecedente = missionLitige.payout_hold_reason || "inconnue";
+          // L'ancienne retenue est TRACÉE avant d'être remplacée : une opposition
+          // gagnée la rétablit, au lieu de libérer un versement que son motif
+          // (fraude, créance…) retenait toujours (relecture du 19/11/2026).
+          const trace = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+            method: "POST", headers: { ...hdrsD, "Prefer": "return=minimal" },
+            body: JSON.stringify({ action: "retenue_convertie_opposition", target_id: missionLitige.id,
+              reason: missionLitige.payout_hold_reason || null,
+              details: { motif_precedent: missionLitige.payout_hold_reason || null, terme_precedent: missionLitige.payout_hold_until || null, opposition: dispute.id || null } }),
+          }).catch(e => ({ ok: false, status: e.message }));
+          if (!trace.ok) {
+            // Sans trace, une opposition gagnée lèverait tout : la retenue d'origine
+            // reste telle quelle, et l'équipe est prévenue par le ticket ci-dessous.
+            console.error(`[dispute] ancienne retenue de ${missionLitige.id} NON tracée (${trace.status}) — non convertie : à convertir à la main.`);
+            missionLitige.conversionImpossible = true;
           } else {
-            console.error(`[dispute] retenue de ${missionLitige.id} NON convertie en opposition bancaire (${rh.status}) — à faire à la main depuis le back-office.`);
+            // Conditionnée à la retenue LUE : une retenue changée entre-temps au
+            // back-office n'est pas écrasée.
+            const rh = await fetch(
+              `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&payout_status=eq.held`
+                + (missionLitige.payout_hold_reason ? `&payout_hold_reason=eq.${encodeURIComponent(missionLitige.payout_hold_reason)}` : "&payout_hold_reason=is.null"),
+              { method: "PATCH", headers: { ...hdrsD, "Prefer": "return=representation" },
+                body: JSON.stringify({ payout_hold_reason: "opposition_bancaire", payout_hold_at: maintenant.toISOString(), payout_hold_until: jusqua.toISOString() }) }
+            );
+            const repris = rh.ok ? await rh.json().catch(() => []) : [];
+            if (Array.isArray(repris) && repris.length) {
+              missionLitige.retenu = true;
+              missionLitige.retenuePrecedente = missionLitige.payout_hold_reason || "inconnue";
+              // Prévenu, avec le nouveau motif et le nouveau terme (CGPS 7.4).
+              if (missionLitige.prestataire_id) {
+                const finLe = jusqua.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+                await notifier({ user_id: missionLitige.prestataire_id, type: "system",
+                  title: "Versement suspendu",
+                  body: `Le versement de ${euros(missionLitige.payout_amount)} pour « ${missionLitige.metier || missionLitige.sector || "votre prestation"} » du ${missionLitige.date || "?"}, déjà retenu, l'est désormais aussi parce que `
+                    + "le client a formé une opposition bancaire sur son paiement (CGPS art. 7.4). "
+                    + `Cette retenue prend fin au plus tard le ${finLe}. Vous pouvez la contester à direction@alane.fr.`,
+                }, SUPABASE_URL, hdrsD).catch(e => console.error("[dispute] notification de retenue non envoyée :", e.message));
+              }
+            } else {
+              console.error(`[dispute] retenue de ${missionLitige.id} NON convertie en opposition bancaire (${rh.status}) — à faire à la main depuis le back-office.`);
+              missionLitige.conversionImpossible = true;
+            }
           }
         } else if (missionLitige?.id && !missionLitige.payout_status) {
           // ── Contestation AVANT la clôture (décision d'Alexandre du 01/10/2026)
@@ -1195,7 +1225,8 @@ export default async function handler(req, res) {
                 + `Prestation : ${missionLitige.metier || missionLitige.sector || "?"} du ${missionLitige.date || "?"}, `
                 + `statut ${missionLitige.status}, montant ${missionLitige.montant_total != null ? euros(missionLitige.montant_total) : "?"}.\n`
                 + `Prestataire : ${missionLitige.prestataire_id || "aucun"}.\n`
-                + (missionLitige.retenuePrecedente ? `Le versement était déjà retenu (motif : ${missionLitige.retenuePrecedente}) : la retenue porte désormais sur l'opposition bancaire — l'autre motif est à suivre à part.\n` : "")
+                + (missionLitige.retenuePrecedente ? `Le versement était déjà retenu (motif : ${missionLitige.retenuePrecedente}) : la retenue porte désormais sur l'opposition bancaire. Si l'opposition est gagnée, l'ancien motif est rétabli automatiquement.\n` : "")
+                + (missionLitige.conversionImpossible ? `⚠️ Le versement était déjà retenu pour un autre motif, et la retenue n'a PAS pu être convertie en opposition bancaire : à faire à la main depuis le back-office.\n` : "")
                 + `Répondre depuis le tableau de bord Stripe dans les délais impartis.`,
               user_id: missionLitige.client_id,
               status: "open",
@@ -1335,6 +1366,24 @@ export default async function handler(req, res) {
             } else {
               console.error(`[dispute.closed] ${dispute.id} gagnée, mais une autre opposition est encore ouverte ou perdue : retenue maintenue sans terme sur ${m.id}.`);
             }
+            continue;
+          }
+          // Une retenue CONVERTIE (elle existait avant l'opposition, pour un autre
+          // motif) retrouve son motif et son terme : l'opposition gagnée ne tranche
+          // pas ce motif-là (relecture du 19/11/2026).
+          const tr = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.retenue_convertie_opposition&target_id=eq.${m.id}&select=details,created_at&order=created_at.desc&limit=1`, { headers: hdrsC });
+          const traces = tr.ok ? await tr.json().catch(() => null) : null;
+          if (!Array.isArray(traces)) throw new Error(`trace de conversion de ${m.id} illisible (${tr.status}) — rien n'est levé`);
+          const avant = traces[0]?.details;
+          if (avant?.motif_precedent) {
+            const termeAvant = Date.parse(avant.terme_precedent || "");
+            const rr = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC,
+              body: JSON.stringify({ payout_hold_reason: avant.motif_precedent, payout_hold_at: new Date().toISOString(),
+                payout_hold_until: Number.isFinite(termeAvant) ? new Date(termeAvant).toISOString() : null }) });
+            const retablie = rr.ok ? await rr.json().catch(() => null) : null;
+            if (!Array.isArray(retablie) || !retablie.length) throw new Error(`retenue d'origine de ${m.id} non rétablie (${rr.status}) — état changé entre-temps`);
+            lignes.push(m);
+            console.error(`[dispute.closed] ${dispute.id} gagnée : retenue d'origine (${avant.motif_precedent}) rétablie sur ${m.id} — le versement reste retenu.`);
             continue;
           }
           const levee = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
