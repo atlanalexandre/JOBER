@@ -54,12 +54,27 @@ describe("valider de force", () => {
     expect(r.corps.cashback).toBe(0);
     expect(r.corps.cashbackNonCredite).toBe(true);
     expect(notifs.filter(n => n.includes(CLIENT)).join(" ")).not.toContain("Cashback");
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("NON crédité"));
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("NON enregistrés"));
   });
   it("cashback crédité : annoncé", async () => {
     const { notifs } = simuler();
     const r = await valider();
     expect(r.corps.cashback).toBeGreaterThan(0);
     expect(notifs.filter(n => n.includes(CLIENT)).join(" ")).toContain("Cashback");
+  });
+  it("échec du crédit à 0 € (palier nul) : journalisé quand même — le compte des commandes est perdu sinon", async () => {
+    const { ecrits } = simuler({ cashbackOk: false });
+    vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
+      const u = String(url), m = o.method || "GET";
+      if (u.includes(`/missions?id=eq.${M}&select=`)) return json([MISSION]);
+      if (u.includes(`/missions?id=eq.${M}&status=eq.`) && m === "PATCH") { ecrits.push(u); return json([{ ...MISSION, status: "completed" }]); }
+      if (u.includes("platform_settings")) return json([{ value: [{ min: 0, max: 999, rate: 0 }] }]);
+      if (u.includes("/rpc/increment_cashback")) return json({ message: "non" }, 500);
+      if (u.includes("/profiles?id=eq.") && m === "GET") return json([{ cashback_balance: 0, commandes_mois: 0 }]);
+      return json([]);
+    }));
+    const r = await valider();
+    expect(r.corps.cashback).toBe(0);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("NON enregistrés"));
   });
 });

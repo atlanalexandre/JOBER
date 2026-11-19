@@ -3120,7 +3120,11 @@ ${cvIncomplet ? `
       // Non crédité : le client ne doit pas lire « Cashback +X € » (relecture du
       // 18/11/2026) — la notification et la réponse le taisent, le journal le dit.
       const cashbackCredite = Boolean(cashbackRes?.ok);
-      if (!cashbackCredite && cashback > 0) console.error(`[force_complete] cashback de ${cashback} € NON crédité au client ${m.client_id} (prestation ${mission_id}, ${cashbackRes?.status ?? "réseau"}) — à créditer à la main.`);
+      // Tout échec est journalisé, même à 0 € : le même appel compte les
+      // commandes du client (palier de son cashback) — perdu sans trace sinon
+      // (CLAUDE.md 1.2, relecture du 19/11/2026).
+      if (!cashbackCredite) console.error(`[force_complete] cashback de ${cashback} € et ${jours} commande(s) NON enregistrés pour le client ${m.client_id} (prestation ${mission_id}, ${cashbackRes?.status ?? "réseau"})`
+        + (cashback > 0 ? " — à créditer à la main." : " — palier de cashback à corriger à la main."));
       // Notification prestataire
       if (m.prestataire_id) {
         await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
