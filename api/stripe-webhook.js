@@ -1099,7 +1099,7 @@ export default async function handler(req, res) {
           // Le paiement de la réservation, ou celui d'une prolongation : une contestation
           // d'heures supplémentaires ne retrouvait aucune prestation, et le versement,
           // qui les inclut, partait quand même (relecture du 23/10/2026).
-          `${SUPABASE_URL}/rest/v1/missions?or=(stripe_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)},extra_hours_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)})&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status,payout_status,payout_amount&limit=1`,
+          `${SUPABASE_URL}/rest/v1/missions?or=(stripe_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)},extra_hours_payment_intent.eq.${encodeURIComponent(dispute.payment_intent)})&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status,payout_status,payout_amount,payout_hold_reason,payout_hold_until&limit=1`,
           { headers: hdrsD }
         );
         missionLitige = (await mRes.json().catch(() => []))[0] || null;
@@ -1138,6 +1138,30 @@ export default async function handler(req, res) {
           } else {
             console.error(`[dispute] versement de ${missionLitige.id} NON retenu (${rr.status}) — à retenir à la main depuis le back-office.`);
           }
+        } else if (missionLitige?.id && missionLitige.payout_status === "held" && missionLitige.payout_hold_reason !== "opposition_bancaire") {
+          // ── Versement DÉJÀ retenu pour un autre motif (réclamation…) ─────
+          // Rien n'était inscrit : la levée de cette autre retenue, ou son
+          // terme, laissait partir le virement pendant la contestation — la
+          // banque reprenait l'argent au client, et ALANE avait payé le
+          // prestataire (relecture du 18/11/2026). L'opposition bancaire prend
+          // le pas : motif remplacé, terme porté au plus tard des deux. Le motif
+          // précédent est rappelé dans le ticket ci-dessous.
+          const maintenant = new Date();
+          const quatreVingtDix = new Date(maintenant.getTime() + 90 * 86400000);
+          const avant = Date.parse(missionLitige.payout_hold_until || "");
+          const jusqua = Number.isFinite(avant) && avant > quatreVingtDix.getTime() ? new Date(avant) : quatreVingtDix;
+          const rh = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&payout_status=eq.held`,
+            { method: "PATCH", headers: { ...hdrsD, "Prefer": "return=representation" },
+              body: JSON.stringify({ payout_hold_reason: "opposition_bancaire", payout_hold_until: jusqua.toISOString() }) }
+          );
+          const repris = rh.ok ? await rh.json().catch(() => []) : [];
+          if (Array.isArray(repris) && repris.length) {
+            missionLitige.retenu = true;
+            missionLitige.retenuePrecedente = missionLitige.payout_hold_reason || "inconnue";
+          } else {
+            console.error(`[dispute] retenue de ${missionLitige.id} NON convertie en opposition bancaire (${rh.status}) — à faire à la main depuis le back-office.`);
+          }
         } else if (missionLitige?.id && !missionLitige.payout_status) {
           // ── Contestation AVANT la clôture (décision d'Alexandre du 01/10/2026)
           //
@@ -1171,6 +1195,7 @@ export default async function handler(req, res) {
                 + `Prestation : ${missionLitige.metier || missionLitige.sector || "?"} du ${missionLitige.date || "?"}, `
                 + `statut ${missionLitige.status}, montant ${missionLitige.montant_total != null ? euros(missionLitige.montant_total) : "?"}.\n`
                 + `Prestataire : ${missionLitige.prestataire_id || "aucun"}.\n`
+                + (missionLitige.retenuePrecedente ? `Le versement était déjà retenu (motif : ${missionLitige.retenuePrecedente}) : la retenue porte désormais sur l'opposition bancaire — l'autre motif est à suivre à part.\n` : "")
                 + `Répondre depuis le tableau de bord Stripe dans les délais impartis.`,
               user_id: missionLitige.client_id,
               status: "open",

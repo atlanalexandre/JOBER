@@ -90,4 +90,15 @@ describe("expiration d'une prestation affectée par la plateforme", () => {
     for (const u of cascade) expect(u).toContain("status=eq.pending_acceptance");
     expect(remboursements).toBe(0);
   });
+
+  // Relecture du 18/11/2026 : après une cascade en échec, la tâche reprenait
+  // la prestation sur « toujours en attente » seulement — une cascade concurrente
+  // venait de la confier à un autre prestataire, qui la perdait, et le client
+  // était remboursé.
+  it("cascade en échec : la tâche ne reprend pour la rembourser qu'une prestation encore dans l'état de sa prise", async () => {
+    const { ecrits } = simuler({ rembourseOk: true });
+    await passage();
+    const reprise = ecrits.find(e => e.corps.status === "refused");
+    expect(reprise.u).toContain("status=eq.pending_acceptance&acceptance_deadline=is.null");
+  });
 });

@@ -147,11 +147,11 @@ describe("refus d'une réservation chez un tiers", () => {
   // Relecture du 17/11/2026 : « refusée » est aussi l'état final d'une prestation
   // déjà remboursée — une liste de statuts laissait une cascade parallèle la
   // réaffecter. Chaque appelant donne l'état exact qu'il a laissé.
-  it("garde de la cascade : l'état exact de chaque appelant", async () => {
+  it("garde de la cascade : l'état exact de chaque appelant — sans le prestataire lu, qu'une réponse tardive efface", async () => {
     const { gardeCascade } = await import("../../../api/missions.js");
-    expect(gardeCascade({ prestataire_id: PRESTA }, "prise")).toBe(`status=eq.pending_acceptance&prestataire_id=eq.${PRESTA}&acceptance_deadline=is.null`);
+    expect(gardeCascade({ prestataire_id: PRESTA }, "prise")).toBe("status=eq.pending_acceptance&acceptance_deadline=is.null");
     expect(gardeCascade({ prestataire_id: PRESTA }, "refusee")).toBe("status=eq.refused&prestataire_id=is.null");
-    expect(gardeCascade({ prestataire_id: null }, "expiree")).toMatch(/^status=eq\.pending_acceptance&prestataire_id=is\.null&acceptance_deadline=lt\./);
+    expect(gardeCascade({ prestataire_id: PRESTA }, "expiree")).toMatch(/^status=eq\.pending_acceptance&acceptance_deadline=lt\./);
     expect(() => gardeCascade({}, "autre")).toThrow();
   });
 });

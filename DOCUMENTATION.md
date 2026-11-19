@@ -3408,8 +3408,14 @@ prestataire muet. La condition était une liste de statuts (`pending_acceptance`
 insuffisante, « refusée » étant aussi l'état final d'une prestation déjà remboursée — un refus
 dans l'application pendant la cascade de la tâche planifiée laissait celle-ci réaffecter la
 prestation remboursée. Depuis le 17/11/2026, chaque appelant donne **l'état exact** qu'il a laissé
-(`gardeCascade()` : `prise` par la tâche planifiée — en attente, ce prestataire, échéance vidée ;
-`refusee` — refusée, sans prestataire ; `expiree` — en attente, ce prestataire, échue). Et un refus de la
+(`gardeCascade()` : `prise` par la tâche planifiée — en attente, échéance vidée ; `refusee` —
+refusée, sans prestataire ; `expiree` — en attente, échue). Le 18/11/2026, le prestataire lu a été
+retiré des gardes `prise` et `expiree` : une réponse tardive l'efface, la garde échouait, et la
+tâche remboursait une commande qui avait encore des candidats. Et après une cascade en échec, la
+tâche ne reprend pour la rembourser qu'une prestation **encore dans l'état de sa prise** (échéance
+vide) : sur « toujours en attente » seulement, elle retirait la prestation au prestataire qu'une
+cascade concurrente venait de solliciter. Ces gardes devinent l'état à partir des colonnes ; un
+jeton de cascade écrit par celui qui prend la prestation serait plus sûr (demande une migration). Et un refus de la
 base sur la réponse du prestataire est journalisé et annoncé comme tel (500), non plus comme
 « plus en attente ».
 
@@ -5234,7 +5240,10 @@ encore à venir (`pending` ou `failed`) en `held`, motif `opposition_bancaire`, 
 jours au plus, et prévient le prestataire — les deux conditions de l'article. Sans cela, une
 contestation arrivée pendant les 48 h laissait partir le virement alors que la banque reprenait
 l'argent au client. Un versement déjà parti n'est pas touché. Si la contestation est gagnée, la
-retenue se lève depuis l'écran Versements.
+retenue se lève depuis l'écran Versements. **Un versement déjà retenu pour un autre motif** (réclamation…)
+n'était pas marqué : la levée de cette retenue, ou son terme, payait le prestataire pendant la
+contestation. Depuis le 18/11/2026, le motif devient `opposition_bancaire`, au terme le plus
+tardif des deux, et le ticket de support rappelle le motif précédent, à suivre à part.
 
 **Contestation reçue avant la clôture** (décision d'Alexandre du 01/10/2026) : il n'existe pas
 encore de versement à retenir. Le webhook **inscrit** la retenue (`payout_hold_reason`,
@@ -5363,7 +5372,11 @@ la prestation était clôturée, le prestataire recevait un e-mail lui annonçan
 « sous 3 à 5 jours ouvrés », et rien n'était jamais émis.
 
 La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : mêmes défauts,
-plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé.
+plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé. Depuis
+le 18/11/2026, sa clôture est conditionnée au prestataire lu (une cascade pouvait confier la
+prestation à un autre entre la lecture et l'écriture), et un cashback que la base n'a pas crédité
+n'est plus annoncé au client : le back-office affiche « cashback NON crédité — à créditer à la
+main ».
 L'exécution d'une résolution remet `payout_status` à `pending` — sans quoi une prestation dont
 le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
