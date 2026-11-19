@@ -1060,7 +1060,11 @@ function BOComptes() {
                   <div style={{ marginBottom:12 }}>
                     <FI label="Type de compte" field="type_compte" options={[["","— Non renseigné —"],["particulier","Particulier"],["professionnel","Professionnel"]]} />
                     <FI label="Nom de la société" field="societe_nom" />
-                    <FI label="SIRET de la société (client professionnel)" field="kbis" />
+                    {/* Réservé aux clients : saisi pour un prestataire, le numéro partait
+                        dans `kbis`, que ni le compteur « Sans SIRET », ni la validation, ni
+                        l'échéance URSSAF ne lisent — six SIRET ainsi perdus (19/11/2026).
+                        Le SIRET d'un prestataire se saisit plus bas, « SIRET (14 chiffres) ». */}
+                    {p.role !== "prestataire" && <FI label="SIRET de la société (client professionnel)" field="kbis" />}
                   </div>
 
                   {p.role === "prestataire" && <>
