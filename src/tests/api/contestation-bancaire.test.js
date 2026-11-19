@@ -80,6 +80,31 @@ describe("contestation bancaire", () => {
       expect(ticket.corps).toContain("reclamation_client");
     }
   });
+  it("conversion : l'ancienne retenue est tracée d'abord, la conversion porte sur la retenue lue, le prestataire est prévenu", async () => {
+    const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "suspicion_fraude", payout_hold_until: "2026-12-10T00:00:00.000Z", payout_amount: 104 });
+    await handler(requete(evenement), reponse());
+    const iTrace = appels.findIndex(a => a.methode === "POST" && a.u.includes("/rest/v1/bo_logs"));
+    const iConv = appels.findIndex(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
+    expect(iTrace).toBeGreaterThanOrEqual(0);
+    expect(iTrace).toBeLessThan(iConv);
+    expect(JSON.parse(appels[iTrace].corps).details.motif_precedent).toBe("suspicion_fraude");
+    expect(appels[iConv].u).toContain("payout_hold_reason=eq.suspicion_fraude");
+    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("opposition bancaire"))).toBe(true);
+  });
+  it("conversion : trace impossible — la retenue d'origine n'est pas touchée, le ticket le signale", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET", corps: o.body });
+      if (u.includes("/rest/v1/missions?or=(stripe_payment_intent")) return new Response(JSON.stringify([{ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "suspicion_fraude", payout_amount: 104 }]), { status: 200 });
+      if (u.includes("/rest/v1/bo_logs")) return new Response("{}", { status: 500 });
+      return new Response("[]", { status: 200 });
+    }));
+    await handler(requete(evenement), reponse());
+    expect(appels.some(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"))).toBe(false);
+    expect(appels.find(a => a.u.includes("/rest/v1/support_tickets")).corps).toContain("n'a PAS pu être convertie");
+  });
   it("déjà retenu pour opposition bancaire (seconde contestation) : rien n'est réécrit", async () => {
     const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "opposition_bancaire", payout_amount: 104 });
     await handler(requete(evenement), reponse());
@@ -106,13 +131,14 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
   const ferme = (status) => ({ type: "charge.dispute.closed", data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 11098, status } } });
   // `missions` : les prestations retenues que la lecture rend ; `autresOuvertes` :
   // oppositions encore ouvertes sur l'autre paiement de la prestation.
-  function simulerIssue(missions, autresOuvertes = []) {
+  function simulerIssue(missions, autresOuvertes = [], traces = []) {
     const appels = [];
     vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
       const u = String(url);
       appels.push({ u, methode: o.method || "GET", corps: o.body });
       if (u.includes("/rest/v1/missions?and=") && !o.method) return new Response(JSON.stringify(missions), { status: 200 });
       if (u.includes("/rest/v1/missions?id=eq.") && o.method === "PATCH") return new Response("[{}]", { status: 200 });
+      if (u.includes("/rest/v1/bo_logs?action=eq.retenue_convertie_opposition") && !o.method) return new Response(JSON.stringify(traces), { status: 200 });
       // pi_1 : le paiement dont l'opposition vient d'être gagnée ; les autres
       // oppositions sont sur l'autre paiement.
       if (u.includes("api.stripe.com/v1/disputes")) return new Response(JSON.stringify({ data: u.includes("payment_intent=pi_1") ? [] : autresOuvertes }), { status: 200 });
@@ -136,6 +162,23 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
     const levee = appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1"));
     expect(JSON.parse(levee.corps)).toEqual({ payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null, payout_status: "pending" });
     expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("rejetée"))).toBe(true);
+  });
+  // Relecture du 19/11/2026 : une retenue convertie (elle existait avant
+  // l'opposition) était levée par l'opposition gagnée — le versement partait
+  // alors que son premier motif (fraude, créance…) n'était pas tranché.
+  it("gagnée, retenue convertie : l'ancien motif et son terme sont rétablis, le versement reste retenu", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const terme = new Date(Date.now() + 20 * 86400000).toISOString();
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_1" }], [],
+      [{ details: { motif_precedent: "creance_alane", terme_precedent: terme } }]);
+    const res = reponse();
+    await handler(requete(ferme("won")), res);
+    expect(res.statut).toBe(200);
+    const ecrit = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
+    expect(ecrit.payout_hold_reason).toBe("creance_alane");
+    expect(ecrit.payout_hold_until).toBe(terme);
+    expect(ecrit.payout_status).toBeUndefined();
+    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("rejetée"))).toBe(false);
   });
   it("gagnée, retenue inscrite avant la clôture : elle est effacée, sans inventer de versement", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: null, stripe_payment_intent: "pi_1" }]);
