@@ -175,6 +175,18 @@ describe("semaine suivante d'une série", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  // Relecture du 19/11/2026 : un paiement encore en traitement était lu comme
+  // un refus — semaine annulée, « Rien n'a été débité » sur une carte qui allait l'être.
+  it("paiement encore en traitement chez Stripe : issue inconnue, semaine gardée, rien annoncé au client", async () => {
+    for (const status of ["processing", "requires_capture"]) {
+      const a = simuler({ stripeCreation: () => json({ id: "pi_2", status }) });
+      const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
+      expect(r.mode).toBe("echec");
+      expect(a.annulations).toBe(0);
+      expect(a.notifications.some(n => /débité|interrompue/.test(`${n.title} ${n.body}`))).toBe(false);
+    }
+  });
+
   it("carte refusée : la série s'arrête et le client est prévenu", async () => {
     const a = simuler({ stripeCreation: () => json({ error: { type: "card_error", decline_code: "insufficient_funds" } }, 402) });
     const r = await programmerOccurrenceSuivante(PARENT.id, "https://x", {});
