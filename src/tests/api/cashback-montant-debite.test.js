@@ -69,4 +69,25 @@ describe("débit plafonné, puis restitution", () => {
     expect(r.debite).toBe(0);
     expect(appels.some(a => a.method === "PATCH" && a.url.includes("profiles")), "aucun débit du solde").toBe(false);
   });
+
+  // Relecture du 20/11/2026 : une coupure pendant le crédit ne laissait qu'un
+  // « restitution impossible » sans consigne. Le crédit a pu aboutir : le
+  // marquage n'est pas rétabli (un second passage doublerait), l'équipe vérifie.
+  it("crédit envoyé sans réponse : pas de second crédit possible, consigne de vérifier le solde", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const patchs = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      if (u.includes("select=started_at,status")) return json([{ started_at: null, status: "cancelled" }]);
+      if (o.method === "PATCH") { patchs.push(u); if (u.includes("cashback_debite=is.true")) return json([{ id: "m1" }]); }
+      if (u.includes("select=cashback_debite_montant")) return json([{ cashback_debite_montant: 5 }]);
+      if (u.includes("rpc/increment_cashback")) throw new Error("ECONNRESET");
+      return new Response(null, { status: 204 });
+    }));
+    const r = await restituerCashback({ id: "m1", client_id: "c", cashback_applique: 5, cashback_debite: true }, SB, H, "test");
+    expect(r.rendu).toBe(0);
+    expect(patchs.some(u => u.includes("cashback_debite=is.false"))).toBe(false);
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("vérifier le solde du client"));
+    err.mockRestore();
+  });
 });
