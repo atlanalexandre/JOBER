@@ -5461,7 +5461,10 @@ l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
   marque plus la prestation « débitée ».
 - **`restituerCashback()` prend la restitution avant de créditer** (`cashback_debite` true →
   false, écriture conditionnelle), et la rétablit si le crédit échoue : deux chemins de
-  remboursement concurrents ne peuvent plus la rendre deux fois.
+  remboursement concurrents ne peuvent plus la rendre deux fois. Une **coupure pendant le crédit**
+  (aucune réponse) ne rétablit pas le marquage — le crédit a pu aboutir, un second passage le
+  doublerait : le journal dit de vérifier le solde du client avant tout crédit à la main
+  (20/11/2026 ; il ne disait que « restitution impossible »).
 - **On ne rend que ce qui a été débité** (30/09/2026). Un débit plafonné — solde devenu
   insuffisant entre deux réservations simultanées — laisse `cashback_applique` à la réduction
   promise (elle borne Stripe), mais la restitution rendait cette réduction entière : le client
