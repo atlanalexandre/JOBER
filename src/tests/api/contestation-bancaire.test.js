@@ -91,6 +91,26 @@ describe("contestation bancaire", () => {
     expect(appels[iConv].u).toContain("payout_hold_reason=eq.suspicion_fraude");
     expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("opposition bancaire"))).toBe(true);
   });
+  it("conversion : la trace porte l'instant que la conversion écrit dans payout_hold_at", async () => {
+    const appels = simuler({ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "reclamation_client", payout_amount: 104 });
+    await handler(requete(evenement), reponse());
+    const trace = JSON.parse(appels.find(a => a.methode === "POST" && a.u.includes("/rest/v1/bo_logs")).corps);
+    const conv = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
+    expect(trace.details.conversion_at).toBe(conv.payout_hold_at);
+  });
+  it("conversion : même événement livré deux fois — la seconde trouve la retenue déjà convertie, pas d'alerte « à la main »", async () => {
+    const appels = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, o = {}) => {
+      const u = String(url);
+      appels.push({ u, methode: o.method || "GET", corps: o.body });
+      if (u.includes("/rest/v1/missions?or=(stripe_payment_intent")) return new Response(JSON.stringify([{ id: "m1", client_id: "c1", prestataire_id: "p1", payout_status: "held", payout_hold_reason: "reclamation_client", payout_amount: 104 }]), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=eq.m1&select=")) return new Response(JSON.stringify([{ payout_status: "held", payout_hold_reason: "opposition_bancaire" }]), { status: 200 });
+      if (u.includes("/rest/v1/missions?id=") && o.method === "PATCH") return new Response("[]", { status: 200 });
+      return new Response("[]", { status: 200 });
+    }));
+    await handler(requete(evenement), reponse());
+    expect(appels.find(a => a.u.includes("/rest/v1/support_tickets")).corps).not.toContain("n'a PAS pu être convertie");
+  });
   it("conversion : trace impossible — la retenue d'origine n'est pas touchée, le ticket le signale", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const appels = [];
@@ -169,8 +189,9 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
   it("gagnée, retenue convertie : l'ancien motif et son terme sont rétablis, le versement reste retenu", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const terme = new Date(Date.now() + 20 * 86400000).toISOString();
-    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", stripe_payment_intent: "pi_1" }], [],
-      [{ details: { motif_precedent: "creance_alane", terme_precedent: terme } }]);
+    const conv = "2026-11-19T10:00:00.000Z";
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: conv, stripe_payment_intent: "pi_1" }], [],
+      [{ details: { motif_precedent: "creance_alane", terme_precedent: terme, conversion_at: conv } }]);
     const res = reponse();
     await handler(requete(ferme("won")), res);
     expect(res.statut).toBe(200);
@@ -178,7 +199,18 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
     expect(ecrit.payout_hold_reason).toBe("creance_alane");
     expect(ecrit.payout_hold_until).toBe(terme);
     expect(ecrit.payout_status).toBeUndefined();
-    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("rejetée"))).toBe(false);
+    // Prévenu que la retenue continue, pour l'ancien motif (relecture du 20/11/2026).
+    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("reste suspendu"))).toBe(true);
+    expect(appels.some(a => a.u.includes("/rest/v1/notifications") && a.corps.includes("de nouveau programmé"))).toBe(false);
+  });
+  // Relecture du 20/11/2026 : la trace la plus récente de la prestation était
+  // rétablie, même si elle concernait une ANCIENNE conversion, levée depuis.
+  it("gagnée, trace d'une autre conversion (ancienne) : rien n'est rétabli, la retenue tombe", async () => {
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-20T08:00:00.000Z", stripe_payment_intent: "pi_1" }], [],
+      [{ details: { motif_precedent: "reclamation_client", terme_precedent: null, conversion_at: "2026-10-01T08:00:00.000Z" } }]);
+    await handler(requete(ferme("won")), reponse());
+    const ecrit = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
+    expect(ecrit).toEqual({ payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null, payout_status: "pending" });
   });
   it("gagnée, retenue inscrite avant la clôture : elle est effacée, sans inventer de versement", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: null, stripe_payment_intent: "pi_1" }]);
