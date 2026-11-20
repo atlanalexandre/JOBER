@@ -5379,8 +5379,10 @@ La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : m�
 plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé. Depuis
 le 18/11/2026, sa clôture est conditionnée au prestataire lu (une cascade pouvait confier la
 prestation à un autre entre la lecture et l'écriture), et un cashback que la base n'a pas crédité
-n'est plus annoncé au client : le back-office affiche « cashback NON crédité — à créditer à la
-main ».
+n'est plus annoncé au client : le back-office le signale (« cashback NON enregistré pour le client
+— à corriger à la main »). Le 20/11/2026 : une fiche du client illisible ne fait plus créditer un
+cashback calculé au palier d'un premier achat (trop bas, sans trace) — rien n'est crédité, c'est
+signalé ; et le signalement vaut pour tout échec, même à 0 €.
 L'exécution d'une résolution remet `payout_status` à `pending` — sans quoi une prestation dont
 le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.

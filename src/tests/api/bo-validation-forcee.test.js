@@ -77,4 +77,23 @@ describe("valider de force", () => {
     expect(r.corps.cashback).toBe(0);
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("NON enregistrés"));
   });
+
+  // Relecture du 20/11/2026 : fiche du client illisible — le palier était celui
+  // d'un premier achat, et un cashback trop bas était crédité sans trace.
+  it("fiche du client illisible : rien n'est crédité, c'est signalé au back-office et au journal", async () => {
+    let rpc = 0;
+    vi.stubGlobal("fetch", vi.fn((url, o = {}) => {
+      const u = String(url), m = o.method || "GET";
+      if (u.includes(`/missions?id=eq.${M}&select=`)) return json([MISSION]);
+      if (u.includes(`/missions?id=eq.${M}&status=eq.`) && m === "PATCH") return json([{ ...MISSION, status: "completed" }]);
+      if (u.includes("/profiles?id=eq.") && m === "GET") return json({ message: "panne" }, 503);
+      if (u.includes("/rpc/increment_cashback")) { rpc++; return json({}); }
+      return json([]);
+    }));
+    const r = await valider();
+    expect(r.statut).toBe(200);
+    expect(rpc).toBe(0);
+    expect(r.corps.cashbackNonCredite).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("fiche du client illisible"));
+  });
 });
