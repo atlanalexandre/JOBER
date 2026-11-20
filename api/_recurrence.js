@@ -260,6 +260,15 @@ export async function programmerOccurrenceSuivante(missionId, supabaseUrl, heade
         if (!retrait?.ok) console.error(`[serie] ${nouvelleId} : doublon non retiré (${retrait?.status}) — à supprimer à la main.`);
         return { mode: "deja_programmee" };
       }
+      // Encore en cours chez Stripe (`processing`, `requires_capture`) : ce n'est
+      // pas un refus — il peut aboutir dans l'instant. Lu comme tel, la semaine
+      // était annulée et le client lisait « Rien n'a été débité » sur une carte
+      // bientôt débitée (relecture du 19/11/2026). Issue inconnue : la semaine
+      // reste en attente, l'équipe vérifie.
+      else if (["processing", "requires_capture"].includes(cj?.status)) {
+        incertain = true;
+        refus = `paiement ${cj.status} chez Stripe (${cj.id || "?"})`;
+      }
       else refus = cj?.error?.decline_code || cj?.error?.code || cj?.status || `HTTP ${cr.status}`;
     }
   } catch (e) {
