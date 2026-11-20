@@ -1157,7 +1157,11 @@ export default async function handler(req, res) {
             method: "POST", headers: { ...hdrsD, "Prefer": "return=minimal" },
             body: JSON.stringify({ action: "retenue_convertie_opposition", target_id: missionLitige.id,
               reason: missionLitige.payout_hold_reason || null,
-              details: { motif_precedent: missionLitige.payout_hold_reason || null, terme_precedent: missionLitige.payout_hold_until || null, opposition: dispute.id || null } }),
+              // `conversion_at` = le `payout_hold_at` que la conversion écrit : la
+              // trace ne rétablit QUE cette retenue-là, jamais une plus récente
+              // (relecture du 20/11/2026 — une trace ancienne rétablissait un motif
+              // levé depuis, ou survivait à une conversion échouée).
+              details: { motif_precedent: missionLitige.payout_hold_reason || null, terme_precedent: missionLitige.payout_hold_until || null, opposition: dispute.id || null, conversion_at: maintenant.toISOString() } }),
           }).catch(e => ({ ok: false, status: e.message }));
           if (!trace.ok) {
             // Sans trace, une opposition gagnée lèverait tout : la retenue d'origine
@@ -1188,8 +1192,18 @@ export default async function handler(req, res) {
                 }, SUPABASE_URL, hdrsD).catch(e => console.error("[dispute] notification de retenue non envoyée :", e.message));
               }
             } else {
-              console.error(`[dispute] retenue de ${missionLitige.id} NON convertie en opposition bancaire (${rh.status}) — à faire à la main depuis le back-office.`);
-              missionLitige.conversionImpossible = true;
+              // Déjà convertie (Stripe livre parfois deux fois le même événement,
+              // en parallèle) : pas d'alerte « à faire à la main » sur une
+              // retenue correcte (relecture du 20/11/2026).
+              const rl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionLitige.id}&select=payout_status,payout_hold_reason`, { headers: hdrsD }).catch(() => null);
+              const relu = rl?.ok ? (await rl.json().catch(() => []))[0] : null;
+              if (relu?.payout_status === "held" && relu?.payout_hold_reason === "opposition_bancaire") {
+                missionLitige.retenu = true;
+                missionLitige.retenuePrecedente = missionLitige.payout_hold_reason || "inconnue";
+              } else {
+                console.error(`[dispute] retenue de ${missionLitige.id} NON convertie en opposition bancaire (${rh.status}) — à faire à la main depuis le back-office.`);
+                missionLitige.conversionImpossible = true;
+              }
             }
           }
         } else if (missionLitige?.id && !missionLitige.payout_status) {
@@ -1269,6 +1283,7 @@ export default async function handler(req, res) {
               <tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-size:12px">${missionLitige ? `${missionLitige.id} — ${missionLitige.metier || missionLitige.sector || ""} du ${missionLitige.date || "?"} (${missionLitige.status})` : "non identifiée"}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-size:12px">${missionLitige?.prestataire_id || "—"}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Versement</td><td style="font-weight:700">${!missionLitige ? "—"
+                : missionLitige.retenuePrecedente ? `Déjà retenu (motif : ${esc(missionLitige.retenuePrecedente)}), désormais pour l'opposition bancaire. Si elle est gagnée, l'ancien motif est rétabli AUTOMATIQUEMENT : ne PAS lever la retenue à la main dans Versements — l'ancien motif serait perdu`
                 : missionLitige.retenu ? "Retenu automatiquement (90 jours au plus) — à lever dans Versements si la contestation est gagnée"
                 : missionLitige.payout_status === "transferred" ? "⚠️ DÉJÀ VERSÉ au prestataire"
                 : missionLitige.payout_status ? `« ${missionLitige.payout_status} » — non retenu, à vérifier`
@@ -1317,7 +1332,7 @@ export default async function handler(req, res) {
       let lignes = [];
       try {
         const lr = await fetch(`${SUPABASE_URL}/rest/v1/missions?and=(or(stripe_payment_intent.eq.${piEnc},extra_hours_payment_intent.eq.${piEnc}),or(${PAS_PARTI}))`
-          + "&payout_hold_reason=eq.opposition_bancaire&select=id,prestataire_id,payout_status,stripe_payment_intent,extra_hours_payment_intent", { headers: hdrsC });
+          + "&payout_hold_reason=eq.opposition_bancaire&select=id,prestataire_id,payout_status,payout_hold_at,payout_amount,metier,sector,date,stripe_payment_intent,extra_hours_payment_intent", { headers: hdrsC });
         const lus = lr.ok ? await lr.json().catch(() => null) : null;
         if (!Array.isArray(lus)) {
           console.error(`[dispute.closed] ${dispute.id} (${dispute.status}) : prestations illisibles (${lr.status}) — Stripe réémettra.`);
@@ -1371,10 +1386,12 @@ export default async function handler(req, res) {
           // Une retenue CONVERTIE (elle existait avant l'opposition, pour un autre
           // motif) retrouve son motif et son terme : l'opposition gagnée ne tranche
           // pas ce motif-là (relecture du 19/11/2026).
-          const tr = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.retenue_convertie_opposition&target_id=eq.${m.id}&select=details,created_at&order=created_at.desc&limit=1`, { headers: hdrsC });
+          const tr = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs?action=eq.retenue_convertie_opposition&target_id=eq.${m.id}&select=details,created_at&order=created_at.desc&limit=20`, { headers: hdrsC });
           const traces = tr.ok ? await tr.json().catch(() => null) : null;
           if (!Array.isArray(traces)) throw new Error(`trace de conversion de ${m.id} illisible (${tr.status}) — rien n'est levé`);
-          const avant = traces[0]?.details;
+          // La trace de CETTE retenue : même instant que son `payout_hold_at`.
+          const memeInstant = (a, b) => Number.isFinite(Date.parse(a || "")) && Date.parse(a) === Date.parse(b || "");
+          const avant = m.payout_status === "held" ? traces.map(t => t?.details).find(d => memeInstant(d?.conversion_at, m.payout_hold_at)) : null;
           if (avant?.motif_precedent) {
             const termeAvant = Date.parse(avant.terme_precedent || "");
             const rr = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC,
@@ -1382,8 +1399,17 @@ export default async function handler(req, res) {
                 payout_hold_until: Number.isFinite(termeAvant) ? new Date(termeAvant).toISOString() : null }) });
             const retablie = rr.ok ? await rr.json().catch(() => null) : null;
             if (!Array.isArray(retablie) || !retablie.length) throw new Error(`retenue d'origine de ${m.id} non rétablie (${rr.status}) — état changé entre-temps`);
+            m.retablie = avant.motif_precedent;
             lignes.push(m);
-            console.error(`[dispute.closed] ${dispute.id} gagnée : retenue d'origine (${avant.motif_precedent}) rétablie sur ${m.id} — le versement reste retenu.`);
+            // Prévenu : motif et terme changent encore (CGPS 7.4).
+            if (m.prestataire_id) {
+              const fin = Number.isFinite(termeAvant)
+                ? ` Elle prend fin au plus tard le ${new Date(termeAvant).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" })}.` : "";
+              await notifier({ user_id: m.prestataire_id, type: "system", title: "Versement toujours suspendu",
+                body: `L'opposition bancaire du client a été rejetée. Le versement de ${euros(m.payout_amount)} pour « ${m.metier || m.sector || "votre prestation"} » du ${m.date || "?"} reste suspendu pour le motif qui le retenait auparavant.${fin} `
+                  + "Vous pouvez la contester à direction@alane.fr." },
+              SUPABASE_URL, hdrsC).catch(e => console.error("[dispute.closed] notification non envoyée :", e.message));
+            }
             continue;
           }
           const levee = { payout_hold_reason: null, payout_hold_at: null, payout_hold_until: null };
@@ -1405,7 +1431,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Mise à jour de la retenue impossible" });
       }
       for (const m of lignes) {
-        console.error(`[dispute.closed] ${dispute.id} ${dispute.status} : prestation ${m.id} — ${gagnee ? "retenue levée" : "retenue maintenue sans terme"}.`);
+        console.error(`[dispute.closed] ${dispute.id} ${dispute.status} : prestation ${m.id} — ${m.retablie ? `retenue d'origine (${m.retablie}) rétablie` : gagnee ? "retenue levée" : "retenue maintenue sans terme"}.`);
       }
       if (perdue) {
         const admin = process.env.ADMIN_EMAIL; // espaces significatifs : pas de nettoyage (CLAUDE.md 1.4)
