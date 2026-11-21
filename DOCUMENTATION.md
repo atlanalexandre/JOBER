@@ -5257,8 +5257,9 @@ action `retenue_convertie_opposition`, motif et terme précédents dans `details
 rien n'est converti et le ticket le signale —, la conversion porte sur la retenue lue, le
 prestataire est prévenu du nouveau motif et du nouveau terme, et une **opposition gagnée rétablit
 l'ancien motif et son terme** au lieu de libérer le versement : elle ne tranche pas ce motif-là. Le 20/11/2026 : la trace porte l'instant de la conversion
-(`details.conversion_at`, égal au `payout_hold_at` qu'elle écrit) et n'est rétablie que pour
-**cette** retenue — une trace d'une conversion plus ancienne, levée depuis, ne ressuscite plus son
+(`details.conversion_at`, égal au `payout_hold_at` qu'elle écrit — pour une trace du 19/11
+écrite sans lui, sa date d'écriture, à moins de 30 secondes avant ce `payout_hold_at`) et n'est
+rétablie que pour **cette** retenue — une trace d'une conversion plus ancienne, levée depuis, ne ressuscite plus son
 motif ; le prestataire est prévenu du rétablissement ; un même événement livré deux fois ne lève
 plus d'alerte « à convertir à la main » ; et le courriel à l'administrateur dit de ne pas lever la
 retenue convertie à la main.
