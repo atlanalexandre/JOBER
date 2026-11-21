@@ -205,6 +205,14 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
   });
   // Relecture du 20/11/2026 : la trace la plus récente de la prestation était
   // rétablie, même si elle concernait une ANCIENNE conversion, levée depuis.
+  it("gagnée, trace du 19/11 sans conversion_at, écrite juste avant la conversion : l'ancien motif est rétabli", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-19T10:00:01.200Z", stripe_payment_intent: "pi_1" }], [],
+      [{ created_at: "2026-11-19T10:00:00.900Z", details: { motif_precedent: "suspicion_fraude", terme_precedent: null } }]);
+    await handler(requete(ferme("won")), reponse());
+    const ecrit = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
+    expect(ecrit.payout_hold_reason).toBe("suspicion_fraude");
+  });
   it("gagnée, trace d'une autre conversion (ancienne) : rien n'est rétabli, la retenue tombe", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-20T08:00:00.000Z", stripe_payment_intent: "pi_1" }], [],
       [{ details: { motif_precedent: "reclamation_client", terme_precedent: null, conversion_at: "2026-10-01T08:00:00.000Z" } }]);
