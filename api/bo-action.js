@@ -3108,22 +3108,27 @@ ${cvIncomplet ? `
         // celui que le backoffice affiche, et personne ne le saurait.
         console.error("[cashback] paliers illisibles, valeurs par défaut appliquées :", e.message);
       }
-      const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers });
-      const profileD = await profileR.json();
+      const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers }).catch(() => null);
+      const profileD = profileR?.ok ? await profileR.json().catch(() => null) : null;
       const prof = Array.isArray(profileD) && profileD[0];
+      // Fiche du client illisible : le palier serait calculé comme pour un
+      // premier achat du mois — un cashback trop bas, crédité sans trace
+      // (relecture du 20/11/2026). Rien n'est crédité, c'est dit.
+      const ficheLue = Boolean(prof);
       // Commandes du CLIENT, pas le quota prestataire ; une prestation de cinq
       // jours en compte cinq, comme à la validation par le client.
       const mCount = (prof?.commandes_mois||0)+jours;
       const rate = tauxDuPalier(CASHBACK_TIERS, mCount);
       const cashback = Math.round(partPrestataire*rate*100)/100;
-      const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:jours }) }).catch(()=>null);
+      let erreurCashback = null;
+      const cashbackRes = !ficheLue ? null : await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:jours }) }).catch(e => { erreurCashback = e.message; return null; });
       // Non crédité : le client ne doit pas lire « Cashback +X € » (relecture du
       // 18/11/2026) — la notification et la réponse le taisent, le journal le dit.
       const cashbackCredite = Boolean(cashbackRes?.ok);
       // Tout échec est journalisé, même à 0 € : le même appel compte les
       // commandes du client (palier de son cashback) — perdu sans trace sinon
       // (CLAUDE.md 1.2, relecture du 19/11/2026).
-      if (!cashbackCredite) console.error(`[force_complete] cashback de ${cashback} € et ${jours} commande(s) NON enregistrés pour le client ${m.client_id} (prestation ${mission_id}, ${cashbackRes?.status ?? "réseau"})`
+      if (!cashbackCredite) console.error(`[force_complete] cashback de ${cashback} € et ${jours} commande(s) NON enregistrés pour le client ${m.client_id} (prestation ${mission_id}, ${!ficheLue ? "fiche du client illisible" : cashbackRes?.status ?? `réseau : ${erreurCashback}`})`
         + (cashback > 0 ? " — à créditer à la main." : " — palier de cashback à corriger à la main."));
       // Notification prestataire
       if (m.prestataire_id) {
@@ -3137,7 +3142,7 @@ ${cvIncomplet ? `
       // jamais marqué épuisé à la limite (relecture du 15/10/2026, `e2e/96`).
       if (m.prestataire_id) await compterAuQuota(m.prestataire_id, jours, SUPABASE_URL, headers, "bo/force_complete");
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));
-      return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback: cashbackCredite ? cashback : 0, cashbackNonCredite: !cashbackCredite && cashback > 0 });
+      return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback: cashbackCredite ? cashback : 0, cashbackNonCredite: !cashbackCredite });
     }
 
     if (action === "manual_refund") {

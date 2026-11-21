@@ -5239,15 +5239,21 @@ art. 7.4). À la réception de `charge.dispute.created`, `stripe-webhook.js` pas
 encore à venir (`pending` ou `failed`) en `held`, motif `opposition_bancaire`, quatre-vingt-dix
 jours au plus, et prévient le prestataire — les deux conditions de l'article. Sans cela, une
 contestation arrivée pendant les 48 h laissait partir le virement alors que la banque reprenait
-l'argent au client. Un versement déjà parti n'est pas touché. Si la contestation est gagnée, la
-retenue se lève depuis l'écran Versements. **Un versement déjà retenu pour un autre motif** (réclamation…)
+l'argent au client. Un versement déjà parti n'est pas touché. Si la contestation est gagnée, le
+webhook lève lui-même la retenue (voir « Issue de l'opposition ») — sauf une retenue convertie,
+qui retrouve son ancien motif : ne pas la lever à la main dans Versements. **Un versement déjà retenu pour un autre motif** (réclamation…)
 n'était pas marqué : la levée de cette retenue, ou son terme, payait le prestataire pendant la
 contestation. Depuis le 18/11/2026, le motif devient `opposition_bancaire`, au terme le plus
 tardif des deux. Depuis le 19/11/2026, l'ancienne retenue est d'abord **tracée** (`bo_logs`,
 action `retenue_convertie_opposition`, motif et terme précédents dans `details`) — sans trace,
 rien n'est converti et le ticket le signale —, la conversion porte sur la retenue lue, le
 prestataire est prévenu du nouveau motif et du nouveau terme, et une **opposition gagnée rétablit
-l'ancien motif et son terme** au lieu de libérer le versement : elle ne tranche pas ce motif-là.
+l'ancien motif et son terme** au lieu de libérer le versement : elle ne tranche pas ce motif-là. Le 20/11/2026 : la trace porte l'instant de la conversion
+(`details.conversion_at`, égal au `payout_hold_at` qu'elle écrit) et n'est rétablie que pour
+**cette** retenue — une trace d'une conversion plus ancienne, levée depuis, ne ressuscite plus son
+motif ; le prestataire est prévenu du rétablissement ; un même événement livré deux fois ne lève
+plus d'alerte « à convertir à la main » ; et le courriel à l'administrateur dit de ne pas lever la
+retenue convertie à la main.
 
 **Contestation reçue avant la clôture** (décision d'Alexandre du 01/10/2026) : il n'existe pas
 encore de versement à retenir. Le webhook **inscrit** la retenue (`payout_hold_reason`,
@@ -5261,7 +5267,7 @@ son terme de 90 jours, elle ne retient plus rien. Éprouvé par `e2e/40` et
 **Issue de l'opposition** (relecture du 23/10/2026, CGPS art. 7.4 : la retenue « se prolonge
 jusqu'à l'issue » d'une opposition bancaire). À `charge.dispute.closed`, le webhook lève la
 retenue si l'opposition est **gagnée** (`won`, `warning_closed` : versement remis en `pending`,
-prestataire prévenu) ; si elle est **perdue** (`lost`), il vide `payout_hold_until` : la
+prestataire prévenu — sauf retenue convertie, qui retrouve son ancien motif, voir plus haut) ; si elle est **perdue** (`lost`), il vide `payout_hold_until` : la
 retenue garde son motif, n'a plus de terme, et plus rien ne la lève seul — ni la levée d'office
 des 90 jours (`payout_hold_until=lte.`), ni le traitement des versements, qui retient une
 retenue sans terme. L'administrateur est prévenu par courriel ; le back-office décide
@@ -5379,8 +5385,10 @@ La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : m�
 plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé. Depuis
 le 18/11/2026, sa clôture est conditionnée au prestataire lu (une cascade pouvait confier la
 prestation à un autre entre la lecture et l'écriture), et un cashback que la base n'a pas crédité
-n'est plus annoncé au client : le back-office affiche « cashback NON crédité — à créditer à la
-main ».
+n'est plus annoncé au client : le back-office le signale (« cashback NON enregistré pour le client
+— à corriger à la main »). Le 20/11/2026 : une fiche du client illisible ne fait plus créditer un
+cashback calculé au palier d'un premier achat (trop bas, sans trace) — rien n'est crédité, c'est
+signalé ; et le signalement vaut pour tout échec, même à 0 €.
 L'exécution d'une résolution remet `payout_status` à `pending` — sans quoi une prestation dont
 le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
@@ -5461,7 +5469,10 @@ l'annulation automatique de la tâche planifiée. Éprouvé par `e2e/20`.
   marque plus la prestation « débitée ».
 - **`restituerCashback()` prend la restitution avant de créditer** (`cashback_debite` true →
   false, écriture conditionnelle), et la rétablit si le crédit échoue : deux chemins de
-  remboursement concurrents ne peuvent plus la rendre deux fois.
+  remboursement concurrents ne peuvent plus la rendre deux fois. Une **coupure pendant le crédit**
+  (aucune réponse) ne rétablit pas le marquage — le crédit a pu aboutir, un second passage le
+  doublerait : le journal dit de vérifier le solde du client avant tout crédit à la main
+  (20/11/2026 ; il ne disait que « restitution impossible »).
 - **On ne rend que ce qui a été débité** (30/09/2026). Un débit plafonné — solde devenu
   insuffisant entre deux réservations simultanées — laisse `cashback_applique` à la réduction
   promise (elle borne Stripe), mais la restitution rendait cette réduction entière : le client

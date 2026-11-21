@@ -581,6 +581,8 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
   //    rendre le cashback deux fois (relecture du 29/09/2026).
   //    `cashback_applique` n'est pas touché : il borne les remboursements
   //    (voir marquerDebite).
+  // Où en est-on si une exception survient : marquage pris ? crédit envoyé ?
+  let pris_ = false, creditEnvoye = false;
   try {
     const pris = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&cashback_debite=is.true`, {
       method: "PATCH",
@@ -593,11 +595,13 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
       return { rendu: 0 };
     }
     if (!lignes.length) return { rendu: 0 }; // déjà rendue par un autre chemin
+    pris_ = true;
     montant = await montantARendre(mission.id, montant, supabaseUrl, headers);
     if (!(montant > 0)) return { rendu: 0 };
 
     // 2. Le crédit. La procédure `increment_cashback` est atomique ; son second
     //    paramètre compte les prestations du mois : aucune ici, c'est un avoir rendu.
+    creditEnvoye = true;
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/increment_cashback`, {
       method: "POST",
       headers,
@@ -620,6 +624,22 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
     return { rendu: montant };
   } catch (e) {
     console.error(`[cashback/${motif}] restitution impossible sur ${mission.id} :`, e.message);
+    // Marquage pris mais rien envoyé (montant illisible…) : on le rétablit, un
+    // passage suivant reprendra. Il restait vidé, et le cashback était perdu
+    // pour le client sans que personne le sache (relecture du 20/11/2026).
+    // Crédit envoyé mais réponse perdue : il a pu aboutir — le marquage n'est
+    // PAS rétabli (un second crédit doublerait), l'équipe vérifie.
+    if (pris_ && !creditEnvoye) {
+      const re = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&cashback_debite=is.false`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ cashback_debite: true }),
+      }).catch(() => null);
+      if (!re?.ok) console.error(`[cashback/${motif}] ⚠️ cashback NON rendu au client de ${mission.id}, `
+        + "et marquage non rétabli : à créditer à la main (back-office, Ajuster le cashback).");
+    } else if (creditEnvoye) {
+      console.error(`[cashback/${motif}] ⚠️ crédit de cashback envoyé sur ${mission.id} sans réponse : `
+        + "vérifier le solde du client avant tout crédit à la main.");
+    }
     return { rendu: 0 };
   }
 }
