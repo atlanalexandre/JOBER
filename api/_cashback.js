@@ -636,6 +636,13 @@ export async function restituerCashback(missionBrute, supabaseUrl, headers, moti
       }).catch(() => null);
       if (!re?.ok) console.error(`[cashback/${motif}] ⚠️ cashback NON rendu au client de ${mission.id}, `
         + "et marquage non rétabli : à créditer à la main (back-office, Ajuster le cashback).");
+    } else if (!pris_) {
+      // La prise elle-même a échoué sans réponse : elle a pu aboutir côté base
+      // (marquage levé, rien crédité). On ne peut pas le distinguer d'une autre
+      // restitution réussie entre-temps : pas de reprise automatique, consigne
+      // de vérification (relecture du 21/11/2026).
+      console.error(`[cashback/${motif}] ⚠️ restitution de ${mission.id} interrompue avant le crédit : `
+        + "si le cashback n'apparaît pas sur le solde du client, le créditer à la main (back-office, Ajuster le cashback).");
     } else if (creditEnvoye) {
       console.error(`[cashback/${motif}] ⚠️ crédit de cashback envoyé sur ${mission.id} sans réponse : `
         + "vérifier le solde du client avant tout crédit à la main.");

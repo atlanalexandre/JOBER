@@ -887,6 +887,14 @@ Silver ». Dans l'autre sens, une commande consommait son quota de prestataire. 
 mensuel remet **les deux** à zéro ; la fonction `increment_cashback()` vise `commandes_mois`.
 Ni l'une ni l'autre n'est modifiable depuis le navigateur.
 
+**Fiche du client illisible à la validation** (21/11/2026) : le palier se lit dans
+`commandes_mois`. Illisible, il était calculé comme pour un premier achat du mois — un cashback
+trop bas, crédité et annoncé sans trace — par la validation du client (`complete`), la validation
+automatique et « Valider de force ». Désormais rien n'est crédité et le journal dit de recalculer
+et créditer à la main. Le crédit de **secours** de `complete` (valeur absolue, quand
+`increment_cashback()` échoue) est conditionné au solde et au compteur lus : il effaçait tout
+crédit ou débit survenu entre la lecture et l'écriture.
+
 **`missions`** — la prestation. C'est l'objet central. Attention : **il n'existe pas de table
 `prestations`**, malgré le vocabulaire employé dans l'interface.
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,

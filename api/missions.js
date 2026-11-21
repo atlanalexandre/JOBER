@@ -2324,9 +2324,13 @@ export default async function handler(req, res) {
       // `missions_completed_month` : cette dernière est le quota du prestataire.
       // Un compte qui exerce les deux rôles voyait sinon son palier client
       // gonflé par ses propres prestations (migration du 27/08/2026).
-      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,commandes_mois`, { headers });
-      const profiles = await pr.json();
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,commandes_mois`, { headers }).catch(() => null);
+      const profiles = pr?.ok ? await pr.json().catch(() => null) : null;
       const profile = Array.isArray(profiles) && profiles[0];
+      // Fiche illisible : le palier serait celui d'un premier achat du mois, et le
+      // solde de secours plus bas repartirait de zéro (relecture du 21/11/2026).
+      // Rien n'est crédité, c'est journalisé.
+      const ficheCashbackLue = Boolean(profile);
       const missionsThisMonth = (profile?.commandes_mois || 0) + missionDayCount;
 
       // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
@@ -2392,13 +2396,17 @@ export default async function handler(req, res) {
       }
 
       // Mise à jour atomique du cashback via RPC — p_missions = nombre de jours (multi-dates)
-      let rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+      if (!ficheCashbackLue) {
+        console.error(`[complete] fiche du client ${client_id} illisible : cashback et ${missionDayCount} commande(s) NON enregistrés pour ${mission_id} — `
+          + "palier inconnu : à recalculer et créditer à la main depuis la fiche du client.");
+      }
+      let rpcRes = !ficheCashbackLue ? { ok: false, status: "fiche illisible" } : await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
-      });
+      }).catch(e => ({ ok: false, status: `réseau : ${e.message}` }));
       // Retry une fois si échec réseau (503/504)
-      if (!rpcRes.ok && [503, 504].includes(rpcRes.status)) {
+      if (ficheCashbackLue && !rpcRes.ok && [503, 504].includes(rpcRes.status)) {
         await new Promise(r => setTimeout(r, 800));
         rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
           method: "POST",
@@ -2408,12 +2416,18 @@ export default async function handler(req, res) {
       }
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
       let atomicBalance = newBalance;
-      if (!rpcRes.ok) {
+      if (!rpcRes.ok && ficheCashbackLue) {
         console.error("[complete] increment_cashback RPC failed, fallback direct PATCH:", rpcRes.status, "mission_id:", mission_id);
-        // Fallback : mise à jour directe avec service role key
-        await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`,
+        // Secours : valeur absolue, donc CONDITIONNÉE au solde et au compteur lus.
+        // Sans condition, un crédit ou un débit survenu entre-temps était effacé
+        // (relecture du 21/11/2026).
+        const secours = await ecrireVerifie(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`
+            + `&cashback_balance=eq.${Number(profile.cashback_balance || 0)}`
+            + (profile.commandes_mois == null ? "&commandes_mois=is.null" : `&commandes_mois=eq.${Number(profile.commandes_mois)}`),
           { cashback_balance: newBalance, commandes_mois: missionsThisMonth }, headers, "complete/cashback de secours");
-      } else {
+        if (!secours) console.error(`[complete] cashback de ${cashbackEarned} € NON crédité au client ${client_id} (${mission_id}) — solde changé entre-temps ou écriture refusée : à créditer à la main.`);
+        else rpcRes = { ok: true };
+      } else if (rpcRes.ok) {
         atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
           ? rpcData[0].cashback_balance
           : newBalance;
