@@ -893,7 +893,13 @@ trop bas, crédité et annoncé sans trace — par la validation du client (`com
 automatique et « Valider de force ». Désormais rien n'est crédité et le journal dit de recalculer
 et créditer à la main. Le crédit de **secours** de `complete` (valeur absolue, quand
 `increment_cashback()` échoue) est conditionné au solde et au compteur lus : il effaçait tout
-crédit ou débit survenu entre la lecture et l'écriture.
+crédit ou débit survenu entre la lecture et l'écriture. Le 22/11/2026 : `complete` ne retente plus
+`increment_cashback()` qu'après un 503 (rien n'a été exécuté) — après un 504 ou une coupure,
+souvent postérieurs à l'exécution, le nouvel essai doublait le cashback et le compte des
+commandes, la procédure n'étant pas idempotente ; sur une telle issue incertaine, le journal dit
+de vérifier le solde avant tout crédit à la main. Et la validation automatique **attend** le
+crédit avant d'annoncer « Cashback crédité » (notification et e-mail) : elle l'annonçait en même
+temps qu'elle le demandait, crédité ou non.
 
 **`missions`** — la prestation. C'est l'objet central. Attention : **il n'existe pas de table
 `prestations`**, malgré le vocabulaire employé dans l'interface.
