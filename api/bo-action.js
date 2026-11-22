@@ -3128,8 +3128,13 @@ ${cvIncomplet ? `
       // Tout échec est journalisé, même à 0 € : le même appel compte les
       // commandes du client (palier de son cashback) — perdu sans trace sinon
       // (CLAUDE.md 1.2, relecture du 19/11/2026).
-      if (!cashbackCredite) console.error(`[force_complete] cashback de ${cashback} € et ${jours} commande(s) NON enregistrés pour le client ${m.client_id} (prestation ${mission_id}, ${!ficheLue ? "fiche du client illisible" : cashbackRes?.status ?? `réseau : ${erreurCashback}`})`
-        + (cashback > 0 ? " — à créditer à la main." : " — palier de cashback à corriger à la main."));
+      // Fiche illisible : le montant calculé l'a été au palier d'un premier achat
+      // — le citer ferait créditer à la main ce montant trop bas (relecture du
+      // 21/11/2026). Le journal dit de le recalculer.
+      if (!cashbackCredite) console.error(!ficheLue
+        ? `[force_complete] fiche du client ${m.client_id} illisible : cashback et ${jours} commande(s) NON enregistrés (prestation ${mission_id}) — palier inconnu : recalculer le cashback depuis la fiche du client avant de le créditer à la main.`
+        : `[force_complete] cashback de ${cashback} € et ${jours} commande(s) NON enregistrés pour le client ${m.client_id} (prestation ${mission_id}, ${cashbackRes?.status ?? `réseau : ${erreurCashback}`})`
+          + (cashback > 0 ? " — à créditer à la main." : " — palier de cashback à corriger à la main."));
       // Notification prestataire
       if (m.prestataire_id) {
         await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[bo-action/force_complete_mission] échec ignoré :", e?.message));

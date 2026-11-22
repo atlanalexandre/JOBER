@@ -94,6 +94,10 @@ describe("valider de force", () => {
     expect(r.statut).toBe(200);
     expect(rpc).toBe(0);
     expect(r.corps.cashbackNonCredite).toBe(true);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("fiche du client illisible"));
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("fiche du client"));
+    // Aucun montant cité : il serait celui d'un premier achat, trop bas (21/11/2026).
+    const msg = console.error.mock.calls.map(c => String(c[0])).find(x => x.includes("illisible"));
+    expect(msg).toContain("recalculer");
+    expect(msg).not.toMatch(/cashback de [\d.]+ €/);
   });
 });

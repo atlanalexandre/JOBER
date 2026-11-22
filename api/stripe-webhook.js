@@ -1391,7 +1391,18 @@ export default async function handler(req, res) {
           if (!Array.isArray(traces)) throw new Error(`trace de conversion de ${m.id} illisible (${tr.status}) — rien n'est levé`);
           // La trace de CETTE retenue : même instant que son `payout_hold_at`.
           const memeInstant = (a, b) => Number.isFinite(Date.parse(a || "")) && Date.parse(a) === Date.parse(b || "");
-          const avant = m.payout_status === "held" ? traces.map(t => t?.details).find(d => memeInstant(d?.conversion_at, m.payout_hold_at)) : null;
+          // Traces du 19/11/2026, écrites avant `conversion_at` : écrites juste
+          // AVANT la conversion, dans le même passage — à quelques secondes de
+          // son `payout_hold_at` (relecture du 21/11/2026 : elles étaient ignorées,
+          // et la retenue d'origine levée).
+          const proche = (t) => {
+            const c = Date.parse(t?.created_at || ""), h = Date.parse(m.payout_hold_at || "");
+            return Number.isFinite(c) && Number.isFinite(h) && h >= c && h - c <= 30000;
+          };
+          const avant = m.payout_status === "held"
+            ? (traces.find(t => memeInstant(t?.details?.conversion_at, m.payout_hold_at))
+              || traces.find(t => !t?.details?.conversion_at && proche(t)))?.details || null
+            : null;
           if (avant?.motif_precedent) {
             const termeAvant = Date.parse(avant.terme_precedent || "");
             const rr = await fetch(cibleLue(m), { method: "PATCH", headers: hdrsC,

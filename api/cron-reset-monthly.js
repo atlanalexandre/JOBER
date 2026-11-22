@@ -2594,12 +2594,17 @@ ${(() => {
               const lienApp = appUrl();
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
-              const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers });
-              const cpData = await cpRes.json();
-              const profile = Array.isArray(cpData) && cpData[0] ? cpData[0] : {};
+              const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers }).catch(() => null);
+              const cpData = cpRes?.ok ? await cpRes.json().catch(() => null) : null;
+              // Fiche illisible : le palier serait celui d'un premier achat du mois
+              // — un cashback trop bas, crédité et annoncé sans trace (relecture du
+              // 21/11/2026). Rien n'est crédité, c'est journalisé.
+              const ficheCashbackLue = Array.isArray(cpData) && Boolean(cpData[0]);
+              const profile = ficheCashbackLue ? cpData[0] : {};
               const missionsThisMonth = (profile.commandes_mois || 0) + jours;
               const rate = tauxDuPalier(CASHBACK_TIERS, missionsThisMonth);
-              const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
+              const cashbackEarned = ficheCashbackLue ? Math.round(partPrestataire * rate * 100) / 100 : 0;
+              if (!ficheCashbackLue) console.error(`[cron/auto-validation] fiche du client de ${m.id} illisible : cashback et ${jours} commande(s) NON enregistrés — palier inconnu, à recalculer et créditer à la main.`);
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
               // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard).
@@ -2652,7 +2657,7 @@ ${(() => {
                 // Son résultat n'était pas lu : la fonction a échoué à chaque appel du
                 // 27/08 au 28/09/2026, et aucun cashback d'auto-validation n'a été
                 // crédité sans que rien ne le dise.
-                fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+                ficheCashbackLue && fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=representation" },
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
                 }).then(async r => {
