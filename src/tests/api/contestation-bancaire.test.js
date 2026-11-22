@@ -205,13 +205,18 @@ describe("issue de l'opposition (charge.dispute.closed)", () => {
   });
   // Relecture du 20/11/2026 : la trace la plus récente de la prestation était
   // rétablie, même si elle concernait une ANCIENNE conversion, levée depuis.
-  it("gagnée, trace du 19/11 sans conversion_at, écrite juste avant la conversion : l'ancien motif est rétabli", async () => {
+  // Ordre réel (relecture du 22/11/2026) : `payout_hold_at` est l'heure du
+  // serveur, lue AVANT la trace ; `created_at`, celle de la base à l'insertion,
+  // lui est donc postérieure. Les deux ordres doivent être reconnus.
+  it("gagnée, trace du 19/11 sans conversion_at, à quelques centaines de ms de la conversion (dans les deux sens) : l'ancien motif est rétabli", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-19T10:00:01.200Z", stripe_payment_intent: "pi_1" }], [],
-      [{ created_at: "2026-11-19T10:00:00.900Z", details: { motif_precedent: "suspicion_fraude", terme_precedent: null } }]);
-    await handler(requete(ferme("won")), reponse());
-    const ecrit = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
-    expect(ecrit.payout_hold_reason).toBe("suspicion_fraude");
+    for (const creee of ["2026-11-19T10:00:01.350Z", "2026-11-19T10:00:00.900Z"]) {
+      const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-19T10:00:01.200Z", stripe_payment_intent: "pi_1" }], [],
+        [{ created_at: creee, details: { motif_precedent: "suspicion_fraude", terme_precedent: null } }]);
+      await handler(requete(ferme("won")), reponse());
+      const ecrit = JSON.parse(appels.find(a => a.methode === "PATCH" && a.u.includes("missions?id=eq.m1")).corps);
+      expect(ecrit.payout_hold_reason, creee).toBe("suspicion_fraude");
+    }
   });
   it("gagnée, trace d'une autre conversion (ancienne) : rien n'est rétabli, la retenue tombe", async () => {
     const appels = simulerIssue([{ id: "m1", prestataire_id: "p1", payout_status: "held", payout_hold_at: "2026-11-20T08:00:00.000Z", stripe_payment_intent: "pi_1" }], [],
