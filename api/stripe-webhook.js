@@ -1391,13 +1391,16 @@ export default async function handler(req, res) {
           if (!Array.isArray(traces)) throw new Error(`trace de conversion de ${m.id} illisible (${tr.status}) — rien n'est levé`);
           // La trace de CETTE retenue : même instant que son `payout_hold_at`.
           const memeInstant = (a, b) => Number.isFinite(Date.parse(a || "")) && Date.parse(a) === Date.parse(b || "");
-          // Traces du 19/11/2026, écrites avant `conversion_at` : écrites juste
-          // AVANT la conversion, dans le même passage — à quelques secondes de
-          // son `payout_hold_at` (relecture du 21/11/2026 : elles étaient ignorées,
-          // et la retenue d'origine levée).
+          // Traces du 19/11/2026, écrites avant `conversion_at`, dans le même
+          // passage que la conversion — à quelques secondes de son
+          // `payout_hold_at` (relecture du 21/11/2026). L'écart se compte dans
+          // les deux sens : `payout_hold_at` est l'heure du serveur, lue AVANT la
+          // trace, et `created_at` celle de la base, à l'insertion — la trace
+          // est donc presque toujours postérieure (relecture du 22/11/2026 : la
+          // condition « avant » ne correspondait jamais).
           const proche = (t) => {
             const c = Date.parse(t?.created_at || ""), h = Date.parse(m.payout_hold_at || "");
-            return Number.isFinite(c) && Number.isFinite(h) && h >= c && h - c <= 30000;
+            return Number.isFinite(c) && Number.isFinite(h) && Math.abs(h - c) <= 30000;
           };
           const avant = m.payout_status === "held"
             ? (traces.find(t => memeInstant(t?.details?.conversion_at, m.payout_hold_at))

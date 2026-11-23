@@ -2405,15 +2405,20 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
       }).catch(e => ({ ok: false, status: `réseau : ${e.message}` }));
-      // Retry une fois si échec réseau (503/504)
-      if (ficheCashbackLue && !rpcRes.ok && [503, 504].includes(rpcRes.status)) {
+      // Nouvel essai sur un 503 seulement (service indisponible : rien n'a été
+      // exécuté). Un 504 ou une coupure arrive souvent APRÈS l'exécution : la
+      // procédure n'étant pas idempotente, le second appel doublait le cashback
+      // et le compte des commandes (relecture du 22/11/2026).
+      if (ficheCashbackLue && !rpcRes.ok && rpcRes.status === 503) {
         await new Promise(r => setTimeout(r, 800));
         rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
-        }).catch(() => ({ ok: false, status: 0 }));
+        }).catch(e => ({ ok: false, status: `réseau : ${e.message}` }));
       }
+      // Issue inconnue : le crédit a pu passer (504, coupure).
+      const creditIncertain = !rpcRes.ok && (rpcRes.status === 504 || String(rpcRes.status).startsWith("réseau"));
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
       let atomicBalance = newBalance;
       if (!rpcRes.ok && ficheCashbackLue) {
@@ -2425,7 +2430,11 @@ export default async function handler(req, res) {
             + `&cashback_balance=eq.${Number(profile.cashback_balance || 0)}`
             + (profile.commandes_mois == null ? "&commandes_mois=is.null" : `&commandes_mois=eq.${Number(profile.commandes_mois)}`),
           { cashback_balance: newBalance, commandes_mois: missionsThisMonth }, headers, "complete/cashback de secours");
-        if (!secours) console.error(`[complete] cashback de ${cashbackEarned} € NON crédité au client ${client_id} (${mission_id}) — solde changé entre-temps ou écriture refusée : à créditer à la main.`);
+        // Sur une issue inconnue, un solde « changé entre-temps » est très
+        // probablement le crédit lui-même : créditer à la main le doublerait.
+        if (!secours) console.error(creditIncertain
+          ? `[complete] cashback de ${cashbackEarned} € pour le client ${client_id} (${mission_id}) : crédit sans réponse sûre (${rpcRes.status}), secours non écrit — il a probablement abouti. Vérifier le solde du client avant tout crédit à la main.`
+          : `[complete] cashback de ${cashbackEarned} € NON crédité au client ${client_id} (${mission_id}) — solde changé entre-temps ou écriture refusée : à créditer à la main.`);
         else rpcRes = { ok: true };
       } else if (rpcRes.ok) {
         atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null

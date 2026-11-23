@@ -2652,20 +2652,32 @@ ${(() => {
                 });
               }
 
-              await Promise.all([
-                // Mise à jour atomique du cashback via RPC pour éviter les race conditions.
-                // Son résultat n'était pas lu : la fonction a échoué à chaque appel du
-                // 27/08 au 28/09/2026, et aucun cashback d'auto-validation n'a été
-                // crédité sans que rien ne le dise.
-                ficheCashbackLue && fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+              // Le crédit d'abord, ATTENDU : la notification et l'e-mail annonçaient
+              // « Cashback crédité » avant de connaître son issue (relecture du
+              // 22/11/2026). Son résultat n'était pas lu du 27/08 au 28/09/2026 : la
+              // fonction échouait, et aucun cashback d'auto-validation n'était crédité.
+              const cashbackCredite = !(ficheCashbackLue && cashbackEarned > 0) ? false
+                : await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=representation" },
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
                 }).then(async r => {
                   if (!r.ok) console.error(`[cron/auto-validation] cashback de ${cashbackEarned} € NON crédité au client de ${m.id} (${r.status}) :`,
                     (await r.text().catch(() => "")).slice(0, 200), "— à créditer à la main.");
-                }).catch(e => console.error(`[cron/auto-validation] cashback NON crédité pour ${m.id} :`, e.message)),
+                  return r.ok;
+                }).catch(e => { console.error(`[cron/auto-validation] cashback de ${cashbackEarned} € sans réponse pour ${m.id} :`, e.message, "— vérifier le solde du client avant tout crédit à la main."); return false; });
+              // Un cashback nul compte quand même les commandes du mois (palier).
+              if (ficheCashbackLue && !(cashbackEarned > 0)) {
+                await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=representation" },
+                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: 0, p_missions: jours }),
+                }).then(r => { if (!r.ok) console.error(`[cron/auto-validation] ${jours} commande(s) NON comptées pour le client de ${m.id} (${r.status}).`); })
+                  .catch(e => console.error(`[cron/auto-validation] commandes non comptées pour ${m.id} :`, e.message));
+              }
+              const cashbackAnnonce = cashbackCredite ? cashbackEarned : 0;
+
+              await Promise.all([
                 // Notification client
-                notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${euros(cashbackEarned)}` : ""}`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
+                notifier({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackAnnonce > 0 ? ` Cashback crédité : +${euros(cashbackAnnonce)}` : ""}`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Notification prestataire
                 m.prestataire_id && notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${euros(partPrestataire)} est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message)),
                 // Email prestataire — réutilise userMap déjà chargé
@@ -2689,7 +2701,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${euros(cashbackEarned)}</strong> a été crédité. Vous pourrez l'utiliser au paiement d'une prochaine réservation.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackAnnonce > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${euros(cashbackAnnonce)}</strong> a été crédité. Vous pourrez l'utiliser au paiement d'une prochaine réservation.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(e => console.error("[cron-reset-monthly/reminders] échec ignoré :", e?.message));
                 })(),
               ]);
